@@ -12,7 +12,9 @@ from cassandra.query import SimpleStatement
 from ccmlib import common
 from ccmlib.node import NodetoolError
 import re
-from dtest_class import Tester
+from dtest_setup import DTestSetup
+from dtest_config import DTestConfig
+from dtest_setup_overrides import DTestSetupOverrides
 import random
 import string
 import itertools
@@ -1106,9 +1108,15 @@ def get_rows_set_from_res(res):
 class CassandraCluster(object):
     """Class provides interface to create Cassandra cluster and migrate the data from Scylla"""
 
-    def __init__(self, cassandra_version):
+    def __init__(self, cassandra_version, request):
         self.cassandra_version = cassandra_version
-        self.tester = Tester(methodName='__init__', cassandra_version=cassandra_version)
+        self.request = request
+        self.dtest_config = DTestConfig()
+        self.dtest_config.setup(self.request)
+        self.dtest_config.cassandra_version = cassandra_version
+        self.dtest_setup = DTestSetup(dtest_config=self.dtest_config,
+                                      setup_overrides=DTestSetupOverrides(),
+                                      cluster_name="test")
         self.test_path = None
         self.cluster = None
         self.scylla_data_tmp_folder = None
@@ -1123,8 +1131,9 @@ class CassandraCluster(object):
         if self.scylla_cluster:
             self.scylla_cluster.stop(wait_other_notice=True)
         # Set up Cassandra cluster
-        self.tester.setUp()
-        self.cluster = self.tester.cluster
+        self.dtest_setup.initialize_cluster(DTestSetup.create_ccm_cluster)
+
+        self.cluster = self.dtest_setup.cluster
         self.cluster.set_configuration_options(values=config_options)
         logger.debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
         self.cluster.populate(nodes)
@@ -1132,7 +1141,7 @@ class CassandraCluster(object):
             self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         except:
             raise
-        self.test_path = self.tester.test_path
+        self.test_path = self.dtest_setup.test_path
         return self.cluster.nodelist()[0]
 
     def get_scylla_test_schema_ddl(self, keyspace_names_list=None, table_names_list=None, get_system_keyspaces=None):
@@ -1263,7 +1272,30 @@ class CassandraCluster(object):
         logger.debug('Stopping Cassandra cluster')
         if self.cluster:
             self.cluster.stop(wait_other_notice=True)
-        self.tester.tearDown()
+
+        dtest_setup = self.dtest_setup
+        for con in dtest_setup.connections:
+            con.cluster.shutdown()
+        dtest_setup.connections = []
+
+        failed = False
+        try:
+            if not dtest_setup.allow_log_errors:
+                try:
+                    dtest_setup.check_errors_all_nodes()
+                except AssertionError:
+                    failed = True
+                    raise
+        finally:
+            try:
+                # save the logs for inspection
+                if failed or not self.dtest_config.delete_logs:
+                    from dtest_setup import copy_logs
+                    copy_logs(self.request, dtest_setup)
+            except Exception as e:
+                logger.error("Error saving log: %s", str(e))
+            finally:
+                dtest_setup.cleanup_cluster()
 
 
 class SchemaDDL(object):

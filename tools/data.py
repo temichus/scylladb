@@ -46,7 +46,7 @@ def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missi
                c1_value='value1', c2_value='value2', ks="ks", cf="cf"):
     query = SimpleStatement(f'SELECT c1, c2 FROM {ks}.{cf} WHERE key=\'k{key}\'', consistency_level=consistency)
     rows = list(session.execute(query))
-    if not tolerate_missing:
+    if not tolerate_missing and not must_be_missing:
         assertions.assert_length_equal(rows, 1)
         res = rows[0]
         assert len(res) == 2 and res[0] == c1_value and res[1] == c2_value, res

@@ -27,7 +27,7 @@ from cassandra.cluster import ResultSet, NoHostAvailable
 from tools.assertions import assert_all, assert_invalid, assert_none, assert_one, \
     assert_row_count
 from tools.retrying import retrying
-from dtest_class import Tester, create_ks
+from dtest_class import Tester, create_ks, create_cf
 from scylla_tools import CassandraCluster, get_rows_set_from_res, wait_for_view
 from thrift_bindings.thrift010.ttypes import CfDef
 from thrift_bindings.thrift010.ttypes import Column
@@ -48,10 +48,9 @@ logger = logging.getLogger(__name__)
 class TestCQL(Tester):
 
     @pytest.fixture(scope="class")
-    def setup(self):
-        if not hasattr(self, 'compaction_strategy_for_migration'):
-            self.compaction_strategy_for_migration = random.choice(
-                ['SizeTieredCompactionStrategy', 'TimeWindowCompactionSsstrategy', 'LeveledCompactionStrategy'])
+    def compaction_strategy_for_migration(self):
+        return random.choice(
+            ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy'])
 
     def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, options={}, **kwargs):
         cluster = self.cluster
@@ -1808,7 +1807,7 @@ class TestCQL(Tester):
     @pytest.mark.single_node
     def test_range_tombstones(self):
         """ Test deletion by 'composite prefix' (range tombstones) """
-        node1 = self.cluster.nodelist()[1]
+        node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 1)
 
@@ -1846,7 +1845,7 @@ class TestCQL(Tester):
             res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
             assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], list(res)
 
-        cluster.flush()
+        self.cluster.flush()
         time.sleep(0.2)
 
         for i in range(0, rows):
@@ -1945,7 +1944,6 @@ class TestCQL(Tester):
               WITH compression = { 'sstable_compressor' : 'DeflateCompressor' };
             """, expected=ConfigurationException)
 
-    @pytest.mark.single_node
     def test_keyspace_creation_options(self):
         """ Check one can use arbitrary name for datacenter when creating keyspace (#4278) """
         cluster = self.cluster
@@ -6006,10 +6004,10 @@ class TestCQL(Tester):
 
     def mc_migrate_scylla_to_cassandra(self, keyspace_name, table_name, dataset, data_amount,
                                        columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
-                                       keys_columns_amount=3):
+                                       keys_columns_amount=3, request=None):
         cc = None
         try:
-            cc = CassandraCluster(cassandra_version='3.11.3')
+            cc = CassandraCluster(cassandra_version='3.11.3', request=request)
             cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path,
                                                keyspace_names_list=[keyspace_name])
             cassandra_session = self.patient_cql_connection(cassandra_node1, keyspace=keyspace_name.replace('"', ''))
@@ -6026,7 +6024,7 @@ class TestCQL(Tester):
                 logger.debug(ex)
                 traceback.print_exc()
 
-    def test_mc_sstables_case_sensitive_insert(self):
+    def test_mc_sstables_case_sensitive_insert(self, request, compaction_strategy_for_migration):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
         1. Create the table with case sensitive column names
@@ -6042,13 +6040,13 @@ class TestCQL(Tester):
 
         self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                               dataset=dataset, data_amount=data_amount,
-                              compaction_options=self.compaction_strategy_for_migration)
+                              compaction_options=compaction_strategy_for_migration)
 
         # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
-                                            data_amount=data_amount)
+                                            data_amount=data_amount, request=request)
 
-    def test_mc_sstables_case_sensitive_update_value(self):
+    def test_mc_sstables_case_sensitive_update_value(self, request, compaction_strategy_for_migration):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
         1. Create the table with case sensitive column names
@@ -6066,7 +6064,7 @@ class TestCQL(Tester):
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                                         dataset=dataset, data_amount=data_amount,
-                                        compaction_options=self.compaction_strategy_for_migration)
+                                        compaction_options=compaction_strategy_for_migration)
 
         logger.debug('Run update')
         for i, row_data in enumerate(dataset):
@@ -6088,9 +6086,9 @@ class TestCQL(Tester):
 
         # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
-                                            data_amount=data_amount)
+                                            data_amount=data_amount, request=request)
 
-    def test_mc_sstables_case_sensitive_delete_value(self):
+    def test_mc_sstables_case_sensitive_delete_value(self, request, compaction_strategy_for_migration):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
         1. Create the table with case sensitive column names
@@ -6108,7 +6106,7 @@ class TestCQL(Tester):
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name,
                                         dataset=dataset, data_amount=data_amount,
-                                        compaction_options=self.compaction_strategy_for_migration)
+                                        compaction_options=compaction_strategy_for_migration)
 
         logger.debug('Run delete')
         for i in range(2, 5):
@@ -6122,9 +6120,9 @@ class TestCQL(Tester):
 
         # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
-                                            data_amount=data_amount)
+                                            data_amount=data_amount, request=request)
 
-    def test_mc_sstables_case_sensitive_add_column(self):
+    def test_mc_sstables_case_sensitive_add_column(self, request, compaction_strategy_for_migration):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
         1. Create the table with case sensitive column names
@@ -6143,7 +6141,7 @@ class TestCQL(Tester):
 
         session = self.mc_prepare_table(nodes=4, keyspace_name=keyspace_name, table_name=table_name, columns=columns,
                                         keys_amount=keys_columns_amount, dataset=dataset, data_amount=data_amount,
-                                        compaction_options=self.compaction_strategy_for_migration)
+                                        compaction_options=compaction_strategy_for_migration)
 
         # Add new columns with case sensitive name
         new_column_name = '"Columnfamily_for_mc_sstables_column1"'
@@ -6163,7 +6161,7 @@ class TestCQL(Tester):
         # Create Cassandra cluster, migrate the Scylla data and validate the migrated data
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
                                             data_amount=data_amount, columns=columns,
-                                            keys_columns_amount=keys_columns_amount)
+                                            keys_columns_amount=keys_columns_amount, request=request)
 
     def mc_validate_data(self, session, table_name, data_amount, dataset,
                          columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
@@ -6462,7 +6460,7 @@ class TestCQL(Tester):
         time.sleep(0.2)
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test1 (
@@ -6626,8 +6624,8 @@ class TestsCQLAdditional(Tester):
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node, user='cassandra', password='cassandra')
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'user')
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'user')
         session.execute('CREATE ROLE benoit')
 
         c = """GRANT SELECT ON ALL KEYSPACES TO benoit"""
@@ -6647,8 +6645,8 @@ class TestsCQLAdditional(Tester):
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node, user='cassandra', password='cassandra')
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'boo')
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'boo')
 
         c = """LIST ALL PERMISSIONS ON ks.boo"""
         try:
@@ -6877,7 +6875,6 @@ class TestsCQLAdditional(Tester):
 
         logger.debug("Create 100+ tables by simple_test_100tables.cql")
 
-        schema_file = self.copy_file_to_tmp(schema_file)
         nodes[0].run_cqlsh(cmds="SOURCE '%s'" % schema_file, show_output=True, return_output=True)
 
         logger.debug("Check created tables in KEYSPACE `veraminetest`")
@@ -6984,8 +6981,6 @@ class TestsMultiColumnRestrictionSimple(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version)
         if create_keyspace:
-            if self._preserve_cluster:
-                session.execute("DROP KEYSPACE IF EXISTS ks")
             create_ks(session, 'ks', rf)
         return session
 
@@ -7349,8 +7344,6 @@ class TestsMultiColumnRestrictionCollection(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version)
         if create_keyspace:
-            if self._preserve_cluster:
-                session.execute("DROP KEYSPACE IF EXISTS ks")
             create_ks(session, 'ks', rf)
         return session
 

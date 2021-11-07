@@ -840,7 +840,7 @@ class TestMigrationUpgradeSSTables(TestMigration):
 # @skip('not run every build')
 # @attr('long','compare-cassandra')
 @pytest.mark.dtest_full
-class TTLWithMigrate(Tester):
+class TestTTLWithMigrate(Tester):
     """ Test Time To Live Feature with Migration"""
 
     def prepare(self, default_time_to_live=None, create_table_statement=None, nodes=1, rf=1, configuration_options=None, custom_args=None):
@@ -1045,11 +1045,11 @@ class TTLWithMigrate(Tester):
         os.unlink(scylla_json_path)
         os.unlink(cassandra_json_path)
 
-    def migrate_to_cassandra(self, keyspace_name, table_name, take_dump=True, scylla_big_partition_count=None, count_query=''):
+    def migrate_to_cassandra(self, keyspace_name, table_name, take_dump=True, scylla_big_partition_count=None, count_query='', request=None):
         cc = None
         cassandra_data_json, cassandra_json_path = '', ''
         try:
-            cc = CassandraCluster(cassandra_version='3.11.3')
+            cc = CassandraCluster(cassandra_version='3.11.3', request=request)
             cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path,
                                                keyspace_names_list=[keyspace_name], table_names=[table_name])
             if take_dump:

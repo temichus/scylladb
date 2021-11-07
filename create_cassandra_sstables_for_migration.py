@@ -23,9 +23,10 @@ Output is Cassandra sstables, that will be saved under folder, that passed in th
 import argparse
 import os
 import shutil
-
+from collections import namedtuple
 import time
 import yaml
+
 from scylla_tools import CassandraCluster
 from scylla_tools import copy_files_to, get_cf_dir
 
@@ -58,7 +59,12 @@ def main(args):
 
     cc = None
     try:
-        cc = CassandraCluster(cassandra_version=cassandra_version)
+        request = namedtuple("request", 'node config')
+        request.node = namedtuple('node', 'nodeid')
+        request.config = namedtuple('config', 'getoption')
+        request.config.getoption = lambda x: None
+        request.node.nodeid = 'create_cassandra_sstables_for_migration'
+        cc = CassandraCluster(cassandra_version=cassandra_version, request=request)
         node1 = cc.create_and_start_cluster(nodes=1)
 
         data_folder = os.path.join(node1.get_node_cassandra_root(), 'data')
@@ -67,7 +73,7 @@ def main(args):
         with open(tests_def, 'r') as stream:
             tests = yaml.safe_load(stream)
 
-        for test, desc in tests.iteritems():
+        for test, desc in tests.items():
             print(test)
             test_data_folder = os.path.join(data_folder, desc['keyspace_name'])
             create_folder_if_not_exists(test_data_folder)
