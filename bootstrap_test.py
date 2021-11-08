@@ -1,34 +1,32 @@
+import logging
 import os
 import random
 import re
+import subprocess
 import tempfile
 import time
 from concurrent.futures.thread import ThreadPoolExecutor
-from psutil import Process
-import subprocess
-import logging
 
 import pytest
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib.node import NodeError
-from dtest_class import create_cf, create_ks
+from psutil import Process
 
+from dtest_class import create_cf, create_ks, Tester
+from dtest_setup import DTestSetup
+from dtest_setup_overrides import DTestSetupOverrides
 from tools.assertions import (assert_almost_equal,
                               assert_one)
 from tools.cluster import new_node
 from tools.data import query_c1c2, insert_c1c2, create_c1c2_table
 from tools.intervention import InterruptBootstrap, KillOnBootstrap
-from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping, require
-
-from dtest_setup import DTestSetup
-from dtest_class import Tester
 
 logger = logging.getLogger(__name__)
 
 
-class TestBootstrap(Tester):
+class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
         dtest_setup_overrides = DTestSetupOverrides()
@@ -174,7 +172,7 @@ class TestBootstrap(Tester):
         tokens = cluster.balanced_tokens(2)
         cluster.set_configuration_options(values={'num_tokens': 1})
 
-        logger.info("[node1, node2] tokens: %r" % (tokens,))
+        logger.info("[node1, node2] tokens: %r", tokens)
 
         keys = 10000
 
@@ -247,7 +245,7 @@ class TestBootstrap(Tester):
 
         # Make sure the order of the matching log lines is exactly that of in `messages`.
         for msg_re, match in zip(messages, matches):
-            log_line, match_obj = match
+            log_line = match[0]
             assert re.search(msg_re, log_line) is not None
 
     @pytest.mark.dtest_full
@@ -300,19 +298,17 @@ class TestBootstrap(Tester):
         node1.flush()
 
         # kill node1 in the middle of streaming to let it fail
-        t = InterruptBootstrap(node1)
-        t.start()
+        thread = InterruptBootstrap(node1)
+        thread.start()
 
         # start bootstrapping node3 and wait for streaming
         node3 = cluster.new_node(3)
         node3.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
         # keep timeout low so that test won't hang
         node3.set_configuration_options(values={'streaming_socket_timeout_in_ms': 1000})
-        try:
+        with pytest.raises(NodeError):
             node3.start()
-        except NodeError:
-            pass  # node doesn't start as expected
-        t.join()
+        thread.join()
 
         # wait for node3 ready to query
         node3.watch_log_for("Starting listening for CQL clients")
@@ -331,7 +327,8 @@ class TestBootstrap(Tester):
         rows = list(session.execute("SELECT bootstrapped FROM system.local WHERE key='local'"))
         assert rows[0][0] == 'COMPLETED', rows[0][0]
 
-    @pytest.mark.skip('Scylla does not support the cassandra.reset_bootstrap_progress option and has no alternative parameter ')
+    @pytest.mark.skip('Scylla does not support the cassandra.reset_bootstrap_progress option and has no alternative'
+                      ' parameter ')
     def test_bootstrap_with_reset_bootstrap_state(self):
         """Test bootstrap with resetting bootstrap progress"""
 
@@ -344,16 +341,14 @@ class TestBootstrap(Tester):
         node1.flush()
 
         # kill node1 in the middle of streaming to let it fail
-        t = InterruptBootstrap(node1)
-        t.start()
+        thread = InterruptBootstrap(node1)
+        thread.start()
 
         # start bootstrapping node3 and wait for streaming
         node3 = cluster.new_node(3)
-        try:
+        with pytest.raises(NodeError):
             node3.start()
-        except NodeError:
-            pass  # node doesn't start as expected
-        t.join()
+        thread.join()
         node1.start()
 
         # restart node3 bootstrap with resetting bootstrap progress
@@ -574,20 +569,20 @@ class TestBootstrap(Tester):
         node1.flush()
 
         session = self.patient_cql_connection(node1)
-        original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
+        original_rows = list(session.execute("SELECT * FROM {}".format(stress_table)))
 
         # Add a new node, bootstrap=True ensures that it is not a seed
         node2 = cluster.new_node(2, auto_bootstrap=True)
         node2.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
 
         # kill node2 in the middle of bootstrap
-        t = KillOnBootstrap(node2)
-        t.start()
+        thread = KillOnBootstrap(node2)
+        thread.start()
 
         mark = node1.mark_log()
         logger.info("Starting node2")
         node2.start(wait_for_binary_proto=False, wait_other_notice=False)
-        t.join()
+        thread.join()
         assert not node2.is_running()
         logger.info("node2 killed during bootstrap. Waiting for other nodes to notice...")
         node1.watch_log_for("{} has been silent .* removing from gossip".format(node2.address()), from_mark=mark)
@@ -638,7 +633,7 @@ class TestBootstrap(Tester):
 
         node3 = cluster.new_node(3, remote_debug_port='2003')
         process = node3.start()
-        stdout, stderr = process.communicate()
+        stderr = process.communicate()[1]
         assert bootstrap_error in stderr, stderr
         time.sleep(.5)
         node2.watch_log_for("Starting listening for CQL clients")
@@ -688,15 +683,14 @@ class TestBootstrap(Tester):
 
         logger.info("Making sure all node processes are down")
         for process in process_ls:
-            assert process.is_running(
-            ) == False, f"Node with the following pid {process.pid} didn't stop/exit correctly"
+            assert not process.is_running(), f"Node with the following pid {process.pid} didn't stop/exit correctly"
 
         logger.info("Starting all nodes")
         cluster.start_nodes(no_wait=False)
 
         logger.info("Checking that no data was lost")
-        for n in range(10000):
-            query_c1c2(session, n, ConsistencyLevel.QUORUM)
+        for key in range(10000):
+            query_c1c2(session, key, ConsistencyLevel.QUORUM)
 
     def test_full_cluster_recovery_after_forcibly_stop_3_nodes_rf_3(self):
         self._full_cluster_recovery_after_stop(gently=False, num_of_nodes=3, rf=3)
@@ -707,7 +701,8 @@ class TestBootstrap(Tester):
     def test_full_cluster_recovery_after_forcibly_stop_4_nodes_rf_1(self):
         self._full_cluster_recovery_after_stop(gently=False, num_of_nodes=4, rf=1)
 
-    def _cluster_become_unavailable_when_kill_node_during_bootstrap(self, is_gracefully=True):
+    def _cluster_become_unavailable_when_kill_node_during_bootstrap(self,  # pylint: disable=too-many-locals
+                                                                    is_gracefully=True):
         """
         Add n1,n2
         Create ks with RF =2
@@ -726,14 +721,14 @@ class TestBootstrap(Tester):
         beginning_stream_session_msg = f"Beginning stream session|sync data for keyspace={ks_name}, status=started"
         removing_from_gossip_msg = r"FatClient {} has been silent for (\d+)ms, removing from gossip"
         stress_duration_minutes = 3
-        replication_factor, consistency_level = 2, 2
+        replication_factor = 2
         cluster_size = 2
         cassandra_err_msg = f"com.datastax.driver.core.exceptions.WriteTimeoutException: Cassandra timeout during" \
             f" SIMPLE write query at consistency {consistency_level_key} ({replication_factor + 1}" \
             f" replica were required but only {replication_factor} acknowledged the write)"
 
         cluster = self.cluster
-        logger.info(f"Creating new cluster with '{cluster_size}' nodes")
+        logger.info("Creating new cluster with '%s' nodes", cluster_size)
         cluster.populate(nodes=cluster_size).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
@@ -741,7 +736,7 @@ class TestBootstrap(Tester):
                             "-rate", "threads=10", "-log", "interval=5", "-schema",
                             f"replication(factor={replication_factor}) keyspace={ks_name}"]
 
-        logger.info(f"Executing the following write stress command '{write_stress_cmd}'")
+        logger.info("Executing the following write stress command '%s'", write_stress_cmd)
         stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd, capture_output=True))
 
         logger.info("Adding new node")
@@ -750,19 +745,20 @@ class TestBootstrap(Tester):
             wait_for_binary_proto=True, jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True))
         mark_log = node3.mark_log()
 
-        logger.info(f"Trying to find the following '{bootstrap_msg}' message in logs of node '{node3.name}'")
+        logger.info("Trying to find the following '%s' message in logs of node '%s'", bootstrap_msg, node3.name)
         node3.watch_log_for(exprs=bootstrap_msg, from_mark=mark_log)
         logger.info(
-            f"Trying to find the following '{beginning_stream_session_msg}' message in logs of node '{node3.name}'")
+            "Trying to find the following '%s' message in logs of node '%s'", beginning_stream_session_msg, node3.name)
         node3.watch_log_for(exprs=beginning_stream_session_msg, from_mark=mark_log)
 
         nodes = [node1, node2]
         mark_log_list = [node.mark_log() for node in nodes]
-        logger.info(f"{'Gracefully' if is_gracefully else 'Force'} killing node'{node3.name}' (PID is '{node3.pid}')")
+        logger.info("%s killing node'%s' (PID is '%s')", {'Gracefully' if is_gracefully else 'Force'}, node3.name,
+                    node3.pid)
         node3.stop(wait=True, gently=is_gracefully)
         removing_from_gossip_msg = removing_from_gossip_msg.format(self.get_ip_from_node(node=node3))
         for node, mark_log in zip(nodes, mark_log_list):
-            logger.info(f"Checking the following message '{removing_from_gossip_msg}' exits in node '{node.name}'")
+            logger.info("Checking the following message '%s' exits in node '%s'", removing_from_gossip_msg, node.name)
             node.watch_log_for(exprs=removing_from_gossip_msg, from_mark=mark_log)
 
         assert kill_node_err_msg.format(1 if is_gracefully else -9) == str(start_new_node_thread.exception()), \
@@ -770,8 +766,8 @@ class TestBootstrap(Tester):
         logger.info("Waiting until stress thread will finish running")
         stdout, stderr = stress_thread.result()
         if stderr:
-            logger.info(f"The output from stdout is:\n{stdout}")
-            logger.info(f"The following errors occurred during the run:\n{stderr}")
+            logger.info("The output from stdout is:\n%s", stdout)
+            logger.info("The following errors occurred during the run:\n%s", stderr)
             assert cassandra_err_msg not in stderr, \
                 f"The following message '{cassandra_err_msg}' found in stderr"
 
@@ -883,11 +879,11 @@ class TestBootstrap(Tester):
         logger.info("stopping node1")
         node1.stop(wait_other_notice=True, gently=True)
 
-        def add_and_start_a_node(n):
+        def add_and_start_a_node(node_idx):
             """add a new node to cluster, and start it"""
-            logger.info(f"adding node{n}")
-            node = cluster.new_node(n)
-            logger.info(f"starting node{n}")
+            logger.info("adding node%d", node_idx)
+            node = cluster.new_node(node_idx)
+            logger.info("starting node%d", node_idx)
             node.start(wait_other_notice=True)
             return node
 
@@ -914,7 +910,8 @@ class TestBootstrap(Tester):
         node3.decommission()
         add_and_start_a_node(5)
 
-    def _cleanup(self, node):
+    @staticmethod
+    def _cleanup(node):
         commitlog_dir = os.path.join(node.get_path(), 'commitlogs')
         data_dir = os.path.join(node.get_path(), 'data')
         logger.debug("Deleting {}".format(data_dir))
