@@ -2,17 +2,15 @@ import logging
 from time import sleep
 
 import pytest
-from cassandra.protocol import ConfigurationException
+from cassandra import ConsistencyLevel, Unavailable, WriteFailure
+from cassandra.protocol import ConfigurationException  # pylint: disable=no-name-in-module
+from cassandra.query import SimpleStatement
 
 from dtest_class import Tester, create_ks, get_ip_from_node, create_cf
 from dtest_setup import DTestSetup
 from tools.assertions import assert_one, assert_none, assert_all, assert_row_count
-from cassandra import ConsistencyLevel, Unavailable, WriteFailure
-from cassandra.query import SimpleStatement
-
 from tools.data import rows_to_list
 from tools.metrics import get_node_metrics
-
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TestLwt(Tester):
 
     @pytest.fixture(autouse=True)
-    def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
+    def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):  # pylint: disable=no-self-use
         fixture_dtest_setup.allow_log_errors = True
 
     def case_prologue(self, jvm_args=None):
@@ -172,7 +170,7 @@ class TestLwt(Tester):
         name = "scylla_storage_proxy_coordinator_cas_failed_read_round_optimization"
         before = get_node_metrics(get_ip_from_node(node), metrics=[name])
         for i in range(10):
-            session.execute(stmt, (i+1, i))
+            session.execute(stmt, (i + 1, i))
         after = get_node_metrics(get_ip_from_node(node), metrics=[name])
         assert after[name] - before[name] == 0, "{} {}".format(before, after)
         cql = "DROP TABLE t"
@@ -181,13 +179,13 @@ class TestLwt(Tester):
         # 3.6
         # use a range of statements to avoid any flakiness.
         #
-        KEY_COUNT = 100
+        key_count = 100
         cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"
         session.execute(cql)
         cql = "INSERT INTO t (a, b) VALUES (?, ?)"
         stmt = session.prepare(cql)
         stmt.consistency_level = ConsistencyLevel.ALL
-        for i in range(KEY_COUNT):
+        for i in range(key_count):
             session.execute(stmt, (i, i))
 
         non_paxos_stmt = session.prepare("UPDATE t SET b = 2 WHERE a = ?")
@@ -198,16 +196,16 @@ class TestLwt(Tester):
 
         before = get_node_metrics(get_ip_from_node(node), metrics=[name])
         node1.stop()
-        for i in range(KEY_COUNT):
+        for i in range(key_count):
             session.execute(non_paxos_stmt, (i,))
         node2.stop()
         node1.start(wait_for_binary_proto=True)
-        for i in range(KEY_COUNT):
+        for i in range(key_count):
             session.execute(paxos_stmt, (i,))
         after = get_node_metrics(get_ip_from_node(node), metrics=[name])
-        assert after[name] - before[name] == KEY_COUNT, "{} {}".format(before, after)
+        assert after[name] - before[name] == key_count, "{} {}".format(before, after)
 
-    def test_basic_distributed(self):
+    def test_basic_distributed(self):  # pylint: disable=too-many-statements
         """Basic distributed tests (3.1 - 3.4 from the test plan). """
 
         cluster = self.cluster
@@ -263,11 +261,8 @@ class TestLwt(Tester):
         node3 = cluster.nodelist()[2]
         session3 = self.patient_exclusive_cql_connection(node3, keyspace="lwt")
         cql = "INSERT INTO t (a,b) VALUES (3,3) IF NOT EXISTS"
-        try:
+        with pytest.raises(Unavailable):
             session3.execute(cql)
-            assert False, "Paxos pass in lack of quorum"
-        except Unavailable as e:
-            pass
         cql = "SELECT * FROM t WHERE a=3"
         assert_none(session3, cql, cl=ConsistencyLevel.ONE)
         # Have to specify custom seeds not because we need new vnodes,
@@ -330,12 +325,9 @@ class TestLwt(Tester):
         for i in range(2, 6):
             cluster.nodelist()[i].stop()
         session1.execute(stmt1, (3,))
-        try:
+        with pytest.raises(Unavailable):
             stmt1.serial_consistency_level = ConsistencyLevel.SERIAL
             session1.execute(stmt1, (4,))
-            assert False, "Successfully executed a Paxos query in absence of quorum"
-        except Unavailable as e:
-            pass
         # 4.2 Issue two Paxos LOCAL_QUORUM writes in parallel at different DC.
         # Follow up by PAXOS QUORUM read, to ensure the latest write wins.
         for i in range(4, 6):
@@ -345,11 +337,8 @@ class TestLwt(Tester):
         session2 = self.patient_exclusive_cql_connection(node2, keyspace="lwt")
         session2.execute(stmt2, (4,))
         stmt2.serial_consistency_level = ConsistencyLevel.SERIAL
-        try:
+        with pytest.raises(Unavailable):
             session2.execute(stmt2, (5,))
-            assert False, "Successfully executed a Paxos query in absence of quorum"
-        except Unavailable as e:
-            pass
         cluster.nodelist()[0].start(wait_for_binary_proto=True)
         cluster.nodelist()[3].start(wait_for_binary_proto=True)
         session2.execute(SimpleStatement("SELECT * FROM t WHERE a = 4",
@@ -358,28 +347,24 @@ class TestLwt(Tester):
         # queries don’t work, while QUORUM LWT writes do.
         session1 = self.patient_exclusive_cql_connection(node1, keyspace="lwt")
         stmt1.serial_consistency_level = ConsistencyLevel.LOCAL_SERIAL
-        try:
+        with pytest.raises(Unavailable):
             session1.execute(stmt1, (6,))
-            assert False, "Successfully executed a Paxos query in absence of quorum"
-        except Unavailable as e:
-            pass
         stmt1.serial_consistency_level = ConsistencyLevel.SERIAL
         session1.execute(stmt1, (7,))
 
     def create_exclusive_sessions_for_every_node(self, cluster):
-        sessions = []
-        for node in cluster.nodelist():
-            sessions.append(self.exclusive_cql_connection(node))
-        return sessions
+        return (self.exclusive_cql_connection(node) for node in cluster.nodelist())
 
-    def shutdown_all_sessions(self, sessions: list):
+    @staticmethod
+    def shutdown_all_sessions(sessions: list):
         for session in sessions:
             session.shutdown()
 
-    def execute_insert_data_query(self, session, table, cql, start, end):
+    @staticmethod
+    def execute_insert_data_query(session, table, cql, start, end):
         stmt1 = session.prepare(cql)
         stmt1.serial_consistency_level = ConsistencyLevel.SERIAL
-        logger.info("%s %d rows in table '%s'" % (cql.split()[0], end - start, table))
+        logger.info("%s %d rows in table '%s'", cql.split()[0], end - start, table)
         for i in range(start, end):
             session.execute(stmt1, (i, i))
 
@@ -569,7 +554,7 @@ class TestLwt(Tester):
 
         self.shutdown_all_sessions([session1, session2, session3])
 
-    def paxos_grace_seconds_negative_test(self):
+    def test_paxos_grace_seconds_negative(self):
         """
             Try to create table with paxos_grace_seconds = -1
          """
@@ -579,7 +564,7 @@ class TestLwt(Tester):
         cluster.populate(3).start(wait_for_binary_proto=True)
 
         # Create session as exclusive connection to the node in goal to select from paxos table on every node
-        session1, session2, session3 = self.create_exclusive_sessions_for_every_node(cluster)
+        session1, *_ = self.create_exclusive_sessions_for_every_node(cluster)
 
         create_ks(session=session1, name="lwt", rf=3)
 
@@ -587,24 +572,21 @@ class TestLwt(Tester):
         table_name = 'zero_ttl'
 
         with pytest.raises(ConfigurationException,
-                           match="paxos_grace_seconds cannot be smaller than 0, (default 864000)"):
-            self.create_cf(session=session1, name=table_name, key_type='int', columns={'v1': 'int'},
-                           paxos_grace_seconds=-1)
+                           match="paxos_grace_seconds cannot be smaller than 0, \\(default 864000\\)"):
+            create_cf(session=session1, name=table_name, key_type='int', columns={'v1': 'int'}, paxos_grace_seconds=-1)
 
     # This test is for covering of issue https://github.com/scylladb/scylla/issues/6284
     # Can't reproduce the issue.
     # Hold my attempt to reproduce for the future
     @pytest.mark.skip("the test is not ready. ")
-    def conflict_transactions_test(self):
-        """
-        """
+    def test_conflict_transactions(self):  # pylint: disable=too-many-statements,too-many-locals
         cluster = self.cluster
         cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
         cluster.populate(5).start(wait_for_binary_proto=True)
 
         # Create session as exclusive connection to the node in goal to select from paxos table on every node
-        session1, session2, session3, session4, session5 = self.create_exclusive_sessions_for_every_node(cluster)
-        node1, node2, node3, node4, node5 = tuple(self.cluster.nodelist())
+        session1, session2, session3, *_ = self.create_exclusive_sessions_for_every_node(cluster)
+        node1, node2, node3 = self.cluster.nodelist()[:3]
 
         create_ks(session=session1, name="lwt", rf=3)
 
@@ -617,7 +599,7 @@ class TestLwt(Tester):
         session1.shutdown()
 
         self.enable_error("paxos_error_before_save_proposal", node2, one_shot=True)
-        ret = session3.execute(f"INSERT INTO lwt.{table_name} (key, v1) VALUES (0, [0]) IF NOT EXISTS").current_rows
+        _ = session3.execute(f"INSERT INTO lwt.{table_name} (key, v1) VALUES (0, [0]) IF NOT EXISTS").current_rows
 
         default_ttl_paxos_rows2 = session2.execute("SELECT * FROM system.paxos").current_rows
         assert not default_ttl_paxos_rows2, "Found record in the paxos on the node2 unexpectedly"
@@ -639,7 +621,7 @@ class TestLwt(Tester):
         rows2 = session2.execute("SELECT * FROM lwt.{table_name}").current_rows
         logger.info("row on the node2: %s", rows1)
 
-        ret = session1.execute(f"UPDATE lwt.{table_name} SET v1 = v1 + [1] WHERE key = 0 IF v1 = [0]").current_rows
+        _ = session1.execute(f"UPDATE lwt.{table_name} SET v1 = v1 + [1] WHERE key = 0 IF v1 = [0]").current_rows
 
         sleep(15)
 
@@ -657,7 +639,7 @@ class TestLwt(Tester):
         # default_ttl_paxos_rows4 = session2.execute("SELECT * FROM system.paxos").current_rows
         # default_ttl_paxos_rows5 = session3.execute("SELECT * FROM system.paxos").current_rows
 
-        ret = session1.execute(f"UPDATE lwt.{table_name} SET v1 = v1 + [2] WHERE key = 0 IF v1 = [0]").current_rows
+        _ = session1.execute(f"UPDATE lwt.{table_name} SET v1 = v1 + [2] WHERE key = 0 IF v1 = [0]").current_rows
 
         default_ttl_paxos_rows6 = session1.execute("SELECT * FROM system.paxos").current_rows
         logger.info("record in the paxos on the node1: %s", default_ttl_paxos_rows6)
@@ -678,7 +660,7 @@ class TestLwt(Tester):
         # assert_all(session3, f"select key, v1 from lwt.{table_name}", expected=[[0, 202]])
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class PaxosBugTest(Tester):
 
     def test_synced_most_recent_commit_in_cas_should_not_cause_timeouts(self):
@@ -688,47 +670,48 @@ class PaxosBugTest(Tester):
         self.cluster.populate(3).start(wait_for_binary_proto=True)
         session_a = self.exclusive_cql_connection(self.cluster.nodelist()[0])
         self.prepare_a_table_with_paxos_grace_seconds_set_to_120(session_a)
-        self.insert_data_on_nodes_A_and_B(session_a)
+        self.insert_data_on_nodes_a_and_b(session_a)
         self.wait_seconds(60)
-        self.query_data_from_nodes_A_and_C_with_consistency_serial(session_a)
+        self.query_data_from_nodes_a_and_c_with_consistency_serial(session_a)
         self.wait_seconds(60)
-        self.query_data_from_nodes_A_and_C_with_consistency_serial(session_a)  # should not timeout
+        self.query_data_from_nodes_a_and_c_with_consistency_serial(session_a)  # should not timeout
 
     @staticmethod
     def wait_seconds(seconds):
-        debug(f"Waiting {seconds} seconds")
+        logger.info("Waiting %d seconds", seconds)
         sleep(seconds)
 
-    def prepare_a_table_with_paxos_grace_seconds_set_to_120(self, session):
-        self.create_ks(session=session, name="paxos_bug", rf=3)
-        debug(f"Create table with paxos_grace_seconds set to 120 sec.")
-        self.create_cf(session=session, name="cassandra_12043", key_type='int', columns={'v1': 'int'},
-                       paxos_grace_seconds=120)
+    @staticmethod
+    def prepare_a_table_with_paxos_grace_seconds_set_to_120(session):
+        create_ks(session=session, name="paxos_bug", rf=3)
+        logger.info("Create table with paxos_grace_seconds set to 120 sec.")
+        create_cf(session=session, name="cassandra_12043", key_type='int', columns={'v1': 'int'},
+                  paxos_grace_seconds=120)
 
-    def insert_data_on_nodes_A_and_B(self, session):
-        debug("stoping node C")
+    def insert_data_on_nodes_a_and_b(self, session):
+        logger.info("stoping node C")
         node_a, node_b, node_c = self.cluster.nodelist()
         node_c.stop()
-        debug("inserting data")
+        logger.info("inserting data")
         query = SimpleStatement(
-            f"INSERT INTO cassandra_12043 (key, v1) VALUES (%s, %s) IF NOT EXISTS",
+            "INSERT INTO cassandra_12043 (key, v1) VALUES (%s, %s) IF NOT EXISTS",
             consistency_level=ConsistencyLevel.QUORUM)
         session.execute(query, (1, 1))
-        debug("flush data to disk")
+        logger.info("flush data to disk")
         node_a.flush()
         node_b.flush()
 
-    def query_data_from_nodes_A_and_C_with_consistency_serial(self, session):
-        node_a, node_b, node_c = self.cluster.nodelist()
+    def query_data_from_nodes_a_and_c_with_consistency_serial(self, session):
+        node_b, node_c = self.cluster.nodelist()[1:]
         if node_b.is_running():
-            debug("Stopping node B")
+            logger.info("Stopping node B")
             node_b.stop()
         if not node_c.is_running():
-            debug("Starting node C")
+            logger.info("Starting node C")
             node_c.start(wait_for_binary_proto=True, wait_other_notice=True)
-        debug("query nodes A and C with consistency SERIAL")
+        logger.info("query nodes A and C with consistency SERIAL")
         query = SimpleStatement(
-            f"select * from cassandra_12043 where key = 1;",
+            "select * from cassandra_12043 where key = 1;",
             consistency_level=ConsistencyLevel.SERIAL)
         session.execute(query)
 
@@ -753,7 +736,7 @@ error_injections = [
 
 
 @pytest.mark.dtest_full
-class LwtReadLinearizabilityTest(Tester):
+class LwtReadLinearizabilityTest(Tester):  # pylint: disable=too-few-public-methods
 
     @pytest.mark.dtest_debug
     @pytest.mark.scylla_mode('!release')
@@ -783,7 +766,7 @@ class LwtReadLinearizabilityTest(Tester):
         # 3. write will fail because B and C will fail
         with self.assertRaises(WriteFailure):
             ret = session_a.execute("INSERT INTO ks.t (id, v) VALUES (1, 1) IF NOT EXISTS").current_rows
-            assert ret[0].applied == False
+            assert ret[0].applied is False
 
         # 4. enable all error injections on A
         for error in error_injections:
@@ -805,7 +788,7 @@ class LwtReadLinearizabilityTest(Tester):
             )
             ret = session.execute(query).current_rows
             if ret:
-                logger.debug(f"Got invalid value for node {node}: {ret}")
+                logger.debug("Got invalid value for node %s: %s", node, ret)
             assert ret == []
 
         # Verify value is not set in A  (complete round?)
