@@ -1175,6 +1175,7 @@ class TestAuth(Tester):
         rf_node2.stop(gently=False)
 
         logger.info('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_addresses[0]))
+        new_session = None
         try:
             new_session = self.get_session(node_idx=rf_node_idx,
                                            user='cassandra',
@@ -1182,9 +1183,9 @@ class TestAuth(Tester):
         except NoHostAvailable as e:
             logger.info(e.errors)
             assert isinstance(list(e.errors.values())[0], AuthenticationFailed)
-
-        logger.info('Check if the new session works')
-        self._check_session_available(new_session)
+        if new_session:
+            logger.info('Check if the new session works')
+            self._check_session_available(new_session)
 
         logger.info('Check if the first session still works')
         self._check_session_available(session)
