@@ -739,6 +739,7 @@ class TestNodetool(Tester):
         if not node:
             node = self.cluster.nodelist()[0]
         out = node.nodetool(cmd, True)[0]
+        logger.debug(f"{node.name}: nodetool {cmd}: {out.strip()}")
         if re.search("^\s*running\s*$", out):
             return True
         if re.search("^\s*not running\s*$", out):
@@ -749,14 +750,18 @@ class TestNodetool(Tester):
         [node] = self.run_cluster(nodes=1)
         if mode:
             assert self.isrunning("status" + cmd, node), cmd + " is not working"
+            logger.debug(f"{node.name}: nodetool disable {cmd}")
             node.nodetool("disable" + cmd)
             assert not self.isrunning("status" + cmd, node), "Fail to disable " + cmd
+            logger.debug(f"{node.name}: nodetool enable {cmd}")
             node.nodetool("enable" + cmd)
             assert self.isrunning("status" + cmd, node), "Fail to enable " + cmd
         else:
             assert not self.isrunning("status" + cmd, node), cmd + " is working"
+            logger.debug(f"{node.name}: nodetool enable {cmd}")
             node.nodetool("enable" + cmd)
             assert self.isrunning("status" + cmd, node), "Fail to enable " + cmd
+            logger.debug(f"{node.name}: nodetool disable {cmd}")
             node.nodetool("disable" + cmd)
             assert not self.isrunning("status" + cmd, node), "Fail to disable " + cmd
 
