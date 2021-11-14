@@ -448,6 +448,7 @@ class TestNodetool(Tester):
         else:
             assert not m, "unexpected snapshot " + snapshot + " found in keyspace " + ks
 
+    @pytest.mark.single_node
     def test_global_snapshot(self):
         """ Test a global snapshot, by loading a system
         creating a snapshot, checking that it exists
@@ -536,15 +537,19 @@ class TestNodetool(Tester):
         node1.nodetool("clearsnapshot -t" + tag)
         self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
 
+    @pytest.mark.single_node
     def test_snapshot_tag(self):
         self.tst_snapshot("snaptag")
 
+    @pytest.mark.single_node
     def test_snapshot_tag_keyspace(self):
         self.tst_snapshot("snaptag", keyspace="keyspace1")
 
+    @pytest.mark.single_node
     def test_snapshot_tag_keyspace_cf(self):
         self.tst_snapshot("snaptag", keyspace="system_schema", column_family="tables")
 
+    @pytest.mark.single_node
     def test_snapshot_tag_kc(self):
         self.tst_snapshot("snaptag", kc="system_schema.tables")
 
@@ -704,6 +709,7 @@ class TestNodetool(Tester):
         res["tokens"] = [self._get_ring_entry(m) for m in tokens]
         return res
 
+    @pytest.mark.single_node
     def test_gossip_control(self):
         """
         Test the `nodetool disablegossip` and `nodetool enablegossip`.
@@ -754,6 +760,7 @@ class TestNodetool(Tester):
             node.nodetool("disable" + cmd)
             assert not self.isrunning("status" + cmd, node), "Fail to disable " + cmd
 
+    @pytest.mark.single_node
     def test_binary(self):
         """
         Test the nodetool binary commands
@@ -764,6 +771,7 @@ class TestNodetool(Tester):
         """
         self.tst_mgmt("binary")
 
+    @pytest.mark.single_node
     def test_backup(self):
         """
         Test the nodetool backup commands
