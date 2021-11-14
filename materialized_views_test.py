@@ -6,14 +6,14 @@ import time
 import traceback
 import random
 from functools import partial
-from multiprocessing import Process, Queue, cpu_count
+from multiprocessing import Process, Queue, cpu_count, Lock
 
 import pytest
 from flaky import flaky
 from pkg_resources import parse_version
 
 from concurrent.futures import ThreadPoolExecutor
-from cassandra import ConsistencyLevel, WriteFailure
+from cassandra import ConsistencyLevel, WriteFailure, consistency_value_to_name
 from cassandra.cluster import Cluster, Session
 from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
@@ -28,6 +28,7 @@ from tools.data import run_in_parallel, rows_to_list, run_query_with_data_proces
 from tools.misc import flush_by_node, remove_node
 from tools.tables_view_manager import wait_for_view_build_start, wait_for_view, TableManager, MaterializedViewManager
 from cassandra.cluster import NoHostAvailable
+from ccmlib.scylla_cluster import ScyllaCluster
 
 import logging
 
@@ -40,18 +41,7 @@ logger = logging.getLogger(__name__)
 MIGRATION_WAIT = 5
 
 
-@pytest.mark.dtest_full
-class TestMaterializedViews(Tester):
-    """
-    Test materialized views implementation.
-    @jira_ticket CASSANDRA-6477
-    """
-
-    # Convert it to the function because it will be parameter for "eventually" function
-    @staticmethod
-    def assert_equal(value1, value2):
-        assert value1 == value2
-
+class CommonUtils(Tester):
     @staticmethod
     def eventually(fun, trials=64):
         """
@@ -86,17 +76,8 @@ class TestMaterializedViews(Tester):
         # be more than 5 minutes (=300 seconds).
         self.cluster.stop(wait_seconds=360)
 
-    def prepare(self, user_table=False, rf=1, options={}, nodes=3, fetch_size=None, jvm_args=[], **kwargs):
-        """
-
-        :param user_table:
-        :param rf:
-        :param options:
-        :param nodes:
-        :type nodes: int | list
-        :param kwargs:
-        :return:
-        """
+    def prepare(self, user_table: bool = False, rf: str = 1, options: dict = None, nodes: int = 3,
+                fetch_size: int = None, jvm_args: list = None, **kwargs):
         cluster = self.cluster
         populate = nodes if isinstance(nodes, list) else [nodes, 0]
         cluster.populate(populate)
@@ -135,7 +116,8 @@ class TestMaterializedViews(Tester):
         if compact:
             self.cluster.compact()
 
-    def _insert_data(self, session):
+    @staticmethod
+    def _insert_data(session):
         # insert data
         insert_stmt = "INSERT INTO users (username, password, gender, state, birth_year) VALUES "
         session.execute(insert_stmt + "('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
@@ -149,7 +131,27 @@ class TestMaterializedViews(Tester):
             if node.is_running():
                 node.nodetool("replaybatchlog")
 
-    def test_stop_node_during_mv_insert_4_nodes(self):
+    def _ensure_view_building_did_not_finish(self, all_started_view_build_processes):
+        have_finished = 0
+        for node in self.cluster.nodelist():
+            finished = node.grep_log("Finished building view")
+            have_finished += len(finished)
+        if have_finished >= all_started_view_build_processes:
+            # TODO(sarna): Once it's possible to actually ensure view building haven't finished,
+            # e.g. by injecting waiting for it in Scylla, this function should start asserting
+            # instead of just warning.
+            logger.debug("View building finished too soon! nodes finished = {}, all build processes = {}".format(
+                have_finished, all_started_view_build_processes))
+
+
+@pytest.mark.dtest_full
+class TestMaterializedViews(CommonUtils):
+    """
+    Test materialized views implementation.
+    @jira_ticket CASSANDRA-6477
+    """
+
+    def stop_node_during_mv_insert_4_nodes_test(self):
         """ Test stopping node during MV inserts
             Test starts with a starting size 4 and stops one node during inserts into base table that cause to update materialized view as well
             (using cs_mv_profile.yaml profile).
@@ -297,8 +299,35 @@ class TestMaterializedViews(Tester):
             lambda: self._validate_cs_results(node1_dc1, exclude_errors=['mutation_write_timeout_exception'],
                                               node_action='', double_failure=True))
 
-    def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=True, other_nodes=None,
-                                gently=True):
+    def _truncate_base_during_mv_insert(self, auto_snapshot: bool):
+        """ Test truncating the base table during MV inserts
+            Validate the log has no errors and
+            that materialized views building completes.
+            We can't validate the result data as we don't
+            know exactly what was truncated.
+        """
+        session = self.prepare(nodes=3, rf=3, options={'auto_snapshot': auto_snapshot})
+        mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
+
+        node1 = self.cluster.nodelist()[0]
+        proc_functions = [{'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM',
+                                                           'duration=1m', 'ops(insert=3,read1=1,read2=1,read3=1)',
+                                                           '-mode cql3  native', '-rate threads=10'
+                                                           ], True]},
+                          {'func': self._truncate_table, 'kwargs': {'ks': 'mview', 'table': 'users', 'delay': 30}}]
+        run_in_parallel(proc_functions)
+
+        wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_first_name')
+        wait_for_view(cluster=self.cluster, session=session, ks='mview', view='users_by_last_name')
+
+    def test_truncate_base_during_mv_insert_test_with_auto_snapshot(self):
+        self._truncate_base_during_mv_insert(auto_snapshot=True)
+
+    @pytest.mark.dtest_debug
+    def test_truncate_base_during_mv_insert_test_without_auto_snapshot(self):
+        self._truncate_base_during_mv_insert(auto_snapshot=False)
+
+    def _node_action_with_delay(self, action, node, delay=0, wait=True, wait_other_notice=True, other_nodes=None, gently=True):
         """
         :param action: expected values: stop, remove
         :param action: str
@@ -346,6 +375,19 @@ class TestMaterializedViews(Tester):
             self._node_action_with_delay('stop', node, wait=wait,
                                          wait_other_notice=wait_other_notice, other_nodes=other_nodes, gently=gently)
 
+    def _truncate_table(self, ks='mview', table='users', delay=0):
+        if delay:
+            logger.debug('Sleep for {} seconds'.format(delay))
+            time.sleep(delay)
+
+        node = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+        logger.debug(f"Truncating table '{ks}.{table}' ...")
+        start = time.time()
+        session.execute(f"TRUNCATE table {ks}.{table}")
+        delta = time.time() - start
+        logger.debug(f"Truncating table '{ks}.{table}' done in {delta:.1f} seconds")
+
     @pytest.mark.require('#5459')
     def test_add_dc_during_mv_insert(self):
         """ Test expand cluster - add new DC during MV inserts
@@ -361,7 +403,7 @@ class TestMaterializedViews(Tester):
         session = self.patient_exclusive_cql_connection(node)
         session.execute('USE mview')
         cl = self.set_consistency_level(node_action=node_action, double_failure=double_failure, cl=cl)
-        logger.debug('Validate data using CL={}'.format(cl))
+        logger.debug(f"Validate data using CL={consistency_value_to_name(cl)}")
         exp_res = run_query_with_data_processing(session, 'select count(*) from mview.users', consistency_level=cl)
         try:
             exp_res = int(exp_res[0].count)
@@ -383,7 +425,8 @@ class TestMaterializedViews(Tester):
     @flaky(max_runs=5, min_passes=1)
     def test_add_dc_during_mv_update(self):
         """ Test expand cluster - add new DC during MV inserts
-            Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during update existent records of base
+            Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during update
+            existent records of base
             table that cause to update materialized view as well.
             Verify that MV records are according to the base table
         """
@@ -575,7 +618,8 @@ class TestMaterializedViews(Tester):
         result = session.execute('select * from ToDo where ToDo_User_id = 00112233-4455-6677-8899-aabbccddeeff')
         print(result)
 
-    def _create_mvs_by_one_column(self, tm, mvs_amount, wait_for_view_built=False):
+    @staticmethod
+    def _create_mvs_by_one_column(tm, mvs_amount, wait_for_view_built=False):
         for i in range(1, mvs_amount + 1):
             mv = MaterializedViewManager(tm)
             mv.create_materialized_view(
@@ -620,7 +664,7 @@ class TestMaterializedViews(Tester):
 
         self.fixture_dtest_setup.ignore_log_patterns += [
             r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception '
-            '\(Operation failed for ks.tm_table_mv_\d+ - received 0 responses and 1 failures from 1 CL=ONE\.\)']
+            r'\(Operation failed for ks.tm_table_mv_\d+ - received 0 responses and 1 failures from 1 CL=ONE\.\)']
 
         for i in range(2, mvs + 1):
             mv = MaterializedViewManager(tm)
@@ -772,8 +816,9 @@ class TestMaterializedViews(Tester):
         #      - for remove node action - ALL
         cl = cl or \
             (ConsistencyLevel.ALL if double_failure else
-             ConsistencyLevel.QUORUM if node_action in ['stop', 'restart', 'decommission'] or self.rf > len(
-                 self.cluster.nodelist()) else ConsistencyLevel.ALL)
+             ConsistencyLevel.QUORUM if node_action in ['stop', 'restart', 'decommission'] or
+             self.rf > len(self.cluster.nodelist())
+             else ConsistencyLevel.ALL)
         logger.debug('Query will run with consistency level {}'.format(cl))
         return cl
 
@@ -1520,7 +1565,7 @@ class TestMaterializedViews(Tester):
         Test that materialized views work as expected when adding a datacenter with NetworkTopologyStrategy.
         """
 
-        self._add_dc_after_mv_test({'dc1': 1, 'dc2': 0})
+        self._add_dc_after_mv_test({'dc1': 1})
 
     # TODO: flaky_with_tear_down - this decorator was attempt for MV tests. It performed tearDown and new setUp for each
     # TODO: re-run. With moving to pytest and useing flacky decorator of pytest we need to check if it's still relevant
@@ -2015,7 +2060,7 @@ class TestMaterializedViews(Tester):
             ['TX', 'user1', 1968, 'f']
         )
 
-    @pytest.mark.skip("We need failure injection #3295 - however, we don't have this issue")
+    @pytest.mark.skip("Not relevant for Scylla - requires byteman error injection")
     def test_rename_column_atomicity(self):
         """
         Test that column renaming is atomically done between a table and its materialized views
@@ -2133,60 +2178,6 @@ class TestMaterializedViews(Tester):
                 "SELECT * FROM t_by_v WHERE v = {}".format(i),
                 [i, i, 'a', 3.0]
             )
-
-    def _ensure_view_building_did_not_finish(self, all_started_view_build_processes):
-        have_finished = 0
-        for node in self.cluster.nodelist():
-            finished = node.grep_log("Finished building view")
-            have_finished += len(finished)
-        if have_finished >= all_started_view_build_processes:
-            # TODO(sarna): Once it's possible to actually ensure view building haven't finished,
-            # e.g. by injecting waiting for it in Scylla, this function should start asserting
-            # instead of just warning.
-            logger.debug("View building finished too soon! nodes finished = {}, all build processes = {}".format(
-                have_finished, all_started_view_build_processes))
-
-    @pytest.mark.dtest_heavy
-    def test_interrupt_build_process(self):
-        """Test that an interrupted MV build process is resumed as it should"""
-
-        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
-        node1, node2, node3 = self.cluster.nodelist()
-
-        session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
-
-        rows = 200000
-        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
-            rows = 10000
-        logger.debug("Inserting initial data")
-        insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
-        for i in range(rows):
-            session.execute(insert_stmt, (i, i, 'a', 3.0))
-
-        logger.debug("Create a MV")
-        # Don't wait for schema agreement, or we risk view building concluding too soon
-        session.cluster.max_schema_agreement_wait = 0
-        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
-                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
-
-        wait_for_view_build_start(session, "ks", "t_by_v")
-
-        logger.debug("Stop the cluster. Interrupt the MV build process.")
-        self.stop_cluster()
-
-        logger.debug("Ensure view building didn't finish.")
-        self._ensure_view_building_did_not_finish(len(self.cluster.nodelist()))
-
-        logger.debug("Restart the cluster")
-        self.cluster.start(wait_for_binary_proto=True)
-        session = self.patient_cql_connection(node1)
-        session.execute("USE ks")
-
-        logger.debug("Wait and ensure the MV build resumed.")
-        wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
-
-        logger.debug("Verify all data")
-        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
 
     def test_do_not_finish_view_building_with_hints(self):
         """Test that in presence of view update hints, view building will not be marked as finished"""
@@ -2369,10 +2360,16 @@ class TestMaterializedViews(Tester):
 
         logger.debug("Create a MV")
         session.cluster.max_schema_agreement_wait = 1
-        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
-                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
+        session.execute_async("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
+                              "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)")
 
-        wait_for_view_build_start(session, "ks", "t_by_v")
+        self.ignore_log_patterns += [
+            r'view - Error applying view update.*no_such_column_family',
+        ]
+
+        logger.debug("Waiting for view building to start.")
+        for node in self.cluster.nodelist():
+            node.watch_log_for("Building view ks.t_by_v")
 
         logger.debug("Drop the MV while it is still building")
         session.execute("DROP MATERIALIZED VIEW t_by_v")
@@ -2382,12 +2379,19 @@ class TestMaterializedViews(Tester):
         for node in self.cluster.nodelist():
             finished = node.grep_log("Finished building view")
             have_finished += len(finished)
+        logger.debug(f"{have_finished} / {len(self.cluster.nodelist())} views finished")
         assert have_finished < len(self.cluster.nodelist())
 
         assert_invalid(session, "SELECT COUNT(*) FROM t_by_v")
-        assert_none(session, "SELECT * FROM system.views_builds_in_progress")
-        assert_none(session, "SELECT * FROM system.built_views")
-        assert_none(session, "SELECT * FROM system_distributed.view_build_status")
+        if isinstance(self.cluster, ScyllaCluster):
+            self.eventually_assert_none(session,
+                                        "SELECT * FROM system.scylla_views_builds_in_progress")
+        self.eventually_assert_none(session,
+                                    "SELECT * FROM system.built_views")
+        self.eventually_assert_none(session,
+                                    "SELECT * FROM system.views_builds_in_progress")
+        self.eventually_assert_none(session,
+                                    "SELECT * FROM system_distributed.view_build_status")
 
     def test_mv_with_default_ttl_with_flush(self):
         self._test_mv_with_default_ttl(True)
@@ -2403,7 +2407,6 @@ class TestMaterializedViews(Tester):
         session = self.prepare(rf=3, nodes=3,
                                options={'hinted_handoff_enabled': False},
                                consistency_level=ConsistencyLevel.QUORUM)
-        node1, node2, node3 = self.cluster.nodelist()
         session.execute('USE ks')
 
         logger.debug("MV with same key and unselected columns")
@@ -2510,7 +2513,6 @@ class TestMaterializedViews(Tester):
         session = self.prepare(rf=3, nodes=3,
                                options={'hinted_handoff_enabled': False},
                                consistency_level=ConsistencyLevel.QUORUM)
-        node1, node2, node3 = self.cluster.nodelist()
 
         session.execute('USE ks')
         session.execute("CREATE TABLE t (k int, c int, a int, b int, e int, f int, primary key(k, c))")
@@ -2746,7 +2748,6 @@ class TestMaterializedViews(Tester):
         session = self.prepare(rf=rf, nodes=nodes,
                                options={'hinted_handoff_enabled': False},
                                consistency_level=ConsistencyLevel.QUORUM)
-        node1 = self.cluster.nodelist()[0]
 
         session.execute('USE ks')
         session.execute("CREATE TABLE t (k int PRIMARY KEY, a int, b int)")
@@ -2797,7 +2798,6 @@ class TestMaterializedViews(Tester):
         session = self.prepare(rf=3, nodes=3,
                                options={'hinted_handoff_enabled': False},
                                consistency_level=ConsistencyLevel.QUORUM)
-        node1 = self.cluster.nodelist()[0]
 
         session.execute('USE ks')
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
@@ -3452,7 +3452,7 @@ class TestMaterializedViews(Tester):
             session.execute("DROP MATERIALIZED VIEW mv")
             session.execute("DROP TABLE test")
 
-    def propagate_view_creation_over_non_existing_table(self):
+    def test_propagate_view_creation_over_non_existing_table(self):
         """
         The internal addition of a view over a non existing table should be ignored
         @jira_ticket CASSANDRA-13737
@@ -3485,11 +3485,11 @@ class TestMaterializedViews(Tester):
         self.stop_cluster()
         self.cluster.start()
 
-    @pytest.mark.require("#3295")
+    @pytest.mark.skip("Not relevant for Scylla - requires byteman error injection")
     def test_base_view_consistency_on_failure_after_mv_apply(self):
         self._test_base_view_consistency_on_crash("after")
 
-    @pytest.mark.require("#3295")
+    @pytest.mark.skip("Not relevant for Scylla - requires byteman error injection")
     def test_base_view_consistency_on_failure_before_mv_apply(self):
         self._test_base_view_consistency_on_crash("before")
 
@@ -3857,7 +3857,7 @@ def thread_session(ip, queue, start, end, rows, num_partitions):
         queue.close()
 
 
-@pytest.mark.skipIf(sys.platform == 'win32', 'Bug in python on Windows: https://bugs.python.org/issue10128')
+@pytest.mark.skipif(sys.platform == 'win32', 'Bug in python on Windows: https://bugs.python.org/issue10128')
 @pytest.mark.dtest_full
 class TestMaterializedViewsConsistency(Tester):
 
@@ -4044,3 +4044,232 @@ class TestMaterializedViewsConsistency(Tester):
         self._print_read_status(upper)
         sys.stdout.write("\n")
         sys.stdout.flush()
+
+
+@pytest.mark.dtest_full
+class InterruptBuildProcess(CommonUtils):
+    # running multiple test cases in parallel with max/half number of shards
+    # might exhaust aio-max-nr
+    lock = Lock()
+
+    @staticmethod
+    def oddity(n):
+        return n % 2
+
+    def _max_shards(self):
+        if cpu_count() < 2:
+            self.skip("This test requires a minimum of 2 cpus")
+        elif cpu_count() <= 4:
+            return cpu_count()
+        else:
+            # highest even number of cpus
+            return cpu_count() - self.oddity(cpu_count())
+
+    def _half_shards(self):
+        if cpu_count() < 2:
+            self.skip("This test requires a minimum of 2 cpus")
+        elif cpu_count() <= 4:
+            return cpu_count() - 1
+        else:
+            # half number of cpus, made odd
+            half = cpu_count() // 2
+            return half + (1 - self.oddity(half))
+
+    def _low_shards(self):
+        if cpu_count() < 3:
+            self.skip("This test requires a minimum of 3 cpus")
+        elif cpu_count() < 4:
+            return 1
+        else:
+            return 2
+
+    @pytest.mark.dtest_heavy
+    def test_interrupt_build_process_test(self):
+        logger.debug("Acquiring lock")
+        with InterruptBuildProcess.lock:
+            logger.debug("Running test")
+            self._interrupt_build_process_test()
+
+    def _interrupt_build_process_test(self):
+        """Test that an interrupted MV build process is resumed as it should"""
+        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
+        node1, node2, node3 = self.cluster.nodelist()
+
+        session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
+
+        rows = 200000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            rows = 10000
+        logger.debug("Inserting initial data")
+        insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
+        for i in range(rows):
+            session.execute(insert_stmt, (i, i, 'a', 3.0))
+
+        logger.debug("Create a MV")
+        # Don't wait for schema agreement, or we risk view building concluding too soon
+        session.cluster.max_schema_agreement_wait = 0
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
+                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
+
+        wait_for_view_build_start(session, "ks", "t_by_v")
+
+        logger.debug("Stop the cluster. Interrupt the MV build process.")
+        self.stop_cluster()
+
+        logger.debug("Ensure view building didn't finish.")
+        self._ensure_view_building_did_not_finish(len(self.cluster.nodelist()))
+
+        logger.debug("Restart the cluster")
+        self.cluster.start(wait_for_binary_proto=True)
+        session = self.patient_cql_connection(node1)
+        session.execute("USE ks")
+
+        logger.debug("Wait and ensure the MV build resumed.")
+        wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
+
+        logger.debug("Verify all data")
+        assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL)
+
+        logger.debug("Stopping cluster")
+        self.stop_cluster()
+
+    def test_interrupt_build_process_with_resharding_low_to_half_test(self):
+        """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() // 2"""
+        self._do_resharding_test(self._low_shards(), self._half_shards())
+
+    @pytest.mark.next_gating
+    def test_interrupt_build_process_with_resharding_half_to_max_test(self):
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() // 2 -> cpu_count()"""
+        # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
+        self._do_resharding_test(self._half_shards(), self._max_shards())
+
+    def test_interrupt_build_process_with_resharding_max_to_half_test(self):
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() -> cpu_count() // 2"""
+        # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
+        self._do_resharding_test(self._max_shards(), self._half_shards())
+
+    def test_interrupt_build_process_with_resharding_half_to_low_test(self):
+        """Test that an interrupted MV build process is resumed, with resharding cpu_count() // 2 -> 1"""
+        self._do_resharding_test(self._half_shards(), self._low_shards())
+
+    def test_interrupt_build_process_and_resharding_low_to_half_test(self):
+        """Test that an interrupted MV build is resumed after interrupted resharding,
+        with resharding 1 -> cpu_count() // 2"""
+        self._do_resharding_test(self._low_shards(), self._half_shards(),
+                                 interrupt_resharding=True)
+
+    def test_interrupt_build_process_and_resharding_half_to_max_test(self):
+        """Test that an interrupted MV build process is resumed after interrupted resharding,
+        with resharding cpu_count() // 2 -> cpu_count()"""
+        # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
+        self._do_resharding_test(self._half_shards(), self._max_shards(),
+                                 interrupt_resharding=True)
+
+    def test_interrupt_build_process_and_resharding_max_to_half_test(self):
+        """Test that an interrupted MV build process is resumed after interrupted resharding,
+        with resharding cpu_count() -> cpu_count() // 2"""
+        # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
+        self._do_resharding_test(self._max_shards(), self._half_shards(),
+                                 interrupt_resharding=True)
+
+    def test_interrupt_build_process_and_resharding_half_to_low_test(self):
+        """Test that an interrupted MV build process is resumed after interrupted resharding,
+        with resharding cpu_count() // 2 -> 2"""
+        # when changing the number of shards from N to 1
+        # no resharding takes place as all sstables will naturally belong to
+        # that single shard.
+        if self._low_shards() == 1:
+            self.skip("This test requires a minimum of 4 cpus")
+        self._do_resharding_test(self._half_shards(), self._low_shards(),
+                                 interrupt_resharding=True)
+
+    @staticmethod
+    def set_memory_param(smp):
+        return '{}M'.format(512 * int(smp))
+
+    def _do_resharding_test(self, smp_before, smp_after, compression='LZ4Compressor', interrupt_resharding=False):
+        logger.debug("Acquiring lock")
+        with InterruptBuildProcess.lock:
+            self.__do_resharding_test(smp_before, smp_after, compression, interrupt_resharding)
+
+    def __do_resharding_test(self, smp_before, smp_after, compression, interrupt_resharding):
+        logger.debug(
+            f"Running resharding test from {smp_before} to {smp_after} shards: interrupt_resharding={interrupt_resharding}")
+        self.ignore_log_patterns += [
+            r'view - Error applying view update to .*: exceptions::unavailable_exception',
+            r'view - Error applying view update to .*: exceptions::mutation_write_timeout_exception',
+            r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception',
+            r'view - Error applying view update to .*: std::_Nested_exception<no_such_column_family>',
+        ]
+        if interrupt_resharding:
+            self.ignore_log_patterns += [
+                # for now, until the reader is properly aborted and closed
+                r'resharding failed: seastar::broken_promise',
+                r'resharding failed: std::runtime_error \(Dangling queue_reader_handle\)',
+            ]
+        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0, 'read_request_timeout_in_ms': 100000, 'range_request_timeout_in_ms': 100000},
+                               jvm_args=['--smp', str(smp_before), '--memory', self.set_memory_param(smp_before)])
+        node1, node2, node3 = self.cluster.nodelist()
+
+        query = "CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)"
+        if compression:
+            query += f" WITH compression = {{'sstable_compression': '{compression}'}}"
+        session.execute(query)
+
+        rows = 200000
+        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
+            rows = 10000
+        logger.debug("Inserting initial data; smp = {}".format(smp_before))
+        insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
+        for i in range(rows):
+            session.execute(insert_stmt, (i, i, str(i), 3.0))
+
+        logger.debug("Create a couple of MVs")
+        # Don't wait for schema agreement, or we risk view building concluding too soon
+        session.cluster.max_schema_agreement_wait = 0
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
+                         "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
+        session.execute(("CREATE MATERIALIZED VIEW t_by_v2 AS SELECT * FROM t "
+                         "WHERE v2 IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v2, id)"))
+
+        wait_for_view_build_start(session, "ks", "t_by_v")
+
+        logger.debug("Stop the cluster. Interrupt the MV build process.")
+        # Our views build quickly, so instead of having to insert lots of data and
+        # risk the test taking too long, just force the cluster down
+        self.stop_cluster()
+
+        logger.debug("Ensure view building didn't finish.")
+        have_finished = 0
+        for node in self.cluster.nodelist():
+            finished = node.grep_log("Finished building view")
+            have_finished += len(finished)
+        assert have_finished < 2 * len(self.cluster.nodelist())
+
+        logger.debug("Restart the cluster with shards {}".format(smp_after))
+        for node in self.cluster.nodelist():
+            logger.debug("Starting node " + node.name)
+            jvm_args = ['--smp', str(smp_after),
+                        '--memory', self.set_memory_param(smp_after)]
+            if interrupt_resharding:
+                mark = node.mark_log()
+                node.start(jvm_args=jvm_args, no_wait=True)
+                node.watch_log_for(r"Reshard ks", from_mark=mark)
+                logger.debug(f"Stopping node {node.name} during resharding")
+                node.stop(wait_other_notice=True)
+                logger.debug(f"Restarting node {node.name}")
+            node.start(jvm_args=jvm_args)
+
+        session = self.patient_cql_connection(node1)
+        session.execute("USE ks")
+
+        logger.debug("Wait and ensure the MV build resumed.")
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view="t_by_v")
+        wait_for_view(cluster=self.cluster, session=session, ks='ks', view="t_by_v2")
+
+        logger.debug("Verify all data")
+        self.eventually(lambda: assert_row_count(session, 't_by_v', rows, consistency_level=ConsistencyLevel.ALL))
+        self.eventually(lambda: assert_row_count(session, 't_by_v2', rows, consistency_level=ConsistencyLevel.ALL))
+
+        logger.debug("Stopping cluster")
+        self.stop_cluster()
