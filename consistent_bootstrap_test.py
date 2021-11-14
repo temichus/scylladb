@@ -27,7 +27,7 @@ class TestBootstrapConsistency(Tester):
         logger.info("Set to talk to node 2")
         n2session = self.patient_cql_connection(node2)
         create_ks(n2session, 'ks', 2)
-        create_c1c2_table(self, n2session)
+        create_c1c2_table(n2session)
 
         logger.info("Generating some data for all nodes")
         insert_c1c2(n2session, keys=range(10, 20), consistency=ConsistencyLevel.ALL)
@@ -68,7 +68,7 @@ class TestBootstrapConsistency(Tester):
         logger.info("Set to talk to node 2")
         n2session = self.patient_cql_connection(node2)
         create_ks(n2session, 'ks', 2)
-        create_c1c2_table(self, n2session)
+        create_c1c2_table(n2session)
 
         logger.info("Generating some data for all nodes")
         insert_c1c2(n2session, keys=range(10, 20), consistency=ConsistencyLevel.ALL)
