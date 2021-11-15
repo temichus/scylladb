@@ -114,10 +114,17 @@ class TestInternodeSSL(Tester):
         putget(cluster, session)
 
     @pytest.mark.single_node
-    def listen_ports_conf_test(self, internode_encryption='all', DISABLE_VALUE=0):
+    @pytest.mark.parametrize("disable_value", [
+        pytest.param(0),
+        pytest.param(None, marks=pytest.mark.require('#7500')),
+    ])
+    def test_testlisten_ports_conf(self, disable_value):
         """
         Test storage ports configuration, and verify the listening storage ports after start
+
+        Try to disable the option by setting the option to None, ccm will remove this option from scylla.yaml
         """
+        internode_encryption = 'all'
         generate_ssl_stores(self.test_path)
         cluster = self.cluster
         cluster.populate(1)
@@ -164,31 +171,18 @@ class TestInternodeSSL(Tester):
         restart_and_verify_listen_ports(expected_ports=expected_ports)
 
         # Disable storage_port by setting it to `disable_value'
-        cluster.set_configuration_options({'storage_port': DISABLE_VALUE,
+        cluster.set_configuration_options({'storage_port': disable_value,
                                            'ssl_storage_port': ssl_storage_port})
         restart_and_verify_listen_ports(expected_ports=[ssl_storage_port])
 
         # Disable ssl_storage_port by setting it to `disable_value'
         cluster.set_configuration_options({'storage_port': storage_port,
-                                           'ssl_storage_port': DISABLE_VALUE})
+                                           'ssl_storage_port': disable_value})
         expected_ports = [] if isinstance(cluster, ScyllaCluster) and internode_encryption == 'all' else \
             [storage_port]
         restart_and_verify_listen_ports(expected_ports=expected_ports)
 
         # Disable both ports by setting it to `disable_value'
-        cluster.set_configuration_options({'storage_port': DISABLE_VALUE,
-                                           'ssl_storage_port': DISABLE_VALUE})
+        cluster.set_configuration_options({'storage_port': disable_value,
+                                           'ssl_storage_port': disable_value})
         restart_and_verify_listen_ports(expected_ports=[])
-
-    @pytest.mark.single_node
-    def test_listen_ports_conf(self):
-        self._listen_ports_conf_template(disable_value=0)
-
-    @pytest.mark.single_node
-    @pytest.mark.require('#7500')
-    def test_listen_ports_conf_by_none(self):
-        """
-        Test storage ports configuration, and verify the listening storage ports after start,
-        Try to disable the option by setting the option to None, ccm will remove this option from scylla.yaml
-        """
-        self._listen_ports_conf_template(disable_value=None)
