@@ -58,8 +58,8 @@ class TestDatabaseMetrics(Tester):
 
         for metric_name in list(initial_reads.keys()):
             added = int(final_reads[metric_name])-int(initial_reads[metric_name])
-            debug(f"final_reads[{metric_name}]={final_reads[metric_name]} " +
-                  f"initial_reads[{metric_name}]={initial_reads[metric_name]} " +
-                  f"({added} added)")
+            logger.debug(f"final_reads[{metric_name}]={final_reads[metric_name]} " +
+                         f"initial_reads[{metric_name}]={initial_reads[metric_name]} " +
+                         f"({added} added)")
             assert added > 0,\
                 f'{metrics[0]} did not increase as expected. initial={initial_reads}; final={final_reads}'
