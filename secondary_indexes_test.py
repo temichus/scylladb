@@ -131,6 +131,8 @@ class SecondaryIndexesHelpers:
                                                                               "X" * value_length)
             elif self.INDEX_TYPE == 'global':
                 stmt = 'select {0} from {1}'.format(column_name, table_name)
+            else:
+                raise ValueError("Unknown index type: %s", self.INDEX_TYPE)
 
             result = list(session.execute(stmt))
             if result:
@@ -217,6 +219,8 @@ class SecondaryIndexesHelpers:
             stmt = 'select key from {} where key = {} and  {} = {}'
         elif self.INDEX_TYPE == 'global':
             stmt = 'select key from {} where {} = {}'
+        else:
+            raise ValueError("Unknown index type: %s", self.INDEX_TYPE)
 
         logger.debug('Verify data with {} consistency level'.format(ConsistencyLevel.value_to_name[cl]))
         for _ in range(60):
@@ -248,10 +252,266 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
             create_ks(session, ks_name, 1)
         create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text', columns={'col1': 'text'},
                   compaction={'class': self.compaction_strategy})
-        assert self.create_and_build_index(create_index, self.cluster, session, ks_name, table_name,
+
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name, table_name,
                                            index['index_column'], index['index_name'],
                                            compaction=self.compaction_strategy), \
             'Index %s is not built' % index['index_name']
+
+    def test_agg_query_by_pk(self):
+        """
+        Filter data by first primary key column that also an index
+        """
+        session = self.prepare(self, user_table=True, nodes=4, rf=3)
+
+        session.execute('CREATE TABLE ks.t3(pk1 int, pk2 int, ck int, PRIMARY KEY((pk1, pk2), ck))')
+        session.execute('INSERT INTO ks.t3(pk1, pk2, ck) VALUES (1, 1, 1)')
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE pk1 = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk2) FROM ks.t3 WHERE pk1 = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MIN(ck) FROM ks.t3 WHERE pk1 = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        # create index
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                           table_name='t3', index_column='pk1', index_name='ks_t3',
+                                           compaction=self.compaction_strategy), \
+            'Index ks_t3 is not built'
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE pk1 = 1", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        session.execute("INSERT INTO ks.t3(pk1, pk2, ck) VALUES (1, 1, 2)")
+        session.execute("INSERT INTO ks.t3(pk1, pk2, ck) VALUES (1, 1, 3)")
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE pk1 = 1", expected=[[3]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk2) FROM ks.t3 WHERE pk1 = 1", expected=[[3]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MAX(ck) FROM ks.t3 WHERE pk1 = 1", expected=[[3]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
+
+    def test_agg_query_by_second_pk(self):
+        """
+        Filter data by second primary key column that also an index
+        """
+        session = self.prepare(self, user_table=True, nodes=4, rf=3)
+
+        session.execute('CREATE TABLE ks.t3(pk1 int, pk2 int, ck int, PRIMARY KEY((pk1, pk2), ck))')
+        session.execute('INSERT INTO ks.t3(pk1, pk2, ck) VALUES (1, 1, 1)')
+        session.execute('INSERT INTO ks.t3(pk1, pk2, ck) VALUES (1, 1, 4)')
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE pk2 = 1 ALLOW FILTERING", expected=[[2]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk1) FROM ks.t3 WHERE pk2 = 1 ALLOW FILTERING", expected=[[2]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MIN(ck) FROM ks.t3 WHERE pk2 = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        # create index
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                           table_name='t3', index_column='pk2', index_name='ks_t3',
+                                           compaction=self.compaction_strategy), \
+            'Index ks_t3 is not built'
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE pk2 = 1", expected=[[2]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        session.execute("INSERT INTO ks.t3(pk1, pk2, ck) VALUES (1, 1, 2)")
+        session.execute("INSERT INTO ks.t3(pk1, pk2, ck) VALUES (1, 1, 3)")
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE pk2 = 1", expected=[[4]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk1) FROM ks.t3 WHERE pk2 = 1", expected=[[4]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MAX(ck) FROM ks.t3 WHERE pk2 = 1", expected=[[4]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
+
+    def test_agg_query_by_ck(self):
+        """
+        Filter data by clustering key column that also an index
+        """
+        session = self.prepare(self, user_table=True, nodes=4, rf=3)
+
+        session.execute('CREATE TABLE ks.t3(pk1 int, ck int, v int, PRIMARY KEY(pk1, ck))')
+        session.execute('INSERT INTO ks.t3(pk1, ck, v) VALUES (1, 1, 1)')
+        session.execute('INSERT INTO ks.t3(pk1, ck, v) VALUES (1, 4, 1)')
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk1) FROM ks.t3 WHERE ck = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MIN(v) FROM ks.t3 WHERE ck = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        # create index
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                           table_name='t3', index_column='ck', index_name='ks_t3',
+                                           compaction=self.compaction_strategy), \
+            'Index ks_t3 is not built'
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck = 1", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        session.execute("INSERT INTO ks.t3(pk1, ck, v) VALUES (1, 2, 2)")
+        session.execute("INSERT INTO ks.t3(pk1, ck, v) VALUES (1, 3, 3)")
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck = 1", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk1) FROM ks.t3 WHERE ck = 1", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MAX(v) FROM ks.t3 WHERE ck = 3", expected=[[3]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
+
+    def test_agg_query_by_second_ck(self):
+        """
+        Filter data by second clustering key column that also an index
+        """
+        session = self.prepare(self, user_table=True, nodes=4, rf=3)
+
+        session.execute('CREATE TABLE ks.t3(pk1 int, ck1 int, ck2 int, PRIMARY KEY(pk1, ck1, ck2))')
+        session.execute('INSERT INTO ks.t3(pk1, ck1, ck2) VALUES (1, 1, 1)')
+        session.execute('INSERT INTO ks.t3(pk1, ck1, ck2) VALUES (1, 1, 3)')
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck2 = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk1) FROM ks.t3 WHERE ck2 = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MIN(ck1) FROM ks.t3 WHERE ck2 = 1 ALLOW FILTERING", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        # create index
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                           table_name='t3', index_column='ck2', index_name='ks_t3',
+                                           compaction=self.compaction_strategy), \
+            'Index ks_t3 is not built'
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck2 = 1", expected=[[1]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        session.execute("INSERT INTO ks.t3(pk1, ck1, ck2) VALUES (1, 1, 2)")
+        session.execute("INSERT INTO ks.t3(pk1, ck1, ck2) VALUES (1, 2, 1)")
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck2 = 1", expected=[[2]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk1) FROM ks.t3 WHERE ck2 = 1", expected=[[2]],
+                   cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MAX(ck1) FROM ks.t3 WHERE ck2 = 1", expected=[[2]],
+                   cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
+
+    def test_agg_query_by_two_ck(self):
+        """
+        Filter data by two secondary keys columns that also an index
+        """
+        session = self.prepare(self, user_table=True, nodes=4, rf=3)
+        session.default_fetch_size = 1
+
+        session.execute('CREATE TABLE ks.t3(pk1 int, pk2 int, ck1 int, ck2 int, PRIMARY KEY((pk1, pk2), ck1, ck2))')
+        session.execute('INSERT INTO ks.t3(pk1, pk2, ck1, ck2) VALUES (1, 1, 1, 1)')
+        session.execute('INSERT INTO ks.t3(pk1, pk2, ck1, ck2) VALUES (1, 1, 1, 2)')
+        session.execute('INSERT INTO ks.t3(pk1, pk2, ck1, ck2) VALUES (1, 2, 1, 3)')
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck1 = 1 and ck2 in (1, 3) ALLOW FILTERING",
+                   expected=[[2]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT AVG(pk2) FROM ks.t3 WHERE ck1 = 1 and ck2 in (1, 3) ALLOW FILTERING",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT MAX(ck2) FROM ks.t3 WHERE ck1 = 1 and ck2 in (1, 3) ALLOW FILTERING",
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM)
+
+        # create index
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                           table_name='t3', index_column='ck1', index_name='ck1_index',
+                                           compaction=self.compaction_strategy), \
+            'Index on "ck1" column is not built'
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                           table_name='t3', index_column='ck2', index_name='ks_t3',
+                                           compaction=self.compaction_strategy), \
+            'Index "ck2" column is not built'
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck1 = 1 and ck2 in (1, 3) ALLOW FILTERING",
+                   expected=[[2]], cl=ConsistencyLevel.QUORUM)
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck1 = 1 and ck2 >= 1 ALLOW FILTERING",
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM)
+
+        session.execute("INSERT INTO ks.t3(pk1, pk2, ck1, ck2) VALUES (2, 1, 2, 1)")
+        session.execute("INSERT INTO ks.t3(pk1, pk2, ck1, ck2) VALUES (2, 2, 1, 4)")
+
+        assert_all(session, "SELECT COUNT(*) FROM ks.t3 WHERE ck1 = 2 and ck2 in (1, 3) ALLOW FILTERING",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT SUM(pk2) FROM ks.t3 WHERE ck1 = 1 and ck2 > 1 ALLOW FILTERING",
+                   expected=[[5]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT AVG(pk1) FROM ks.t3 WHERE ck1 = 2 and ck2 >= 1 ALLOW FILTERING",
+                   expected=[[2]], cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
+
+    def test_group_by_pk_filter_by_index(self):
+        """
+        Create the index on the populated table and read the data that was inserted before index
+        """
+        session = self.prepare(self, user_table=False, nodes=4, rf=3)
+
+        session.execute('CREATE TABLE ks.t(pk int, ck int, v int, PRIMARY KEY(pk, ck))')
+        session.execute('INSERT INTO ks.t(pk, ck, v) VALUES (1, 2, 3)')
+        session.execute('INSERT INTO ks.t(pk, ck, v) VALUES (1, 4, 3)')
+        session.execute('INSERT INTO ks.t(pk, ck, v) VALUES (2, 4, 3)')
+        assert_all(session, "SELECT pk FROM ks.t WHERE v=3 GROUP BY pk ALLOW FILTERING",
+                   expected=[[1], [2]], cl=ConsistencyLevel.QUORUM)
+
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                           table_name='t', index_column='v', index_name='v_key',
+                                           compaction=self.compaction_strategy), \
+            'Index state_key is not built'
+
+        assert_all(session, "SELECT pk FROM ks.t WHERE v=3 GROUP BY pk",
+                   expected=[[1], [2]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "SELECT pk, count(pk) FROM ks.t WHERE v=3 GROUP BY pk",
+                   expected=[[1, 2], [2, 1]], cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
+
+    @pytest.mark.require("#7432")
+    def test_filter_by_index_with_paging(self):
+        """
+        Create the index on the populated table and read the data that was inserted before index
+        Read with pagination
+        """
+        session = self.prepare(self, user_table=False, nodes=4, rf=3)
+        session.default_fetch_size = 1
+
+        session.execute('CREATE TABLE ks.t(pk int, ck int, v int, PRIMARY KEY(pk, ck))')
+        session.execute('INSERT INTO ks.t(pk, ck, v) VALUES (1, 2, 3)')
+        session.execute('INSERT INTO ks.t(pk, ck, v) VALUES (1, 4, 3)')
+        session.execute('INSERT INTO ks.t(pk, ck, v) VALUES (2, 4, 3)')
+        assert_all(session, "SELECT pk FROM ks.t WHERE v=3 GROUP BY pk ALLOW FILTERING",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+                                           table_name='t', index_column='v', index_name='v_key',
+                                           compaction=self.compaction_strategy), \
+            'Index state_key is not built'
+
+        session.default_fetch_size = 3
+
+        assert_all(session, "SELECT pk FROM ks.t WHERE v=3 GROUP BY pk",
+                   expected=[[1], [2]], cl=ConsistencyLevel.QUORUM)
+
+        session.default_fetch_size = 1
+        assert_all(session, "SELECT pk FROM ks.t WHERE v=3 GROUP BY pk",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
 
     # TODO: flaky_with_tear_down - this decorator was attempt for MV tests. It performed tearDown and new setUp for each
     # TODO: re-run. With moving to pytest and useing flacky decorator of pytest we need to check if it's still relevant
@@ -265,10 +525,10 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         session = self.prepare(self, user_table=True, nodes=4, rf=3)
 
         # insert data
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
 
         # create index
         assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
@@ -287,14 +547,16 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
             'Index %s is not built' % 'birth_year_key'
 
         # insert data
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
 
         assert_all(session, "select count(*) from users", expected=[[4]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where state='TX'", expected=[[2]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from users where state='CA'", expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
 
     def test_query_data_by_pk_and_index(self):
         """
@@ -303,14 +565,14 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         session = self.prepare(self, user_table=True, nodes=4, rf=3)
 
         # insert data
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
-        session.execute(
-            "INSERT INTO users (KEY, password, gender, state, birth_year) VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user1', 'ch@ngem3a', 'f', 'TX', 1968);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
+        session.execute("INSERT INTO users (KEY, password, gender, state, birth_year) "
+                        "VALUES ('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
 
         # create index
         assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
@@ -325,6 +587,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                    cl=ConsistencyLevel.ALL)
         assert_all(session, "select count(*) from users where KEY='user1' and gender='m'", expected=[[0]],
                    cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
 
     def test_query_data_by_ck_and_index(self):
         """
@@ -359,6 +623,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         assert_all(session, "select count(*) from {} where KEY='user1' and c='ch@ngem3a' and v='m'".format(table_name),
                    expected=[[0]], cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
 
     def test_low_cardinality_indexes(self):
         """
@@ -484,7 +750,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         logger.debug('Insert {} value into non-PK column'.format(test))
         self.insert_row_with_long_value(self,
-                                        "CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) WITH compaction = %s",
+                                        "CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) "
+                                        "WITH compaction = %s",
                                         "CREATE INDEX ON %s(c)",
                                         "INSERT INTO %s (a, b, c) VALUES (0, 0, ?)",
                                         session, column_name='c', value_length=value_length,
@@ -492,7 +759,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         logger.debug('Insert {} value into clustering key column'.format(test))
         self.insert_row_with_long_value(self,
-                                        "CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) WITH compaction = %s",
+                                        "CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) "
+                                        "WITH compaction = %s",
                                         "CREATE INDEX ON %s(b)",
                                         "INSERT INTO %s (a, b, c) VALUES (0, ?, 0)",
                                         session, column_name='b', value_length=value_length,
@@ -500,7 +768,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         logger.debug('Insert {} value into partition key column'.format(test))
         self.insert_row_with_long_value(self,
-                                        "CREATE TABLE %s(a text, b int, c int, PRIMARY KEY ((a, b))) WITH compaction = %s",
+                                        "CREATE TABLE %s(a text, b int, c int, PRIMARY KEY ((a, b))) "
+                                        "WITH compaction = %s",
                                         "CREATE INDEX ON %s(a)",
                                         "INSERT INTO %s (a, b, c) VALUES (?, 0, 0)",
                                         session, column_name='a', value_length=value_length,
@@ -1127,11 +1396,12 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception',
+                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception '
+                          f'\(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
                           f'Error applying view update to {node2_ip}: exceptions::mutation_write_timeout_exception ',
                           rf'(Operation timed out for {keyspace_name}\.{index_name}_index - received only 0 responses '
                           f'from 1 CL=ONE)',
-                          f'Error applying view update to .*: exceptions::mutation_write_failure_exception '
+                          rf'Error applying view update to .*: exceptions::mutation_write_failure_exception '
                           rf'(Operation failed for {keyspace_name}\.{index_name}_index - received 0 responses and 1 '
                           f'failures from 1 CL=ONE)',
                           ]
@@ -1846,8 +2116,8 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
 
     def test_insert_data_after_recreating_ks_with_local_index(self):
         """
-        Data inserted immediately after dropping and recreating a keyspace with an indexed column familiy is not included
-        in the index.
+        Data inserted immediately after dropping and recreating a keyspace with an indexed column familiy is not
+        included in the index.
         """
         session = self.prepare(self, nodes=4, rf=3)
 
@@ -1895,7 +2165,8 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
 
         logger.debug('Insert {} value into non-PK column'.format(test))
         self.insert_row_with_long_value(self,
-                                        "CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) WITH compaction = %s",
+                                        "CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) "
+                                        "WITH compaction = %s",
                                         "CREATE INDEX ON %s ((a), c)",
                                         "INSERT INTO %s (a, b, c) VALUES (0, 0, ?)",
                                         session, column_name='c', value_length=value_length,
@@ -1903,7 +2174,8 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
 
         logger.debug('Insert {} value into clustering key column'.format(test))
         self.insert_row_with_long_value(self,
-                                        "CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) WITH compaction = %s",
+                                        "CREATE TABLE %s(a int, b text, c int, PRIMARY KEY (a, b)) "
+                                        "WITH compaction = %s",
                                         "CREATE INDEX ON %s ((a), b)",
                                         "INSERT INTO %s (a, b, c) VALUES (0, ?, 0)",
                                         session, column_name='b', value_length=value_length,
@@ -1911,7 +2183,8 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
 
         logger.debug('Table with compact storage. Insert {} value into non-PK column'.format(test))
         self.insert_row_with_long_value(self,
-                                        "CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) WITH COMPACT STORAGE and compaction = %s",
+                                        "CREATE TABLE %s(a int, b text, PRIMARY KEY (a)) "
+                                        "WITH COMPACT STORAGE and compaction = %s",
                                         "CREATE INDEX ON %s ((a), b)",
                                         "INSERT INTO %s (a, b) VALUES (0, ?)",
                                         session, column_name='b', value_length=value_length,
@@ -2193,7 +2466,8 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception',
+                          f'Error applying view update to {node2_ip}: exceptions::unavailable_exception '
+                          r'\(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
                           r'Operation timed out for ks\.b_index_index - received only 0 responses from 1 CL=ONE']
         self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
 
