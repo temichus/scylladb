@@ -1,15 +1,18 @@
 import re
 import time
 import multiprocessing
+import tempfile
 
 import pytest
 from flaky import flaky
 
+from ccmlib.scylla_node import ScyllaNode
+from cassandra.cluster import Session
 from dtest_class import Tester, create_ks
 from tools.data import rows_to_list
 from tools.tables_view_manager import TableManager, MaterializedViewManager
 from scylla_tools import get_sstables_files, get_node_cf_dir
-from tools.assertions import assert_one, assert_two_queries_equal
+from tools.assertions import assert_one, assert_two_queries_equal, assert_none
 from cassandra import ConsistencyLevel
 import logging
 
@@ -192,6 +195,131 @@ class TestReshardingSingleNodeGating(TestReshardingBase):
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
 
+@pytest.mark.single_node
+class TestReshardingTombstonesSingleNode(Tester):
+
+    SMP = 2
+    NEW_SMP = 4
+    keyspace = "ks1"
+    table = "cf1"
+    gc_grace_seconds = 10
+    keys = 100
+    __test__ = False
+    compaction_strategy = "SizeTieredCompactionStrategy"
+
+    def prepare(self, nodes, wait_for_binary_proto=True, jvm_args=None, configuration_options={}):
+        configuration_options.update({'enable_sstable_key_validation': True})
+        self.cluster.set_configuration_options(values=configuration_options)
+        self.cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
+        node1: ScyllaNode = self.cluster.nodelist()[0]
+        session: Session = self.patient_cql_connection(node1)
+        create_ks(session, self.keyspace, nodes)
+        logging.debug("Inserting {} keys with gc_grace_seconds={}".format(self.keys, self.gc_grace_seconds))
+        session.execute(f"create table {self.keyspace}.{self.table} (key int PRIMARY KEY, val int) \
+                        with compaction = {{'class':'{self.compaction_strategy}'}} and gc_grace_seconds = {self.gc_grace_seconds};")
+
+    @staticmethod
+    def compactions_count(session, ks, cf):
+        rows = session.execute(f"select count(*) from system.compaction_history \
+                               where keyspace_name='{ks}' and columnfamily_name='{cf}' \
+                               allow filtering")
+        return rows[0][0]
+
+    @staticmethod
+    def get_number_of_marked_to_delete(node, keyspace):
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node.run_sstable2json(f, keyspace=keyspace)
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        return jsoninfo.count("marked_deleted")
+
+    def test_disable_tombstone_removal_during_reshard(self):
+        """
+        Test that data is not resurected when shared sstables
+        are used
+        1. smp=2 create sstable A with 100 keys
+        2. delete all keys
+        3. wait past gc_preiod
+        4. insert a key forcing flush multiple times till a compaction is triggered
+        5. stop and start the node with smp=4
+        7. check that not all tombstones were cleared after resharding the deletion markers still exist
+        8. check that data was resurected and that some of the deletion markers still exist
+        8. Run compaction
+        9. check that no deletion marker is left and files have been removed
+        """
+        logging.debug(f"Start 1 node with {self.SMP} cpu")
+        self.prepare(nodes=1, jvm_args=['--smp', f'{self.SMP}'])
+        node1: ScyllaNode = self.cluster.nodelist()[0]
+        session: Session = self.patient_cql_connection(node1)
+
+        for i in range(self.keys):
+            session.execute(f"insert into {self.keyspace}.{self.table} (key, val) values ({i}, 1)")
+        logging.debug("Flush sstables")
+        node1.flush()
+
+        # Delete all keys and flush to have table withexpired rows.
+        logging.debug("Deleting {} keys".format(self.keys))
+        for i in range(self.keys):
+            session.execute(f"delete from {self.keyspace}.{self.table} where key = {i}")
+        node1.flush()
+
+        # we passed gc_period and force an update so that compaction will
+        # be triggered on a single shard (removing data and tombstone)
+        compactions_2 = compactions_1 = self.compactions_count(session, self.keyspace, self.table)
+        logging.debug("Waiting gc_grace_seconds={} to pass".format(self.gc_grace_seconds))
+        time.sleep(self.gc_grace_seconds + 1)
+        logging.debug("Inserting data and waiting for new compaction")
+        while compactions_1 == compactions_2:
+            session.execute(f'insert into {self.keyspace}.{self.table} (key, val) values ({self.keys + 1},1);')
+            node1.flush()
+            compactions_2 = self.compactions_count(session, self.keyspace, self.table)
+        node1.wait_for_compactions()
+        compactions_2 = self.compactions_count(session, self.keyspace, self.table)
+
+        num_compactions = compactions_2 - compactions_1
+        logging.debug("{} compaction(s) completed".format(num_compactions))
+
+        # Stop node and start with increased smp number
+        logging.debug("Stopping node1")
+        node1.stop(gently=False)
+
+        # verify that only some deletion markers will be kept
+        # and gc_period passed so some tombstones have been removed by compaction
+        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace)
+
+        logging.debug("{} keys are now marked_deleted (0 {} expected < {})".format(
+            numfound, "<" if num_compactions < 2 else "<=", self.keys))
+        assert numfound > 0, "All tombstones were removed"
+
+        logging.debug(f"Start node1 with {self.NEW_SMP} cpus")
+        m = node1.mark_log()
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', f'{self.NEW_SMP}'])
+        # validate that resharding for test keyspace was run
+        node1.watch_log_for([rf"Resharding.*{self.keyspace}/{self.table}"], from_mark=m, timeout=60)
+
+        session: Session = self.patient_cql_connection(node1, self.keyspace)
+
+        # validate that not all deletion markers have been removed after resharding
+        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace)
+        logging.debug("{} keys are now marked_deleted (0 < expected < {})".format(numfound, self.keys))
+        assert numfound != 0, "All tombstones were removed during resharding"
+
+        logging.debug("Verify that no data was resurrected")
+        for x in range(0, self.keys):
+            assert_none(session, f'select * from {self.keyspace}.{self.table} where key = {x}')
+
+        logging.debug("Run compaction and validate that no tombstones are left")
+        node1.compact()
+        node1.wait_for_compactions()
+        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace)
+        logging.debug("{} keys are now marked_deleted (Excpecting 0)".format(numfound))
+        assert numfound == 0, "All tombstones were not removed during resharding"
+
+
 @pytest.mark.dtest_full
 @pytest.mark.dtest_heavy
 class TestReshardingVariants(TestReshardingBase):
@@ -363,11 +491,18 @@ murmur3 = 15
 for node_count in [1, 4]:
     for strategy in strategies:
         cls_name = ('TestResharding_nodes' + str(node_count) + '_with_' + strategy)
-        vars()[cls_name] = type(cls_name, (TestReshardingVariants,), {'nodes': node_count, 'compaction_strategy': strategy,
+        vars()[cls_name] = type(cls_name, (TestReshardingVariants,), {'nodes': node_count,
+                                                                      'compaction_strategy': strategy,
                                                                       'murmur3': murmur3, '__test__': True})
 
 for node_count in [1]:
     for strategy in ['TimeWindowCompactionStrategy']:
         cls_name = ('TestResharding_nodes' + str(node_count) + '_with_' + strategy)
-        vars()[cls_name] = type(cls_name, (TestReshardingSingleNodeGating,), {'nodes': node_count, 'compaction_strategy': strategy,
+        vars()[cls_name] = type(cls_name, (TestReshardingSingleNodeGating,), {'nodes': node_count,
+                                                                              'compaction_strategy': strategy,
                                                                               'murmur3': murmur3, '__test__': True})
+
+for strategy in strategies:
+    cls_name = ('ReshardingTombstones_with_' + strategy)
+    vars()[cls_name] = type(cls_name, (TestReshardingTombstonesSingleNode,), {'compaction_strategy': strategy,
+                                                                              '__test__': True})
