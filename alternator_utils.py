@@ -12,7 +12,7 @@ from decimal import Decimal
 from enum import Enum
 from itertools import chain
 from pprint import pformat
-from typing import List, Dict, Union, Optional, Any, Set
+from typing import List, Dict, Union, Optional, Any, Set, Tuple
 
 import boto3
 import pytest
@@ -21,7 +21,12 @@ from deepdiff import DeepDiff
 from mypy_boto3_dynamodb import DynamoDBClient, DynamoDBServiceResource
 from mypy_boto3_dynamodb.service_resource import Table
 
-from alternator.utils import schemas
+import botocore.client
+from boto3.dynamodb.types import TypeDeserializer
+import requests
+from requests.exceptions import ConnectionError
+from alternator.utils import schemas, enums
+
 from cdc_tests import CDCInitializeHelper
 from dtest_class import Tester, get_ip_from_node
 from dtest_setup_overrides import DTestSetupOverrides
@@ -33,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 # DynamoDB's "AttributeValue", but as decoded by boto3 into Python types,
 # not the JSON serialization.
+from tools import new_node
+
 AttributeValueTypeDef = Union[bytes, bytearray, str, int, Decimal, bool,
                               Set[int], Set[Decimal], Set[str], Set[bytes], Set[bytearray], List[Any],
                               Dict[str, Any], None]
@@ -48,6 +55,7 @@ DEFAULT_STRING_LENGTH = 5
 # 32-byte UUID string -> 222 + 1 + 32 = 255 (The longest dynanodb's table name)
 LONGEST_TABLE_SIZE = 222
 SHORTEST_TABLE_SIZE = 3
+GLOBAL_CONFIG = botocore.client.Config(retries={"max_attempts": 0}, read_timeout=300)
 
 
 class WriteIsolation(Enum):
@@ -141,7 +149,8 @@ class StoppableThread:
     def start(self):
         self.future = self.pool.submit(self.run)
 
-    def run(self):
+    def run(self, verbose=False):
+        logger.debug(f"Running {self.target_name}...")
         while not self._stop_event.is_set():
             logger.debug(f"Running {self.target_name}...")
             self.target(**self.kwargs)
@@ -151,10 +160,14 @@ class StoppableThread:
 
 @pytest.mark.dtest_full
 class BaseAlternator(Tester):
+    _nodes_url_list = None
     keyspace_name_template = "alternator_{}"
     _table_primary_key = schemas.HASH_KEY_NAME
     _table_primary_key_format = "test{}"
-    _dynamo_params = dict(aws_access_key_id="None", aws_secret_access_key="None", region_name="None", verify=False)
+    _dynamo_params = \
+        dict(aws_access_key_id="None", aws_secret_access_key="None", region_name="None", verify=False,
+             config=GLOBAL_CONFIG)
+    alternator_urls = {}
     alternator_apis = {}
     clear_resources_methods = []
 
@@ -164,24 +177,65 @@ class BaseAlternator(Tester):
         for resource_method in self.clear_resources_methods:
             resource_method()
 
-    def _add_api_for_node(self, node: ScyllaNode, is_encrypted: bool = False) -> None:
-        if is_encrypted:
-            node_alternator_address = f"https://{get_ip_from_node(node=node)}:{ALTERNATOR_SECURE_PORT}"
+    def _get_alternator_api_url(self, node: ScyllaNode) -> None:
+        if self.is_encrypted:
+            self.alternator_urls[node.name] = f"https://{get_ip_from_node(node=node)}:{ALTERNATOR_SECURE_PORT}"
         else:
-            node_alternator_address = f"http://{get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
+            self.alternator_urls[node.name] = f"http://{get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
+
+    def get_alternator_api_url(self, node: ScyllaNode) -> None:
+        if node.name not in self.alternator_urls:
+            self._get_alternator_api_url(node=node)
+        return self.alternator_urls[node.name]
+
+    def wait_for_alternator(self, node: ScyllaNode = None, timeout: int = 300) -> None:
+        nodes = self.cluster.nodelist() if node is None else [node]
+        node_urls = {}
+        for node in nodes:
+            node_urls[node.name] = f"{self.get_alternator_api_url(node=node)}/"
+
+        def probe(nodes, allow_connection_error=True):
+            remaining = []
+            for node in nodes:
+                if not node.is_running():
+                    raise RuntimeError(f"Node {node.name} is not running")
+                url = node_urls[node.name]
+                try:
+                    r = requests.get(url, verify=False)
+                    if r.ok:
+                        del node_urls[node.name]
+                        continue
+                    else:
+                        r.raise_for_status()
+                except ConnectionError:
+                    if not allow_connection_error:
+                        raise
+                remaining.append(node)
+            return remaining
+
+        start_time = time.time()
+        nodes = probe(nodes)
+        while nodes:
+            time.sleep(1)
+            last_try = ((time.time() - start_time) >= timeout)
+            nodes = probe(nodes, allow_connection_error=not last_try)
+
+    def _add_api_for_node(self, node: ScyllaNode, timeout: int = 300) -> None:
+        self.wait_for_alternator(node=node, timeout=timeout)
+        node_alternator_address = self.get_alternator_api_url(node=node)
         self.alternator_apis[node.name] = AlternatorApi(
             resource=boto3.resource(
                 service_name="dynamodb", endpoint_url=node_alternator_address, **self._dynamo_params),
             client=boto3.client(service_name="dynamodb", endpoint_url=node_alternator_address, **self._dynamo_params)
         )
 
-    def get_dynamodb_api(self, node: ScyllaNode) -> AlternatorApi:
+    def get_dynamodb_api(self, node: ScyllaNode, timeout: int = 300) -> AlternatorApi:
         if node.name not in self.alternator_apis:
-            self._add_api_for_node(node=node)
+            self._add_api_for_node(node=node, timeout=timeout)
         return self.alternator_apis[node.name]
 
-    def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False,
-                                 is_encrypted: bool = False, extra_config: Optional[dict] = None) -> None:
+    def _configure_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False,
+                                    is_encrypted: bool = False, extra_config: Optional[dict] = None) -> None:
         cluster_config = {
             "start_native_transport": True,
             "alternator_port": ALTERNATOR_PORT,
@@ -189,6 +243,7 @@ class BaseAlternator(Tester):
         }
         cluster_type = "single DC" if not is_multi_dc else "multi DC"
         logger.debug(f"Populating a cluster with {num_of_nodes} nodes for {cluster_type}..")
+        self.is_encrypted = is_encrypted
         if is_encrypted:
             cert_file, key_file = create_self_signed_x509_certificate(test_path=self.cluster.get_path())
             cluster_config['alternator_encryption_options'] = {
@@ -199,13 +254,21 @@ class BaseAlternator(Tester):
             cluster_config['alternator_https_port'] = ALTERNATOR_SECURE_PORT
         if extra_config is not None:
             cluster_config.update(extra_config)
+        logger.debug(f"configure_dynamodb_cluster: {cluster_config}")
+        self.cluster.set_configuration_options(cluster_config)
+
+    def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False,
+                                 is_encrypted: bool = False, extra_config: Optional[dict] = None,
+                                 timeout: int = 300) -> None:
+        self.alternator_urls = {}
+        self._configure_dynamodb_cluster(num_of_nodes=num_of_nodes, is_multi_dc=is_multi_dc,
+                                         is_encrypted=is_encrypted, extra_config=extra_config)
         cluster = self.cluster
-        cluster.set_configuration_options(cluster_config)
         cluster.populate([num_of_nodes, num_of_nodes] if is_multi_dc else num_of_nodes)
         logger.debug("Starting cluster..")
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         for node in self.cluster.nodelist():
-            self._add_api_for_node(node=node, is_encrypted=is_encrypted)
+            self._add_api_for_node(node=node, timeout=timeout)
 
     # pylint:disable=too-many-arguments
     def create_table(self, node: ScyllaNode, table_name: str = TABLE_NAME,
@@ -259,22 +322,32 @@ class BaseAlternator(Tester):
         # since `node.rmtree` remove only the content of the folder, we'll rmnode the parent
         node.rmtree(path=pathlib.Path(node_ks_path).parent)
 
+    def create_nested_items(self, level: int, item_idx: int):
+        if level == 1:
+            return {'a': str(item_idx), 'level1': {'hello': f'world{item_idx}'}}
+        return {'a': str(item_idx), f'level{level}': self.create_nested_items(level=level-1, item_idx=item_idx)}
+
     def create_items(self, primary_key: str = None, items: List[Dict[str, str]] = None,
-                     num_of_items: int = NUM_OF_ITEMS) -> List[Dict[str, str]]:
+                     num_of_items: int = NUM_OF_ITEMS, nested_attributes_levels: int = 0) -> List[Dict[str, str]]:
         items = items or num_of_items
         primary_key = primary_key or self._table_primary_key
         if isinstance(items, int):
             if items < 1:
                 raise ValueError("The number of items should be greater from 1")
-            items = [
-                {primary_key: self._table_primary_key_format.format(item_idx), "x": {"hello": f"world{item_idx}"}, }
-                for item_idx in range(0, items)]
+            if nested_attributes_levels > 0:
+                items = [{primary_key: self._table_primary_key_format.format(item_idx),
+                          "x": self.create_nested_items(level=nested_attributes_levels, item_idx=item_idx), }
+                         for item_idx in range(items)]
+            else:
+                items = [{primary_key: self._table_primary_key_format.format(item_idx),
+                          "x": {"hello": f"world{item_idx}"}, } for item_idx in range(items)]
+
         return items
 
     # pylint:disable=too-many-arguments
     def batch_write_actions(self, table_name: str, node: ScyllaNode, new_items: List[Dict[str, Any]] = None,
                             delete_items: List[Dict[str, str]] = None,
-                            schema: Union[tuple, Dict] = schemas.HASH_SCHEMA):
+                            schema: Union[tuple, Dict] = schemas.HASH_SCHEMA, ignore_errors: bool = False, verbose=True):
         dynamodb_api = self.get_dynamodb_api(node=node)
         table_keys = [key["AttributeName"] for key in schema[0][1]]
         assert new_items or delete_items, "should pass new_items or delete_items, other it's a no-op"
@@ -286,10 +359,16 @@ class BaseAlternator(Tester):
 
         table = dynamodb_api.resource.Table(name=table_name)
         with table.batch_writer() as batch:
-            for item in new_items:
-                batch.put_item(item)
-            for item in delete_items:
-                batch.delete_item({key: item[key] for key in table_keys})
+            try:
+                for item in new_items:
+                    batch.put_item(item)
+                for item in delete_items:
+                    batch.delete_item({key: item[key] for key in table_keys})
+            except Exception as error:
+                if ignore_errors:
+                    logger.info(f'Continuing after exception: {error}')
+                else:
+                    raise error
         return table
 
     def update_items(self, table_name: str, node: ScyllaNode, items: List[Dict] = None,
@@ -432,20 +511,131 @@ class BaseAlternator(Tester):
         stress_thread.start()
         return stress_thread
 
-    def run_read_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS,
-                        verbose: bool = True, consistent_read: bool = True) -> StoppableThread:
-        return self._run_stress(table_name=table_name, node=node, target=self.get_table_items, num_of_item=num_of_item,
-                                verbose=verbose, consistent_read=consistent_read)
+    def run_decommission_then_add_node(self):
+        node_to_remove = self.cluster.nodelist()[-1]
+        logger.info(f'Decommissioning {node_to_remove.name}..')
+        try:
+            node_to_remove.decommission()
+        except Exception as error:
+            logger.info(f'Decommissioning {node_to_remove.name} failed with: {error}')
+            return
+        logger.info(f'Adding new node to cluster..')
+        node = new_node(self.cluster, bootstrap=True)
+        node.start(wait_for_binary_proto=True, wait_other_notice=True)
+        logger.info(f'Node successfully added!')
+        time.sleep(5)
 
-    def run_write_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS) -> StoppableThread:
-        return self._run_stress(table_name=table_name, node=node, target=self.put_table_items, num_of_item=num_of_item)
+    def run_create_table(self):
+        try:
+            node1 = self.cluster.nodelist()[0]
+            self.create_table(table_name=random_string(length=10), node=node1, wait_until_table_exists=False)
+        except Exception:
+            pass
+
+    def run_create_table_thread(self) -> StoppableThread:
+        create_table_thread = StoppableThread(target=self.run_create_table)
+        self.clear_resources_methods.append(lambda: create_table_thread.join())
+        create_table_thread.start()
+        return create_table_thread
+
+    def run_decommission_add_node_thread(self) -> StoppableThread:
+        decommission_thread = StoppableThread(target=self.run_decommission_then_add_node)
+        self.clear_resources_methods.append(lambda: decommission_thread.join())
+        logger.debug(f"Start decommission thread of {decommission_thread.target_name}..")
+        decommission_thread.start()
+        return decommission_thread
+
+    def run_read_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS,
+                        verbose: bool = True, consistent_read: bool = True, **kwargs) -> StoppableThread:
+        return self._run_stress(table_name=table_name, node=node, target=self.get_table_items, num_of_item=num_of_item,
+                                verbose=verbose, consistent_read=consistent_read, **kwargs)
+
+    def run_write_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS, ignore_errors=False,
+                         verbose=False, **kwargs) -> StoppableThread:
+        return self._run_stress(table_name=table_name, node=node, target=self.put_table_items, num_of_item=num_of_item,
+                                ignore_errors=ignore_errors, verbose=verbose, **kwargs)
 
     def get_table(self, table_name: str, node: ScyllaNode):
         return self.get_dynamodb_api(node=node).resource.Table(name=table_name)
 
-    def put_table_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS):
-        items = self.create_items(num_of_items=num_of_items)
-        self.batch_write_actions(table_name=table_name, node=node, new_items=items)
+    def put_table_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
+                        ignore_errors: bool = False, verbose=True, **kwargs):
+        nested_attributes_levels = kwargs['nested_attributes_levels'] if 'nested_attributes_levels' in kwargs else 0
+        items = self.create_items(num_of_items=num_of_items, nested_attributes_levels=nested_attributes_levels)
+        self.batch_write_actions(table_name=table_name, node=node, new_items=items, ignore_errors=ignore_errors,
+                                 verbose=verbose)
+
+    def update_table_nested_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
+                                  consistent_read: bool = True, nested_attributes_levels: int = 1,
+                                  start_index: int = 0):
+        """
+        :param table_name: table to update its items' nested attributes.
+        :param node: node to run quries against.
+        :param num_of_items: number of items to update.
+        :param consistent_read: Is read query consistent or not.
+        :param nested_attributes_levels: levels of nesting attributes per item.
+        :param start_index: the item-index to start updating from.
+
+        1) Read a random item in range.
+        2) update a random nested-level for this item.
+        3) Read the item again and verify it has the expected data with updated nested attribute.
+        """
+        dynamodb_api = self.get_dynamodb_api(node=node)
+        table: Table = dynamodb_api.resource.Table(name=table_name)
+        item_idx = random.randint(start_index, start_index + num_of_items)
+        item = table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{item_idx}'})
+        if 'Item' not in item:
+            logger.debug(f'Item test{item_idx} not found!')
+            return
+        item = item['Item']
+        updated_level = random.randint(1, nested_attributes_levels)
+        level_path = '.'.join([f'level{nested_attributes_levels-level}' for level in range(updated_level)])
+        # Example nested attribute path to update: 'x.level10.level9.level8.level7.level6.level5.level4.level3.level2.a'
+        nested_attribute_path = '.'.join(['x', level_path, 'a'])
+        updated_value = random_string(length=DEFAULT_STRING_LENGTH)
+        table.update_item(Key={self._table_primary_key: f'test{item_idx}'},
+                          UpdateExpression=f'SET {nested_attribute_path} = :val1',
+                          ExpressionAttributeValues={':val1': updated_value})
+        updated_item_query_result = \
+            table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{item_idx}'})['Item']
+        expected_sub_item = self._update_item_nested_attribute(sub_item=item['x'],
+                                                               nested_attributes_levels=nested_attributes_levels,
+                                                               updated_level=updated_level,
+                                                               updated_value=updated_value, item_idx=item_idx)
+        expected_item = {self._table_primary_key: f'test{item_idx}', 'x': expected_sub_item}
+        assert updated_item_query_result == expected_item, f'Found item: {updated_item_query_result} ' \
+                                                           f'is different than expected value of: {expected_item}'
+
+    def _update_item_nested_attribute(self, sub_item: dict, nested_attributes_levels, updated_level, updated_value,
+                                      item_idx) -> dict:
+        """
+        This function gets an original sub-item and the nested attribute to update in it.
+        It then goes over the item nested levels until finds and updated the requested attribute.
+        It then returns the updated sub-item.
+        example:
+        original sub-item:
+        {'a': '1846', 'level3': {'a': '1846', 'level2': {'a': '1846', 'level1': {'hello': 'world1846'}}}}
+        updated sub-item:
+        {'a': '1846', 'level3': {'a': 'ZEA4X', 'level2': {'a': '1846', 'level1': {'hello': 'world1846'}}}}
+
+        :param sub_item: The 'portion' of the item with nested attributes to be updated.
+        :param nested_attributes_levels: how many nested levels in items.
+        :param updated_level: the requested nested level to update.
+        :param updated_value: the value to update nested attribute with.
+        :param item_idx: item index.
+        :return: the updated sub-item.
+        """
+        if updated_level == 1:
+            sub_level_key = f'level{nested_attributes_levels}'
+            sub_item[sub_level_key].update({'a': updated_value})
+            return sub_item
+        next_level_num = nested_attributes_levels-1
+        next_level = f'level{nested_attributes_levels}'
+        return {'a': sub_item['a'], next_level: self._update_item_nested_attribute(sub_item=sub_item[next_level],
+                                                                                   nested_attributes_levels=next_level_num,
+                                                                                   updated_level=updated_level - 1,
+                                                                                   updated_value=updated_value,
+                                                                                   item_idx=item_idx)}
 
     def get_table_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
                         verbose: bool = True, consistent_read: bool = True):
@@ -454,11 +644,9 @@ class BaseAlternator(Tester):
         logger.debug(f"Starting queries of: {num_of_items} items with ConsistentRead = {consistent_read}")
         if verbose:
             logger.debug("First Item in range: {}".format(
-                table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: 'test0'})['Item']))
+                table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: 'test0'})))
             logger.debug("Last Item in range: {}".format(
-                table.get_item(ConsistentRead=consistent_read,
-                               Key={self._table_primary_key: f'test{num_of_items - 1}'})[
-                    'Item']))
+                table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{num_of_items - 1}'})))
 
         for idx in range(num_of_items):
             table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{idx}'})
@@ -588,12 +776,9 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
         })
         return dtest_setup_overrides
 
-    def _add_api_for_node(self, node: ScyllaNode, is_encrypted: bool = False) -> None:
-        super(BaseAlternatorStream, self)._add_api_for_node(node=node)
-        if is_encrypted:
-            node_stream_address = f"https://{get_ip_from_node(node=node)}:{ALTERNATOR_SECURE_PORT}"
-        else:
-            node_stream_address = f"http://{get_ip_from_node(node=node)}:{ALTERNATOR_PORT}"
+    def _add_api_for_node(self, node: ScyllaNode, timeout: int = 300) -> None:
+        super(BaseAlternatorStream, self)._add_api_for_node(node=node, timeout=timeout)
+        node_stream_address = self.get_alternator_api_url(node=node)
         self.alternator_apis[node.name].stream = boto3.client(
             service_name='dynamodbstreams', endpoint_url=node_stream_address, **self._dynamo_params)
 
@@ -614,12 +799,12 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
         return get_stream_arn()
 
     def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False,
-                                 is_encrypted: bool = False, extra_config: Optional[dict] = None):
-        configuration_options = {"start_native_transport": True, "alternator_port": ALTERNATOR_PORT,
-                                 "alternator_write_isolation": "always"}
-        configuration_options.update(extra_config or {})
-        self.cluster.set_configuration_options(configuration_options)
+                                 is_encrypted: bool = False, extra_config: Optional[dict] = None,
+                                 timeout: int = 300) -> None:
+        self._configure_dynamodb_cluster(num_of_nodes=num_of_nodes, is_multi_dc=is_multi_dc,
+                                         is_encrypted=is_encrypted, extra_config=extra_config)
         self.populate_sequentially(n=num_of_nodes, wait_other_notice=True)
+        self.wait_for_alternator(timeout=timeout)
 
     def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME, num_of_items: int = NUM_OF_ITEMS,
                                wait_for_active_stream=True, **kwargs):
@@ -629,19 +814,44 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
             stream_arn_details = self.wait_for_active_stream(node=node, table_name=table.name)
         return stream_arn_details
 
-    def get_records(self, node: ScyllaNode, stream_arn: str, num_of_requests: int, timeout: int = 30):
+    @staticmethod
+    def extract_data_from_responses(responses):
+        """
+        Extract the data from each response according the stream's type.
+        Also, removing all the additional DynamoDB fields that were added by the stream.
+        The method returns a list of dictionaries, like the list of items that we generate.
+        """
+        deserializer = TypeDeserializer()
+        response_key_translate = {
+            enums.StreamViewType.KEYS_ONLY.value: 'Keys',
+            enums.StreamViewType.NEW_AND_OLD_IMAGES.value: 'NewImage',
+            enums.StreamViewType.NEW_IMAGE.value: 'NewImage',
+            enums.StreamViewType.OLD_IMAGE.value: 'OldImage',
+        }
+        records = []
+        for response in responses:
+            if response['eventName'] == 'MODIFY':
+                response_data = response['dynamodb'][response_key_translate[response['dynamodb']['StreamViewType']]]
+                records.append({key: deserializer.deserialize(value) for key, value in response_data.items()})
+        return records
+
+    def get_responses(self, node: ScyllaNode, stream_arn: str, num_of_requests: int, timeout: int = None):
         """
         The function extracts "num_of_requests" requests from the stream. For each request, the method extracts the
          information itself and does not return all the request details received from the stream.
-
         * Due to the current implementation, each new item does two requests (delete and insert).
         """
-        records = []
         dynamodb_api = self.get_dynamodb_api(node=node)
+        # According to the following https://github.com/scylladb/scylla/issues/6929 issue, there is a delay of 10
+        #  seconds between the insertion until the stream is updated
+        alternator_streams_time_window = 15
+        timeout = timeout or alternator_streams_time_window
 
-        def _get_records():
-            shard_iterators, next_iterators = [], []
+        def get_responses():
+            logger.debug(f'Search "{num_of_requests}" requests in "{node.name}"')
+            _responses, shard_iterators, next_iterators = [], [], []
             describe_stream = dynamodb_api.stream.describe_stream(StreamArn=stream_arn)
+            logger.info(f'"Describe stream is: {describe_stream}')
             while True:
                 for shard in describe_stream['StreamDescription']['Shards']:
                     shard_iterators.append(dynamodb_api.stream.get_shard_iterator(
@@ -653,30 +863,47 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
                 describe_stream = dynamodb_api.stream.describe_stream(
                     StreamArn=stream_arn, ExclusiveStartShardId=last_shard)
 
-            start_time = time.time()
             is_loop_stop = False
-            while len(records) < num_of_requests and not is_loop_stop:
+            _start_time = time.time()
+            while len(_responses) < num_of_requests and not is_loop_stop:
                 for shard_iterator in shard_iterators:
-                    if (time.time() - start_time) > timeout:
+                    if (time.time() - _start_time) > timeout:
                         is_loop_stop = True
                         break
                     response = dynamodb_api.stream.get_records(ShardIterator=shard_iterator, Limit=1000)
-                    if response['NextShardIterator']:
+                    if response.get('NextShardIterator'):
                         next_iterators.append(response['NextShardIterator'])
-                    if response['Records']:
-                        records.extend(response['Records'])
+                    if response.get('Records'):
+                        _responses.extend(response['Records'])
 
                 shard_iterators = copy(next_iterators)
                 next_iterators.clear()
+            return _responses
 
-        _get_records()
-        result = []
-        for record in records:
-            # Each record contains a lot of information, information about the request, the type of keys, etc.
-            # Therefore, from every request for a stream extracts only the keys and the values themselves and return
-            #  a list of dictionaries ( like the list of items we have built).
-            result.append({key: list(value.values())[0] for key, value in record['dynamodb']['Keys'].items()})
-        return result
+        start_time = time.time()
+        responses = get_responses()
+        is_continue_loop = True
+        while len(responses) < num_of_requests and is_continue_loop:
+            logger.info(f'Founding "{len(responses)}" responses and not "{num_of_requests}" responses.')
+            time_diff = timeout - (time.time() - start_time)
+            if time_diff > 0:
+                logger.info(f'Sleeping  "{time_diff:.4}", and searching the missing "{num_of_requests - len(responses)}"'
+                            f' responses.')
+                time.sleep(time_diff)
+            responses.extend(get_responses())
+            is_continue_loop = (timeout - (time.time() - start_time)) > 0
+
+        logger.info(f'Finding "{len(responses)}" response after "{(time.time() - start_time):.6}"')
+        return responses
+
+    def compare_table_keys_only_data(self, expected_table_data: List[Dict[str, str]], table_name: str = None,
+                                     node: ScyllaNode = None, ignore_order: bool = True, consistent_read: bool = True,
+                                     table_data: List[Dict[str, str]] = None, **kwargs) -> DeepDiff:
+        if table_data is None:
+            table_data = self.scan_table(table_name=table_name, node=node, ConsistentRead=consistent_read, **kwargs)
+        expected_table_data = [{self._table_primary_key: item[self._table_primary_key]} for item in expected_table_data]
+        return DeepDiff(t1=expected_table_data, t2=table_data, ignore_order=ignore_order,
+                        ignore_numeric_type_changes=True)
 
 
 def random_string(length: int, chars=string.ascii_uppercase + string.digits):
@@ -714,3 +941,120 @@ def full_query(table, consistent_read=True, **kwargs):
         response = table.query(ExclusiveStartKey=response['LastEvaluatedKey'], **kwargs)
         items.extend(response['Items'])
     return items
+
+
+class StreamsTable:
+    """
+    Store and track a Streams processed table state.
+    """
+
+    def __init__(self, stream_arn: str, dynamodb_api):
+        self.stream_arn = stream_arn
+        self.dynamodb_api = dynamodb_api
+        self.describe_stream = {}
+        self.shards = []
+        self.update_shards()
+
+    def get_describe_stream(self, shard_id=None):
+        if shard_id:
+            return self.dynamodb_api.stream.describe_stream(StreamArn=self.stream_arn, ExclusiveStartShardId=shard_id)
+        return self.dynamodb_api.stream.describe_stream(StreamArn=self.stream_arn)
+
+    def update_shards(self):
+        self.describe_stream = describe_stream = self.get_describe_stream()
+        shards = describe_stream['StreamDescription']['Shards']
+        last_shard = describe_stream["StreamDescription"].get("LastEvaluatedShardId")
+        while last_shard:
+            describe_stream = self.get_describe_stream(shard_id=last_shard)
+            shards.extend(describe_stream['StreamDescription']['Shards'])
+            last_shard = describe_stream["StreamDescription"].get("LastEvaluatedShardId")
+        logger.info('Shards updated status is:')
+        logger.info(f'Existing number of shards [{len(self.shards)}] is updated to: [{len(shards)}]')
+        logger.info(f'Existing number of open shards [{self.count_open_shards()}] '
+                    f'is updated to: [{self.count_open_shards(shards)}]')
+        self.shards = shards
+
+    @staticmethod
+    def is_shard_open(shard) -> bool:
+        return 'EndingSequenceNumber' not in shard['SequenceNumberRange'] or \
+               not shard['SequenceNumberRange']['EndingSequenceNumber']
+
+    def count_open_shards(self, shards: list = None):
+        shards = shards or self.shards
+        return len([shard for shard in shards if self.is_shard_open(shard=shard)])
+
+    def _get_sequence_number_shard_iterator(self, shard_id, shard_iterator_type, sequence_number):
+        return self.dynamodb_api.stream.get_shard_iterator(
+            StreamArn=self.stream_arn, ShardId=shard_id, ShardIteratorType=shard_iterator_type,
+            SequenceNumber=sequence_number)['ShardIterator']
+
+    def _get_trim_horizon_shard_iterator(self, shard_id):
+        return self.dynamodb_api.stream.get_shard_iterator(
+            StreamArn=self.stream_arn, ShardId=shard_id, ShardIteratorType='TRIM_HORIZON')['ShardIterator']
+
+    def get_shard_iterators(self, shards: list = None, shard_iterator_type: str = 'TRIM_HORIZON', verbose=True) -> list:
+        shards = shards or self.shards
+        shard_iterators = list()
+
+        if shard_iterator_type == 'TRIM_HORIZON':
+            for shard in shards:
+                shard_iterators.append(self._get_trim_horizon_shard_iterator(shard_id=shard['ShardId']))
+        else:
+            for shard in shards:
+                # Currently getting shard iterators only by shard's StartingSequenceNumber
+                sequence_number = shard['SequenceNumberRange']['StartingSequenceNumber']
+                shard_iterators.append(self._get_sequence_number_shard_iterator(shard_id=shard['ShardId'],
+                                                                                shard_iterator_type=shard_iterator_type,
+                                                                                sequence_number=sequence_number))
+        if verbose:
+            logger.debug(f"Found {len(shard_iterators)} shard iterators for {len(shards)} shards.")
+        return shard_iterators
+
+    def get_iterators_records(self, shard_iterators: list = None) -> Tuple[list, List]:
+        records_responses = list()
+        next_iterators = list()
+        shard_iterators = shard_iterators or self.get_shard_iterators()
+        for shard_iterator in shard_iterators:
+            response = self.dynamodb_api.stream.get_records(ShardIterator=shard_iterator, Limit=1000)
+            if response.get('NextShardIterator'):
+                next_iterators.append(response['NextShardIterator'])
+            if response.get('Records'):
+                records_responses.extend(response['Records'])
+
+        return records_responses, next_iterators
+
+    def get_records(self, shard_iterators: list = None, timeout: int = 15, multiple_iterators: bool = True, verbose=True) -> list:
+        """
+        Getting Stream records by shard iterators.
+        :param shard_iterators: shard iterators list.
+        :param timeout: for how long it'll run queries for more records.
+        :param multiple_iterators: should it continue query by the 'next' received iterators.
+        :return: the records found by given shard iterators.
+        """
+        records_responses, next_iterators = self.get_iterators_records(shard_iterators=shard_iterators)
+        total_iterators_num = len(shard_iterators)
+        if multiple_iterators:
+            _start_time = time.time()
+            timeout_exceeded = False
+            while next_iterators and not timeout_exceeded:
+                total_iterators_num += len(next_iterators)
+                next_records_response, next_iterators = self.get_iterators_records(shard_iterators=next_iterators)
+                if next_records_response:
+                    records_responses.extend(next_records_response)
+                timeout_exceeded = (time.time() - _start_time) > timeout
+        if verbose:
+            logger.debug(f"Found {len(records_responses)} records for {total_iterators_num} shard iterators.")
+        return records_responses
+
+    def get_open_shards_records(self):
+        open_shards = [shard for shard in self.shards if self.is_shard_open(shard)]
+        open_shard_iterators = self.get_shard_iterators(shards=open_shards)
+        return self.get_records(shard_iterators=open_shard_iterators)
+
+    @property
+    def start_sequence_numbers_set(self):
+        return set([shard['SequenceNumberRange']['StartingSequenceNumber'] for shard in self.shards])
+
+    @property
+    def start_sequence_numbers_list(self):
+        return [int(sequence_number) for sequence_number in self.start_sequence_numbers_set]

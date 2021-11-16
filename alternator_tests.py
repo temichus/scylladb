@@ -1,11 +1,21 @@
 import logging
+import json
 import operator
 import os
 import random
 import string
+import subprocess
 import tempfile
 import time
 from copy import deepcopy
+from concurrent.futures.thread import ThreadPoolExecutor
+from distutils import dir_util
+from pathlib import Path
+from threading import Thread
+from copy import deepcopy
+
+import requests
+from boto3.dynamodb.conditions import Attr
 from decimal import Decimal
 from pprint import pformat
 from threading import Thread
@@ -14,6 +24,7 @@ import boto3.dynamodb.types
 import pytest
 from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError, EndpointConnectionError
+from ccmlib.scylla_node import ScyllaNode
 from deepdiff import DeepDiff
 
 from alternator.utils import schemas
@@ -25,8 +36,13 @@ from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest_class import wait_for, get_ip_from_node
 from scylla_tools import set_trace_probability
 from tools.cluster import new_node
+from tools.retrying import retrying
 
 logger = logging.getLogger(__name__)
+
+
+class SlowQueriesLoggingError(Exception):
+    pass
 
 
 @pytest.mark.dtest_full
@@ -53,6 +69,7 @@ class TesterAlternator(BaseAlternator):
         diff = self.compare_table_data(table_name=table_name, expected_table_data=table_data, node=node1)
         assert not diff, f"The following items are missing:\n{pformat(diff)}"
 
+    @pytest.mark.single_node
     def test_create_snapshot_and_refresh(self, request):
         """
         The test checks the behavior of the `snapshot` and `refresh` commands for Alternator
@@ -179,7 +196,9 @@ class TesterAlternator(BaseAlternator):
 
         dc2_node = next(node for node in self.cluster.nodelist() if node.data_center != dc1_node.data_center)
         logger.info(f"Reading Alternator queries from node {dc2_node.name} on data-center {dc2_node.data_center}")
-        self.get_table_items(table_name=TABLE_NAME, node=dc2_node, consistent_read=False)
+        wait_for(func=lambda: not self.compare_table_data(expected_table_data=items, table_name=TABLE_NAME,
+                                                          node=dc2_node, consistent_read=False),
+                 timeout=5 * 60, text="Waiting until the DC2 will contain all items that insert in DC1")
 
     def test_dynamo_reads_after_new_node_repair(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -225,6 +244,7 @@ class TesterAlternator(BaseAlternator):
         diff_result = DeepDiff(t1=items, t2=got_condition_items, ignore_order=True)
         assert not diff_result, f"The following items differs:\n{pformat(diff_result)}"
 
+    @pytest.mark.single_node
     def test_batch_with_auto_snapshot_false(self):
         """Test triggers scylladb/scylla#6995"""
 
@@ -236,6 +256,36 @@ class TesterAlternator(BaseAlternator):
             for i in range(10000):
                 batch.put_item({'pk': random_string(length=DEFAULT_STRING_LENGTH), 'c': i, 'a': load})
         self.delete_table(TABLE_NAME, node1)
+
+    def test_nested_attributes(self):
+        """
+        Test scenario:
+        1) Create a cluster, a table, fill it with items of nested attributes.
+        2) Run background 'noise': write-stress, read-stress and decommission-add-node-thread.
+        3) Run a main loop of alternator update queries which updates nested attributes.
+        4) After each update query, the item is read again by a query and verified to have the expected updated data.
+        """
+        self.prepare_dynamodb_cluster(num_of_nodes=4)
+        node1, node2, node3 = self.cluster.nodelist()[:3]
+        self.create_table(node=node1)
+        nested_attributes_levels = 10
+        num_of_items = 4000
+        self.put_table_items(table_name=TABLE_NAME, node=node1, nested_attributes_levels=nested_attributes_levels,
+                             num_of_items=num_of_items * 2)
+        write_stress = self.run_write_stress(table_name=TABLE_NAME, node=node1,
+                                             nested_attributes_levels=nested_attributes_levels,
+                                             num_of_item=num_of_items)
+        get_items_thread = self.run_read_stress(table_name=TABLE_NAME, node=node2, num_of_item=num_of_items * 2,
+                                                consistent_read=True)
+        decommission_thread = self.run_decommission_add_node_thread()
+        for _ in range(num_of_items):
+            self.update_table_nested_items(table_name=TABLE_NAME, node=node3, consistent_read=True,
+                                           nested_attributes_levels=nested_attributes_levels, start_index=num_of_items,
+                                           num_of_items=num_of_items)
+
+        write_stress.join()
+        get_items_thread.join()
+        decommission_thread.join()
 
     def test_write_isolation_during_stress(self):
         """
@@ -291,6 +341,8 @@ class TesterAlternator(BaseAlternator):
         dc2_table.update_item(**conditional_update_short_circuit)
         dc2_node.stop()
         node1.start()
+
+        self.wait_for_alternator(node=node1)
         logger.info(f"Reading Alternator queries from node {node1.name} on data-center {node1.data_center}")
         item = table.get_item(Key={self._table_primary_key: new_pk_val}, ConsistentRead=True)['Item']
         assert item == {self._table_primary_key: new_pk_val, 'a': 1, 'c': 3}
@@ -655,7 +707,6 @@ class TesterAlternator(BaseAlternator):
         logger.info(f"Executing the following command '{cmd}'")
         node1.nodetool(cmd)
 
-    @pytest.mark.require("#6521")
     def test_table_name_with_dot_prefix(self):
         valid_dynamodb_chars = (list(string.digits) + list(string.ascii_uppercase) + ["_", "-", "."])
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -666,6 +717,16 @@ class TesterAlternator(BaseAlternator):
         logger.info("Creating new table with dot ('.') char prefix")
         self.create_table(node=node1, table_name=table_name_with_dot_prefix)
         cmd = f"tablestats alternator_{table_name_with_dot_prefix}"
+        logger.info(f"Executing the following command '{cmd}' (expected to fail)")
+        try:
+            node1.nodetool(cmd)
+        except Exception as e:
+            msg = str(e)
+            assert "Unknown keyspace: alternator_" in msg, msg
+
+        # The slash at the end tells nodetool is required
+        # when the keyspace contains dot(s)
+        cmd = f"{cmd}/"
         logger.info(f"Executing the following command '{cmd}'")
         node1.nodetool(cmd)
 
@@ -739,6 +800,7 @@ class TesterAlternator(BaseAlternator):
         assert n_items == total_items
         assert n_bad_items == 0
 
+    @pytest.mark.single_node
     def test_tls_connection(self):
         """
         Create a HTTPS (SSL/TLS) connection, and verify the test can create a table and insert data into it.
@@ -747,11 +809,13 @@ class TesterAlternator(BaseAlternator):
         """
         new_items = []
         table_name = TABLE_NAME
+
         logger.info('Configuring secured Alternator session with "self signed x509 certificate"')
-        self.prepare_dynamodb_cluster(num_of_nodes=3, is_encrypted=True)
+        self.prepare_dynamodb_cluster(num_of_nodes=1, is_encrypted=True)
         nodes = self.cluster.nodelist()
         node1 = nodes[0]
 
+        logger.debug("Create table")
         self.create_table(table_name=table_name, node=node1)
         for node_idx, node in enumerate(nodes):
             node.grep_log(f'Alternator server listening on {get_ip_from_node(node=node)}, HTTP port OFF, HTTPS'
@@ -883,3 +947,227 @@ class TesterAlternator(BaseAlternator):
         for method_name in expected_messages_dict:
             logger.info(f'Verifying all traces of "{method_name}_item" method name')
             verify_traces_messages(method_name=method_name)
+
+    @pytest.mark.parametrize("sttableloder_flag", ['', '-v', '-nb'], ids=['without_flag', 'v_flag', 'nb_flag'])
+    @pytest.mark.single_node
+    def test_sstableloder_scenario(self, sttableloder_flag):
+        table_name = TABLE_NAME
+        num_of_items = 100
+        self.prepare_dynamodb_cluster(num_of_nodes=1)
+        node1, = self.cluster.nodelist()
+
+        logger.info('Creating the table %s' % table_name)
+        self.create_table(node=node1, table_name=table_name)
+        data_generator = AlternatorDataGenerator(
+            primary_key=self._table_primary_key, primary_key_format=self._table_primary_key_format)
+        items = data_generator.create_multiple_items(num_of_items=num_of_items, mode=TypeMode.MIXED)
+        _ = {item.__setitem__('":attr"', idx) for idx, item in enumerate(items)}
+        logger.info('Writing "%d" items to table "%s"' % (num_of_items, table_name))
+        self.batch_write_actions(table_name=table_name, node=node1, new_items=items)
+
+        nodetool_cmd = 'drain'
+        logger.info('Executing nodetool "%s" command for node "%s"' % (nodetool_cmd, node1.name))
+        node1.nodetool(nodetool_cmd)
+        node1.stop()
+
+        logger.info("Making a copy of the sstables")
+        # make a copy of the sstables
+        data_dir = os.path.join(node1.get_path(), 'data')
+        copy_root = os.path.join(node1.get_path(), 'data_copy')
+        for ddir in os.listdir(data_dir):
+            keyspace_dir = os.path.join(data_dir, ddir)
+            if os.path.isdir(keyspace_dir) and ddir != 'system':
+                copy_dir = os.path.join(copy_root, ddir)
+                dir_util.copy_tree(keyspace_dir, copy_dir)
+
+        logger.info("Wiping out the data and restarting cluster")
+        # wipe out the node data.
+        self.cluster.clear()
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+        self.wait_for_alternator()
+        logger.info('Creating again the table %s' % table_name)
+        self.create_table(node=node1, table_name=table_name)
+
+        table_file_path = Path(copy_root) / f'alternator_{table_name}'
+        sstableloader_path = node1.get_tool('sstableloader')
+        if isinstance(sstableloader_path, str):
+            sstableloader_path = [sstableloader_path]
+        # If the user runs the test through a docker, he will get a list and not the sstableloader path as
+        # string
+        for table_folder_name in os.listdir(table_file_path):
+            table_dir_path = str(table_file_path / table_folder_name)
+            cmd_args = [*sstableloader_path, '--nodes', get_ip_from_node(node1), str(table_dir_path)]
+            if sttableloder_flag:
+                cmd_args = [*sstableloader_path, sttableloder_flag, '--nodes', get_ip_from_node(node1),
+                            str(table_dir_path)]
+            p_open = subprocess.Popen(cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p_open.communicate()
+            exit_status = p_open.returncode
+            stderr = stderr.decode()
+            stdout = stdout.decode()
+            assert not stderr, f"The stderr of sstableloader is not empty: {stderr}"
+            assert 'Error' not in stdout, f'The stdout contains error message: {stdout}'
+            assert 'exception' not in stdout, f'The stdout contains exception message: {stdout}'
+            assert not exit_status, "sstableloader exited with a non-zero status: %d" % exit_status
+
+        logger.info('Verifying the table contains the correct data')
+        diff = self.compare_table_data(expected_table_data=items, table_name=table_name, node=node1)
+        assert not diff, f"The following items are missing:\n{pformat(diff)}"
+
+    @pytest.mark.single_node
+    def test_limit_concurrent_requests(self):
+        """
+            Test Support limiting the number of concurrent requests in alternator.
+            Verifies https://github.com/scylladb/scylla/issues/7294
+            Test scenario:
+            1) Configure cluster requests-concurrency-limit to a low number.
+            2) Issue Alternator 'heavy' requests concurrently (create-table)
+            3) wait for RequestLimitExceeded error response.
+        """
+        concurrent_requests_limit = 5
+        extra_config = {'max_concurrent_requests_per_shard': concurrent_requests_limit, 'num_tokens': 1}
+        self.prepare_dynamodb_cluster(num_of_nodes=1, extra_config=extra_config)
+        node1 = self.cluster.nodelist()[0]
+        create_tables_threads = []
+        for tables_num in range(concurrent_requests_limit*5):
+            create_tables_threads.append(self.run_create_table_thread())
+
+        @retrying(num_attempts=15, sleep_time=2, allowed_exceptions=ConcurrencyLimitNotExceeded,
+                  message="Running create-table request")
+        def wait_for_create_table_request_failure():
+            try:
+                self.create_table(table_name=random_string(length=10), node=node1, wait_until_table_exists=False)
+            except Exception as error:
+                if 'RequestLimitExceeded' in error.args[0]:
+                    return
+                raise
+            raise ConcurrencyLimitNotExceeded
+
+        wait_for_create_table_request_failure()
+
+        for thread in create_tables_threads:
+            thread.join()
+
+    @staticmethod
+    def _set_slow_query_logging_api(run_on_node: ScyllaNode, is_enable: bool = True, threshold: int = None):
+        """
+        :param run_on_node: node to send the REST API command.
+        :param is_enable: enable/disable slow-query logging
+        :param threshold: a numeric value for the minimum duration to a query as slow.
+        """
+        enable = 'true' if is_enable else 'false'
+        api_cmd = f"http://{run_on_node.address()}:10000/storage_service/slow_query?enable={enable}"
+        logger.info(f"Send restful api: {api_cmd}")
+        result = requests.post(api_cmd)
+        result.raise_for_status()
+        if threshold is not None:
+            api_cmd = f"http://{run_on_node.address()}:10000/storage_service/slow_query?threshold={threshold}"
+            logger.info(f"Send restful api: {api_cmd}")
+            result = requests.post(api_cmd)
+            result.raise_for_status()
+        api_cmd = f"http://{run_on_node.address()}:10000/storage_service/slow_query"
+        logger.info(f"Send restful api: {api_cmd}")
+        response = requests.get(api_cmd)
+        response_json = response.json()
+        if response_json['enable'] != is_enable:
+            raise SlowQueriesLoggingError(
+                f"Got unexpected slow-query-logging values. enable: {response_json['enable']}")
+        if threshold is not None and response_json['threshold'] != threshold:
+            raise SlowQueriesLoggingError(f"Got unexpected threshold value: {response_json['threshold']}")
+
+    @retrying(num_attempts=10, sleep_time=2, allowed_exceptions=SlowQueriesLoggingError,
+              message="wait_for_slow_query_logs")
+    def wait_for_slow_query_logs(self, node):
+        """
+        Wait for a non-empty query of the scylla.alternator.system_traces.node_slow_log table.
+        :param node: the node for running table full scan
+        :return: full scan of node_slow_log table
+        """
+        results = self.scan_table('.scylla.alternator.system_traces.node_slow_log', node=node,
+                                  consistent_read=False)
+        if results:
+            return results
+        raise SlowQueriesLoggingError
+
+    @staticmethod
+    def is_found_in_slow_queries_log(name: str, log_result: list) -> bool:
+        """
+        :param name: name of alternator operation name of object name to search for.
+        :param log_result: a slow-query-logging table full scan result to search in.
+        :return: is name found in the given result full-scan query.
+        """
+        if not any(name in result_op['parameters'] for result_op in log_result):
+            logger.info(f"{name} is not found in slow-query-log result\n Log result start: {log_result[0]}\n "
+                        f"Log result end: {log_result[-1]}")
+            return False
+        return True
+
+    def create_tables(self, count: int, node) -> list:
+        """
+
+        :param count: number of tables to create
+        :param node: the node to run create-table commands on.
+        :return: a list of table names.
+        """
+        table_names = []
+        for _ in range(count):
+            name = random_string(length=10)
+            self.create_table(table_name=name, node=node)
+            table_names.append(name)
+        return table_names
+
+    @retrying(num_attempts=10, sleep_time=2, allowed_exceptions=SlowQueriesLoggingError,
+              message="wait_for_a_specific_slow_query_logs")
+    def wait_for_create_table_slow_query_logs(self, node, table_names: list):
+        """
+        Verify all created tables are logged as slow-query operation.
+        """
+        logger.info("Get logging results for 'createTable' queries")
+        results = self.wait_for_slow_query_logs(node=node)
+        create_table_results = [res for res in results if 'CreateTable' in res['parameters']]
+        for table in table_names:
+            if not self.is_found_in_slow_queries_log(name=table, log_result=create_table_results):
+                raise SlowQueriesLoggingError(f'Table {table} not found in slow-query-log full-scan')
+
+    # @pytest.mark.single_node
+    def test_slow_query_logging(self):
+        """
+            Test slow query logging for alternator queries.
+            Verifies https://github.com/scylladb/scylla/pull/8298
+            Test scenario:
+            1) Configure slow-query threshold to a low number.
+            2) Issue Alternator long-enough queries
+            3) Verify slow queries of create-table are logged.
+            4) Verify slow queries of create-table are stopped being logged after set to disabled.
+        """
+        # Setting a small enough threshold value that is lower than createTable operation minimum duration.
+        slow_query_threshold = 2
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        node1 = self.cluster.nodelist()[0]
+        logger.info("Running background stress and topology changes..")
+        self.create_table(table_name=TABLE_NAME, node=node1)
+        stress_thread = self.run_write_stress(table_name=TABLE_NAME, node=node1, num_of_item=1000, ignore_errors=True)
+        decommission_thread = self.run_decommission_add_node_thread()
+
+        logger.info("Enable slow-query-logging with specified threshold")
+        self._set_slow_query_logging_api(run_on_node=node1, threshold=slow_query_threshold)
+        logger.info("Execute 5 'createTable' slow-enough queries")
+        first_table_names = self.create_tables(count=5, node=node1)
+        logger.info("Verify all created tables are found in log results")
+        self.wait_for_create_table_slow_query_logs(node=node1, table_names=first_table_names)
+        logger.info("Disable slow-query-logging")
+        self._set_slow_query_logging_api(run_on_node=node1, is_enable=False)
+        logger.info("Execute 5 additional 'createTable' slow-enough queries after slow-query-logging is disabled")
+        second_table_names = self.create_tables(count=5, node=node1)
+        results = self.wait_for_slow_query_logs(node=node1)
+        logger.info("Verify latter created tables are not found in log results")
+        for table_name in second_table_names:
+            assert not self.is_found_in_slow_queries_log(name=table_name, log_result=results), \
+                f'Found unexpected logged slow query: {table_name}'
+
+        stress_thread.join()
+        decommission_thread.join()
+
+
+class ConcurrencyLimitNotExceeded(Exception):
+    pass
