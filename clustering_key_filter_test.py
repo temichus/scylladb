@@ -268,7 +268,7 @@ class ClusteringKeyFilterTest(Tester):
             time.sleep(0.2)
 
 
-strategies = ['DateTieredCompactionStrategy', 'NullCompactionStrategy']
+strategies = ['TimeWindowCompactionStrategy', 'NullCompactionStrategy']
 for strategy in strategies:
     cls_name = ('ClusteringKeyFilterTest_with_' + strategy)
     vars()[cls_name] = type(cls_name, (ClusteringKeyFilterTest,), {'strategy': strategy, '__test__': True})
