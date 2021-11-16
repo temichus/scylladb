@@ -130,7 +130,7 @@ class TestTTL(Tester):
         logger.debug("Verifying that data has expired")
         if list_res:
             list_res = rows_to_list(session.execute(simple_query))
-            assert list_res == [], f"Expected [] from {query}, but got {list_res}"
+            assert not list_res, f"Expected [] from {query}, but got {list_res}"
         assert_row_count(session, table, 0)
 
     @pytest.mark.single_node
@@ -534,7 +534,7 @@ class TestTTL(Tester):
         self.session1.execute(f"insert into session (id, usr) values ('abc', 'abc') USING TTL {max_ttl}")
         assert_row_count(self.session1, 'session', 1)
 
-        MAX_DELETE_TIME = int(2 ** 31 - 1)
+        MAX_DELETE_TIME = 2 ** 31 - 1
         start_time = time.time()
         boundary_ttl = MAX_DELETE_TIME - int(start_time)
 
