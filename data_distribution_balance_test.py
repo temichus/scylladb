@@ -13,8 +13,7 @@ ALLOW_BALANCE_DIFF = 0.2
 PP = pprint.PrettyPrinter(indent=2)
 
 
-@pytest.fixture(params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-                        'TimeWindowCompactionStrategy'])
+@pytest.fixture(params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'])
 def stress_cmd(request):
     return """write cl=QUORUM n=210000 -schema replication(factor=3) compaction(strategy={strategy}) \
                     -port jmx=6868 -mode cql3 native -rate threads=50 \
