@@ -18,8 +18,7 @@ logger = logging.getLogger(__file__)
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-@pytest.mark.parametrize('strategy', ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy',
-                                      'DateTieredCompactionStrategy', 'TimeWindowCompactionStrategy'])
+@pytest.mark.parametrize('strategy', ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'])
 class TestCompaction(Tester):
     strategy = None
 
@@ -298,7 +297,7 @@ class TestCompaction(Tester):
         """Ensure that switching strategies does not result in problems.
         Insert data, switch strategies, then check against data loss.
         """
-        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+        strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy',
                       'TimeWindowCompactionStrategy']
 
         if self.strategy in strategies:
