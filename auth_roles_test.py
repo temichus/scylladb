@@ -1,10 +1,8 @@
-import os
 import re
 import time
 import logging
 import pytest
 
-from ccmlib.common import get_version_from_build, isScylla
 from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest
 from cassandra.cluster import NoHostAvailable
 from cassandra.protocol import SyntaxException  # pylint:disable=no-name-in-module
