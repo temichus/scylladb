@@ -99,6 +99,25 @@ class TestNativeTransportSSL(Tester):
         session = self._create_cluster_session(node1, use_ssl=True, ca_certs=True)
         self._putget(cluster, session)
 
+    def test_connect_to_ssl_client_auth_revocation_list(self):
+        """
+        Connecting to SSL enabled native transport port should not be possible if we are revoked
+        Should be run in concert with test above to verify the connection with these certs as
+        auth and _no_ revoke works.
+        """
+
+        cluster = self._populateCluster(enableSSL=True, requireAuth=True, useRevocation=True)
+        node1 = cluster.nodelist()[0]
+
+        cluster.start(jvm_args=['--logger-log-level', 'cql_server=debug'])
+
+        try:  # hack around assertRaise's lack of msg parameter
+            # try to connect with cert in revocation list
+            self._create_cluster_session(node1, use_ssl=True, ca_certs=True)
+            self.fail('Should not be able to connect to SSL socket with revoked certificate')
+        except NoHostAvailable:
+            pass
+
     @pytest.mark.skip('optional_ssl')
     def test_connect_to_ssl_optional(self):
         """
@@ -189,7 +208,7 @@ class TestNativeTransportSSL(Tester):
             shutil.rmtree(tmpdir)
 
     def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False,
-                         requireAuth=False, nodes_num=1):
+                         requireAuth=False, useRevocation=False, nodes_num=1):
         cluster = self.cluster
 
         if enableSSL:
@@ -211,6 +230,11 @@ class TestNativeTransportSSL(Tester):
                         'truststore': os.path.join(self.test_path, 'ccm_node.cer'),
                         'require_client_auth': True
                     })
+                if useRevocation:
+                    options.update({
+                        'certficate_revocation_list': os.path.join(self.test_path, 'ccm_node.crl'),
+                    })
+
             else:
                 options.update({
                     'keystore': os.path.join(self.test_path, 'keystore.jks'),
