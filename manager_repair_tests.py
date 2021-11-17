@@ -541,6 +541,25 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         assert parallel_field in full_progress_string, \
             f"The '{parallel_field}' not found under 'task progress' command"
 
+    def test_repair_host_flag_appears_in_arguments_column(self):
+        """
+            New in manager 2.6
+            Due to a previous bug in manager, the host flag was not printed in the argument
+            list of the `sctool task list` command.
+            The test creates a repair task that uses the --host flag, and then checks that
+            the flag was printed properly.
+        """
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, host=node1.address())
+        arguments_dict = repair_task.arguments
+        assert "host" in arguments_dict, \
+            "Even though the task used --host flag, it was not included in the argument column of the task list output"
+        assert arguments_dict["host"] == node1.address(), \
+            f'While the host flag was printed in `task list`, its value is {arguments_dict["host"]}, instead of the' \
+            f'expected - {node1.address()}'
+
     def test_ignore_down_hosts_with_one_down_host(self):
         """
         The test starts a cluster and takes down one of the nodes.
