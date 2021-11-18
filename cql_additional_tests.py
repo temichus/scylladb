@@ -36,6 +36,9 @@ from thrift_tests import get_thrift_client
 
 from tools.data import rows_to_list, create_index, create_local_index
 from tools.misc import require
+from tools.metrics import get_node_metrics
+
+
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
 logger = logging.getLogger(__name__)
@@ -6919,6 +6922,42 @@ class TestsCQLAdditional(Tester):
         logger.debug("Check created tables in KEYSPACE `veraminetest` after restart")
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
         assert len(out.split()) == 112, 'created 100+ tables'
+
+    def _create_100_keyspaces(self, nodes, rf=1):
+        """
+        Create 100 keyspaces in a multi-dc cluster
+        """
+        cluster = self.cluster
+        cluster.populate(nodes).start()
+        node = cluster.nodelist()[0]
+        node_ip = node.address()
+        session = self.patient_cql_connection(node)
+
+        metrics = get_node_metrics(node_ip, metrics=['memory'])
+        mem_before = int(metrics['memory'])
+
+        logger.debug(f"Create 100 keyspaces on {nodes} node{'' if nodes == 1 else 's'}")
+        for i in range(0, 100):
+            session.execute(
+                f"CREATE KEYSPACE test_keyspace_{i} WITH replication = {{ 'class': 'NetworkTopologyStrategy', 'replication_factor': {rf} }}")
+
+        metrics = get_node_metrics(node_ip, metrics=['memory'])
+        mem_after = int(metrics['memory'])
+
+        logger.debug(f"Consumed {mem_after - mem_before} bytes")
+
+    @pytest.mark.single_node
+    def test_create_100_keyspaces_single_node(self):
+        """
+        Create 100 keyspaces on a single node
+        """
+        self._create_100_keyspaces(nodes=1, rf=1)
+
+    def test_create_100_keyspaces(self):
+        """
+        Create 100 keyspaces in a multi-dc cluster
+        """
+        self._create_100_keyspaces(nodes=[2, 2, 2], rf=1)
 
     # Regression test for scylladb/scylla#8447
     @pytest.mark.single_node
