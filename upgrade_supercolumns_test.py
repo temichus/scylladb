@@ -1,37 +1,29 @@
 import os
 import time
+import pytest
+import logging
 
 from ccmlib.common import get_version_from_build
-
 from thrift_bindings.thrift010.ttypes import (KsDef, CfDef, Mutation, ColumnOrSuperColumn,
                                               Column, SuperColumn, SliceRange, SlicePredicate,
                                               ColumnParent, CounterColumn)
 from thrift_bindings.thrift010.ttypes import ConsistencyLevel as ThriftConsistencyLevel
 
-from thrift_tests import get_thrift_client
-
-from dtest import Tester, debug
-from tools import since
+from tools.thrift import get_thrift_client
+from dtest_class import Tester
 
 
-@since('2.0', max_version='2.1.x')
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.skip('Feature not supported by Scylla')
 class TestSCUpgrade(Tester):
     """
     Tests upgrade between 1.2->2.0 for super columns (since that's where we
     removed then internally).
     """
 
-    def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'start_rpc': 'true'}
-        self.ignore_log_patterns = [
-            # This one occurs if we do a non-rolling upgrade, the node
-            # it's trying to send the migration to hasn't started yet,
-            # and when it does, it gets replayed and everything is fine.
-            r'Can\'t send migration request: node.*is down',
-        ]
-        Tester.__init__(self, *args, **kwargs)
-
-    def upgrade_with_index_creation_test(self):
+    def test_upgrade_with_index_creation(self):
         cluster = self.cluster
 
         # Forcing cluster version on purpose
@@ -78,9 +70,9 @@ class TestSCUpgrade(Tester):
         session.cluster.control_connection.wait_for_schema_agreement()
 
         for i in range(2):
-            supercol_name = 'sc%d' % i
+            supercol_name = f'sc{i}'
             for j in range(2):
-                col_name = 'c%d' % j
+                col_name = f'c{j}'
                 column = Column(name=col_name, value='v', timestamp=100)
                 client.batch_mutate(
                     {'k0': {'sc_test': [Mutation(ColumnOrSuperColumn(
@@ -116,34 +108,34 @@ class TestSCUpgrade(Tester):
         column_parent = ColumnParent(column_family='sc_test')
         predicate = SlicePredicate(slice_range=SliceRange("", "", False, 100))
         super_columns = client.get_slice('k0', column_parent, predicate, ThriftConsistencyLevel.QUORUM)
-        self.assertEqual(2, len(super_columns))
+        assert len(super_columns) == 2
         for i in range(2):
             super_column = super_columns[i].super_column
-            self.assertEqual('sc%d' % i, super_column.name)
-            self.assertEqual(2, len(super_column.columns))
+            assert super_column.name == f'sc{i}'
+            assert len(super_column.columns) == 2
             for j in range(2):
                 column = super_column.columns[j]
-                self.assertEqual('c%d' % j, column.name)
-                self.assertEqual('v', column.value)
+                assert column.name == f'c{j}'
+                assert column.value == 'v'
 
         # fetch a single supercolumn
         column_parent = ColumnParent(column_family='sc_test', super_column='sc1')
         columns = client.get_slice('k0', column_parent, predicate, ThriftConsistencyLevel.QUORUM)
-        self.assertEqual(2, len(columns))
+        assert len(columns) == 2
         for j in range(2):
             column = columns[j].column
-            self.assertEqual('c%d' % j, column.name)
-            self.assertEqual('v', column.value)
+            assert column.name == f'c{j}'
+            assert column.value == 'v'
 
         # fetch a single subcolumn
         predicate = SlicePredicate(column_names=['c1'])
         columns = client.get_slice('k0', column_parent, predicate, ThriftConsistencyLevel.QUORUM)
-        self.assertEqual(1, len(columns))
+        assert len(columns) == 1
         column = columns[0].column
-        self.assertEqual('c%d' % j, column.name)
-        self.assertEqual('v', column.value)
+        assert column.name == f'c{j}'
+        assert column.value == 'v'
 
-    def upgrade_with_counters_test(self):
+    def test_upgrade_with_counters(self):
         cluster = self.cluster
 
         # Forcing cluster version on purpose
@@ -187,10 +179,10 @@ class TestSCUpgrade(Tester):
         session.cluster.control_connection.wait_for_schema_agreement()
 
         for i in range(2):
-            supercol_name = 'sc%d' % i
+            supercol_name = f'sc{i}'
             column_parent = ColumnParent(column_family='sc_test', super_column=supercol_name)
             for j in range(2):
-                col_name = 'c%d' % j
+                col_name = f'c{j}'
                 column = CounterColumn(name=col_name, value=1)
                 for k in range(20):
                     client.add('Counter1', column_parent, column, ThriftConsistencyLevel.ONE)
@@ -220,10 +212,10 @@ class TestSCUpgrade(Tester):
             client.transport.open()
             client.set_keyspace('test')
             for i in range(2):
-                supercol_name = 'sc%d' % i
+                supercol_name = f'sc{i}'
                 column_parent = ColumnParent(column_family='sc_test', super_column=supercol_name)
                 for j in range(2):
-                    col_name = 'c%d' % j
+                    col_name = f'c{j}'
                     column = CounterColumn(name=col_name, value=1)
                     for k in range(50):
                         client.add('Counter1', column_parent, column, ThriftConsistencyLevel.ONE)
@@ -255,40 +247,40 @@ class TestSCUpgrade(Tester):
         column_parent = ColumnParent(column_family='sc_test')
         predicate = SlicePredicate(slice_range=SliceRange("", "", False, 100))
         super_columns = client.get_slice('Counter1', column_parent, predicate, ThriftConsistencyLevel.QUORUM)
-        self.assertEqual(2, len(super_columns))
+        assert len(super_columns) == 2
         for i in range(2):
             super_column = super_columns[i].counter_super_column
-            self.assertEqual('sc%d' % i, super_column.name)
-            self.assertEqual(2, len(super_column.columns))
+            assert super_column.name == f'sc{i}'
+            assert len(super_column.columns) == 2
             for j in range(2):
                 column = super_column.columns[j]
-                self.assertEqual('c%d' % j, column.name)
-                self.assertEqual(170, column.value)
+                assert column.name == f'c{j}'
+                assert column.value == 170
 
         # fetch a single supercolumn
         column_parent = ColumnParent(column_family='sc_test', super_column='sc1')
         columns = client.get_slice('Counter1', column_parent, predicate, ThriftConsistencyLevel.QUORUM)
-        self.assertEqual(2, len(columns))
+        assert len(columns) == 2
         for j in range(2):
             column = columns[j].counter_column
-            self.assertEqual('c%d' % j, column.name)
-            self.assertEqual(170, column.value)
+            assert column.name == f'c{j}'
+            assert column.value == 170
 
         # fetch a single subcolumn
         predicate = SlicePredicate(column_names=['c1'])
         columns = client.get_slice('Counter1', column_parent, predicate, ThriftConsistencyLevel.QUORUM)
-        self.assertEqual(1, len(columns))
+        assert len(columns) == 1
         column = columns[0].counter_column
-        self.assertEqual('c%d' % j, column.name)
-        self.assertEqual(170, column.value)
+        assert column.name == f'c{j}'
+        assert column.value == 170
 
     def upgrade_to_version(self, tag, nodes=None):
-        debug('Upgrading to ' + tag)
+        logger.debug('Upgrading to ' + tag)
         if nodes is None:
             nodes = self.cluster.nodelist()
 
         for node in nodes:
-            debug('Shutting down node: ' + node.name)
+            logger.debug('Shutting down node: %s' % node.name)
             node.drain()
             node.watch_log_for("DRAINED")
             node.stop(wait_other_notice=False)
@@ -299,12 +291,12 @@ class TestSCUpgrade(Tester):
             if tag < "2.1":
                 if "memtable_allocation_type" in node.config_options:
                     node.config_options.__delitem__("memtable_allocation_type")
-            debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
+            logger.debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
         self.cluster.set_install_dir(version=tag)
 
         # Restart nodes on new version
         for node in nodes:
-            debug('Starting %s on new version (%s)' % (node.name, tag))
+            logger.debug('Starting %s on new version (%s)' % (node.name, tag))
             # Setup log4j / logback again (necessary moving from 2.0 -> 2.1):
             node.set_log_level("INFO")
             node.start(wait_other_notice=True, wait_for_binary_proto=True)
