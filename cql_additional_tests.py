@@ -37,7 +37,7 @@ from thrift_bindings.thrift010.ttypes import ConsistencyLevel as ThriftConsisten
 
 from thrift_tests import get_thrift_client
 
-from tools.data import rows_to_list
+from tools.data import rows_to_list, create_index, create_local_index
 from tools.misc import require
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
@@ -129,6 +129,7 @@ class TestCQL(Tester):
         ], list(res)
 
     @pytest.mark.single_node
+    @pytest.mark.skip(reason="scylla doesn't have this print")
     def test_large_collection_errors(self):
         """
         For large collections, make sure that we are printing warnings.
@@ -1804,10 +1805,13 @@ class TestCQL(Tester):
         res = session.execute(simple_query).current_rows[0]
         assert res['v3'] == 768, f"after repair expected v3=768, actual {res['v3']}"
 
-    @pytest.mark.single_node
     def test_range_tombstones(self):
         """ Test deletion by 'composite prefix' (range tombstones) """
-        node1 = self.cluster.nodelist()[0]
+        cluster = self.cluster
+
+        # Uses 3 nodes just to make sure RowMutation are correctly serialized
+        cluster.populate(3).start()
+        node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 1)
 
@@ -7120,8 +7124,8 @@ class TestsMultiColumnRestrictionSimple(Tester):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
-        self.create_index(session=session, table_name=self.TABLE_NAME,
-                          index_column='clmn_text', index_name='global_idx')
+        create_index(session=session, table_name=self.TABLE_NAME,
+                     index_column='clmn_text', index_name='global_idx')
 
         self.insert_data_in_8_columns_table(session=session)
 
@@ -7154,8 +7158,8 @@ class TestsMultiColumnRestrictionSimple(Tester):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
-        self.create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
-                                index_name='global_idx')
+        create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
+                           index_name='global_idx')
 
         self.insert_data_in_8_columns_table(session=session)
 
@@ -7203,8 +7207,8 @@ class TestsMultiColumnRestrictionSimple(Tester):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
-        self.create_index(session=session, table_name=self.TABLE_NAME,
-                          index_column='clmn_text', index_name='global_idx')
+        create_index(session=session, table_name=self.TABLE_NAME,
+                     index_column='clmn_text', index_name='global_idx')
 
         self.insert_data_in_8_columns_table(session=session, insert_data=self.TEST_DATA[:4])
 
@@ -7220,8 +7224,8 @@ class TestsMultiColumnRestrictionSimple(Tester):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
-        self.create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
-                                index_name='local_idx')
+        create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
+                           index_name='local_idx')
 
         self.insert_data_in_8_columns_table(session=session, insert_data=self.TEST_DATA[:4])
 
@@ -7239,8 +7243,8 @@ class TestsMultiColumnRestrictionSimple(Tester):
         session = self.prepare()
         self.create_8_columns_table(session=session, add_ck=True)
 
-        self.create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
-                                index_name='local_idx')
+        create_local_index(session=session, table_name=self.TABLE_NAME, pk_name='key', index_column='clmn_text',
+                           index_name='local_idx')
 
         self.insert_data_in_8_columns_table(session=session, insert_data=[self.TEST_DATA[4]])
 
