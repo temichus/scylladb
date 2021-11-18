@@ -122,6 +122,7 @@ class TaskStatus(Enum):
 class AlternatorStatus(Enum):
     UP = "UP"
     DOWN = "DOWN"
+    ERROR = "ERROR"
     TIMEOUT = "TIMEOUT"
 
 
