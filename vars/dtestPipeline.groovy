@@ -51,7 +51,7 @@ def call(Map pipelineParams) {
                         includeDtests = params.INCLUDE_DTESTS ?: ""
 
                         nodeParam = "packager"
-                        splitMaxNodesForHeavyAndLong = "1"
+                        splitMaxNodesForHeavyAndLong = "10"
 
                         echo "Build mode upon parameter |${params.BUILD_MODE}| or upon job name |${JOB_NAME}|: |${buildMode}|"
                     }
@@ -68,7 +68,7 @@ def call(Map pipelineParams) {
                         FullDtest: {
                             script {
                                 node(nodeParam) {
-                                    runDtest (params.SPLIT_MAX_NODES, includeDtests)
+                                    runDtest (params.SPLIT_MAX_NODES, includeDtests, "full")
                                 }
                             }
                         },
@@ -76,7 +76,7 @@ def call(Map pipelineParams) {
                             script {
                                 if (!params.SKIP_DTEST_HEAVY) {
                                     node(generalProperties.targetDtestStrongBuilder) {
-                                        runDtest (splitMaxNodesForHeavyAndLong, "-a dtest-heavy")
+                                        runDtest (splitMaxNodesForHeavyAndLong, "-m dtest_heavy", "heavy")
                                     }
                                 }
                             }
@@ -85,7 +85,7 @@ def call(Map pipelineParams) {
                             script {
                                 if (!params.SKIP_DTEST_LONG) {
                                     node(generalProperties.targetDtestStrongBuilder) {
-                                        runDtest (splitMaxNodesForHeavyAndLong, "-a dtest-long")
+                                        runDtest (splitMaxNodesForHeavyAndLong, "-m dtest_long", "long")
                                     }
                                 }
                             }
@@ -106,7 +106,7 @@ def call(Map pipelineParams) {
     }
 }
 
-def runDtest(String splitMaxNodes, String includeDtestsTag) {
+def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType) {
 	echo "runDtest"
 	dtest.prepareDtestLocalTree (
 		preserveWorkspace: params.PRESERVE_WORKSPACE,
@@ -124,7 +124,8 @@ def runDtest(String splitMaxNodes, String includeDtestsTag) {
 		splitMaxNodes: splitMaxNodes,
 		buildMode: buildMode,
 		includeTests: includeDtestsTag,
-		excludeTests: excludeTests
+		excludeTests: excludeTests,
+		dtestType: dtestType,
 	)
 	dtest.doParallelDtest(
 		dryRun: params.DRY_RUN,
@@ -142,5 +143,6 @@ def runDtest(String splitMaxNodes, String includeDtestsTag) {
 		ccmBranch: params.SCYLLA_CCM_BRANCH,
 		ccmRepo: params.SCYLLA_CCM_REPO,
 		splitFleetLabal: params.SPLIT_FLEET_LABEL,
+		dtestType: dtestType,
 	)
 }

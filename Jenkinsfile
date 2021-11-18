@@ -92,7 +92,7 @@ pipeline {
                         SCYLLA_DTEST_BRANCH = params.SCYLLA_DTEST_BRANCH ?: env.CHANGE_BRANCH
 
                         if (testFiles) {
-                            runParallelDtest("20", testFiles.join(' '))
+                            runParallelDtest("20", testFiles.join(' '), "PR")
                         } else {
                             dtest.prepareDtestLocalTree (
                                 preserveWorkspace: false,
@@ -105,7 +105,7 @@ pipeline {
                                 relocBuildID: params.RELOC_BUILD_ID,
                                 buildMode: BUILD_MODE,
                             )
-                            dtest.doDtest(dryRun: params.DRY_RUN, dtestMode: BUILD_MODE, includeTests: "-m dtest_smoke bootstrap_test.py")
+                            dtest.doDtest(dryRun: params.DRY_RUN, dtestMode: BUILD_MODE, includeTests: "-m dtest_smoke bootstrap_test.py", dtestType: "PR")
                         }
                         pullRequestSetResult('success', 'jenkins/test/PR', 'test passed')
                     } catch(Exception ex) {
@@ -118,7 +118,7 @@ pipeline {
     }
 }
 
-def runParallelDtest(String splitMaxNodes, String includeDtestsTag) {
+def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtestType) {
 	echo "runParallelDtest"
 	dtest.prepareDtestLocalTree (
 		preserveWorkspace: false,
@@ -130,6 +130,7 @@ def runParallelDtest(String splitMaxNodes, String includeDtestsTag) {
 		baseRelocJob: RELOC_JOB_NAME,
 		relocBuildID: params.RELOC_BUILD_ID,
 		buildMode: BUILD_MODE,
+		dtestType: dtestType,
 	)
 	numOfSplitFiles = dtest.splitAndCopyDtestJobs (
 		splitTimeTarget: params.SPLIT_TIME_TARGET,
@@ -154,5 +155,6 @@ def runParallelDtest(String splitMaxNodes, String includeDtestsTag) {
 		ccmBranch: params.SCYLLA_CCM_BRANCH,
 		ccmRepo: params.SCYLLA_CCM_REPO,
 		splitFleetLabal: params.SPLIT_FLEET_LABEL,
+		dtestType: dtestType,
 	)
 }

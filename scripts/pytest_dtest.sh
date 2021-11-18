@@ -160,6 +160,10 @@ case $i in
     dry_run=true
     shift
     ;;
+    --dtest-type*)
+    dtest_type="${i#*=}"
+    shift
+    ;;
     *)
     echo "Error: unknown command line option: |$i|"
     usage
@@ -184,6 +188,7 @@ echo "   --random_seed     = \"$random_seed\""
 echo "   --keep_logs       = \"$keep_logs\""
 echo "   --scylla_ext_opts = \"$scylla_ext_opts_param\""
 echo "   --scylla_ext_env  = \"$scylla_ext_env_param\""
+echo "   --dtest_type      = \"$dtest_type\""
 echo "=================="
 
 # Script is called on with workspace as the current directory, which contains the scylla, scylla-ccm, scylla-dtest, and other directories.
@@ -288,7 +293,7 @@ export HOME=$home_dir
 export mb_per_cpu=512
 export nodes_per_cluster=3
 
-PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$mode.$NODE_INDEX.xml"
+PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml"
 export XDIST_PROCESSES=$(xdist_processes "$smp" "$nodes_per_cluster" "$mb_per_cpu")
 PYTEST_FLAGS="${PYTEST_FLAGS} -n ${XDIST_PROCESSES}"
 

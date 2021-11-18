@@ -30,12 +30,14 @@ String setDtestParams (Map args) {
 	String randomDtests = args.randomDtests ?: ""
 	String randomDtestsSeed = args.randomDtestsSeed ?: ""
 	String dtestRepeats = args.dtestRepeats ?: "1"
+    String dtestType = args.dtestType ?: "full"
 
 	String dtestParameters = "--home=$WORKSPACE/scylla"
 	dtestParameters += " --mode=$args.dtestMode"
 	dtestParameters += " --smp=$generalProperties.smpNumber"
 	dtestParameters += " --exclude=\"$excludeTests\""
 	dtestParameters += " --include=\"$includeTests\""
+    dtestParameters += " --dtest-type=\"$dtestType\""
 
 	if (dryRun) {
 		dtestParameters = dtestParameters + " --dry_run"
@@ -169,6 +171,7 @@ def splitAndCopyDtestJobs (Map args) {
 	String buildMode = args.buildMode ?: "release"
 	String includeTests = args.includeTests
 	String excludeTests = args.excludeTests
+    String dtestType = args.dtestType ?: "full"
 
     dir ("$WORKSPACE/scylla-dtest") {
         sh "env"
@@ -179,7 +182,7 @@ def splitAndCopyDtestJobs (Map args) {
     int numOfSplitFiles = sh(returnStdout: true, script: "ls $WORKSPACE/scylla-dtest/include_* -1 | wc -l") as Integer
 
     echo "Number Of Split Files:$numOfSplitFiles"
-    stash(name: 'dtest-split-files', includes:"scylla-dtest/include_*", useDefaultExcludes: false)
+    stash(name: "${dtestType}-dtest-split-files", includes:"scylla-dtest/include_*", useDefaultExcludes: false)
     if (splitMaxNodes < numOfSplitFiles) {
         error("Build failed because splitMaxNodes(${splitMaxNodes}) < numOfSplitFiles(${numOfSplitFiles})")
     }
@@ -228,6 +231,7 @@ def doParallelDtest (Map args) {
 	String extOpts = args.extOpts ?: ""
 	String extEnv = args.extEnv ?: ""
 	String cloudUrl = args.cloudUrl ?: "latest"
+    String dtestType = args.dtestType ?: "full"
 
 	def branches = [:]
 	def runnersLabel =  args.splitFleetLabal ?: generalProperties.targetDtestBuilder
@@ -239,7 +243,7 @@ def doParallelDtest (Map args) {
 
         String nodeIndex = i
         nodeIndex = nodeIndex.padLeft(3, '0')
-        branches["split${nodeIndex}"] = {
+        branches["${dtestType}-split${nodeIndex}"] = {
             node(runnersLabel) {
                 jenkins.checkAndTagAwsInstance(args.runningUserID)
                 withEnv(["NODE_TOTAL=${numOfSplitFiles}", "NODE_INDEX=${nodeIndex}"]) {
@@ -257,7 +261,7 @@ def doParallelDtest (Map args) {
                     def instanceType = sh(returnStdout: true, script: "curl http://169.254.169.254/latest/meta-data/instance-type").trim()
                     echo "instanceType: ${instanceType}"
 
-                    unstash(name: 'dtest-split-files')
+                    unstash(name: "${dtestType}-dtest-split-files")
                     setupTestEnv(args.dtestMode)
                     String splitFileName = "$WORKSPACE/scylla-dtest/include_${NODE_INDEX}.txt"
                     if (! fileExists(splitFileName)) {
@@ -272,12 +276,13 @@ def doParallelDtest (Map args) {
                         dtestKeepLogsFlag: dtestKeepLogsFlag,
                         includeTests: localIncludeTests,
                         extOpts: extOpts,
-                        extEnv: extEnv)
+                        extEnv: extEnv,
+                        dtestType: dtestType)
 
                     String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
                     echo "dtestParameters: |${dtestParameters}|"
                     try {
-                        sh "set -o pipefail; ${dtestScript} ${dtestParameters} 2>&1 | tee output_dtest_${NODE_INDEX}.txt"
+                        sh "set -o pipefail; ${dtestScript} ${dtestParameters} 2>&1 | tee output_${dtestType}_dtest_${NODE_INDEX}.txt"
                     } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException interruptEx) {
                         currentBuild.result = 'ABORTED'
                         error("Interrupt exception (abort) while dtest phase, error: |$interruptEx|")
@@ -292,9 +297,9 @@ def doParallelDtest (Map args) {
                     }
                     finally {
                         if (!dryRun) {
-                            publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
-                            publishFailed |= artifact.publishArtifactsStatus("**/logs-${args.dtestMode}.${NODE_INDEX}/**/*", 'scylla-dtest')
-                            publishFailed |= publishTestResults("scylla-dtest.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+                            publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+                            publishFailed |= artifact.publishArtifactsStatus("**/logs-${dtestType}.${args.dtestMode}.${NODE_INDEX}/**/*", 'scylla-dtest')
+                            publishFailed |= publishTestResults("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
                         }
                     }
                 }
@@ -356,7 +361,7 @@ def doDtest (Map args) {
 	env.NODE_INDEX = generalProperties.smpNumber
 
 	try {
-        sh "set -o pipefail; $dtestScript $dtestParameters 2>&1 | tee output_dtest.txt"
+        sh "set -o pipefail; $dtestScript $dtestParameters 2>&1 | tee output_${args.dtestType}_dtest.txt"
 	} catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException interruptEx) {
 		currentBuild.result = 'ABORTED'
 		error("Interrupt exception (abort) while dtest phase, error: |$interruptEx|")
@@ -370,9 +375,9 @@ def doDtest (Map args) {
 		}
 	} finally {
 		if (needToPublish) {
-			publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
-			publishFailed |= artifact.publishArtifactsStatus("**/logs-${args.dtestMode}.${NODE_INDEX}/**/*", 'scylla-dtest')
-			publishFailed |= publishTestResults("scylla-dtest.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+			publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${args.dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+			publishFailed |= artifact.publishArtifactsStatus("**/logs-${args.dtestType}.${args.dtestMode}.${NODE_INDEX}/**/*", 'scylla-dtest')
+			publishFailed |= publishTestResults("scylla-dtest.${args.dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
 		}
 	}
 
