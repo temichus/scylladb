@@ -489,7 +489,7 @@ class Process(mp.Process):
 @pytest.mark.dtest_heavy
 @pytest.mark.dtest_debug
 @pytest.mark.scylla_mode('!release')
-class LWTBankingLoadTest(Tester):
+class TestLWTBankingLoad(Tester):
     """Emulate a series of money transfers and perform validation"""
 
     def prepare(self, num_nodes=NODES):
