@@ -14,28 +14,26 @@ logger = logging.getLogger(__name__)
 # the filtering capability is indeed working properly.
 # start_cluster_and_get_node1() starts Scylla with --enable-cache set to 0.
 
-
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class ClusteringKeyFilterTest(Tester):
+@pytest.mark.parametrize("strategy", ['TimeWindowCompactionStrategy', 'NullCompactionStrategy'])
+class TestClusteringKeyFilter(Tester):
     # Check that a row tombstone is not discarded when its sstable doesn't contain clustering range
     # specified in the query.
 
-    def _strategy_props(self):
-        strategy = 'NullCompactionStrategy'
-        if hasattr(self, 'strategy'):
-            strategy = self.strategy
-
-        # FIXME: min threshold == 999 is another way to disable minor compaction for this test. Use enabled property instead once it's available
+    @pytest.fixture(scope="function")
+    def strategy_string(self, strategy: str):
+        # FIXME: min threshold == 999 is another way to disable minor compaction for this test.
+        #  Use enabled property instead once it's available
         return "\'class\':\'" + strategy + "\', \'min_threshold\' : \'999\'"
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    def test_check_consistence_after_row_tombstone(self):
+    def test_check_consistence_after_row_tombstone(self, strategy_string: str):
         node1 = self.start_cluster_and_get_node1()
 
         query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + \
-                self._strategy_props() + '};'
+                strategy_string + '};'
         self.create_ks_and_cf(node1, query)
 
         query = 'INSERT INTO ks.cf (p1, c1, r1) VALUES (\'key1\', \'a\', 1);'
@@ -59,11 +57,11 @@ class ClusteringKeyFilterTest(Tester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    def test_check_non_composite(self):
+    def test_check_non_composite(self, strategy_string: str):
         node1 = self.start_cluster_and_get_node1()
 
         query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction= {' + \
-                self._strategy_props() + '};'
+                strategy_string + '};'
         # print query
         self.create_ks_and_cf(node1, query)
 
@@ -106,11 +104,11 @@ class ClusteringKeyFilterTest(Tester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    def test_check_composite(self):
+    def test_check_composite(self, strategy_string: str):
         node1 = self.start_cluster_and_get_node1()
 
         query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH ' \
-                'compaction= {' + self._strategy_props() + '};'
+                'compaction= {' + strategy_string + '};'
         self.create_ks_and_cf(node1, query)
 
         query = 'INSERT INTO ks.cf (p1, c1, c2, r1) VALUES (\'key1\', \'a\', \'1\', 1);'
@@ -176,11 +174,11 @@ class ClusteringKeyFilterTest(Tester):
         result = self.select(node1, query)
         self.check_result_composite(result, 'key1', [['a', '1'], ['a', '2']])
 
-    def test_check_composite_2(self):
+    def test_check_composite_2(self, strategy_string: str):
         node1 = self.start_cluster_and_get_node1()
 
         query = 'CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, c2 text, r1 int, PRIMARY KEY (p1, c1, c2)) WITH ' \
-                'compaction= {' + self._strategy_props() + '};'
+                'compaction= {' + strategy_string + '};'
         self.create_ks_and_cf(node1, query)
 
         # This will create a sstable with min max ranges [a, a] and [c, c].
@@ -266,9 +264,3 @@ class ClusteringKeyFilterTest(Tester):
         if flush:
             node1.nodetool("flush -- ks")
             time.sleep(0.2)
-
-
-strategies = ['TimeWindowCompactionStrategy', 'NullCompactionStrategy']
-for strategy in strategies:
-    cls_name = ('ClusteringKeyFilterTest_with_' + strategy)
-    vars()[cls_name] = type(cls_name, (ClusteringKeyFilterTest,), {'strategy': strategy, '__test__': True})
