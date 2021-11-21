@@ -1,27 +1,29 @@
 import os
 import tempfile
+import logging
 
-from dtest import Tester, debug
-from tools import rows_to_list, since
+from dtest_class import Tester
+from tools.data import rows_to_list
+
+logger = logging.getLogger(__name__)
 
 
-@since('0', '2.2.X')
 class TestJson(Tester):
 
-    def json_tools_test(self):
+    def test_json_tools(self):
 
-        debug("Starting cluster...")
+        logger.debug("Starting cluster...")
         cluster = self.cluster
         cluster.set_configuration_options(batch_commitlog=True)
         cluster.populate(1).start()
 
-        debug("Version: " + cluster.version())
+        logger.debug("Version: " + cluster.version())
 
-        debug("Getting CQLSH...")
+        logger.debug("Getting CQLSH...")
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
 
-        debug("Inserting data...")
+        logger.debug("Inserting data...")
         self.create_ks(session, 'Test', 1)
 
         session.execute("""
@@ -45,11 +47,11 @@ class TestJson(Tester):
                               [[u'frodo', 1985, u'male', u'pass@', u'CA'],
                                [u'sam', 1980, u'male', u'@pass', u'NY']])
 
-        debug("Flushing and stopping cluster...")
+        logger.debug("Flushing and stopping cluster...")
         node1.flush()
         cluster.stop()
 
-        debug("Exporting to JSON file...")
+        logger.debug("Exporting to JSON file...")
         json_path = tempfile.mktemp(suffix='.schema.json')
         with open(json_path, 'w') as f:
             node1.run_sstable2json(f)
@@ -60,11 +62,11 @@ class TestJson(Tester):
             with open(json_path, 'w') as fout:
                 fout.writelines(data[1:])
 
-        debug("Deleting cluster and creating new...")
+        logger.debug("Deleting cluster and creating new...")
         cluster.clear()
         cluster.start()
 
-        debug("Inserting data...")
+        logger.debug("Inserting data...")
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'Test', 1)
 
@@ -83,21 +85,21 @@ class TestJson(Tester):
         node1.flush()
         cluster.stop()
 
-        debug("Importing JSON file...")
+        logger.debug("Importing JSON file...")
         with open(json_path) as f:
             node1.run_json2sstable(f, "test", "users")
         os.remove(json_path)
 
-        debug("Verifying import...")
+        logger.debug("Verifying import...")
         cluster.start()
         [node1] = cluster.nodelist()
         session = self.patient_cql_connection(node1)
 
         res = session.execute("SELECT * FROM Test. users")
 
-        debug("data: " + str(res))
+        logger.debug("data: " + str(res))
 
-        self.assertItemsEqual(rows_to_list(res),
-                              [[u'frodo', 1985, u'male', u'pass@', u'CA'],
-                               [u'sam', 1980, u'male', u'@pass', u'NY'],
-                               [u'gandalf', 1955, u'male', u'p@$$', u'WA']])
+        assert rows_to_list(res) == \
+            [[u'frodo', 1985, u'male', u'pass@', u'CA'],
+             [u'sam', 1980, u'male', u'@pass', u'NY'],
+             [u'gandalf', 1955, u'male', u'p@$$', u'WA']]
