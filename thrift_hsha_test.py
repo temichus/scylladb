@@ -5,9 +5,14 @@ import shlex
 import subprocess
 import sys
 import time
-import unittest
+import logging
 
-from dtest import Tester, debug, DEFAULT_DIR
+import pytest
+
+from dtest_class import Tester
+from tools.files import DEFAULT_DIR
+
+logger = logging.getLogger(__name__)
 
 JNA_PATH = '/usr/share/java/jna.jar'
 ATTACK_JAR = 'lib/cassandra-attack.jar'
@@ -15,7 +20,7 @@ ATTACK_JAR = 'lib/cassandra-attack.jar'
 # Use jna.jar in {CASSANDRA_DIR,DEFAULT_DIR}/lib/, since >=2.1 needs correct version
 try:
     if glob.glob('%s/lib/jna-*.jar' % os.environ['CASSANDRA_DIR']):
-        debug('Using jna.jar in CASSANDRA_DIR/lib..')
+        logger.debug('Using jna.jar in CASSANDRA_DIR/lib..')
         JNA_IN_LIB = glob.glob('%s/lib/jna-*.jar' % os.environ['CASSANDRA_DIR'])
         JNA_PATH = JNA_IN_LIB[0]
 except KeyError:
@@ -25,12 +30,9 @@ except KeyError:
         JNA_PATH = JNA_IN_LIB[0]
 
 
-class ThriftHSHATest(Tester):
+class TestThriftHSHA(Tester):
 
-    def __init__(self, *args, **kwargs):
-        Tester.__init__(self, *args, **kwargs)
-
-    @unittest.skipIf(sys.platform == "win32", 'Could not be executed on Windows')
+    @pytest.mark.skipif(sys.platform == "win32", 'Could not be executed on Windows')
     def test_closing_connections(self):
         """
         @jira_ticket CASSANDRA-6546
@@ -59,13 +61,13 @@ class ThriftHSHATest(Tester):
 
         pools = []
         for i in range(10):
-            debug("Creating connection pools..")
+            logger.debug("Creating connection pools..")
             for x in range(3):
                 pools.append(make_connection())
-            debug("Disabling/Enabling thrift iteration #{i}".format(i=i))
+            logger.debug("Disabling/Enabling thrift iteration #{i}".format(i=i))
             node1.nodetool('disablethrift')
             node1.nodetool('enablethrift')
-            debug("Closing connections from the client side..")
+            logger.debug("Closing connections from the client side..")
             for pool in pools:
                 pool.dispose()
             for i in range(0, 3):
@@ -77,8 +79,8 @@ class ThriftHSHATest(Tester):
                 time.sleep(1)
             self.assertEqual(len(lines), 0, "There are non-closed connections: %s" % stdout)
 
-    @unittest.skipIf(not os.path.exists(ATTACK_JAR), "No attack jar found")
-    @unittest.skipIf(not os.path.exists(JNA_PATH), "No JNA jar found")
+    @pytest.mark.skipif(not os.path.exists(ATTACK_JAR), "No attack jar found")
+    @pytest.mark.skipif(not os.path.exists(JNA_PATH), "No JNA jar found")
     def test_6285(self):
         """
         @jira_ticket CASSANDRA-6285
@@ -104,7 +106,7 @@ class ThriftHSHATest(Tester):
         cluster.populate(2)
         nodes = (node1, node2) = cluster.nodelist()
         [n.start(use_jna=True) for n in nodes]
-        debug("Cluster started.")
+        logger.debug("Cluster started.")
 
         session = self.patient_cql_connection(node1)
         self.create_ks(session, 'tmp', 2)
@@ -117,13 +119,13 @@ class ThriftHSHATest(Tester):
 ) WITH COMPACT STORAGE;
 """)
 
-        debug("running attack jar...")
+        logger.debug("running attack jar...")
         p = subprocess.Popen(shlex.split("java -jar {attack_jar}".format(attack_jar=ATTACK_JAR)))
         p.communicate()
 
-        debug("Stopping cluster..")
+        logger.debug("Stopping cluster..")
         cluster.stop()
-        debug("Starting cluster..")
+        logger.debug("Starting cluster..")
         cluster.start(no_wait=True)
-        debug("Waiting 10 seconds before we're done..")
+        logger.debug("Waiting 10 seconds before we're done..")
         time.sleep(10)
