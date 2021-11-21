@@ -1,14 +1,17 @@
-from dtest import Tester, debug
-from tools import require
+import logging
 
+import pytest
 from cassandra.concurrent import execute_concurrent_with_args
 
-from jmxutils import JolokiaAgent, make_mbean, remove_perf_disable_shared_mem
+from dtest_class import Tester
+from tools.jmxutils import JolokiaAgent, make_mbean, remove_perf_disable_shared_mem
+
+logger = logging.getLogger(__name__)
 
 
 class TestUpgradeIndexSummary(Tester):
 
-    @require('Fixes to ccm around upgrades')
+    @pytest.mark.require('Fixes to ccm around upgrades')
     def test_upgrade_index_summary(self):
         cluster = self.cluster
         cluster.populate(1)
@@ -44,7 +47,7 @@ class TestUpgradeIndexSummary(Tester):
         node.watch_log_for("DRAINED")
         node.stop()
         node.set_install_dir(version='2.1.3')  # 2.1.3 is affected by CASSANDRA-8993
-        debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
+        logger.debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
 
         # setup log4j / logback again (necessary moving from 2.0 -> 2.1)
         node.set_log_level("INFO")
@@ -75,7 +78,7 @@ class TestUpgradeIndexSummary(Tester):
         node.watch_log_for("DRAINED")
         node.stop()
         node.set_install_dir(original_install_dir)
-        debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
+        logger.debug("Set new cassandra dir for %s: %s" % (node.name, node.get_install_dir()))
 
         node.set_log_level("INFO")
 
