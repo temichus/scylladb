@@ -1,3 +1,5 @@
+import pytest
+
 from thrift_bindings.thrift010.ttypes import (KsDef, CfDef, Mutation, ColumnOrSuperColumn,
                                               Column, SuperColumn, SliceRange, SlicePredicate,
                                               ColumnParent)
@@ -5,16 +7,22 @@ from thrift_bindings.thrift010.ttypes import ConsistencyLevel as ThriftConsisten
 
 from thrift_tests import get_thrift_client
 
-from dtest import Tester
+from dtest_class import Tester
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.misc import ImmutableMapping
 
 
 class TestSCCache(Tester):
 
-    def __init__(self, *args, **kwargs):
-        kwargs['cluster_options'] = {'start_rpc': 'true'}
-        Tester.__init__(self, *args, **kwargs)
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({
+            'start_rpc': 'true'
+        })
+        return dtest_setup_overrides
 
-    def sc_with_row_cache_test(self):
+    def test_sc_with_row_cache(self):
         """ Test for bug reported in #4190 """
         cluster = self.cluster
 
@@ -57,12 +65,12 @@ class TestSCCache(Tester):
         column_parent = ColumnParent(column_family='Users')
         predicate = SlicePredicate(slice_range=SliceRange("", "", False, 100))
         super_columns = client.get_slice('mina', column_parent, predicate, ThriftConsistencyLevel.ONE)
-        self.assertEqual(1, len(super_columns))
+        assert 1 == len(super_columns)
         super_column = super_columns[0].super_column
-        self.assertEqual('attrs', super_column.name)
-        self.assertEqual(1, len(super_column.columns))
-        self.assertEqual('name', super_column.columns[0].name)
-        self.assertEqual('Mina', super_column.columns[0].value)
+        assert 'attrs' == super_column.name
+        assert 1 == len(super_column.columns)
+        assert 'name' == super_column.columns[0].name
+        assert 'Mina' == super_column.columns[0].value
 
         # add a 'country' subcolumn
         column = Column(name='country', value='Canada', timestamp=100)
@@ -71,16 +79,16 @@ class TestSCCache(Tester):
             ThriftConsistencyLevel.ONE)
 
         super_columns = client.get_slice('mina', column_parent, predicate, ThriftConsistencyLevel.ONE)
-        self.assertEqual(1, len(super_columns))
+        assert 1 == len(super_columns)
         super_column = super_columns[0].super_column
-        self.assertEqual('attrs', super_column.name)
-        self.assertEqual(2, len(super_column.columns))
+        assert 'attrs' == super_column.name
+        assert 2 == len(super_column.columns)
 
-        self.assertEqual('country', super_column.columns[0].name)
-        self.assertEqual('Canada', super_column.columns[0].value)
+        assert 'country' == super_column.columns[0].name
+        assert 'Canada' == super_column.columns[0].value
 
-        self.assertEqual('name', super_column.columns[1].name)
-        self.assertEqual('Mina', super_column.columns[1].value)
+        assert 'name', super_column.columns[1].name
+        assert 'Mina', super_column.columns[1].value
 
         # add a 'region' subcolumn
         column = Column(name='region', value='Quebec', timestamp=100)
@@ -89,16 +97,16 @@ class TestSCCache(Tester):
             ThriftConsistencyLevel.ONE)
 
         super_columns = client.get_slice('mina', column_parent, predicate, ThriftConsistencyLevel.ONE)
-        self.assertEqual(1, len(super_columns))
+        assert 1 == len(super_columns)
         super_column = super_columns[0].super_column
-        self.assertEqual('attrs', super_column.name)
-        self.assertEqual(3, len(super_column.columns))
+        assert 'attrs' == super_column.name
+        assert 3 == len(super_column.columns)
 
-        self.assertEqual('country', super_column.columns[0].name)
-        self.assertEqual('Canada', super_column.columns[0].value)
+        assert 'country' == super_column.columns[0].name
+        assert 'Canada' == super_column.columns[0].value
 
-        self.assertEqual('name', super_column.columns[1].name)
-        self.assertEqual('Mina', super_column.columns[1].value)
+        assert 'name' == super_column.columns[1].name
+        assert 'Mina' == super_column.columns[1].value
 
-        self.assertEqual('region', super_column.columns[2].name)
-        self.assertEqual('Quebec', super_column.columns[2].value)
+        assert 'region' == super_column.columns[2].name
+        assert 'Quebec' == super_column.columns[2].value
