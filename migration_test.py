@@ -871,7 +871,7 @@ class TestTTLWithMigrate(Tester):
         self.session1.execute(query)
 
     @pytest.mark.next_gating
-    def test_big_table_with_ttls(self):
+    def test_big_table_with_ttls(self, request):
         """
         Test validates migration from Scylla to Cassandra of large partition table with TTLs.
          - Create the big table with different kind of columns, create 10 partitions with 1000 rows each partition and 1 partition with 100000 rows.
@@ -1031,7 +1031,7 @@ class TestTTLWithMigrate(Tester):
         # Create Cassandra cluster, migrate the data and take the dump
         cassandra_data_json, cassandra_json_path = self.migrate_to_cassandra(keyspace_name=keyspace_name, table_name=table_name,
                                                                              scylla_big_partition_count=scylla_big_partition_count,
-                                                                             count_query=count_query)
+                                                                             count_query=count_query, request=request)
 
         assert len(scylla_data_json) == len(cassandra_data_json), \
             f'Lengths of Scylla and Cassandra dumps are not same. ' \
