@@ -6,6 +6,7 @@ import subprocess
 import time
 
 from distutils import dir_util
+from typing import Optional, List
 
 from ccmlib.scylla_node import ScyllaNode
 
@@ -14,7 +15,12 @@ from .misc import safe_mkdtemp
 logger = logging.getLogger(__name__)
 
 
-def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, cf_param_name: str = '-cf', name: str = None) -> str:
+def make_snapshot(node: ScyllaNode,
+                  ks: str = None,
+                  cf: str = None,
+                  cf_param_name: str = '-cf',
+                  name: str = None,
+                  additional_options: Optional[List[str]] = None) -> str:
     """Create snapshot for all keyspaces or for specified ks, ks.cf, with name
 
     Create snapshot for:
@@ -34,6 +40,10 @@ def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, cf_param_nam
     :param name: tag name of snapshot, defaults to None
     :type name: str, optional
     :returns: path where all snapshots stored, temp directory
+    :param additional_options: a list of additional options to be
+    added to the nodetool snapshot command
+    :type additional_options: list os strings
+    :returns: path where all snapshots stored, temp directory
     :rtype: {str}
     """
     logger.debug("Making snapshot....")
@@ -45,6 +55,8 @@ def make_snapshot(node: ScyllaNode, ks: str = None, cf: str = None, cf_param_nam
             snapshot_cmd += f"{cf_param_name} {cf} "
         if name:
             snapshot_cmd += f"-t {name}"
+    if additional_options:
+        snapshot_cmd += " ".join(additional_options)
 
     logger.debug("Running snapshot cmd: {snapshot_cmd}".format(snapshot_cmd=snapshot_cmd))
     node.nodetool(snapshot_cmd)

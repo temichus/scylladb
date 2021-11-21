@@ -1534,7 +1534,7 @@ class TestSnapshotOptions(SnapshotTester):
             make_snapshot_kwargs={"node": self.node}
         )
 
-        self._validate_keyspace_list(expected_list=keyspaces, actual_list=keyspace_dir_names)
+        assert set(keyspace_dir_names) == set(keyspaces)
 
     def test_snapshot_of_specified_keyspaces_only(self):
         """
@@ -1555,7 +1555,7 @@ class TestSnapshotOptions(SnapshotTester):
             make_snapshot_kwargs={"node": self.node, "ks": ','.join(keyspaces_to_snap)}
         )
 
-        self._validate_keyspace_list(expected_list=keyspaces_to_snap, actual_list=keyspace_dir_names)
+        assert set(keyspace_dir_names) == set(keyspaces_to_snap)
 
     def test_snapshot_of_specified_keyspaces_only_with_kc_list_option(self):
         """
@@ -1577,7 +1577,7 @@ class TestSnapshotOptions(SnapshotTester):
             make_snapshot_kwargs={"node": self.node, "additional_options": [f"-kc {','.join(keyspaces_to_snap)}"]}
         )
 
-        self._validate_keyspace_list(expected_list=keyspaces_to_snap, actual_list=keyspace_dir_names)
+        assert set(keyspace_dir_names) == set(keyspaces_to_snap)
 
     def test_snapshot_tagging(self):
         """
@@ -1665,9 +1665,6 @@ class TestSnapshotOptions(SnapshotTester):
         table_subdirs_names = self._parse_names_from_paths(snapshot_dir_paths["table_subdirs"])
 
         return keyspace_dir_names, table_subdirs_names, snapshot_root_dir
-
-    def _validate_keyspace_list(self, expected_list: List[str], actual_list: List[str]):
-        self.assertSetEqual(set(expected_list), set(actual_list))
 
     def _insert_rows_into_ks_cf(self, insert_row_count: int = 1, ks: str = "ks0", cf: str = "table_cf0"):
         insert_statement = self.session.prepare(f"INSERT INTO {ks}.{cf} (key, c, v) "
