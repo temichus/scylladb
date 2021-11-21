@@ -442,11 +442,13 @@ class TestSystemClients(Tester):
         )
         empty_value_fields_map = {}
         not_none_fields_map = {}
+        session_store = SessionStore()
         with self.node_session(
                 1,
                 **self._test_users[0],
                 row_factory=dict_factory,
                 port=port,
+                session_store=session_store,
                 ssl_opts=ssl_opts) as session_container:
             session = session_container._session
             query = 'select * from system.clients'
