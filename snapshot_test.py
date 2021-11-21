@@ -1636,16 +1636,14 @@ class TestSnapshotOptions(SnapshotTester):
         logger.info("memtable_data_size_post=%s memtable_switch_count_post=%s",
                     memtable_data_size_post, memtable_switch_count_post)
 
-        self.assertGreaterEqual(a=memtable_data_size_post,
-                                b=memtable_data_size_pre,
-                                msg=f"Expected memtable data size after the skip-flush snapshot to be greater or equal "
-                                    f"to size before snapshot, but was not.\nSize pre: {memtable_data_size_pre}\n"
-                                    f"Size post: {memtable_data_size_post}")
-        self.assertEqual(first=memtable_switch_count_pre,
-                         second=memtable_switch_count_post,
-                         msg="Expected memtable switch count after the skip-flush snapshot to be equal to the switch "
-                             f"count before the snapshot, but was not.\nSwitch count pre: {memtable_switch_count_pre}"
-                             f"\nSwitch count post: {memtable_switch_count_post}")
+        assert memtable_data_size_post >= memtable_data_size_pre, \
+            f"Expected memtable data size after the skip-flush snapshot to be greater or equal " \
+            f"to size before snapshot, but was not.\nSize pre: {memtable_data_size_pre}\n" \
+            f"Size post: {memtable_data_size_post}"
+        assert memtable_switch_count_pre == memtable_switch_count_post, \
+            "Expected memtable switch count after the skip-flush snapshot to be equal to the switch " \
+            f"count before the snapshot, but was not.\nSwitch count pre: {memtable_switch_count_pre}" \
+            f"\nSwitch count post: {memtable_switch_count_post}"
 
     def base_case_make_snapshot_and_extract_ks_cf_names(
             self,
