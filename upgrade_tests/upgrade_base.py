@@ -3,10 +3,14 @@ import sys
 import time
 from collections import namedtuple
 from unittest import skipIf
+import logging
 
+import pytest
 from ccmlib.common import get_version_from_build, is_win
-from dtest import DEBUG, Tester, debug
-from tools import cassandra_git_branch, since
+
+from dtest_class import Tester
+
+logger = logging.getLogger(__name__)
 
 QUERY_UPGRADED = os.environ.get('QUERY_UPGRADED', 'true').lower() in ('yes', 'true')
 QUERY_OLD = os.environ.get('QUERY_OLD', 'true').lower() in ('yes', 'true')
@@ -46,7 +50,7 @@ def get_default_upgrade_path(job_version, cdir=None):
     will be running on JDK 1.7. This means we can't run 3.0+ on this version.
     """
     start_version, upgrade_version = None, None
-    debug('getting default job version for {}'.format(job_version))
+    logger.debug('getting default job version for {}'.format(job_version))
 
     start_2_2_X_release = 'binary:2.2.3'
 
@@ -56,6 +60,7 @@ def get_default_upgrade_path(job_version, cdir=None):
         upgrade_version = start_2_2_X_release
     elif '3.0' <= job_version < '3.1':
         try:
+            from tools import cassandra_git_branch
             branch = cassandra_git_branch(cdir=cdir)
         except:
             branch = None
@@ -70,11 +75,11 @@ def get_default_upgrade_path(job_version, cdir=None):
     err = 'Expected one or two upgrade path endpoints to be None; found {}'.format((start_version, upgrade_version))
     assert [start_version, upgrade_version].count(None) >= 1, err
     upgrade_path = UpgradePath(start_version, upgrade_version)
-    debug(upgrade_path)
+    logger.debug(upgrade_path)
     return upgrade_path
 
 
-@since('3.0')
+@pytest.mark.since('3.0')
 @skipIf(sys.platform == 'win32', 'Skip upgrade tests on Windows')
 class UpgradeTester(Tester):
     """
@@ -117,25 +122,25 @@ class UpgradeTester(Tester):
             self.upgrade_path = get_default_upgrade_path(self.original_version, cdir=self.original_install_dir)
             if OLD_CASSANDRA_DIR:
                 cluster.set_install_dir(install_dir=OLD_CASSANDRA_DIR)
-                debug('running C* from {}'.format(OLD_CASSANDRA_DIR))
+                logger.debug('running C* from {}'.format(OLD_CASSANDRA_DIR))
             elif OLD_CASSANDRA_VERSION:
                 cluster.set_install_dir(version=OLD_CASSANDRA_VERSION)
-                debug('installed C* {}'.format(OLD_CASSANDRA_VERSION))
+                logger.debug('installed C* {}'.format(OLD_CASSANDRA_VERSION))
             elif self.upgrade_path.starting_version:
                 try:
                     cluster.set_install_dir(version=self.upgrade_path.starting_version)
                 except:
                     if self.upgrade_path.starting_version.startswith('binary'):
-                        debug('Exception while downloading {}; falling back to source'.format(
+                        logger.debug('Exception while downloading {}; falling back to source'.format(
                             self.upgrade_path.starting_version))
                         version_number = self.upgrade_path.starting_version.split(':')[-1]
                         source_ccm_id = 'git:cassandra-' + version_number
-                        debug('Source identifier: {}'.format(source_ccm_id))
+                        logger.debug('Source identifier: {}'.format(source_ccm_id))
                         cluster.set_install_dir(version=source_ccm_id)
 
             # in other cases, just use the existing install directory
             cluster.start(wait_for_binary_proto=True)
-            debug('starting from {}'.format(get_version_from_build(node1.get_install_dir())))
+            logger.debug('starting from {}'.format(get_version_from_build(node1.get_install_dir())))
 
         node1 = cluster.nodelist()[0]
         time.sleep(0.2)
@@ -192,7 +197,7 @@ class UpgradeTester(Tester):
         else:
             install_kwargs = {'install_dir': self.original_install_dir}
 
-        debug('upgrading to {}'.format(install_kwargs))
+        logger.debug('upgrading to {}'.format(install_kwargs))
 
         # start them again
         if UPGRADE_MODE != "none":

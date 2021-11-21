@@ -2,15 +2,19 @@ import itertools
 import time
 import uuid
 from unittest import SkipTest
+import logging
 
+import pytest
 from cassandra import ConsistencyLevel as CL
 from cassandra import InvalidRequest, ReadFailure, ReadTimeout
 from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory
 
 from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
-from dtest import debug, run_scenarios
-from tools import rows_to_list, since
+from tools.paging import run_scenarios
+from tools.data import rows_to_list
 from .upgrade_base import UpgradeTester
+
+logger = logging.getLogger(__name__)
 
 
 def assert_read_timeout_or_failure(session, query):
@@ -212,7 +216,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
 
             # run a query that has no results and make sure it's exhausted
             future = cursor.execute_async(
@@ -230,7 +234,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -258,7 +262,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -293,7 +297,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -330,7 +334,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -383,7 +387,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -439,7 +443,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -495,7 +499,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -597,7 +601,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -652,7 +656,7 @@ class TestPagingWithModifiersNodes2RF1(TestPagingWithModifiers):
 
 class TestPagingData(BasePagingTester, PageAssertionMixin):
 
-    def basic_paging_test(self):
+    def test_basic_paging(self):
         """
         A simple paging test that is easy to debug.
         """
@@ -678,12 +682,12 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         """)
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE test")
             cursor.execute("TRUNCATE test2")
 
             for table in ("test", "test2"):
-                debug("Querying table %s" % (table,))
+                logger.debug("Querying table %s" % (table,))
                 expected = []
                 # match the key ordering for murmur3
                 for k in (1, 0, 2):
@@ -693,7 +697,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                         expected.append([k, c, value])
 
                 for fetch_size in (2, 3, 5, 10, 100):
-                    debug("Using fetch size %d" % fetch_size)
+                    logger.debug("Using fetch size %d" % fetch_size)
                     cursor.default_fetch_size = fetch_size
                     results = rows_to_list(cursor.execute("SELECT * FROM %s" % (table,)))
                     import pprint
@@ -701,7 +705,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                     self.assertEqual(len(expected), len(results))
                     self.assertEqual(expected, results)
 
-    def basic_compound_paging_test(self):
+    def test_basic_compound_paging(self):
         cursor = self.prepare()
 
         cursor.execute("""
@@ -725,12 +729,12 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         """)
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE test")
             cursor.execute("TRUNCATE test2")
 
             for table in ("test", "test2"):
-                debug("Querying table %s" % (table,))
+                logger.debug("Querying table %s" % (table,))
                 expected = []
                 # match the key ordering for murmur3
                 for k in (1, 0, 2):
@@ -740,7 +744,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                         expected.append([k, c, 0, value])
 
                 for fetch_size in (2, 3, 5, 10, 100):
-                    debug("Using fetch size %d" % fetch_size)
+                    logger.debug("Using fetch size %d" % fetch_size)
                     cursor.default_fetch_size = fetch_size
                     results = rows_to_list(cursor.execute("SELECT * FROM %s" % (table,)))
                     import pprint
@@ -757,7 +761,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -790,7 +794,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -826,7 +830,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -855,8 +859,8 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
             self.assertEqual(pf.num_results_all(), [400, 200])
             self.assertEqualIgnoreOrder(expected_data, pf.all_data())
 
-    @since('2.0.6')
-    def static_columns_paging_test(self):
+    @pytest.mark.since('2.0.6')
+    def test_static_columns_paging(self):
         """
         Exercises paging with static columns to detect bugs
         @jira_ticket CASSANDRA-8502.
@@ -873,7 +877,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                                'skipping'.format(latest_ver=latest_version_with_bug, min_ver=min_version))
 
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE test")
             cursor.row_factory = named_tuple_factory
 
@@ -889,10 +893,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                 "a, b, c")
 
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute("SELECT %s FROM test" % selector))
                     import pprint
                     pprint.pprint(results)
@@ -907,10 +911,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # IN over the partitions
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute("SELECT %s FROM test WHERE a IN (0, 1, 2, 3)" % selector))
                     self.assertEqual(16, len(results))
                     self.assertEqual([0] * 4 + [1] * 4 + [2] * 4 + [3] * 4, sorted([r.a for r in results]))
@@ -926,10 +930,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                 cursor.execute("INSERT INTO test (a, b, c, s1, s2) VALUES (%d, %d, %d, %d, %d)" % (99, i, i, 17, 42))
 
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99" % selector))
                     self.assertEqual(16, len(results))
                     self.assertEqual([99] * 16, [r.a for r in results])
@@ -942,10 +946,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # reversed
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99 ORDER BY b DESC" % selector))
                     self.assertEqual(16, len(results))
                     self.assertEqual([99] * 16, [r.a for r in results])
@@ -958,10 +962,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # IN on clustering column
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b IN (3, 4, 8, 14, 15)" % selector))
                     self.assertEqual(5, len(results))
@@ -975,10 +979,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # reversed IN on clustering column
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b IN (3, 4, 8, 14, 15) ORDER BY b DESC" % selector))
                     self.assertEqual(5, len(results))
@@ -992,10 +996,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # slice on clustering column with set start
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99 AND b > 3" % selector))
                     self.assertEqual(12, len(results))
                     self.assertEqual([99] * 12, [r.a for r in results])
@@ -1008,10 +1012,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # reversed slice on clustering column with set finish
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b > 3 ORDER BY b DESC" % selector))
                     self.assertEqual(12, len(results))
@@ -1025,10 +1029,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # slice on clustering column with set finish
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99 AND b < 14" % selector))
                     self.assertEqual(14, len(results))
                     self.assertEqual([99] * 14, [r.a for r in results])
@@ -1041,10 +1045,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # reversed slice on clustering column with set start
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b < 14 ORDER BY b DESC" % selector))
                     self.assertEqual(14, len(results))
@@ -1058,10 +1062,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # slice on clustering column with start and finish
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99 AND b > 3 AND b < 14" % selector))
                     self.assertEqual(10, len(results))
                     self.assertEqual([99] * 10, [r.a for r in results])
@@ -1074,10 +1078,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
             # reversed slice on clustering column with start and finish
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d" % page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'" % (selector,))
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b > 3 AND b < 14 ORDER BY b DESC" % selector))
                     self.assertEqual(10, len(results))
@@ -1089,7 +1093,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                     if "s2" in selector:
                         self.assertEqual([42] * 10, [r.s2 for r in results])
 
-    @since('2.0')
+    @pytest.mark.since('2.0')
     def test_paging_using_secondary_indexes_with_static_cols(self):
         cursor = self.prepare()
         cursor.execute(
@@ -1104,7 +1108,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -1156,7 +1160,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -1195,7 +1199,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -1235,7 +1239,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             # create rows with TTL (some of which we'll try to get after expiry)
@@ -1289,7 +1293,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = create_rows(
@@ -1368,7 +1372,7 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -1530,7 +1534,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
 
             expected_data = self.setup_data(cursor)
@@ -1577,7 +1581,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
             expected_data = self.setup_data(cursor)
 
@@ -1597,7 +1601,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
             expected_data = self.setup_data(cursor)
 
@@ -1648,7 +1652,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
             expected_data = self.setup_data(cursor)
 
@@ -1701,7 +1705,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
             expected_data = self.setup_data(cursor)
 
@@ -1742,7 +1746,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
             data = self.setup_data(cursor)
 
@@ -1771,7 +1775,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
             cursor.execute("TRUNCATE paging_test")
             self.setup_data(cursor)
 
