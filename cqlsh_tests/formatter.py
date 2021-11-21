@@ -31,7 +31,7 @@ from datetime import timedelta, tzinfo
 from collections import defaultdict
 
 from six import ensure_text
-from cassandra.cqltypes import EMPTY
+from cassandra.cqltypes import EMPTY  # pylint: disable=no-name-in-module
 from cassandra.util import datetime_from_timestamp
 
 ZERO = timedelta(0)

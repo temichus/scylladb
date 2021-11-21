@@ -261,24 +261,17 @@ class TestCqlshCopy(CqlshPrepare):
     @jira_ticket CASSANDRA-3906
     """
 
-    @classmethod
-    def setUpClass(cls):
-        cls._cached_driver_methods = monkeypatch_driver()
+    @pytest.fixture(scope='class', autouse=True)
+    def monkeypatch_driver(self):
+        cached_driver_methods = monkeypatch_driver()
+        yield
+        unmonkeypatch_driver(cached_driver_methods)
 
-    @classmethod
-    def tearDownClass(cls):
-        unmonkeypatch_driver(cls._cached_driver_methods)
-
-    def tearDown(self):
-        try:
-            if self.tempfile:
-                if is_win():
-                    self.tempfile.close()
-                os.unlink(self.tempfile.name)
-        except AttributeError:
-            pass
-
-        super(TestCqlshCopy, self).tearDown()
+    @pytest.fixture(scope='function')
+    def clean_temp(self):
+        yield
+        if hasattr(self, 'tempfile'):
+            os.unlink(self.tempfile.name)
 
     def assertCsvResultEqual(self, csv_filename, results):
         result_list = list(self.result_to_csv_rows(results))
