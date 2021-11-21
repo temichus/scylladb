@@ -88,7 +88,7 @@ def make_snapshot(node: ScyllaNode,
 
     # # Copy files from the snapshot dir to existing temp dir
     for snapshot_dir in snapshot_dirs:
-        save_dir = snapshot_dir.replace('/snapshots', '').replace(os.path.join(node_dir, "data/"), '')
+        save_dir = snapshot_dir.replace('/snapshots/', '/').replace(os.path.join(node_dir, "data/"), '')
         os.makedirs(os.path.join(tmpdir, save_dir), exist_ok=False)
         dir_util.copy_tree(str(snapshot_dir), os.path.join(tmpdir, save_dir))
 
