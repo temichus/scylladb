@@ -145,6 +145,7 @@ repos:
                 update_cluster_layout_tests.py|
                 pytest_cql_additional_tests.py|
                 rest_api_tests.py|
+                error_example_test.py|
                 limits_test.py |
                 metadata_tests.py|
                 repair_test.py |
