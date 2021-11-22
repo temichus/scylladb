@@ -144,6 +144,7 @@ repos:
                 offline_tools_test.py|
                 update_cluster_layout_tests.py|
                 pytest_cql_additional_tests.py|
+                repair_additional_test.py|
                 upgrade_tests/*|
                 rest_api_tests.py|
                 error_example_test.py|
