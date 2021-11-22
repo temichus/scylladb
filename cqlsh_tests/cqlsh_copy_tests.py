@@ -27,7 +27,6 @@ from .cqlsh_tools import (DummyColorMap, assert_csvs_items_equal, csv_rows,
 from .formatter import _formatters, format_value_default, DateTimeFormat
 from dtest_class import Tester, create_ks
 from tools.data import rows_to_list
-from tools.misc import require
 
 logger = logging.getLogger(__name__)
 
@@ -677,7 +676,7 @@ class TestCqlshCopy(CqlshPrepare):
 
         self.tempfile = NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8')
         logger.debug(f'Exporting to csv file: {self.tempfile.name}')
-        cmds = f"COPY ks.testtimeformat TO '{self.tempfile.name}' WITH TIMEFORMAT = '%Y/%m/%d %H:%M'"
+        cmds = f"COPY ks.testtimeformat TO '{self.tempfile.name}'"
         cmds += " WITH DATETIMEFORMAT = '%Y/%m/%d %H:%M'"
         self.node1.run_cqlsh(cmds=cmds)
         print(cmds)
@@ -688,7 +687,8 @@ class TestCqlshCopy(CqlshPrepare):
         expected = [['1', '2015/01/01 07:00'],
                     ['2', '2015/06/10 12:30'],
                     ['3', '2015/12/31 23:59']]
-        assert csv_values == expected, f"Actual value \"{csv_values}\" is not as expected \'{expected}\'"
+        assert sorted(
+            csv_values, key=lambda x: x[0]) == expected, f"Actual value \"{csv_values}\" is not as expected \'{expected}\'"
 
     @pytest.mark.single_node
     def test_reading_with_ttl(self):
@@ -726,7 +726,7 @@ class TestCqlshCopy(CqlshPrepare):
 
         time.sleep(10)
 
-        assert_all(session=self.session, query="SELECT * FROM testttl", expected=[data], ignore_order=True)
+        assert_all(session=self.session, query="SELECT * FROM testttl", expected={}, ignore_order=True)
 
     @pytest.mark.single_node
     def test_explicit_column_order_writing(self):
@@ -1487,7 +1487,7 @@ class TestCqlshCopy(CqlshPrepare):
         os.environ['CQLSH_COPY_TEST_FAILURES'] = json.dumps(failures)
         logger.debug(f'Exporting to csv file: {self.tempfile.name} with {os.environ["CQLSH_COPY_TEST_FAILURES"]} '
                      f'and 5 max attempts')
-        out, err = self.node1.run_cqlsh(cmds="COPY {} TO '{}' WITH MAXATTEMPTS='5'"
+        out, err = self.node1.run_cqlsh(cmds="COPY {} TO '{}' WITH MAXATTEMPTS='2'"
                                         .format(stress_table, self.tempfile.name),
                                         return_output=True)
         logger.debug(out)
@@ -1606,7 +1606,7 @@ class TestCqlshCopy(CqlshPrepare):
         logger.debug(out)
         logger.debug(err)
 
-        assert 'Failed to process' in err, f"Not found message 'Failed to process' in the error {err}"
+        assert 'Failed to import' in err, f"Not found message 'Failed to import' in the error {err}"
 
         assert_row_count(session=self.session, table_name=stress_table, expected=num_records)
 
