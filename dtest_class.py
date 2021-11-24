@@ -25,6 +25,7 @@ class FlakyRetryPolicy(RetryPolicy):
     """
     A retry policy that retries 5 times
     """
+    max_retries: int = 5
 
     def on_read_timeout(self, *args, **kwargs):
         if kwargs['retry_num'] < 5:
