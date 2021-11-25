@@ -35,7 +35,8 @@ def generate_ids(val):
     return f"{val['class']}"
 
 
-SpanningSStable = namedtuple("SpanningSStable", ["is_spanning_one_window", "min_timestamp_seconds", "max_timestamp_seconds"])
+SpanningSStable = namedtuple("SpanningSStable", ["is_spanning_one_window",
+                                                 "min_timestamp_seconds", "max_timestamp_seconds"])
 
 
 class CompactionAdditionalTester(Tester):
@@ -306,8 +307,8 @@ class TestCompactionAdditional(CompactionAdditionalTester):
                 min_time_window = _get_time_window(self.micros_to_seconds(stats['min_timestamp']))
                 max_time_window = _get_time_window(self.micros_to_seconds(stats['max_timestamp']))
                 logger.debug("sf={} min_timestamp={} max_timestamp={} min_time_window={} max_time_window={}".format(
-                                sf,
-                                stats['min_timestamp'], stats['max_timestamp'], min_time_window, max_time_window))
+                    sf,
+                    stats['min_timestamp'], stats['max_timestamp'], min_time_window, max_time_window))
                 for time_window in range(min_time_window, max_time_window + 1):
                     if time_window not in time_window_dict:
                         time_window_dict[time_window] = [sf]
@@ -562,7 +563,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
         verify_reshape = not (
-                         strategy2['class'] == 'LeveledCompactionStrategy' and strategy1['class'] != 'LeveledCompactionStrategy')
+            strategy2['class'] == 'LeveledCompactionStrategy' and strategy1['class'] != 'LeveledCompactionStrategy')
         assert_reshape_and_verify_data(srcdir='staging/', log_mark=mark, verify_reshape=verify_reshape)
 
         shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
