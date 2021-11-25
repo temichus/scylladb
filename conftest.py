@@ -4,10 +4,12 @@ import os
 import platform
 import copy
 import inspect
+import re
 from itertools import zip_longest
 from datetime import datetime
 from distutils.version import LooseVersion
 
+import github
 from psutil import virtual_memory
 from botocore.exceptions import ClientError as AwsClientError
 import netifaces as ni
@@ -22,6 +24,7 @@ from dtest_setup import DTestSetup, copy_logs
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.keystore import KeyStore
 from tools.log_utils import log_per_process_data, TestNameFilter
+from tools.env import GITHUB_TOKEN, DTEST_REQUIRE
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +367,10 @@ def fixture_require_version(request, fixture_dtest_setup):
     marker = request.node.get_closest_marker('require')
     if marker is not None:
         issue = marker.kwargs.get('require_pattern')
-        pytest.skip(f"require: {issue}")
+        if check_issue_closed(issue) and DTEST_REQUIRE != "disabled":
+            print(f"Issue {issue} closed. Test will be run")
+        else:
+            pytest.skip(f"require: {issue}")
 
 
 @pytest.fixture(autouse=True)
@@ -420,7 +426,9 @@ def pytest_collection_modifyitems(items, config):
     if collect_require:
         print()
         print("List of test with require mark:")
+
     if not scylla_version and not collect_require:
+
         if not collect_only and cassandra_dir is None:
             if cassandra_version is None:
                 raise Exception("Required dtest arguments were missing! You must provide either --cassandra-dir "
@@ -492,7 +500,11 @@ def pytest_collection_modifyitems(items, config):
 
         require_mark = item.get_closest_marker("require")
         if require_mark and collect_require:
-            print(f"* {item.nodeid} - {require_mark.kwargs.get('require_pattern')}")
+            if not check_issue_closed(require_mark.kwargs.get('require_pattern')):
+                print(f"* {item.nodeid} - {require_mark.kwargs.get('require_pattern')}")
+            else:
+                print(f"* {item.nodeid} - marked with closed issue {require_mark.kwargs.get('require_pattern')}")
+
         if deselect_test:
             deselected_items.append(item)
         else:
@@ -529,3 +541,68 @@ def configure_es(elk_reporter, dtest_config):
         "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
     }
     elk_reporter.session_data.update(**extra_data)
+
+
+def check_issue_closed(pattern):
+    """check if issue is closed
+
+    Parse pattern and find whether it matched
+    issue or repo/issue format. If matched
+    check on github whether issue is closed
+
+    regexp match next comman patter: user/repo#issue
+    where:
+        user - github user, which used to get all repos
+               if not found, default is scylladb
+        repo - repo of user, where issue will be searching
+               if not found, default is scylla
+        issue - issue id for checking its state
+               if not found, return False.
+
+    Support next formats matched by regexp
+    - 8888
+    - #8888
+    - #8888,#7777
+    - scylla#8888
+    - scylla-java-tools8888
+    - scylladb/scylla#8888
+    - user/repo#issue
+
+    Arguments:
+        pattern {str} -- pattern passed to @require()
+
+    Returns:
+        bool -- True if closed, false otherwise
+    """
+    scylla_issue_pattern = re.compile(
+        r"^\s*((((?P<user_id>[\w:-]+)/)?(?P<repo_id>[\w:-]+))?#)?(?P<id>\d+)\s*$", re.IGNORECASE)
+
+    if GITHUB_TOKEN:
+        try:
+            git = github.Github(login_or_token=GITHUB_TOKEN)
+        except Exception:
+            return False
+    else:
+        return False
+
+    closed = []
+    if pattern is None:
+        return False
+
+    for pat in pattern.split(","):
+        match = scylla_issue_pattern.search(pat.strip())
+        if match:
+            obj = match.groupdict()
+            user_id = obj.get("user_id") or "scylladb"
+            repo_id = obj.get("repo_id") or "scylla"
+            issue_id = obj.get("id")
+            if not issue_id:
+                continue
+
+            try:
+                found_issue = git.get_user(user_id).get_repo(repo_id).get_issue(int(issue_id))
+                closed.append(found_issue.state == "closed")
+            except Exception:
+                closed.append(False)
+
+    return all(closed) if closed else False

@@ -54,6 +54,11 @@ Script to run dtest from within docker
         NOSE_PROCESSES (defaults to 1)
         NOSE_PROCESS_TIMEOUT (defaults to 7200)
         DRY_RUN
+        GITHUB_TOKEN - github api token to get issue states
+        DTEST_REQUIRE - auto : check issue state in require decorator and run(state=closed) or skip(state=open) test
+                      - enabled : default value, skip test marked with decorator
+                      - disabled : disable require decorator and run test (mostly for manual tests)
+
 
     Examples:
     cd ~/scylla-dtest/
@@ -246,6 +251,8 @@ docker_cmd="docker run --detach=true \
     -e AWS_ACCESS_KEY_ID \
     -e AWS_SECRET_ACCESS_KEY \
     -e PYTHONUNBUFFERED=1 \
+    -e GITHUB_TOKEN \
+    -e DTEST_REQUIRE \
     -w ${DTEST_DIR} \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
