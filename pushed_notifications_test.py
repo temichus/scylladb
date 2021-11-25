@@ -2,6 +2,7 @@ import time
 import pytest
 import logging
 
+from filelock import FileLock
 from cassandra import ReadTimeout, ReadFailure
 from cassandra import ConsistencyLevel as CL
 from cassandra.query import SimpleStatement
@@ -14,6 +15,16 @@ from tools.funcutils import assertDictContainsSubset
 
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(scope='function')
+def using_localhost(fixture_dtest_setup):
+    """
+    make sure tests using localhost are not running at the same time is pytest-xdist is used
+    """
+    logging.getLogger("filelock").setLevel(logging.INFO)
+    with FileLock('/tmp/localhost'):
+        yield
 
 
 class NotificationWaiter(object):
@@ -116,6 +127,7 @@ class TestPushedNotifications(Tester):
             assert get_ip_from_node(node1) == address
 
     @pytest.mark.no_vnodes
+    @pytest.mark.usefixtures('using_localhost')
     def test_move_single_node_localhost(self):
         """
         @jira_ticket  CASSANDRA-10052
@@ -226,6 +238,7 @@ class TestPushedNotifications(Tester):
         assert "DOWN" == notifications[0]["change_type"]
         assert "UP" == notifications[1]["change_type"]
 
+    @pytest.mark.usefixtures('using_localhost')
     @pytest.mark.parametrize("wait_and_restart", [True, False], ids=["wait_and_restart=True", "wait_and_restart=False"])
     def test_restart_node_localhost(self, wait_and_restart):
         """
