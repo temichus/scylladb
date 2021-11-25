@@ -63,6 +63,7 @@ repos:
                 cdc_ttl_test|
                 cdc_test.py|
                 cql_system_clients_test.py|
+                sla_per_user_test.py|
                 cql_tracing_addition_test.py|
                 data_distribution_balance_test.py|
                 internode_ssl_test.py|

@@ -1,12 +1,17 @@
 #!/usr/bin/env python
+import logging
+
 from cassandra.protocol import SyntaxException, ServerError, InvalidRequest
+import pytest
 
-from dtest import Tester, ServiceLevel, Role, User
-from dtest import DEFAULT_SERVICE_LEVEL_SHARES
-from tools import require
+from dtest_class import Tester
+from tools.sla import ServiceLevel, Role, User, DEFAULT_SERVICE_LEVEL_SHARES
+
+logger = logging.getLogger(__name__)
 
 
-class SLATests(Tester):
+@pytest.mark.dtest_enterprise
+class TestSLA(Tester):
 
     DEFAULT_SHARES = 1000
 
@@ -36,7 +41,7 @@ class SLATests(Tester):
             if sl_list:
                 sl_list = sorted(sl_list, key=lambda x: x[1])
                 expected_sla_list = sorted(expected_sla_list, key=lambda x: x[1])
-            self.assertTrue(expected_sla_list == sl_list, msg=msg.format(**locals()))
+            assert expected_sla_list == sl_list, msg.format(**locals())
 
         def case_sensitive(name):
             if name:
@@ -73,15 +78,15 @@ class SLATests(Tester):
         # if expected_attached_all_slas_list is not None:
         #     expected_attached_all_slas = [[role.name, sla.name] for role, sla in expected_attached_all_slas_list]
         #     sla = entity.list_attached_service_levels(session=session)
-        #     self.assertTrue(expected_attached_all_sla_list == sla,
-        #                 msg='Expected all attached SLA list: {expected_attached_all_sla_list}, actual: {sla}'
-        # .format(**locals()))
+        #     assert expected_attached_all_sla_list == sla, \
+        #                 'Expected all attached SLA list: {expected_attached_all_sla_list}, actual: {sla}'
+        # .format(**locals())
         # Not developed yet
         # # Validate effective services
         # if expected_effective_sla_list is not None:
         #   sla = self.list_effective_service_levels(session=session, role_name=role_name)
-        #   self.assertTrue(expected_effective_sla_list == sla,
-        #                 msg='Expected effective SLA: {expected_effective_sla_list}, actual: {sla}'.format(**locals()))
+        #   assert expected_effective_sla_list == sla, \
+        #                 'Expected effective SLA: {expected_effective_sla_list}, actual: {sla}'.format(**locals()))
 
     def create_service_level(self, session, name, service_shares=None):
         sl = ServiceLevel(session=session, name=name, service_shares=service_shares)
@@ -104,7 +109,7 @@ class SLATests(Tester):
         user.create()
         return user
 
-    def sla_test(self):
+    def test_sla(self):
         """
         Create SLA with 100 shares
         """
@@ -115,7 +120,7 @@ class SLATests(Tester):
         self.validate_sla(service_level=sl, expected_slas_list=[sl], expected_attached_slas_list=[],
                           expected_attached_all_slas_list=[], expected_effective_slas_list=[])
 
-    def sla_role_test(self):
+    def test_sla_role(self):
         """
         Create SLA with 100 shares and create a role that attach to SLA
         """
@@ -132,7 +137,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[],
                           entity=role)
 
-    def sla_named_empty_test(self):
+    def test_sla_named_empty(self):
         """
         Create SLA with 100 shares
         """
@@ -143,14 +148,14 @@ class SLATests(Tester):
         self.validate_sla(service_level=sl, expected_slas_list=[sl], expected_attached_slas_list=[],
                           expected_attached_all_slas_list=[], expected_effective_slas_list=[])
 
-    def user_named_empty_test(self):
+    def test_user_named_empty(self):
         """
         Create SLA with 100 shares
         """
         session = self.prepare()
         sl = self.create_user(session=session, name='empty')
 
-    def sla_role_named_empty_test(self):
+    def test_sla_role_named_empty(self):
         """
         Create SLA with 100 shares and create a role that attach to SLA
         """
@@ -166,7 +171,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[],
                           entity=role)
 
-    def sla_no_shares_test(self):
+    def test_sla_no_shares(self):
         """
         Create SLA with default shares (not define SHARES parameter), create a role that attach to SLA and grant this
         role to the user
@@ -193,7 +198,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[user, sl]],
                           entity=user)
 
-    def user_and_role_with_sla_test(self):
+    def test_user_and_role_with_sla(self):
         """
         Create SLA with shares=100, create a role that attach to SLA and grant to the user
         Create SLA with shares=500 and attach to user
@@ -222,7 +227,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[user, service_levels[1]]],
                           entity=user)
 
-    def user_with_2_roles_and_slas_test(self):
+    def test_user_with_2_roles_and_slas(self):
         """
         Create 2 SLAs where shares are 50 and 300, attach to 2 roles and grant both to the user
         Create one more SLA with shares=100 and attach to user
@@ -250,7 +255,7 @@ class SLATests(Tester):
                               expected_effective_slas_list=[],
                               entity=entity)
 
-    def role_with_authentication_test(self):
+    def test_role_with_authentication(self):
         """
         Create SLA with default shares (not define shares parameter), create a role with password and login,
         attach to SLA and grant this role to the use
@@ -277,7 +282,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[user, sl]],
                           entity=user)
 
-    def case_sensitive_sla_test(self):
+    def test_case_sensitive_sla(self):
         """
         Create SLA with case sensitive name and 100 shares, create a role that attach to SLA and grant role to the user
         """
@@ -304,7 +309,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[user, sl]],
                           entity=user)
 
-    def user_with_same_slas_test(self):
+    def test_user_with_same_slas(self):
         """
         Create 2 SLAs with same shares amount (300), attach to 2 roles and grant both to the user
         """
@@ -335,7 +340,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[user, service_levels[0]]],
                           entity=user)
 
-    def user_without_role_test(self):
+    def test_user_without_role(self):
         """
         Create user with no role. No SLA with "default" name
         """
@@ -351,7 +356,7 @@ class SLATests(Tester):
                           entity=user,
                           session=session)
 
-    def change_default_sla_and_attach_user_test(self):
+    def test_change_default_sla_and_attach_user(self):
         """
         Create user with no role. Create SLA with "DEFAULT" name and shares=50 and attach to user
         """
@@ -368,7 +373,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[user, sl]],
                           entity=user)
 
-    def change_default_sla_and_attach_role_test(self):
+    def test_change_default_sla_and_attach_role(self):
         """
         Create SLA with "DEFAULT" name and 100 shares, create a role and attach SLA
         """
@@ -385,7 +390,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[role, sl]],
                           entity=role)
 
-    def detach_one_of_two_slas_test(self):
+    def test_detach_one_of_two_slas(self):
         """
         -Create 2 SLAs where shares are 50 and 300, attach to 2 roles and grant both to the user.
         -De-attach 300 shares SLA
@@ -446,7 +451,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[user, role_sl[1][0]]],
                           entity=user)
 
-    def detach_sla_test(self):
+    def test_detach_sla(self):
         """
         -Create SLA with shares=100 and attach to the user
         -De-attach the SLA
@@ -479,7 +484,7 @@ class SLATests(Tester):
                                                         ],
                           entity=user)
 
-    def two_roles_one_slas_to_user_test(self):
+    def test_two_roles_one_slas_to_user(self):
         """
          - Create few SLAs, roles and users
          - grant one SLA to every roles
@@ -512,7 +517,7 @@ class SLATests(Tester):
                               expected_effective_slas_list=[[user, sl]],
                               entity=user)
 
-    def inherit_2_slas_test(self):
+    def test_inherit_2_slas(self):
         """
         -Create 2 SLAs: 50 and 200.
         -Create 2 role
@@ -553,7 +558,7 @@ class SLATests(Tester):
 
         return None
 
-    def inherit_3_slas_test(self):
+    def test_inherit_3_slas(self):
         """
         -Create 3 SLAs: 50, 200, 600.
         -Create 3 role
@@ -594,7 +599,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[user, slas[1]],
                           entity=user)
 
-    def inherit_4_slas_test(self):
+    def test_inherit_4_slas(self):
         """
         -Create 4 SLAs: 50, 200, 500, 1000.
         -Create 4 role
@@ -635,7 +640,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[user, slas[3]],
                           entity=user)
 
-    def drop_not_assigned_sla_test(self):
+    def test_drop_not_assigned_sla(self):
         """
         Drop not assigned and not granted SLA
         -Create non-default SLA
@@ -653,7 +658,7 @@ class SLATests(Tester):
                           expected_slas_list=[],
                           expected_attached_slas_list=[])
 
-    def drop_default_not_assigned_sla_test(self):
+    def test_drop_default_not_assigned_sla(self):
         """
         Drop default SLA
         -Create SLA with "default" the name
@@ -690,7 +695,7 @@ class SLATests(Tester):
                                                         ],
                           entity=role)
 
-    def drop_sla_assigned_to_role_test(self):
+    def test_drop_sla_assigned_to_role(self):
         """
         Drop assigned SLA
         -Create non-default SLA
@@ -720,7 +725,7 @@ class SLATests(Tester):
                                                         ],
                           entity=role)
 
-    def drop_granted_sla_test(self):
+    def test_drop_granted_sla(self):
         """
         Drop granted SLA
         -Create non-default SLA
@@ -762,7 +767,7 @@ class SLATests(Tester):
                           entity=user,
                           session=session)
 
-    def drop_sla_assigned_to_user_test(self):
+    def test_drop_sla_assigned_to_user(self):
         """
         -Create non-default SLA
         -Assign to the user
@@ -789,7 +794,7 @@ class SLATests(Tester):
                                                         ],
                           entity=user)
 
-    def drop_role_with_sla_test(self):
+    def test_drop_role_with_sla(self):
         """
         -Create non-default SLA
         -Attach to the role
@@ -814,7 +819,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[],
                           entity=role)
 
-    def drop_user_with_role_sla_test(self):
+    def test_drop_user_with_role_sla(self):
         """
         -Create non-default SLA
         -Assign to the role
@@ -940,7 +945,7 @@ class SLATests(Tester):
                           expected_effective_slas_list=[[user, sl]],
                           entity=user)
 
-    def attach_2_slas_to_role_test(self):
+    def test_attach_2_slas_to_role(self):
         """
         Create 2 SLAs, attach to 1 role
         """
@@ -968,7 +973,7 @@ class SLATests(Tester):
     # Negative tests
     #####
 
-    def attach_not_exists_sla_to_role_test(self):
+    def test_attach_not_exists_sla_to_role(self):
         """
         Create role and attach not existing service level
         """
@@ -978,9 +983,10 @@ class SLATests(Tester):
         role = self.create_role(session=session, name='role1')
 
         expected_error = 'Service Level {} doesn\'t exists.'.format(sl.name)
-        self.assertRaisesRegexp(InvalidRequest, expected_error, role.attach_service_level, service_level=sl)
+        with pytest.raises(InvalidRequest, match=expected_error):
+            role.attach_service_level(service_level=sl)
 
-    def attach_sla_to_not_exists_role_test(self):
+    def test_attach_sla_to_not_exists_role(self):
         """
         Create SLA and attach to not existing role
         """
@@ -991,9 +997,10 @@ class SLATests(Tester):
 
         expected_error = 'Role {} doesn\'t exist.'.format(role.name)
 
-        self.assertRaisesRegexp(InvalidRequest, expected_error, role.attach_service_level, service_level=sl)
+        with pytest.raises(InvalidRequest, match=expected_error):
+            role.attach_service_level(service_level=sl)
 
-    def drop_not_existing_sla_test(self):
+    def test_drop_not_existing_sla(self):
         """
         Drop not-created service level
         """
@@ -1001,10 +1008,11 @@ class SLATests(Tester):
         sl = ServiceLevel(session=session, name='sla1')
         expected_error = 'Service Level {} doesn\'t exists.'.format(sl.name)
 
-        self.assertRaisesRegexp(InvalidRequest, expected_error, sl.drop, if_exists=False)
+        with pytest.raises(InvalidRequest, match=expected_error):
+            sl.drop(if_exists=False)
 
-    @require('#776')
-    def update_not_existing_sla_test(self):
+    @pytest.mark.require('#776')
+    def test_update_not_existing_sla(self):
         """
         Update not-created service level
         """
@@ -1012,21 +1020,22 @@ class SLATests(Tester):
         sl = self.create_service_level(session=session, name='sla1')
         expected_error = 'The service Level \'{}\' doesn\'t exists.'.format(sl.name)
 
-        self.assertRaisesRegexp(SyntaxException, expected_error, sl.alter, new_shares=100)
+        with pytest.raises(SyntaxException, match=expected_error):
+            sl.alter(new_shares=100)
 
-    def create_sla_with_more_1000_shares_test(self):
+    def test_create_sla_with_more_1000_shares(self):
         """
         Create SLA with 1001 SHARES
         """
         self._wrong_shares(shares=1001)
 
-    def create_sla_with_0_shares_test(self):
+    def test_create_sla_with_0_shares(self):
         """
         Create SLA with 0 SHARES
         """
         self._wrong_shares(shares=0)
 
-    def create_sla_with_negative_shares_test(self):
+    def test_create_sla_with_negative_shares(self):
         """
         Create 2 SLAs, attach to 1 role
         """
@@ -1036,6 +1045,5 @@ class SLATests(Tester):
         session = self.prepare()
         expected_error = r"'SHARES' can only take values of 1-1000 \(given %d\)" % shares
 
-        self.assertRaisesRegexp(SyntaxException, expected_error,
-                                self.create_service_level,
-                                session=session, name='sla1', service_shares=shares)
+        with pytest.raises(SyntaxException, match=expected_error):
+            self.create_service_level(session=session, name='sla1', service_shares=shares)
