@@ -1195,7 +1195,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             "system_schema was not backed up as part of the task, even though this keyspace should always be " \
             "backed up, even when it is not stated in the keyspace list"
 
-    @attr('scylla-manager')
     def test_backup_restore_with_agent_download_files(self):
         """
         The test creates a backup task, truncate the table that has been backed up,
