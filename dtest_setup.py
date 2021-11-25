@@ -175,7 +175,7 @@ def retry_till_success(fun, *args, **kwargs):
 
 
 class DTestSetup:
-    def __init__(self, dtest_config: DTestConfig = None, setup_overrides=None, cluster_name="test"):
+    def __init__(self, dtest_config: DTestConfig = None, setup_overrides=None, cluster_name="test", prefix='dtest-'):
         self.dtest_config = dtest_config
         self.setup_overrides = setup_overrides
         self.cluster_name = cluster_name
@@ -194,7 +194,7 @@ class DTestSetup:
             pass
 
         self.last_log = os.path.join(self.log_saved_dir, "last")
-        self.test_path = self.get_test_path()
+        self.test_path = self.get_test_path(prefix=prefix)
         self.enable_for_jolokia = False
         self.subprocs = []
         self.log_watch_thread = None
@@ -206,12 +206,12 @@ class DTestSetup:
         self.base_cql_timeout = 10  # seconds
         self.cql_request_timeout = None
 
-    def get_test_path(self):
+    def get_test_path(self, prefix='dtest-'):
         # we can not work /tmp
         dtest_root = os.path.join(os.path.expanduser("~"), '.dtest')
         if not os.path.exists(dtest_root):
             os.makedirs(dtest_root)
-        test_path = tempfile.mkdtemp(prefix='dtest-', dir=dtest_root)
+        test_path = tempfile.mkdtemp(prefix=prefix, dir=dtest_root)
 
         # ccm on cygwin needs absolute path to directory - it crosses from cygwin space into
         # regular Windows space on wmic calls which will otherwise break pathing

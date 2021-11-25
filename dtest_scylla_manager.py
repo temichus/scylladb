@@ -1,6 +1,6 @@
 import os
 import re
-import tempfile
+import pytest
 import yaml
 import time
 import logging
@@ -9,12 +9,14 @@ from re import findall
 from pprint import pformat
 from ast import literal_eval
 from typing import Union, List, Dict
-from contextlib import contextmanager
 
 from ccmlib import common
-from ccmlib.scylla_cluster import ScyllaCluster
 from dtest_class import wait_for, WaitTimeoutExpired
+from dtest_config import DTestConfig
+from dtest_setup import copy_logs
 from distutils.version import LooseVersion
+from scylla_tools import DTestSetup
+from dtest_setup_overrides import DTestSetupOverrides
 
 logger = logging.getLogger(__name__)
 
@@ -1496,25 +1498,35 @@ class ScyllaManagerMixin:
 
         return mgr_cluster
 
-    @contextmanager
-    def create_second_cluster(self, num_tokens):
-        dtest_root = os.path.join(os.path.expanduser("~"), '.dtest')
-        if not os.path.exists(dtest_root):
-            os.makedirs(dtest_root)
-        new_cluster_path = tempfile.mkdtemp(dir=dtest_root, prefix='dtest-secondary-')
+    @pytest.fixture(scope='function', autouse=False)
+    def secondary_cluster(self, request, fixture_dtest_create_cluster_func):
+        dtest_config = DTestConfig()
+        dtest_config.setup(request)
+        dtest_setup = DTestSetup(dtest_config=dtest_config,
+                                 setup_overrides=DTestSetupOverrides(),
+                                 cluster_name="test",
+                                 prefix="dtest-secondary-")
+        dtest_setup.initialize_cluster(fixture_dtest_create_cluster_func)
+        dtest_setup.cluster.set_configuration_options(values={'ring_delay_ms': 10000})
+        if not dtest_config.disable_active_log_watching:
+            dtest_setup.begin_active_log_watch()
 
-        cluster_id = self.cluster_id_allocator.alloc(new_cluster_path)
-        version = os.environ.get('SCYLLA_VERSION')
-        logger.debug(f"Starting Scylla cluster version {version}")
-        cluster = ScyllaCluster(path=new_cluster_path, name=f"secondary_cluster_{cluster_id}",
-                                cassandra_version=version, force_wait_for_cluster_start=True)
+        yield dtest_setup.cluster
+
+        failed = False
         try:
-            cluster.set_configuration_options(values={'initial_token': None, 'num_tokens': num_tokens})
-            cluster.set_id(cluster_id)
-            cluster.set_ipprefix("127.0.%d." % cluster_id)
-            yield cluster
+            if not dtest_setup.allow_log_errors:
+                try:
+                    dtest_setup.check_errors_all_nodes()
+                except AssertionError:
+                    failed = True
+                    raise
         finally:
-            logger.debug('Stopping second cluster ...')
-            cluster.stop()
-            self._cls_cleanup_cluster(cluster=cluster, test_path=new_cluster_path, preserve_cluster=False,
-                                      cluster_id_allocator=self.cluster_id_allocator, remove=True)
+            try:
+                # save the logs for inspection
+                if failed or not dtest_config.delete_logs:
+                    copy_logs(request, dtest_setup)
+            except Exception as e:
+                logger.error("Error saving log: %s", str(e))
+            finally:
+                dtest_setup.cleanup_cluster()
