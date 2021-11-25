@@ -1174,7 +1174,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         else:
             raise Exception("using an additional faulty s3 config did not cause the check-location command to fail")
 
-    @attr('scylla-manager')
     def test_backup_specific_keyspaces_includes_system_keyspaces(self):
         """
         The following test makes sure that even when "system_schema" is no included keyspace list of a backup task,
