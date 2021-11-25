@@ -4,7 +4,6 @@ import time
 import os
 import shutil
 import glob
-import tools
 import itertools
 import pytest
 import logging
@@ -26,7 +25,7 @@ from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_
 from tools.misc import ImmutableMapping
 from tools.stress import fill_data_by_cs
 from tools.assertions import assert_none, assert_all, assert_row_count
-
+from tools.cluster import new_node
 
 logger = logging.getLogger(__name__)
 
@@ -1005,7 +1004,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self._check_sstable_timestamps(node1)
 
         # node added with bootstrap enabled
-        node2 = tools.new_node(self.cluster)
+        node2 = new_node(self.cluster)
         node2.start(wait_for_binary_proto=True)
         # After streaming the new node should also have at max one
         # window per sstable.
@@ -1063,7 +1062,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         while len(rand_pks) < 10:
             rand_pks.add(random.randint(-2147483647, 2147483647))
 
-        node3 = tools.new_node(self.cluster)
+        node3 = new_node(self.cluster)
         node3.start(wait_for_binary_proto=False)
 
         self.run_prepared_statement(node1, session, insert_statement, rand_pks, 0, synthetic_minutes)
@@ -1218,10 +1217,10 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         for sstable, timewindow in sstable_timewindows_list:
             assert timewindow <= max_timewindow, f"timewindow{timewindow} is greater than {max_timewindow}"
 
-        new_node = tools.new_node(self.cluster)
-        new_node.start(wait_for_binary_proto=True)
+        _new_node = new_node(self.cluster)
+        _new_node.start(wait_for_binary_proto=True)
 
-        self._check_sstable_timestamps(new_node)
+        self._check_sstable_timestamps(_new_node)
 
     def test_rebuild_node_streaming(self):
         [node1, _, node3], session = self.prepare(3)

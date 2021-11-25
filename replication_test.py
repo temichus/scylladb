@@ -10,7 +10,7 @@ from cassandra.query import SimpleStatement
 from collections import defaultdict, OrderedDict
 
 from dtest_class import Tester, create_ks
-from tools import rows_to_list
+from tools.data import rows_to_list
 
 
 logger = logging.getLogger(__name__)

@@ -15,9 +15,8 @@ from assertions import assert_none
 from dtest import DISABLE_VNODES
 from dtest_class import Tester, create_ks, create_cf
 from thrift_bindings.thrift010.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
-from tools import (insert_columns, rows_to_list)
 from tools.assertions import assert_unavailable
-from tools.data import create_c1c2_table, insert_c1c2, query_c1c2
+from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, insert_columns, rows_to_list
 from tools.paging import PageFetcher
 from tools.thrift import get_thrift_client
 

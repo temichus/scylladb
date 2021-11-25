@@ -2,7 +2,6 @@ import time
 
 import pytest
 from dtest_class import Tester, create_ks
-from tools import since, rows_to_list
 from tools.assertions import assert_invalid, assert_all, assert_one
 from cassandra.concurrent import execute_concurrent
 

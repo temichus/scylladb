@@ -10,7 +10,7 @@ from ccmlib.node import NodetoolError
 # These must match the stress schema names
 from dtest_class import Tester
 from dtest_setup_overrides import DTestSetupOverrides
-from tools import InterruptCompaction
+from tools.intervention import InterruptCompaction
 
 KEYSPACE_NAME = 'keyspace1'
 TABLE_NAME = 'standard1'
