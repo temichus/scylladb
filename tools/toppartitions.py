@@ -94,7 +94,7 @@ def parse_toppartitions_output(output: str) -> dict:
     """
 
     pattern1 = r"(?P<sampler>[A-Z]+)\sSampler:\W+Cardinality:\s~(?P<cardinality>[0-9]+)\s\((?P<capacity>[0-9]+)\scapacity\)\W+Top\s(?P<toppartitions>[0-9]+)\spartitions:"
-    pattern2 = r"(?P<partition>[\w:]+)\s+(?P<count>[\d]+)\s+(?P<margin>[\d]+)"
+    pattern2 = r"(?P<partition>\([\w:]+\)\s[\w:]+)\s+(?P<count>[\d]+)\s+(?P<margin>[\d]+)"
     toppartitions = {}
     for out in output.split('\n\n'):
         # need to skip first line cause: https://github.com/scylladb/scylla-tools-java/issues/213
@@ -163,7 +163,7 @@ def run_operations_c1c2(session: Session, mode: str = "write",
         if ready_event and not ready_event.wait(40):
             raise TimeoutErrorNodetoolToppartitionStarted('timeout error, nodetool toppartitions not started')
 
-        query_c1c2_concurrent(session, keys=keys_list, tolerate_missing=True)
+        query_c1c2_concurrent(session, keys=keys_list, tolerate_missing=True, ks=ks, cf=cf)
 
 
 def verify_thread_execution(th):
@@ -173,7 +173,7 @@ def verify_thread_execution(th):
 
 
 def verify_error_message(details):
-    error_msg = "nodetool: toppartitions requires keyspace, column family name, and duration"
+    error_msg = "toppartitions requires either a keyspace, column family name and duration or no arguments at all"
     assert details.exit_status != 0, f"Command finished succesfully {details.exit_status}"
     assert error_msg in details.stdout, f"'{error_msg}' not found in {details.stdout}"
 

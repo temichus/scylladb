@@ -8,7 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from cassandra.concurrent import execute_concurrent_with_args
+from pkg_resources import parse_version
 from ccmlib.node import NodetoolError
+from ccmlib.scylla_cluster import ScyllaCluster
 from dtest_class import Tester, create_ks
 from tools.data import create_c1c2_table
 from tools.toppartitions import (wait_nodetool_toppartitions_start, parse_toppartitions_output,
@@ -33,12 +35,16 @@ class TestTopPartitions(Tester):
     """
     toppartitions_cmd_template = "toppartitions {optional_params} {ks} {cf} {duration}"
 
-    def prepare_cluster_with_ks_cf_c1c2(self, ks, cf):
+    def prepare_cluster_with_ks_cfs_c1c2(self, keyspaces=['ks'], column_families=[['cf']]):
         self.cluster.populate([1]).start()
         node = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
-        create_ks(session, ks, 1)
-        create_c1c2_table(session, cf)
+
+        for ks, cfs in zip(keyspaces, column_families):
+            create_ks(session, ks, 1)
+            for cf in cfs:
+                create_c1c2_table(session, cf=cf)
+
         return node, session
 
     def prepare_cluster_with_ks_cf_complex_primary_key(self, ks, cf):
@@ -64,12 +70,19 @@ class TestTopPartitions(Tester):
     def run_toppartition_for(self, node, ks, cf, duration=10000, optional_params=''):
         self.cmd = self.get_nodetool_toppartition_cmd(ks, cf, duration, optional_params)
 
-        logger.info("Running nodetool {self.cmd}")
+        logger.debug(f"Running nodetool {self.cmd}")
         out, err = node.nodetool(self.cmd)
         if err:
             pytest.fail(msg=str(err))
-        logger.info(f"nodetool {self.cmd} output={out}")
+        logger.debug(f"nodetool {self.cmd} output={out}")
         return parse_toppartitions_output(out)
+
+    def run_generic_toppartitions_for(self, node, keyspaces=None, tables=None, duration=10000, optional_params=''):
+        ks_filters = f"--ks-filters {','.join(keyspaces)}" if keyspaces is not None else ''
+        cf_filters = f"--cf-filters {','.join(tables)}" if tables is not None else ''
+        d = f'-d {duration}' if duration != '' else ''
+        optional_params = ' '.join([optional_params, ks_filters, cf_filters, d])
+        return self.run_toppartition_for(node, '', '', '', optional_params)
 
     def test_help_description(self):
         """Check help subcommand output
@@ -97,10 +110,17 @@ class TestTopPartitions(Tester):
         command terminated
 
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='keyspace1', cf='columnfamily1')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['keyspace1'], [['columnfamily1']])
         # no requied parameters
-        details = self.run_toppartitions_with_wrong_parameters(node)
-        verify_error_message(details)
+        if not isinstance(self.cluster, ScyllaCluster) or parse_version(self.cluster.version()) <= parse_version("4.5"):
+            # allowed since scylladb/scylla-tools-java@a8a3f6cb13367ddac06e4fe6c4fccf019f314bfb
+            logger.debug("Running toppartitions with no parameters - expected to fail")
+            details = self.run_toppartitions_with_wrong_parameters(node)
+            self.verify_error_message(details)
+        else:
+            logger.debug("Running toppartitions with no parameters - expected to succeed")
+            cmd = self.get_nodetool_toppartition_cmd(ks='', cf='', duration='', optional_params='')
+            node.nodetool(cmd)
         # only ks required parameter is passed
         details = self.run_toppartitions_with_wrong_parameters(node, ks='keyspace1')
         verify_error_message(details)
@@ -116,7 +136,7 @@ class TestTopPartitions(Tester):
         keyspace and columnfamily
 
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='keyspace1', cf='columnfamily1')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['keyspace1'], [['columnfamily1']])
 
         stdout = self.run_toppartition_for(node, ks='keyspace1', cf='columnfamily1', duration=500)
         verify_empty_result(stdout)
@@ -131,19 +151,19 @@ class TestTopPartitions(Tester):
         3. Execute 1 write operation for 10 partitions
         4. Assert write sampler, empty read sampler
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['ks'], [['cf']])
         sync_starter = Event()
         with ThreadPoolExecutor(max_workers=2) as executor:
-            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            run_tp_future = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
             executor.submit(run_operations_c1c2,
                             session, mode="write", w_keys=10, w_num=1000, ready_event=sync_starter)
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             sync_starter.set()
 
-            verify_thread_execution(ft)
-            toppartion_results = ft.result()
+            verify_thread_execution(run_tp_future)
+            toppartion_results = run_tp_future.result()
 
-        expected_write_toppartition_key_count = [(f"k{i}", "100") for i in range(10)]
+        expected_write_toppartition_key_count = [(f"(ks:cf) k{i}", "100") for i in range(10)]
         verify_samples_present_in_result(["WRITES", "READS"], toppartion_results)
         verify_counters_for_sample(actual_results=toppartion_results["WRITES"],
                                    expected_results=expected_write_toppartition_key_count)
@@ -159,21 +179,21 @@ class TestTopPartitions(Tester):
         3. Execute 1 read operation for 10 partitions
         4. Assert read sampler, empty write sampler
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['ks'], [['cf']])
         run_operations_c1c2(session, mode="write", w_keys=10)
         sync_starter = Event()
         with ThreadPoolExecutor(max_workers=2) as executor:
-            ft = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
+            run_tp_future = executor.submit(self.run_toppartition_for, node, ks='ks', cf='cf')
             executor.submit(run_operations_c1c2,
                             session, mode="read", r_keys=10, r_num=1000,
                             ready_event=sync_starter)
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             sync_starter.set()
 
-            verify_thread_execution(ft)
-            toppartion_results = ft.result()
+            verify_thread_execution(run_tp_future)
+            toppartion_results = run_tp_future.result()
 
-        expected_read_toppartitions_keys_count = [(f"k{i}", "100") for i in range(10)]
+        expected_read_toppartitions_keys_count = [(f"(ks:cf) k{i}", "100") for i in range(10)]
         verify_samples_present_in_result(["WRITES", "READS"], toppartion_results)
         verify_counters_for_sample(
             actual_results=toppartion_results["READS"], expected_results=expected_read_toppartitions_keys_count)
@@ -190,13 +210,13 @@ class TestTopPartitions(Tester):
 
         #4529
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['ks'], [['cf']])
         futures = []
         sync_starter = Event()
         with ThreadPoolExecutor(max_workers=3) as executor:
-            ft_top = executor.submit(self.run_toppartition_for,
-                                     node, ks='ks', cf='cf', optional_params='-k 5')
-            futures.append(ft_top)
+            run_tp_future = executor.submit(self.run_toppartition_for,
+                                            node, ks='ks', cf='cf', optional_params='-k 5')
+            futures.append(run_tp_future)
             futures.append(executor.submit(run_operations_c1c2,
                                            session, mode="write", keys=list(range(0, 5)), w_num=1000,
                                            ready_event=sync_starter))
@@ -206,12 +226,12 @@ class TestTopPartitions(Tester):
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             sync_starter.set()
 
-            for ft in futures:
-                verify_thread_execution(ft)
+            for future in futures:
+                verify_thread_execution(future)
 
-            toppartion_results = ft_top.result()
+            toppartion_results = run_tp_future.result()
 
-        expected_write_toppartition_key_count = [(f"k{i}", "100") for i in range(5, 10)]
+        expected_write_toppartition_key_count = [(f"(ks:cf) k{i}", "100") for i in range(5, 10)]
 
         verify_samples_present_in_result(["WRITES", "READS"], toppartion_results)
         verify_counters_for_sample(
@@ -229,14 +249,14 @@ class TestTopPartitions(Tester):
 
         #4529
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['ks'], [['cf']])
         futures = []
         sync_starter = Event()
         run_operations_c1c2(session, mode="write", w_keys=10)
         with ThreadPoolExecutor(max_workers=3) as executor:
-            ft_top = executor.submit(self.run_toppartition_for,
-                                     node, ks='ks', cf='cf', optional_params='-k 5')
-            futures.append(ft_top)
+            run_tp_future = executor.submit(self.run_toppartition_for,
+                                            node, ks='ks', cf='cf', optional_params='-k 5')
+            futures.append(run_tp_future)
             futures.append(executor.submit(run_operations_c1c2,
                                            session, mode="read", keys=list(range(0, 5)), r_num=1500,
                                            ready_event=sync_starter))
@@ -246,12 +266,12 @@ class TestTopPartitions(Tester):
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             sync_starter.set()
 
-            for ft in futures:
-                verify_thread_execution(ft)
+            for future in futures:
+                verify_thread_execution(future)
 
-            toppartion_results = ft_top.result()
+            toppartion_results = run_tp_future.result()
 
-        expected_read_toppartition_key_count = [(f"k{i}", "100") for i in range(5)]
+        expected_read_toppartition_key_count = [(f"(ks:cf) k{i}", "100") for i in range(5)]
         verify_samples_present_in_result(["WRITES", "READS"], toppartion_results)
         verify_counters_for_sample(
             actual_results=toppartion_results["READS"], expected_results=expected_read_toppartition_key_count)
@@ -267,14 +287,14 @@ class TestTopPartitions(Tester):
         4. assert that only latest 3 are displayed.
 
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['ks'], [['cf']])
         futures = []
 
         sync_starter = Event()
         with ThreadPoolExecutor(max_workers=4) as executor:
-            ft_top = executor.submit(self.run_toppartition_for,
-                                     node, ks='ks', cf='cf', optional_params='-k 3 -a writes')
-            futures.append(ft_top)
+            run_tp_future = executor.submit(self.run_toppartition_for,
+                                            node, ks='ks', cf='cf', optional_params='-k 3 -a writes')
+            futures.append(run_tp_future)
             futures.append(executor.submit(run_operations_c1c2,
                                            session, mode="write", keys=list(range(0, 5)), w_num=1000,
                                            ready_event=sync_starter))
@@ -288,12 +308,12 @@ class TestTopPartitions(Tester):
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             sync_starter.set()
 
-            for ft in futures:
-                verify_thread_execution(ft)
+            for future in futures:
+                verify_thread_execution(future)
 
-            toppartion_results = ft_top.result()
+            toppartion_results = run_tp_future.result()
 
-        expected_write_toppartition_key_count = [("k4", "100"), ("k3", "100"), ("k2", "100")]
+        expected_write_toppartition_key_count = [("(ks:cf) k4", "100"), ("(ks:cf) k3", "100"), ("(ks:cf) k2", "100")]
         verify_samples_present_in_result(["WRITES"], toppartion_results)
         verify_counters_for_sample(
             actual_results=toppartion_results["WRITES"], expected_results=expected_write_toppartition_key_count)
@@ -309,14 +329,14 @@ class TestTopPartitions(Tester):
 
         #4529
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['ks'], [['cf']])
         futures = []
         sync_starter = Event()
         run_operations_c1c2(session, mode="write", w_keys=20)
         with ThreadPoolExecutor(max_workers=4) as executor:
-            ft_top = executor.submit(self.run_toppartition_for,
-                                     node, ks='ks', cf='cf', optional_params='-k 3 -a reads')
-            futures.append(ft_top)
+            run_tp_future = executor.submit(self.run_toppartition_for,
+                                            node, ks='ks', cf='cf', optional_params='-k 3 -a reads')
+            futures.append(run_tp_future)
             futures.append(executor.submit(run_operations_c1c2,
                                            session, mode="read", keys=list(range(0, 9)), r_num=1000,
                                            ready_event=sync_starter))
@@ -329,12 +349,12 @@ class TestTopPartitions(Tester):
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             sync_starter.set()
 
-            for ft in futures:
-                verify_thread_execution(ft)
+            for future in futures:
+                verify_thread_execution(future)
 
-            toppartion_results = ft_top.result()
+            toppartion_results = run_tp_future.result()
 
-        expected_read_toppartition_key_count = [("k7", "100"), ("k8", "100"), ("k9", "100")]
+        expected_read_toppartition_key_count = [("(ks:cf) k7", "100"), ("(ks:cf) k8", "100"), ("(ks:cf) k9", "100")]
         verify_samples_present_in_result(["READS"], toppartion_results)
         verify_counters_for_sample(
             actual_results=toppartion_results["READS"], expected_results=expected_read_toppartition_key_count)
@@ -349,15 +369,15 @@ class TestTopPartitions(Tester):
         3. run in thread 1 write operations for 10 partitions
         4. assert only write samplers in output
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['ks'], [['cf']])
         futures = []
 
         sync_starter = Event()
 
         with ThreadPoolExecutor(max_workers=4) as executor:
-            ft_top = executor.submit(self.run_toppartition_for,
-                                     node, ks='ks', cf='cf', optional_params='-a writes -s 15 -k 3')
-            futures.append(ft_top)
+            run_tp_future = executor.submit(self.run_toppartition_for,
+                                            node, ks='ks', cf='cf', optional_params='-a writes -s 15 -k 3')
+            futures.append(run_tp_future)
             futures.append(executor.submit(run_operations_c1c2,
                                            session, mode="write", keys=list(range(0, 20, 2)), w_num=1000,
                                            ready_event=sync_starter))
@@ -370,11 +390,11 @@ class TestTopPartitions(Tester):
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             sync_starter.set()
 
-            for ft in futures:
-                verify_thread_execution(ft)
-            toppartion_results = ft_top.result()
+            for future in futures:
+                verify_thread_execution(future)
+            toppartion_results = run_tp_future.result()
 
-        expected_write_toppartition_key_count = [("k5", '100'), ("k10", "100"), ("k15", "100")]
+        expected_write_toppartition_key_count = [("(ks:cf) k5", '100'), ("(ks:cf) k10", "100"), ("(ks:cf) k15", "100")]
         verify_samples_present_in_result(["WRITES"], toppartion_results)
         verify_counters_for_sample(
             actual_results=toppartion_results["WRITES"], expected_results=expected_write_toppartition_key_count)
@@ -389,14 +409,14 @@ class TestTopPartitions(Tester):
         3. run in thread read operations for 10 partitions
         4. assert only read samplers in output
         """
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='ks', cf='cf')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['ks'], [['cf']])
         futures = []
         sync_starter = Event()
         run_operations_c1c2(session, mode="write", w_keys=20)
         with ThreadPoolExecutor(max_workers=4) as executor:
-            ft_top = executor.submit(self.run_toppartition_for,
-                                     node, ks='ks', cf='cf', optional_params='-a reads -s 15 -k 3')
-            futures.append(ft_top)
+            run_tp_future = executor.submit(self.run_toppartition_for,
+                                            node, ks='ks', cf='cf', optional_params='-a reads -s 15 -k 3')
+            futures.append(run_tp_future)
             futures.append(executor.submit(run_operations_c1c2,
                                            session, mode="read", keys=list(range(0, 20, 2)), r_num=1000,
                                            ready_event=sync_starter
@@ -412,13 +432,13 @@ class TestTopPartitions(Tester):
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             sync_starter.set()
 
-            for ft in futures:
-                verify_thread_execution(ft)
-            toppartion_results = ft_top.result()
+            for future in futures:
+                verify_thread_execution(future)
+            toppartion_results = run_tp_future.result()
 
         # expected counters are set less, due to different computer performance where dtest are rans,
         # and validate correctness of partitions names and approximated counters
-        expected_write_toppartition_key_count = [("k6", '100'), ("k12", "100"), ("k18", "100")]
+        expected_write_toppartition_key_count = [("(ks:cf) k6", '100'), ("(ks:cf) k12", "100"), ("(ks:cf) k18", "100")]
 
         verify_samples_present_in_result(["READS"], toppartion_results)
         verify_counters_for_sample(toppartion_results["READS"], expected_write_toppartition_key_count)
@@ -451,7 +471,10 @@ class TestTopPartitions(Tester):
                 top_5_write_partitions_keys_results.append(toppartition_result['WRITES']['partitions'].keys())
             verify_thread_execution(future)
 
-        expected_average_top_partition_keys = ['1500', '1501', '1499', '1502', '1498', '1497', '1503']
+        expected_average_top_partition_keys = ['(keyspace1:standard1) 1500', '(keyspace1:standard1) 1501',
+                                               '(keyspace1:standard1) 1499', '(keyspace1:standard1) 1502',
+                                               '(keyspace1:standard1) 1498', '(keyspace1:standard1)1497',
+                                               '(keyspace1:standard1) 1503']
 
         for actual_results in top_5_write_partitions_keys_results:
             verify_partition_keys(actual_partition_keys=actual_results,
@@ -491,14 +514,16 @@ class TestTopPartitions(Tester):
                 top_5_read_partitions_keys_results.append(toppartition_result['READS']['partitions'].keys())
             verify_thread_execution(future)
 
-        expected_average_top_partition_keys = ['1500', '1501', '1499', '1502', '1498']
+        expected_average_top_partition_keys = ['(keyspace1:standard1) 1500', '(keyspace1:standard1) 1501',
+                                               '(keyspace1:standard1) 1499', '(keyspace1:standard1) 1502',
+                                               '(keyspace1:standard1) 1498']
 
         for actual_results in top_5_read_partitions_keys_results:
             verify_partition_keys(actual_partition_keys=actual_results,
                                   expected_toppartition_keys=expected_average_top_partition_keys)
 
     def test_topCount_shouldbe_smaller_than_capacity(self):
-        node, session = self.prepare_cluster_with_ks_cf_c1c2(ks='keyspace1', cf='columnfamily1')
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(['keyspace1'], [['columnfamily1']])
 
         result = self.run_toppartitions_with_wrong_parameters(node,
                                                               ks='keyspace1', cf='columnfamily1',
@@ -534,8 +559,8 @@ class TestTopPartitions(Tester):
         futures = []
         sync_starter = Event()
         with ThreadPoolExecutor(max_workers=3) as executor:
-            ft_top = executor.submit(self.run_toppartition_for, node, ks='keyspace1', cf='columnfamily1')
-            futures.append(ft_top)
+            run_tp_future = executor.submit(self.run_toppartition_for, node, ks='keyspace1', cf='columnfamily1')
+            futures.append(run_tp_future)
             futures.append(executor.submit(write_25_ops_for_10_partitions,
                                            session, ks='keyspace1', cf='columnfamily1'))
             futures.append(executor.submit(write_into_one_partition_to_different_rows,
@@ -543,15 +568,16 @@ class TestTopPartitions(Tester):
             wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
             time.sleep(1)
             sync_starter.set()
-            for ft in futures:
-                verify_thread_execution(ft)
+            for future in futures:
+                verify_thread_execution(future)
 
-            toppartition_result = ft_top.result()
+            toppartition_result = run_tp_future.result()
         # expected first partitions
-        expected_write_toppartition_results = [("1:1", "150"), ("1:0", "15")]
+        expected_write_toppartition_results = [
+            ("(keyspace1:columnfamily1) 1:1", "150"), ("(keyspace1:columnfamily1) 1:0", "15")]
         # expected rest of partitions
         for i in range(2, 10):
-            expected_write_toppartition_results.append((f"1:{i}", "15"))
+            expected_write_toppartition_results.append((f"(keyspace1:columnfamily1) 1:{i}", "15"))
         verify_samples_present_in_result(["WRITES", "READS"], toppartition_result)
         verify_counters_for_sample(
             actual_results=toppartition_result["WRITES"], expected_results=expected_write_toppartition_results)
@@ -601,11 +627,12 @@ class TestTopPartitions(Tester):
 
             verify_thread_execution(future)
 
-        expected_average_top_partition_keys = ['1500:1501', '1500:1500', '1500:1499', '1500:1502', '1500:1498',
-                                               '1501:1500', '1501:1499', '1501:1501', '1501:1498', '1501:1502',
-                                               '1499:1500', '1499:1499', '1499:1501', '1499:1498', '1499:1502',
-                                               '1498:1500', '1498:1499', '1498:1501', '1498:1498', '1498:1502',
-                                               '1502:1500', '1502:1499', '1502:1501', '1502:1498', '1502:1502']
+        expected_average_top_partition_keys = list(map(lambda x: f"(keyspace1:standard1) {x}",
+                                                       ['1500:1501', '1500:1500', '1500:1499', '1500:1502', '1500:1498',
+                                                        '1501:1500', '1501:1499', '1501:1501', '1501:1498', '1501:1502',
+                                                        '1499:1500', '1499:1499', '1499:1501', '1499:1498', '1499:1502',
+                                                        '1498:1500', '1498:1499', '1498:1501', '1498:1498', '1498:1502',
+                                                        '1502:1500', '1502:1499', '1502:1501', '1502:1498', '1502:1502']))
 
         for actual_results in top_5_write_partitions_keys_results:
             verify_partition_keys(actual_partition_keys=actual_results,
@@ -637,8 +664,11 @@ class TestTopPartitions(Tester):
 
         Using profile file for c-s tool run read operation and validate the nodetool toppartition result
         """
-        self.cluster.populate([1]).start()
+        self.cluster.populate([1]).start(
+            jvm_args=['--abort-on-lsa-bad-alloc', '0'])
         node = self.cluster.nodelist()[0]
+
+        self.ignore_log_patterns += ['std::bad_alloc']
 
         top_5_read_partitions_keys_results = []
         with ThreadPoolExecutor(max_workers=1) as excutor:
@@ -662,12 +692,177 @@ class TestTopPartitions(Tester):
 
             verify_thread_execution(future)
 
-        expected_average_top_partition_keys = ['1500:1501', '1500:1500', '1500:1499', '1500:1502', '1500:1498',
-                                               '1501:1500', '1501:1499', '1501:1501', '1501:1498', '1501:1502',
-                                               '1499:1500', '1499:1499', '1499:1501', '1499:1498', '1499:1502',
-                                               '1498:1500', '1498:1499', '1498:1501', '1498:1498', '1498:1502',
-                                               '1502:1500', '1502:1499', '1502:1501', '1502:1498', '1502:1502']
+        expected_average_top_partition_keys = list(map(lambda x: f"(keyspace1:standard1) {x}",
+                                                       ['1500:1501', '1500:1500', '1500:1499', '1500:1502', '1500:1498',
+                                                        '1501:1500', '1501:1499', '1501:1501', '1501:1498', '1501:1502',
+                                                        '1499:1500', '1499:1499', '1499:1501', '1499:1498', '1499:1502',
+                                                        '1498:1500', '1498:1499', '1498:1501', '1498:1498', '1498:1502',
+                                                        '1502:1500', '1502:1499', '1502:1501', '1502:1498', '1502:1502']))
 
         for actual_results in top_5_read_partitions_keys_results:
             verify_partition_keys(actual_partition_keys=actual_results,
                                   expected_toppartition_keys=expected_average_top_partition_keys)
+
+    def test_one_keyspace_multiple_column_families_reads_sample_and_empty_writes_sample(self):
+        """ validate that read operations are correctly counted
+        among multiple families in one keyspace
+
+        Flow:
+        1. Create KS and CF1, CF2, CF3
+        2. Run toppartitions with duration 10 seconds
+        3. Execute 1 read operation per family, for 3 partitions each
+        4. Assert read sampler, empty write sampler
+        """
+        cfs = ['cf1', 'cf2', 'cf3']
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(keyspaces=['ks'], column_families=[cfs])
+
+        for cf in cfs:
+            run_operations_c1c2(session, mode="write", w_keys=10, cf=cf)
+
+        sync_starter = Event()
+        futures = []
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            run_tp_future = executor.submit(self.run_generic_toppartitions_for, node, keyspaces=['ks'], tables=None)
+            for cf in cfs:
+                logger.debug("Column family: %s", cf)
+                futures.append(executor.submit(run_operations_c1c2,
+                                               session, mode="read", r_keys=3, r_num=1000, ks='ks', cf=cf,
+                                               ready_event=sync_starter))
+            wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
+            sync_starter.set()
+            for f_read in futures:
+                verify_thread_execution(f_read)
+
+            verify_thread_execution(run_tp_future)
+            toppartition_results = run_tp_future.result()
+
+        expected_read_toppartitions_key_count = []
+        for cf in cfs:
+            expected_read_toppartitions_key_count += [(f'(ks:{cf}) k{i}', "100") for i in range(3)]
+
+        verify_samples_present_in_result(["WRITES", "READS"], toppartition_results)
+        verify_counters_for_sample(actual_results=toppartition_results["READS"],
+                                   expected_results=expected_read_toppartitions_key_count)
+        verify_counters_for_sample(actual_results=toppartition_results["WRITES"],
+                                   expected_results=[])
+
+    def test_one_keyspace_multiple_column_families_writes_sample_and_empty_reads_sample(self):
+        """ validate that write operations is correctly counted
+        among multiple families in one keyspace
+
+        Flow:
+        1. Create KS and CF1, CF2, CF3
+        2. Run toppartitions with duration 10 seconds
+        3. Execute 1 write operation per family, for 3 partitions each
+        4. Assert write sampler, empty read sampler
+        """
+        cfs = ['cf1', 'cf2', 'cf3']
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(keyspaces=['ks'], column_families=[cfs])
+
+        sync_starter = Event()
+        futures = []
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            run_tp_future = executor.submit(self.run_generic_toppartitions_for, node,
+                                            keyspaces=['ks'], tables=None, duration=3000)
+            for cf in cfs:
+                futures.append(executor.submit(run_operations_c1c2,
+                                               session, mode="write", w_keys=3, w_num=1000, ks='ks', cf=cf,
+                                               ready_event=sync_starter))
+            wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
+            sync_starter.set()
+            for f_write in futures:
+                verify_thread_execution(f_write)
+
+            verify_thread_execution(run_tp_future)
+            toppartition_results = run_tp_future.result()
+
+        expected_write_toppartitions_key_count = []
+        for cf in cfs:
+            expected_write_toppartitions_key_count += [(f'(ks:{cf}) k{i}', "100") for i in range(3)]
+
+        verify_samples_present_in_result(["WRITES", "READS"], toppartition_results)
+        verify_counters_for_sample(actual_results=toppartition_results["WRITES"],
+                                   expected_results=expected_write_toppartitions_key_count)
+        verify_counters_for_sample(actual_results=toppartition_results["READS"],
+                                   expected_results=[])
+
+    def test_all_column_families_writes_only(self):
+        """ validate that write operations in all families
+        from all keyspaces are included in a general query
+
+        Flow:
+        1. Create KS1 with CF1, CF2, CF3 and KS2 with CF1, CF2
+        2. Run toppartitions with duration 10 seconds
+        3. Execute 1 write operation per family, for 1 partition each
+        4. Assert write sampler, empty read sampler
+        """
+        keyspaces = ['ks1', 'ks2']
+        families = [['cf1', 'cf2', 'cf3'], ['cf1', 'cf2']]
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(keyspaces, families)
+
+        sync_starter = Event()
+        futures = []
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            run_tp_future = executor.submit(self.run_generic_toppartitions_for, node, optional_params='-a writes')
+            for ks, cfs in zip(keyspaces, families):
+                for cf in cfs:
+                    futures.append(executor.submit(run_operations_c1c2,
+                                                   session, mode='write', w_keys=1, w_num=5000, ks=ks, cf=cf,
+                                                   ready_event=sync_starter))
+            wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
+            sync_starter.set()
+            for f_write in futures:
+                verify_thread_execution(f_write)
+
+            verify_thread_execution(run_tp_future)
+            toppartition_results = run_tp_future.result()
+
+        expected_write_toppartitions_key_count = [(f'({ks}:{cf}) k0', 100)
+                                                  for ks, cfs in zip(keyspaces, families) for cf in cfs]
+        verify_samples_present_in_result(['WRITES'], toppartition_results)
+        verify_counters_for_sample(actual_results=toppartition_results["WRITES"],
+                                   expected_results=expected_write_toppartitions_key_count)
+
+    def test_all_column_families_reads_only(self):
+        """ validate that read operations in all families
+        from all keyspaces are included in a general query
+
+        Flow:
+        1. Create KS1 with CF1, CF2, CF3 and KS2 with CF1, CF2
+        2. Run toppartitions with duration 10 seconds
+        3. Execute 1 read operation per family, for 1 partition each
+        4. Assert read sampler, empty write sampler
+        """
+        keyspaces = ['ks1', 'ks2']
+        families = [['cf1', 'cf2', 'cf3'], ['cf1', 'cf2']]
+        node, session = self.prepare_cluster_with_ks_cfs_c1c2(keyspaces, families)
+
+        for ks, cfs in zip(keyspaces, families):
+            for cf in cfs:
+                run_operations_c1c2(session, mode="write", w_keys=1, ks=ks, cf=cf)
+
+        sync_starter = Event()
+        futures = []
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            run_tp_future = executor.submit(self.run_generic_toppartitions_for, node, optional_params='-k 5')
+            for ks, cfs in zip(keyspaces, families):
+                for cf in cfs:
+                    futures.append(executor.submit(run_operations_c1c2,
+                                                   session, mode="read", r_keys=1, r_num=1000, ks=ks, cf=cf,
+                                                   ready_event=sync_starter))
+            wait_nodetool_toppartitions_start(node, self.cmd, timeout=30)
+            sync_starter.set()
+            for f_read in futures:
+                verify_thread_execution(f_read)
+
+            verify_thread_execution(run_tp_future)
+            toppartition_results = run_tp_future.result()
+
+        expected_read_toppartitions_key_count = [(f'({ks}:{cf}) k0', 100)
+                                                 for ks, cfs in zip(keyspaces, families) for cf in cfs]
+
+        verify_samples_present_in_result(["WRITES", "READS"], toppartition_results)
+        verify_counters_for_sample(actual_results=toppartition_results["READS"],
+                                   expected_results=expected_read_toppartitions_key_count)
+        verify_counters_for_sample(actual_results=toppartition_results["WRITES"],
+                                   expected_results=[])

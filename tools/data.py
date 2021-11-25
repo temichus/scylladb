@@ -361,7 +361,7 @@ def insert_c1c2_no_prepared(session, keys=None, n=None, consistency=ConsistencyL
                                                             consistency_level=consistency), None), keys, c1_values, c2_values))
 
 
-def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, c1_values=None, c2_values=None):
+def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, c1_values=None, c2_values=None, ks=None, cf=None):
     if c1_values is None:
         c1_values = ['value1'] * len(keys)
 
@@ -372,8 +372,17 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
         raise ValueError(
             "Inconsistent 'c1/c2_values' contents. 'c1/c2_values' should be either a 'None' value or a list of the same length as a requested number of keys.")
 
+    ks_cf = ""
+    if ks:
+        ks_cf += f"{ks}."
+    if cf:
+        ks_cf += f"{cf}"
+    else:
+        ks_cf += "cf"
+
     # prepare a query statement
-    query = 'SELECT c1, c2 FROM cf WHERE key=?'
+    query = f'SELECT c1, c2 FROM {ks_cf} WHERE key=?'
+    logger.debug("Select query: %s", query)
     pquery = session.prepare(query)
     pquery.consistency_level = consistency
 
