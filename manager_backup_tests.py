@@ -1216,7 +1216,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             node.nodetool(f"refresh -- {keyspace_name} {table_name}")
         self.verify_c1c2(keyspace_table_and_key_range=keyspace_table_and_key_range, node=node1)
 
-    @attr('scylla-manager')
     def test_execute_download_files_on_nonexistent_keyspaces(self):
         """
         The test creates a backup, runs it to completion, and afterwards attempts to execute the
