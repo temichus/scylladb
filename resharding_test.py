@@ -18,28 +18,40 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+TESTED_STRATEGIES = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy']
+MURMUR3 = 15
+
+
+def pytest_generate_tests(metafunc):
+    idlist = []
+    argvalues = []
+    argnames = []
+    for scenario in metafunc.cls.scenarios:
+        idlist.append(scenario[0])
+        items = scenario[1].items()
+        if not argnames:
+            argnames = [item[0] for item in items]
+        argvalues.append([item[1] for item in items])
+    metafunc.parametrize(argnames, argvalues, ids=idlist, scope="class")
+
 
 class TestReshardingBase(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
     DEFAULT_NODES = 1
     MURMUR3_PARTITIONER_FOR_DECREASE = 10
     MURMUR3_PARTITIONER_FOR_INCREASE = 17
-    __test__ = False
-
-    compaction_strategy: str
 
     @pytest.fixture(scope='function', autouse=True)
-    def fixture_dtest_setup_overrides(self, dtest_config):
-        self.compaction_strategy = self.compaction_strategy if hasattr(self, 'compaction_strategy') \
-            else 'LeveledCompactionStrategy'
+    def fixture_dtest_setup_overrides(self, dtest_config, node_count, compaction_strategy, murmur3):
+        self.compaction_strategy = compaction_strategy or 'LeveledCompactionStrategy'
         cpu_count = multiprocessing.cpu_count()
         assert cpu_count >= 4, "Resharding tests require a minimum of 4 cpus"
         self.smp = min(cpu_count // 2 + 1, 5)
         self.SMP_FOR_INCREASE = min(self.smp + 1, cpu_count, 9)
         self.SMP_FOR_DECREASE = min(1, self.smp // 2)
 
-        self.murmur3 = self.murmur3 if hasattr(self, 'murmur3') else self.DEFAULT_MURMUR3_PARTITIONER
-        self.nodes = self.nodes if hasattr(self, 'nodes') else self.DEFAULT_NODES
+        self.murmur3 = murmur3 or self.DEFAULT_MURMUR3_PARTITIONER
+        self.nodes = node_count or self.DEFAULT_NODES
         self.rf = 1 if self.nodes < 3 else 3
         self.mem = self.set_memory_param(self.smp)
 
@@ -185,9 +197,12 @@ class TestReshardingBase(Tester):
 @pytest.mark.next_gating
 @pytest.mark.single_node
 class TestReshardingSingleNodeGating(TestReshardingBase):
+    scenarios = [(f'TestReshardingSingleNodeGating_1nodes_{strategy}',
+                  {'node_count': 1, "compaction_strategy": strategy, "murmur3": MURMUR3})
+                 for strategy in ['TimeWindowCompactionStrategy', ]]
 
     # Copied from resharding_by_murmur3_smp_test to run in reduced configurations for next-gating
-    def test_resharding_by_murmur3_gating(self):
+    def test_resharding_by_murmur3_gating(self, node_count, compaction_strategy, murmur3):
         """
         Cluster with 10M objects. Both SMP and MURMUR3 parameter are changed
         and restarting the cluster
@@ -197,6 +212,9 @@ class TestReshardingSingleNodeGating(TestReshardingBase):
 
 @pytest.mark.single_node
 class TestReshardingTombstonesSingleNode(Tester):
+    scenarios = [(f'ReshardingTombstones_with__1nodes_{strategy}',
+                  {'node_count': 1, "compaction_strategy": strategy, "murmur3": MURMUR3})
+                 for strategy in TESTED_STRATEGIES]
 
     SMP = 2
     NEW_SMP = 4
@@ -237,7 +255,7 @@ class TestReshardingTombstonesSingleNode(Tester):
 
         return jsoninfo.count("marked_deleted")
 
-    def test_disable_tombstone_removal_during_reshard(self):
+    def test_disable_tombstone_removal_during_reshard(self, node_count, compaction_strategy, murmur3):
         """
         Test that data is not resurected when shared sstables
         are used
@@ -323,14 +341,19 @@ class TestReshardingTombstonesSingleNode(Tester):
 @pytest.mark.dtest_full
 @pytest.mark.dtest_heavy
 class TestReshardingVariants(TestReshardingBase):
-    def test_resharding_by_murmur3_increase(self):
+    scenarios = [(f'TestReshardingVariants_{nodes}nodes_{strategy}',
+                  {'node_count': nodes, "compaction_strategy": strategy, "murmur3": MURMUR3})
+                 for nodes in [1, 4]
+                 for strategy in TESTED_STRATEGIES]
+
+    def test_resharding_by_murmur3_increase(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with 10M objects after increasing the MURMUR3 parameter
         and restarting the cluster
         """
         self._resharding_basic(self.smp, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
-    def test_resharding_by_murmur3_decrease(self):
+    def test_resharding_by_murmur3_decrease(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with 10M objects after decreasing the MURMUR3 parameter
         and restarting the cluster
@@ -338,7 +361,7 @@ class TestReshardingVariants(TestReshardingBase):
         self._resharding_basic(self.smp, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_DECREASE)
 
     @flaky
-    def test_resharding_by_smp_increase(self):
+    def test_resharding_by_smp_increase(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with 10M objects after increasing the SMP parameter
         and restarting the cluster
@@ -346,21 +369,21 @@ class TestReshardingVariants(TestReshardingBase):
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=10000, murmur3=self.murmur3)
 
     @flaky
-    def test_resharding_by_smp_decrease(self):
+    def test_resharding_by_smp_decrease(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with 10M objects after decreasing the SMP parameter
         and restarting the cluster
         """
         self._resharding_basic(self.SMP_FOR_DECREASE, rows=100000, murmur3=self.murmur3)
 
-    def test_resharding_by_same_smp(self):
+    def test_resharding_by_same_smp(self, node_count, compaction_strategy, murmur3):
         """
         Cluster with 10M objects. Both SMP and MURMUR3 parameter are not changed.
         No resharding expected
         """
         self._resharding_basic(self.smp, rows=1000, murmur3=self.murmur3)
 
-    def test_resharding_by_murmur3_smp(self):
+    def test_resharding_by_murmur3_smp(self, node_count, compaction_strategy, murmur3):
         """
         Cluster with 10M objects. Both SMP and MURMUR3 parameter are changed
         and restarting the cluster
@@ -368,7 +391,7 @@ class TestReshardingVariants(TestReshardingBase):
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
     @flaky
-    def test_resharding_counter(self):
+    def test_resharding_counter(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
@@ -429,7 +452,7 @@ class TestReshardingVariants(TestReshardingBase):
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('counter1', op_cnt)
 
-    def test_resharding_mv(self):
+    def test_resharding_mv(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
@@ -482,27 +505,3 @@ class TestReshardingVariants(TestReshardingBase):
                                  session, query.format(tm.keyspace, tm.table_name),
                                  consistency_level=ConsistencyLevel.ALL, session_timeout=120,
                                  group=True, groupby_column1=mv_pk_name, groupby_column2=mv_pk_name)
-
-
-strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
-              'TimeWindowCompactionStrategy']
-
-murmur3 = 15
-for node_count in [1, 4]:
-    for strategy in strategies:
-        cls_name = ('TestResharding_nodes' + str(node_count) + '_with_' + strategy)
-        vars()[cls_name] = type(cls_name, (TestReshardingVariants,), {'nodes': node_count,
-                                                                      'compaction_strategy': strategy,
-                                                                      'murmur3': murmur3, '__test__': True})
-
-for node_count in [1]:
-    for strategy in ['TimeWindowCompactionStrategy']:
-        cls_name = ('TestResharding_nodes' + str(node_count) + '_with_' + strategy)
-        vars()[cls_name] = type(cls_name, (TestReshardingSingleNodeGating,), {'nodes': node_count,
-                                                                              'compaction_strategy': strategy,
-                                                                              'murmur3': murmur3, '__test__': True})
-
-for strategy in strategies:
-    cls_name = ('ReshardingTombstones_with_' + strategy)
-    vars()[cls_name] = type(cls_name, (TestReshardingTombstonesSingleNode,), {'compaction_strategy': strategy,
-                                                                              '__test__': True})
