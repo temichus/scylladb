@@ -121,7 +121,7 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
     def cluster_list(self):
         pass
 
-    def test_sctool_status_of_two_clusters_when_one_is_faulty(self):
+    def test_sctool_status_of_two_clusters_when_one_is_faulty(self, secondary_cluster):
         """
         The test verifies that when one of the managed clusters is unreachable,
         `sctool status` will still show the status of all of the clusters.
@@ -144,15 +144,14 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         primary_cluster_nodes = self.config_and_create_cluster(nodes=3)
         primary_mgr_cluster = self._create_mgr_cluster(node=primary_cluster_nodes[0], name="cluster1")
 
-        with self.create_second_cluster() as secondary_cluster:
-            secondary_cluster_nodes = self.config_and_create_cluster(nodes=3, cluster=secondary_cluster)
-            secondary_mgr_cluster = self._create_mgr_cluster(node=secondary_cluster_nodes[0],
-                                                             name="second_cluster")
+        secondary_cluster_nodes = self.config_and_create_cluster(nodes=3, cluster=secondary_cluster)
+        secondary_mgr_cluster = self._create_mgr_cluster(node=secondary_cluster_nodes[0],
+                                                         name="second_cluster")
 
-            cause_fault_in_one_cluster_and_verify_status_of_other(healthy_mgr_cluster=primary_mgr_cluster,
-                                                                  cluster_to_fault_node_list=secondary_cluster_nodes)
-            cause_fault_in_one_cluster_and_verify_status_of_other(healthy_mgr_cluster=secondary_mgr_cluster,
-                                                                  cluster_to_fault_node_list=primary_cluster_nodes)
+        cause_fault_in_one_cluster_and_verify_status_of_other(healthy_mgr_cluster=primary_mgr_cluster,
+                                                              cluster_to_fault_node_list=secondary_cluster_nodes)
+        cause_fault_in_one_cluster_and_verify_status_of_other(healthy_mgr_cluster=secondary_mgr_cluster,
+                                                              cluster_to_fault_node_list=primary_cluster_nodes)
 
     def test_change_agent_port(self):
         """
