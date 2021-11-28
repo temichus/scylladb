@@ -46,8 +46,27 @@ def make_snapshot(node: ScyllaNode,
     :returns: path where all snapshots stored, temp directory
     :rtype: {str}
     """
+    def _add_snapshot_dirs_to_list(_ks: Optional[str] = None):
+        tables = [f"{t}-*/" for t in cf.split(',')] if cf else ['*/']
+
+        for table in tables:
+            snapshot_dir_pattern = f"{node_dir}/data/"
+            if _ks:
+                snapshot_dir_pattern += f"{_ks}/"
+                snapshot_dir_pattern += f"{table}"
+                if name:
+                    snapshot_dir_pattern += f"snapshots/{name}"
+                else:
+                    snapshot_dir_pattern += f"snapshots/*"
+            else:
+                snapshot_dir_pattern += f"/*/*/snapshots/*"
+            _snapshot_dir = glob.glob(snapshot_dir_pattern)
+            if _snapshot_dir:
+                snapshot_dirs.extend(_snapshot_dir)
+            else:
+                snapshot_dirs.append('')
+
     logger.debug("Making snapshot....")
-    node.flush()
     snapshot_cmd = 'snapshot '
     if ks:
         snapshot_cmd += f"{ks} "
@@ -65,23 +84,11 @@ def make_snapshot(node: ScyllaNode,
 
     # # Find the snapshot dir, it's different in various C* versions:
     snapshot_dirs = []
-    tables = [f"{t}-*/" for t in cf.split(',')] if cf else ['*/']
-    for table in tables:
-        snapshot_dir_pattern = f"{node_dir}/data/"
-        if ks:
-            snapshot_dir_pattern += f"{ks}/"
-            snapshot_dir_pattern += f"{table}"
-            if name:
-                snapshot_dir_pattern += f"snapshots/{name}"
-            else:
-                snapshot_dir_pattern += f"snapshots/*"
-        else:
-            snapshot_dir_pattern += f"/*/*/snapshots/*"
-        snapshot_dir = glob.glob(snapshot_dir_pattern)
-        if snapshot_dir:
-            snapshot_dirs.extend(snapshot_dir)
-        else:
-            snapshot_dirs.append('')
+    if ks:
+        for kspace in ks.split(','):
+            _add_snapshot_dirs_to_list(_ks=kspace)
+    else:
+        _add_snapshot_dirs_to_list(_ks=ks)
 
     logger.debug(f"snapshot_dir is : {snapshot_dirs}")
     logger.debug(f"snapshot copy is : {tmpdir}")
