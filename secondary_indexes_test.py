@@ -253,7 +253,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         create_cf(session, '{0}.{1}'.format(ks_name, table_name), key_type='text', columns={'col1': 'text'},
                   compaction={'class': self.compaction_strategy})
 
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name, table_name,
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name, table_name,
                                            index['index_column'], index['index_name'],
                                            compaction=self.compaction_strategy), \
             'Index %s is not built' % index['index_name']
@@ -275,7 +275,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                    cl=ConsistencyLevel.QUORUM)
 
         # create index
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
                                            table_name='t3', index_column='pk1', index_name='ks_t3',
                                            compaction=self.compaction_strategy), \
             'Index ks_t3 is not built'
@@ -313,7 +313,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                    cl=ConsistencyLevel.QUORUM)
 
         # create index
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
                                            table_name='t3', index_column='pk2', index_name='ks_t3',
                                            compaction=self.compaction_strategy), \
             'Index ks_t3 is not built'
@@ -351,7 +351,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                    cl=ConsistencyLevel.QUORUM)
 
         # create index
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
                                            table_name='t3', index_column='ck', index_name='ks_t3',
                                            compaction=self.compaction_strategy), \
             'Index ks_t3 is not built'
@@ -389,7 +389,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                    cl=ConsistencyLevel.QUORUM)
 
         # create index
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
                                            table_name='t3', index_column='ck2', index_name='ks_t3',
                                            compaction=self.compaction_strategy), \
             'Index ks_t3 is not built'
@@ -429,11 +429,11 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                    expected=[[3]], cl=ConsistencyLevel.QUORUM)
 
         # create index
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
                                            table_name='t3', index_column='ck1', index_name='ck1_index',
                                            compaction=self.compaction_strategy), \
             'Index on "ck1" column is not built'
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
                                            table_name='t3', index_column='ck2', index_name='ks_t3',
                                            compaction=self.compaction_strategy), \
             'Index "ck2" column is not built'
@@ -469,7 +469,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(session, "SELECT pk FROM ks.t WHERE v=3 GROUP BY pk ALLOW FILTERING",
                    expected=[[1], [2]], cl=ConsistencyLevel.QUORUM)
 
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
                                            table_name='t', index_column='v', index_name='v_key',
                                            compaction=self.compaction_strategy), \
             'Index state_key is not built'
@@ -497,7 +497,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_all(session, "SELECT pk FROM ks.t WHERE v=3 GROUP BY pk ALLOW FILTERING",
                    expected=[[1]], cl=ConsistencyLevel.QUORUM)
 
-        assert self.create_and_build_index(self.create_index, self.cluster, session, ks_name='ks',
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
                                            table_name='t', index_column='v', index_name='v_key',
                                            compaction=self.compaction_strategy), \
             'Index state_key is not built'
@@ -2146,20 +2146,25 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
                            f"select count(*) from {ks_name}.{table_name} WHERE key='{r}' and v='asdf'",
                            expected=[[1]], cl=ConsistencyLevel.QUORUM)
 
-    def test_oversize_local_indexed_values(self):
+    @pytest.mark.parametrize("value_length,expect_message", [
+        (OVERSIZE_LENGTH, "Key size too large"),
+        (LONG_TEXT_LENGTH, None),
+    ], ids=["oversize", "long"])
+    def test_local_indexed_values(self, value_length, expect_message, fixture_dtest_setup: DTestSetup):
         """
-        Reject inserts & updates where values of any indexed column is > 64k
-        """
-        expect_message = 'Key size too large'
-        self._validate_long_indexed_values(OVERSIZE_LENGTH, expect_message)
+        First test:
+         Reject inserts & updates where values of any indexed column is > 64k
 
-    def test_long_local_indexed_values(self):
+        Second test:
+          Correct inserts & updates where values of any indexed column is long and up to 64k
         """
-        Correct inserts & updates where values of any indexed column is long and up to 64k
-        """
-        self._validate_long_indexed_values(LONG_TEXT_LENGTH, expect_message=None)
+        # This test is negative, and there are errors in the cluster' logs.
+        # The teardown fails because it expects a cluster doesn't contain errors if the test is passed.
+        if OVERSIZE_LENGTH == value_length:
+            fixture_dtest_setup.ignore_log_patterns += [
+                r".*std::runtime_error \(Key size too large: .*? > 65535\).*",
+            ]
 
-    def _validate_long_indexed_values(self, value_length, expect_message):
         session = self.prepare(self, nodes=4, rf=3)
         test = 'oversize' if value_length == OVERSIZE_LENGTH else 'long'
 
