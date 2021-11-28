@@ -1571,7 +1571,8 @@ class TestCqlshCopy(CqlshPrepare):
         logger.debug(err)
 
         assert 'Failed to process' in err, f"Not found message 'Failed to process' in the error {err}"
-        assert_row_count_in_select_less(session=self.session, table_name=stress_table, max_rows_expected=num_records)
+        assert_row_count_in_select_less(
+            session=self.session, query=f"SELECT COUNT(*) FROM {stress_table}", max_rows_expected=num_records)
 
     @pytest.mark.single_node
     def test_copy_from_with_fewer_failures_than_max_attempts(self):
@@ -1643,4 +1644,5 @@ class TestCqlshCopy(CqlshPrepare):
         logger.debug(err)
 
         assert 'child process(es) died unexpectedly' in err, f"Not found message 'child process(es) died unexpectedly' in the error {err}"
-        assert_row_count_in_select_less(session=self.session, table_name=stress_table, max_rows_expected=num_records)
+        assert_row_count_in_select_less(
+            session=self.session, query=f"SELECT COUNT(*) FROM {stress_table}", max_rows_expected=num_records)
