@@ -337,8 +337,6 @@ def test_failure_due_to_timeout(err, *args):
 
 @flaky(rerun_filter=test_failure_due_to_timeout)
 class Tester:
-    ignore_log_patterns = []
-
     def __getattribute__(self, name):
         try:
             return object.__getattribute__(self, name)

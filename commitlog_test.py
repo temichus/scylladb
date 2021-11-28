@@ -35,10 +35,10 @@ class TestCommitLog(Tester):
 
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup):
-        fixture_dtest_setup.ignore_log_patterns = (
+        fixture_dtest_setup.ignore_log_patterns = [
             'commitlog - Exception in segment reservation: storage_io_error \(Storage I/O error: 13: filesystem error: open failed',
             'Shutting down communications due to I/O errors until operator intervention',
-        )
+        ]
 
     @pytest.fixture(scope='function', autouse=True)
     def fixture_set_cluster_settings(self, fixture_dtest_setup):
@@ -136,7 +136,7 @@ class TestCommitLog(Tester):
             try:
                 if compressed:
                     # if compression is used, we assume there will be at most a 50% compression ratio
-                    assert size < segment_size, f"expect {size} < {segment_size}"
+                    assert size <= segment_size, f"expect {size} < {segment_size}"
                     assert size > segment_size / \
                         2, f"expect {size} > {segment_size / 2}"
                 else:
@@ -224,7 +224,7 @@ class TestCommitLog(Tester):
         node1.watch_log_for("Log replay complete")
         # Here we verify there was more than 0 replayed mutations
         zero_replays = node1.grep_log(
-            " 0 replayed mutations", filter_expr='logger.debug')
+            " 0 replayed mutations", filter_expr='DEBUG')
         assert len(zero_replays) == 0, f"expect 0, len(zero_replays)={len(zero_replays)}"
 
         logger.debug("Make query and ensure data is present")
@@ -314,7 +314,7 @@ class TestCommitLog(Tester):
         logger.debug("Verify commitlog was replayed on startup")
         node1.start(wait_for_binary_proto=False)
         node1.watch_log_for("Log replay complete")
-        replays = node1.grep_log(r" (\d+) replayed mutations", filter_expr='logger.debug')
+        replays = node1.grep_log(r" (\d+) replayed mutations", filter_expr='DEBUG')
         assert len(replays) > 0, f"expect >0, len(replays)={len(replays)}"
         replayed_mutations = 0
         for line, m in replays:
@@ -715,7 +715,7 @@ class TestCommitLog(Tester):
         node1.start()
         node1.watch_log_for("Log replay complete")
         # Here we verify there was more than 0 replayed mutations
-        zero_replays = node1.grep_log(" 0 replayed mutations", filter_expr='logger.debug')
+        zero_replays = node1.grep_log(" 0 replayed mutations", filter_expr='DEBUG')
         assert len(zero_replays) == 0, f"expecting 0, got len(zero_replays)={len(zero_replays)}"
 
         logger.debug("Make query and ensure data is present as expected")
@@ -765,7 +765,7 @@ class TestCommitLog(Tester):
 
         logger.debug("Make query and ensure data is present as expected")
         session = self.patient_cql_connection(node1)
-        assert_row_count_in_select_less(session=session, table_name='Test.cf', max_rows_expected=100)
+        assert_row_count_in_select_less(session=session, query='select * from Test.cf', max_rows_expected=100)
 
     def test_batch_commitlog(self):
         """
@@ -1020,7 +1020,7 @@ class TestCommitLog(Tester):
 
         # Verified that ENOSPC occurred and not all the data is wrote into db
         assert_row_count_in_select_less(
-            session=session, table_name='ks.cf', max_rows_expected=total_size)
+            session=session, query="SELECT count(*) FROM ks.cf", max_rows_expected=total_size)
         node1.watch_log_for('No space left on device', timeout=10)
 
         logger.debug('Added more data after recovered from ENOSPC ...')
