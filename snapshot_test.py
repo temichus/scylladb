@@ -1530,9 +1530,9 @@ class TestSnapshotOptions(SnapshotTester):
         """
         self.prepare()
         keyspaces = self.keyspaces + self.system_keyspaces
-        keyspace_dir_names, _, _ = self.base_case_make_snapshot_and_extract_ks_cf_names(
+        keyspace_dir_names = self.base_case_make_snapshot_and_extract_ks_cf_names(
             make_snapshot_kwargs={"node": self.node}
-        )
+        )[0]
 
         assert set(keyspace_dir_names) == set(keyspaces)
 
@@ -1551,9 +1551,9 @@ class TestSnapshotOptions(SnapshotTester):
         """
         self.prepare()
         keyspaces_to_snap = self._get_random_keyspaces_to_snap()
-        keyspace_dir_names, _, _ = self.base_case_make_snapshot_and_extract_ks_cf_names(
+        keyspace_dir_names = self.base_case_make_snapshot_and_extract_ks_cf_names(
             make_snapshot_kwargs={"node": self.node, "ks": ','.join(keyspaces_to_snap)}
-        )
+        )[0]
 
         assert set(keyspace_dir_names) == set(keyspaces_to_snap)
 
@@ -1573,9 +1573,9 @@ class TestSnapshotOptions(SnapshotTester):
         """
         self.prepare()
         keyspaces_to_snap = self._get_random_keyspaces_to_snap()
-        keyspace_dir_names, _, _ = self.base_case_make_snapshot_and_extract_ks_cf_names(
+        keyspace_dir_names = self.base_case_make_snapshot_and_extract_ks_cf_names(
             make_snapshot_kwargs={"node": self.node, "additional_options": [f"-kc {','.join(keyspaces_to_snap)}"]}
-        )
+        )[0]
 
         assert set(keyspace_dir_names) == set(keyspaces_to_snap)
 
