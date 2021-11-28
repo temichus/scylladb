@@ -1,4 +1,5 @@
 import errno
+import threading
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import random
@@ -17,6 +18,7 @@ from ccmlib.cluster import Cluster
 from ccmlib.dse_cluster import DseCluster
 
 logger = logging.getLogger(__name__)
+lock = threading.Lock()
 
 
 def retry_till_success(fun, *args, **kwargs):
@@ -216,8 +218,10 @@ def require(require_pattern):
 
 
 def safe_mkdtemp():
+    lock.acquire()
     tmpdir = tempfile.mkdtemp()
     # \ on Windows is interpreted as an escape character and doesn't do anyone any favors
+    lock.release()
     return tmpdir.replace('\\', '/')
 
 
