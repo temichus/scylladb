@@ -572,8 +572,8 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         table_name = "cf1"
 
         with self.patient_cql_cluster_session(node1) as session:
-            self.create_ks(session=session, name=keyspace_name, rf=3)
-            self.create_cf(session=session, name=table_name)
+            create_ks(session=session, name=keyspace_name, rf=3)
+            create_cf(session=session, name=table_name)
 
         node3.stop(wait_other_notice=True)
 
@@ -600,8 +600,8 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         table_name = "cf1"
 
         with self.patient_cql_cluster_session(node1) as session:
-            self.create_ks(session=session, name=keyspace_name, rf=3)
-            self.create_cf(session=session, name=table_name)
+            create_ks(session=session, name=keyspace_name, rf=3)
+            create_cf(session=session, name=table_name)
 
         repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=keyspace_name,
                                                     ignore_down_hosts=True)
