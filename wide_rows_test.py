@@ -448,23 +448,16 @@ class TestWideRows(Tester):
             assert len(value[0]) > 0, f"expects >0, len(value[0])={len(value[0])} "
 
     @pytest.mark.single_node
-    def test_too_many_rows_warning_above_threshold_during_compaction(self):
-        """
-        Create table with too many rows.
-        Validate that there are no warnings in the log before the threshold is crossed
-        and that there are warnings in the log after the threshold is crossed.
-
-        Note that no system.large_too_many_rows table exist yet, see https://github.com/scylladb/scylla/issues/9506
-        """
+    def test_too_many_rows(self):
         columns_num = 14
         initial_rows_number = 200
         additional_rows_number = 1
+        entity_type = 'partition'
 
         session = self.prepare_cluster(nodes=1, rf=1,
                                        options_dict={'compaction_large_row_warning_threshold_mb': 10,
                                                      'compaction_rows_count_warning_threshold': initial_rows_number})
 
-        mark_logs = self.mark_log_on_all_nodes()
         self.create_too_many_rows_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
         self.create_too_many_rows_data(session=session,
                                        table_name=self.TABLE_NAME,
@@ -477,15 +470,6 @@ class TestWideRows(Tester):
         self.cluster.flush()
         self.cluster.wait_for_compactions()
 
-        warning_text = rf"Writing.*too many rows.*{self.KEYSPACE_NAME}/{self.TABLE_NAME}"
-        # Verify that no warnings are in the log yet
-        for node in self.cluster.nodelist():
-            self.search_warning(node=node,
-                                warning_text=warning_text,
-                                marked_logs_dict=mark_logs,
-                                expect_warning=False)
-
-        mark_logs = self.mark_log_on_all_nodes()
         self.create_too_many_rows_data(session=session,
                                        table_name=self.TABLE_NAME,
                                        columns_num=columns_num,
@@ -496,21 +480,11 @@ class TestWideRows(Tester):
         self.cluster.flush()
         self.cluster.compact()
 
-        """ TODO: uncomment when issue https://github.com/scylladb/scylla/issues/9506 is solved
-        cluster_state = self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
-                                                   table_name=self.TABLE_NAME,
-                                                   expected_entity_number=rows_number,
-                                                   expected_entity_data_size=expected_rows_data_size)
-        """
-        # Search warning in the log
-        # Validate that the right number of rows was detected
-        rows_number = initial_rows_number + additional_rows_number
-        warning_text = rf"Writing.*too many rows.*{self.KEYSPACE_NAME}/{self.TABLE_NAME}.*\({rows_number} rows\)"
-        for node in self.cluster.nodelist():
-            self.search_warning(node=node,
-                                warning_text=warning_text,
-                                marked_logs_dict=mark_logs,
-                                expect_warning=True)
+        self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME,
+                                   data_column='rows',
+                                   expected_entity_number=1,
+                                   expected_entity_data_size=(initial_rows_number + additional_rows_number))
 
     @pytest.mark.single_node
     def test_column_index_stress(self):
