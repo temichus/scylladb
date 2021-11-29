@@ -2604,13 +2604,8 @@ class TestMaterializedViews(CommonUtils):
         self.eventually_assert_none(session, "SELECT * FROM t")
         self.eventually_assert_none(session, "SELECT * FROM mv")
 
-    def test_base_column_in_view_pk_complex_timestamp_with_flush(self):
-        self._test_base_column_in_view_pk_complex_timestamp(flush=True)
-
-    def test_base_column_in_view_pk_complex_timestamp_without_flush(self):
-        self._test_base_column_in_view_pk_complex_timestamp(flush=False)
-
-    def _test_base_column_in_view_pk_complex_timestamp(self, flush):
+    @pytest.mark.parametrize("flush", [True, False], ids=["with_flush", "without_flush"])
+    def test_base_column_in_view_pk_complex_timestamp(self, flush):
         """
         Able to shadow old view row with column ts greater than pk's ts and re-insert the view row
         Able to shadow old view row with column ts smaller than pk's ts and re-insert the view row
@@ -2704,8 +2699,11 @@ class TestMaterializedViews(CommonUtils):
         # For k = 1 & a = 1, second time no digest mismatch
         # self.check_trace_events(result.get_query_trace(), False)
         # assert_none(session, "SELECT * FROM mv WHERE k = 1 AND a = 1")
-        self.eventually(lambda: self.assert_equal(0, len(session.execute(query, trace=True).current_rows)))
 
+        def check_query_rows_size(_query, expected_rows_size):
+            assert len(session.execute(_query, trace=True).current_rows) == expected_rows_size
+
+        self.eventually(lambda: check_query_rows_size(query, 0))
         # For k = 1 & a = 2, We should get a digest mismatch of data and repaired for a = 2
         query = SimpleStatement("SELECT * FROM mv WHERE k = 1 AND a = 2", consistency_level=ConsistencyLevel.ALL)
         # result = session.execute(query, trace=True)
@@ -2714,7 +2712,7 @@ class TestMaterializedViews(CommonUtils):
 
         # For k = 1 & a = 2, second time no digest mismatch
         # self.check_trace_events(result.get_query_trace(), False)
-        self.eventually(lambda: self.assert_equal(1, len(session.execute(query, trace=True).current_rows)))
+        self.eventually(lambda: check_query_rows_size(query, 1))
         self.eventually_assert_one(session, "SELECT k,a,b,writetime(b) FROM mv WHERE k = 1", [1, 2, 1, 20])
 
         time.sleep(3)
@@ -2727,7 +2725,7 @@ class TestMaterializedViews(CommonUtils):
         # For k = 2 & a = 2, second time no digest mismatch
         # result = session.execute(query, trace=True)
         # self.check_trace_events(result.get_query_trace(), False)
-        self.eventually(lambda: self.assert_equal(0, len(session.execute(query, trace=True).current_rows)))
+        self.eventually(lambda: check_query_rows_size(query, 0))
 
     @pytest.mark.single_node
     def test_expired_liveness_with_limit_rf1_nodes1(self):
