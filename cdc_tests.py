@@ -19,6 +19,7 @@ from cassandra.util import datetime_from_uuid1
 from cassandra.policies import FallthroughRetryPolicy
 
 from dtest_class import Tester, wait_for
+from dtest_setup import DTestSetup
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
 
@@ -73,6 +74,10 @@ class CDCInitializeHelper:
         rs = list(session.execute("SELECT streams_timestamp, uuid FROM system.cdc_local WHERE key = 'cdc_local'"))
         assert len(rs) == 1
         return GenerationId(time=rs[0].streams_timestamp, uuid=rs[0].uuid)
+
+    def get_cdc_description_rows(self, session):
+        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}", consistency_level=ConsistencyLevel.ONE)
+        return session.execute(query)
 
     def get_last_generation_timestamp(self, session):
         timestamps = list(self.get_cdc_generation_timestamps(session))
@@ -338,7 +343,14 @@ class TestCdc(Tester, CDCInitializeHelper):
                                     additional_fields=["c int"], with_preimage=True)
 
     # Regression test for Scylla issue #7127
-    def test_check_and_repair_cdc_streams_liveness(self):
+    def test_check_and_repair_cdc_streams_liveness(self, fixture_dtest_setup: DTestSetup):
+        # During the test, error "Could not find CDC generation" appears as part of the test logic.
+        # The teardown fails because it expects a cluster doesn't contain errors if the test is passed.
+        fixture_dtest_setup.ignore_log_patterns = (
+            "Could not find CDC generation with timestamp .*in distributed system tables.*even though some node"
+            " gossiped about it.",
+        )
+
         logger.debug('Setup a single node cluster')
         self.populate_sequentially(n=1)
         node = self.cluster.nodes['node1']
