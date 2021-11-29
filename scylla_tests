@@ -83,6 +83,7 @@ lwt_test.py
 lwt_destructive_ddl_test.py
 cql_prepared_test.py
 alternator_tests.py
+alternator_stream_tests.py
 lwt_random_test.py
 lwt_banking_load_test.py
 database_metrics_test.py

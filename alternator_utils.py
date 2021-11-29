@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 # DynamoDB's "AttributeValue", but as decoded by boto3 into Python types,
 # not the JSON serialization.
-from tools import new_node
+from tools.cluster import new_node
 
 AttributeValueTypeDef = Union[bytes, bytearray, str, int, Decimal, bool,
                               Set[int], Set[Decimal], Set[str], Set[bytes], Set[bytearray], List[Any],
@@ -171,7 +171,7 @@ class BaseAlternator(Tester):
     alternator_apis = {}
     clear_resources_methods = []
 
-    @pytest.fixture(scope='class', autouse=True)
+    @pytest.fixture(scope='function', autouse=True)
     def clear_resources(self):
         yield
         for resource_method in self.clear_resources_methods:
@@ -261,6 +261,7 @@ class BaseAlternator(Tester):
                                  is_encrypted: bool = False, extra_config: Optional[dict] = None,
                                  timeout: int = 300) -> None:
         self.alternator_urls = {}
+        self.alternator_apis = {}
         self._configure_dynamodb_cluster(num_of_nodes=num_of_nodes, is_multi_dc=is_multi_dc,
                                          is_encrypted=is_encrypted, extra_config=extra_config)
         cluster = self.cluster
@@ -770,7 +771,7 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
         ring_delay_sec = 5
         dtest_setup_overrides = DTestSetupOverrides()
         dtest_setup_overrides.cluster_options = ImmutableMapping({
-            'experimental_features': ['cdc'],
+            'experimental_features': ['cdc', 'alternator-streams'],
             'ring_delay_ms': ring_delay_sec * 1000,
             'hinted_handoff_enabled': False
         })
@@ -801,6 +802,8 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
     def prepare_dynamodb_cluster(self, num_of_nodes: int = NUM_OF_NODES, is_multi_dc: bool = False,
                                  is_encrypted: bool = False, extra_config: Optional[dict] = None,
                                  timeout: int = 300) -> None:
+        self.alternator_urls = {}
+        self.alternator_apis = {}
         self._configure_dynamodb_cluster(num_of_nodes=num_of_nodes, is_multi_dc=is_multi_dc,
                                          is_encrypted=is_encrypted, extra_config=extra_config)
         self.populate_sequentially(n=num_of_nodes, wait_other_notice=True)

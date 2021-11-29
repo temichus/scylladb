@@ -5,7 +5,7 @@ class StreamViewType(Enum):
     KEYS_ONLY = 'KEYS_ONLY'
     NEW_IMAGE = 'NEW_IMAGE'
     OLD_IMAGE = 'OLD_IMAGE'
-    NEW_AND_OLD_IMAGE = 'NEW_AND_OLD_IMAGE'
+    NEW_AND_OLD_IMAGES = 'NEW_AND_OLD_IMAGES'
 
 
 class StreamSpecification(Enum):
@@ -13,4 +13,4 @@ class StreamSpecification(Enum):
     NEW_IMAGE = {'StreamSpecification': {'StreamEnabled': True, 'StreamViewType': StreamViewType.NEW_IMAGE.value}}
     OLD_IMAGE = {'StreamSpecification': {'StreamEnabled': True, 'StreamViewType': StreamViewType.OLD_IMAGE.value}}
     NEW_AND_OLD_IMAGE = {'StreamSpecification': {
-        'StreamEnabled': True, 'StreamViewType': StreamViewType.NEW_AND_OLD_IMAGE.value}}
+        'StreamEnabled': True, 'StreamViewType': StreamViewType.NEW_AND_OLD_IMAGES.value}}
