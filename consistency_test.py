@@ -324,7 +324,7 @@ class TestAvailability(TestHelper):
 
         self._test_simple_strategy(combinations)
 
-    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.require('1117')
     def test_simple_strategy_each_quorum(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -375,7 +375,7 @@ class TestAvailability(TestHelper):
 
         self._test_network_topology_strategy(combinations)
 
-    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('#1117')
     def test_network_topology_strategy_each_quorum(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -596,7 +596,7 @@ class TestAccuracy(TestHelper):
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_users, [self.nodes], [self.rf_value], combinations)
 
-    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.require('#1117')
     def test_simple_strategy_each_quorum_users(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -650,7 +650,7 @@ class TestAccuracy(TestHelper):
         _ = self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_users, self.nodes, self.rf_value.values(), combinations),
 
-    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.require('#1117')
     def test_network_topology_strategy_each_quorum_users(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -701,7 +701,7 @@ class TestAccuracy(TestHelper):
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_counters, [self.nodes], [self.rf_value], combinations)
 
-    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('#1117')
     def test_simple_strategy_each_quorum_counters(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -751,7 +751,7 @@ class TestAccuracy(TestHelper):
         _ = self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_counters, self.nodes, self.rf_value.values(), combinations),
 
-    @pytest.mark.skip('Does not work, skipping after allowing it on scylla_tests and will investigate later')
+    @pytest.mark.skip('#1117')
     def test_network_topology_strategy_each_quorum_counters(self):
         """
         @jira_ticket CASSANDRA-10584
