@@ -375,7 +375,7 @@ class TestAvailability(TestHelper):
 
         self._test_network_topology_strategy(combinations)
 
-    @pytest.mark.skip('#1117')
+    @pytest.mark.require('#1117')
     def test_network_topology_strategy_each_quorum(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -556,7 +556,7 @@ class TestAccuracy(TestHelper):
         logger.info("Waiting for workers to complete")
         while exceptions_queue.empty():
             time.sleep(0.1)
-            if len(list(filter(lambda t: t.isAlive(), threads))) == 0:
+            if len(list(filter(lambda t: t.is_alive(), threads))) == 0:
                 break
 
         if not exceptions_queue.empty():
@@ -701,7 +701,7 @@ class TestAccuracy(TestHelper):
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_counters, [self.nodes], [self.rf_value], combinations)
 
-    @pytest.mark.skip('#1117')
+    @pytest.mark.require('#1117')
     def test_simple_strategy_each_quorum_counters(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -751,7 +751,7 @@ class TestAccuracy(TestHelper):
         _ = self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_counters, self.nodes, self.rf_value.values(), combinations),
 
-    @pytest.mark.skip('#1117')
+    @pytest.mark.require('#1117')
     def test_network_topology_strategy_each_quorum_counters(self):
         """
         @jira_ticket CASSANDRA-10584
