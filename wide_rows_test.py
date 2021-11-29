@@ -193,6 +193,7 @@ class TestWideRows(Tester):
         cluster_state = {}
         for node in self.cluster.nodelist():
             entity_info = defaultdict(int)
+            rows_entity_info = defaultdict(int)
             entities = set()
             sstables_set = set()
             sstables_on_disk = set()
@@ -223,6 +224,7 @@ class TestWideRows(Tester):
 
             cluster_state[node.name] = {'info_from_system_table': {'partition_keys': entities,
                                                                    'partition_size': entity_info,
+                                                                   'rows': rows_entity_info,
                                                                    'sstables': sstables_set,
                                                                    'key_appearance': key_appearance},
                                         'sstables_from_disk': sstables_on_disk,
@@ -259,12 +261,12 @@ class TestWideRows(Tester):
         msg = f"Small {entity_type}s detected large: {'/n'.join(e for e in wrong_large_entity_in_system)}"
         assert not wrong_large_entity_in_system, msg
 
-    def validate_entity_size(self, cluster_state, expected_entity_data_size, entity_type):
+    def validate_entity_size(self, cluster_state, expected_entity_data_size, entity_type, data_column):
         # size_threshold (in percent) is allowable deviation for row/partition size, reported by
         # system.large_row_size/system.large_partition_size
         row_size_threshold = 3
         for node_info in cluster_state.values():
-            for pk, size in node_info['info_from_system_table']['partition_size'].items():
+            for pk, size in node_info['info_from_system_table'][data_column].items():
                 expected_size = expected_entity_data_size.get(pk)
                 msg = f'The {entity_type} with primary key "{pk}" is not reported as large {entity_type}'
                 assert expected_size is not None, msg
@@ -283,7 +285,7 @@ class TestWideRows(Tester):
                                         'Actual sstables: {sstables_from_system}'.format(**locals()))
 
     def validate_system_table(self, entity_type, keyspace_name, table_name, expected_entity_number,
-                              expected_entity_data_size, pk_max_index=None):
+                              expected_entity_data_size, pk_max_index=None, data_column='partition_size'):
         cluster_state = self.get_cluster_system_state(entity_type=entity_type,
                                                       keyspace_name=keyspace_name, table_name=table_name)
         self.validate_entities_recognized_as_large(entity_type=entity_type, cluster_state=cluster_state,
@@ -294,7 +296,7 @@ class TestWideRows(Tester):
                                                            pk_max_index=pk_max_index)
 
         self.validate_entity_size(cluster_state=cluster_state, expected_entity_data_size=expected_entity_data_size,
-                                  entity_type=entity_type)
+                                  entity_type=entity_type, data_column=data_column)
         self.validate_sstables_on_disk(cluster_state=cluster_state)
         return cluster_state
 
