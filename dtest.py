@@ -1438,11 +1438,6 @@ class NoseTester(TestCase):
         return seconds * factor
 
 
-@pytest.mark.reuse_cluster
-class TesterReuseCluster(NoseTester):
-    _multiprocess_can_split_ = not REUSE_CLUSTER
-
-
 class MultiError(Exception):
     """
     Extends Exception to provide reporting multiple exceptions at once.

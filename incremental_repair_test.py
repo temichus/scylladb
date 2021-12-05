@@ -213,7 +213,7 @@ class TestIncRepair(Tester):
         for x in range(0, 150):
             assert_one(session, "select val from tab where key =" + str(x), [1])
 
-    @pytest.mark.long
+    @pytest.mark.dtest_long
     @pytest.mark.skip('hangs CI')
     def test_multiple_subsequent_repair(self):
         """
