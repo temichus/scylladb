@@ -9,7 +9,6 @@ from pkg_resources import parse_version
 from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester
-from dtest_setup_overrides import DTestSetupOverrides
 from thrift_bindings.thrift010 import Cassandra
 from thrift_bindings.thrift010.Cassandra import (CfDef, Column, ColumnDef,
                                                  ColumnOrSuperColumn, ColumnParent,
@@ -23,7 +22,6 @@ from thrift_bindings.thrift010.Cassandra import (CfDef, Column, ColumnDef,
                                                  SlicePredicate, SliceRange,
                                                  SuperColumn)
 from tools.assertions import assert_one, assert_none
-from tools.misc import ImmutableMapping
 from tools.thrift import get_thrift_client
 
 logger = logging.getLogger(__file__)
@@ -2809,13 +2807,6 @@ class TestServerShutdown(ThriftTester):
     """
     Test thrift server can gracefully shutdown
     """
-
-    def __init__(self, *args, **kwargs):
-        # Use murmur3 partitioner since its sharding is much more complex
-        # than the others.
-        kwargs['cluster_options'] = {'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner',
-                                     'start_rpc': 'true'}
-        Tester.__init__(self, *args, **kwargs)
 
     def test_concurrent_stop(self, fixture_thrift_client):
         node1, = self.cluster.nodelist()
