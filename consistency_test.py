@@ -796,7 +796,7 @@ class TestConsistency(TestHelper):
         # exception caused by a race, see CASSANDRA-9460
         for _ in range(10):
             # insert 9 columns in one row
-            insert_columns(self, session, 0, 9)
+            insert_columns(session, 0, 9)
 
             # Deleting 3 first columns with a different node dead each time
             self.stop_delete_and_restart(1, 0)
@@ -837,7 +837,7 @@ class TestConsistency(TestHelper):
         create_ks(session, 'ks', 3)
         create_cf(session=session, name='cf', read_repair=0.0)
         # insert 2 columns in one row
-        insert_columns(self, session, 0, 2)
+        insert_columns(session, 0, 2)
 
         # Delete the row while first node is dead
         node1.flush()
@@ -968,7 +968,7 @@ class TestConsistency(TestHelper):
         # exception caused by a race, see CASSANDRA-9460
         for _ in range(10):
             # insert 9 columns in one row
-            insert_columns(self, session, 0, 9)
+            insert_columns(session, 0, 9)
 
             # Deleting 3 last columns with a different node dead each time
             self.stop_delete_and_restart(1, 6)
