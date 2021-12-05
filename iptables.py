@@ -1,16 +1,17 @@
 import re
 import subprocess
+import logging
 
-from dtest import debug
+logger = logging.getLogger(__name__)
 
 
 def execute_iptables_command(cmd):
-    debug(f'Executing following command: {cmd}')
+    logger.debug(f'Executing following command: {cmd}')
     p_open = subprocess.Popen(cmd.split(), stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     output, err = p_open.communicate()
     assert p_open.returncode == 0, err
     output = output.decode()
-    debug(output)
+    logger.debug(output)
     return output
 
 
