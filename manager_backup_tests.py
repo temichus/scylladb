@@ -627,7 +627,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             print(f"Flush No. {fill_attempt}")
             self.cluster.nodetool("flush")
 
-            if len(get_sstables_files(path=table_path)) >= 2500:
+            if len(get_sstables_files(cf_dir=table_path)) >= 2500:
                 break
         else:
             assert False, "Failed to fill the cluster with enough files"
