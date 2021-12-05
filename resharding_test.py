@@ -22,20 +22,7 @@ TESTED_STRATEGIES = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy'
 MURMUR3 = 15
 
 
-def pytest_generate_tests(metafunc):
-    idlist = []
-    argvalues = []
-    argnames = []
-    for scenario in metafunc.cls.scenarios:
-        idlist.append(scenario[0])
-        items = scenario[1].items()
-        if not argnames:
-            argnames = [item[0] for item in items]
-        argvalues.append([item[1] for item in items])
-    metafunc.parametrize(argnames, argvalues, ids=idlist, scope="class")
-
-
-class TestReshardingBase(Tester):
+class ReshardingBase(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
     DEFAULT_NODES = 1
     MURMUR3_PARTITIONER_FOR_DECREASE = 10
@@ -196,11 +183,12 @@ class TestReshardingBase(Tester):
 @pytest.mark.dtest_full
 @pytest.mark.next_gating
 @pytest.mark.single_node
-class TestReshardingSingleNodeGating(TestReshardingBase):
-    scenarios = [(f'TestReshardingSingleNodeGating_1nodes_{strategy}',
-                  {'node_count': 1, "compaction_strategy": strategy, "murmur3": MURMUR3})
-                 for strategy in ['TimeWindowCompactionStrategy', ]]
-
+@pytest.mark.parametrize("node_count,compaction_strategy,murmur3", [
+    (node_count, strategy, MURMUR3)
+    for node_count in [1]
+    for strategy in ['TimeWindowCompactionStrategy']
+])
+class TestReshardingSingleNodeGating(ReshardingBase):
     # Copied from resharding_by_murmur3_smp_test to run in reduced configurations for next-gating
     def test_resharding_by_murmur3_gating(self, node_count, compaction_strategy, murmur3):
         """
@@ -211,18 +199,17 @@ class TestReshardingSingleNodeGating(TestReshardingBase):
 
 
 @pytest.mark.single_node
+@pytest.mark.parametrize("node_count,compaction_strategy,murmur3", [
+    (1, strategy, MURMUR3)
+    for strategy in TESTED_STRATEGIES
+])
 class TestReshardingTombstonesSingleNode(Tester):
-    scenarios = [(f'ReshardingTombstones_with__1nodes_{strategy}',
-                  {'node_count': 1, "compaction_strategy": strategy, "murmur3": MURMUR3})
-                 for strategy in TESTED_STRATEGIES]
-
     SMP = 2
     NEW_SMP = 4
     keyspace = "ks1"
     table = "cf1"
     gc_grace_seconds = 10
     keys = 100
-    __test__ = False
     compaction_strategy = "SizeTieredCompactionStrategy"
 
     def prepare(self, nodes, wait_for_binary_proto=True, jvm_args=None, configuration_options={}):
@@ -340,12 +327,12 @@ class TestReshardingTombstonesSingleNode(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_heavy
-class TestReshardingVariants(TestReshardingBase):
-    scenarios = [(f'TestReshardingVariants_{nodes}nodes_{strategy}',
-                  {'node_count': nodes, "compaction_strategy": strategy, "murmur3": MURMUR3})
-                 for nodes in [1, 4]
-                 for strategy in TESTED_STRATEGIES]
-
+@pytest.mark.parametrize("node_count,compaction_strategy,murmur3", [
+    (node_count, strategy, MURMUR3)
+    for node_count in [1, 4]
+    for strategy in TESTED_STRATEGIES
+])
+class TestReshardingVariants(ReshardingBase):
     def test_resharding_by_murmur3_increase(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with 10M objects after increasing the MURMUR3 parameter
