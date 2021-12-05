@@ -1,5 +1,7 @@
 import logging
 
+import tempfile
+import time
 from concurrent.futures._base import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 
@@ -90,6 +92,9 @@ class TestRollingUpgrade(UpgradeTester):
             self.run_upgrade(node_index=1, upgrade_to_version=version, upgrade_type='upgrade')
             self.run_upgrade(node_index=2, upgrade_to_version=version, upgrade_type='upgrade')
 
+            # Upgrade sstables (if available)
+            self.upgrade_and_verify_sstable()
+
             logger.debug(f"****** FINISHED ROLLBACK TEST FROM {base_node__version} "
                          f"TO {self.cluster.nodelist()[0].node_scylla_version} ******")
 
@@ -128,3 +133,66 @@ class TestRollingUpgrade(UpgradeTester):
         logger.debug(f"Waiting until {stress_type} stress thread will finish running")
         stdout, stderr = stress_thread.result()
         assert ignore_err_msg not in stderr, f"The following message '{ignore_err_msg}' found in stderr"
+
+    def get_highest_supported_sstable_version(self):
+        """
+        find the highest sstable format version supported in the cluster
+
+        :return:
+        """
+        output = []
+        for node in self.cluster.nodelist():
+            output.extend(node.get_node_supported_sstable_versions())
+        return max(set(output))
+
+    def upgradesstables_if_command_available(self):
+        upgradesstables_available = []
+        for node in self.cluster.nodelist():
+            upgradesstables_available.append(node.upgradesstables_if_command_available())
+
+        return all(upgradesstables_available)
+
+    def upgradesstables(self):
+        for node in self.cluster.nodelist():
+            node.nodetool(cmd="upgradesstables -a")
+
+    def wait_for_sstables_upgrade(self, expected_sstable_format_version, timeout=60):
+        all_tables_upgraded = True
+
+        logger.debug(("Start waiting for upgardesstables to finish"))
+        start_time = time.time()
+        finished = False
+        while not finished:
+            for node in self.cluster.nodelist():
+                try:
+                    sstable_versions = node.check_node_sstables_format()
+                    assert len(sstable_versions) == 1, "expected all table format to be the same found {}".format(
+                        sstable_versions)
+                    assert list(sstable_versions)[0] == expected_sstable_format_version, \
+                        "expected to format version to be '{}', found '{}'".format(
+                            expected_sstable_format_version, list(sstable_versions)[0])
+                except Exception:
+                    if time.time() - start_time > timeout:
+                        raise
+                    all_tables_upgraded = False
+
+            if all_tables_upgraded:
+                finished = True
+
+    def upgrade_and_verify_sstable(self):
+        supported_sstable_version = self.get_highest_supported_sstable_version()
+        upgradesstables_available = self.upgradesstables_if_command_available()
+        if upgradesstables_available:
+            logger.debug('Upgrading sstables if new version is available')
+            self.upgradesstables()
+            self.wait_for_sstables_upgrade(supported_sstable_version)
+
+            # Verify sstabledump
+            logger.debug('Starting sstabledump to verify correctness of sstables')
+            json_path = tempfile.mktemp(suffix='.schema.json')
+            with open(json_path, 'w') as fdw:
+                data_json = self.cluster.nodelist()[0].run_sstable2json(out_file=fdw, keyspace='ks')
+            with open(json_path, 'r') as fdr:
+                data = fdr.read()
+
+            assert data, "Failed to create sstable dump"
