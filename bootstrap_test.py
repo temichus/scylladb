@@ -36,7 +36,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
         fixture_dtest_setup.allow_log_errors = True
-        fixture_dtest_setup.ignore_log_patterns = (
+        fixture_dtest_setup.ignore_log_patterns = [
             # This one occurs when trying to send the migration to a
             # node that hasn't started yet, and when it does, it gets
             # replayed and everything is fine.
@@ -44,7 +44,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             # ignore streaming error during bootstrap
             r'Exception encountered during startup',
             r'Streaming error occurred'
-        )
+        ]
 
     def get_space_used(self, node, table_name='cf'):
         output, *_ = node.nodetool('cfstats')
@@ -614,8 +614,8 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         @jira_ticket CASSANDRA-9484
         """
 
-        bootstrap_error = ("Other bootstrapping/leaving/moving nodes detected,"
-                           " cannot bootstrap while cassandra.consistent.rangemovement is true")
+        bootstrap_error = ["Other bootstrapping/leaving/moving nodes detected,"
+                           " cannot bootstrap while cassandra.consistent.rangemovement is true"]
 
         self.ignore_log_patterns.append(bootstrap_error)
 

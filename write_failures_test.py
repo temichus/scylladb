@@ -24,11 +24,11 @@ class TestWriteFailures(Tester):
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
         fixture_dtest_setup.allow_log_errors = True
-        fixture_dtest_setup.ignore_log_patterns = (
+        fixture_dtest_setup.ignore_log_patterns = [
             "Testing write failures",  # The error to simulate a write failure
             "ERROR WRITE_FAILURE",     # Logged in DEBUG mode for write failures
             "MigrationStage"           # This occurs sometimes due to node down (because of restart)
-        )
+        ]
 
     def setup_configuration(self):
         self.expected_expt = WriteFailure

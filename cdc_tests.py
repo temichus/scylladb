@@ -346,10 +346,10 @@ class TestCdc(Tester, CDCInitializeHelper):
     def test_check_and_repair_cdc_streams_liveness(self, fixture_dtest_setup: DTestSetup):
         # During the test, error "Could not find CDC generation" appears as part of the test logic.
         # The teardown fails because it expects a cluster doesn't contain errors if the test is passed.
-        fixture_dtest_setup.ignore_log_patterns = (
+        fixture_dtest_setup.ignore_log_patterns = [
             "Could not find CDC generation with timestamp .*in distributed system tables.*even though some node"
             " gossiped about it.",
-        )
+        ]
 
         logger.debug('Setup a single node cluster')
         self.populate_sequentially(n=1)

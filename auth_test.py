@@ -34,9 +34,9 @@ class TestAuth(Tester):
 
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
-        fixture_dtest_setup.ignore_log_patterns = (
+        fixture_dtest_setup.ignore_log_patterns = [
             r'Can\'t send migration request: node.*is down',
-        )
+        ]
 
     def test_system_auth_ks_is_alterable(self):
         """

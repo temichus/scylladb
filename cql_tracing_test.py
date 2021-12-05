@@ -31,7 +31,7 @@ class PrepareClusterHelper(Tester):
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
         fixture_dtest_setup.allow_log_errors = True
-        fixture_dtest_setup.ignore_log_patterns = ()
+        fixture_dtest_setup.ignore_log_patterns = []
 
     def prepare(self, create_keyspace=True, nodes=3, rf=3, protocol_version=3, jvm_args=None):
         if jvm_args is None:
@@ -134,10 +134,10 @@ class TestCqlTracing(PrepareClusterHelper):
         node1, node2 = self.cluster.nodelist()
 
         # FIXME: remove when https://github.com/scylladb/scylla/issues/5697 issue is fixed
-        self.ignore_log_patterns = (
+        self.ignore_log_patterns = [
             r'seastar - Timer callback failed: seastar::metrics::double_registration \
             (registering metrics twice for metrics: '
-            r'storage_proxy_coordinator_background_replica_writes_failed_remote_node\)')
+            r'storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
 
         logger.debug("Enable tracing for all CQL requests on node1 and node2...")
         set_trace_probability(nodes=[node1, node2], probability_value=1.0)
