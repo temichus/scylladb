@@ -48,7 +48,7 @@ class TestNodetool(Tester):
         dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
         return dtest_setup_overrides
 
-    @pytest.fixture(scope='function')
+    @pytest.fixture(scope='function', autouse=True)
     def fixture_set_cluster_settings(self, fixture_dtest_setup):
 
         self.width = 160
@@ -387,7 +387,7 @@ class TestNodetool(Tester):
         else:
             assert not m, "unexpected snapshot " + snapshot + " found in keyspace " + ks
 
-    def test_global_snapshot(self, fixture_set_cluster_settings):
+    def test_global_snapshot(self):
         """ Test a global snapshot, by loading a system
         creating a snapshot, checking that it exists
         remove it and checking that it does not exists
@@ -444,7 +444,7 @@ class TestNodetool(Tester):
         data_dir = os.path.join(node1.get_path(), "data")
         keyspaces = [f for f in os.listdir(data_dir) if os.path.isdir(
             os.path.join(data_dir, f)) and f not in self.reserved_names]
-        assert 6 == len(keyspaces), "wrong number of directories in the data dir"
+        assert 7 == len(keyspaces), "wrong number of directories in the data dir"
         if kc:
             brk = kc.split('.')
             keyspace = brk[0]
@@ -475,10 +475,10 @@ class TestNodetool(Tester):
         node1.nodetool("clearsnapshot -t" + tag)
         self.verify_snapshot(node1, "keyspace1", snapshot, exists=False)
 
-    def test_snapshot_tag(self, fixture_set_cluster_settings):
+    def test_snapshot_tag(self):
         self.tst_snapshot("snaptag")
 
-    def test_snapshot_tag_keyspace(self, fixture_set_cluster_settings):
+    def test_snapshot_tag_keyspace(self):
         self.tst_snapshot("snaptag", keyspace="keyspace1")
 
     def test_snapshot_tag_keyspace_cf(self):
@@ -1620,7 +1620,7 @@ class TestNodetool(Tester):
                 times = self.concurrent_part(op)
                 logger.info("Test call flow:\n" + self.print_time(times, start))
 
-    def test_concurrent_repair(self, fixture_set_cluster_settings):
+    def test_concurrent_repair(self):
         tst = [{"operations": [{"func": self.run_cluster, "block": True}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
                 "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
@@ -1653,7 +1653,7 @@ class TestNodetool(Tester):
             return self.cluster.nodelist()[node]
         return node
 
-    def test_concurrent_rebuild(self, fixture_set_cluster_settings):
+    def test_concurrent_rebuild(self):
         """
         Start a cluster with 2 dc
         stop 2 nodes
@@ -1700,7 +1700,7 @@ class TestNodetool(Tester):
         node = self.get_node(node_to_drain-1)
         node.nodetool("drain")
 
-    def test_concurrent_drain(self, fixture_set_cluster_settings):
+    def test_concurrent_drain(self):
         """
         Start a cluster with 2 nodes
         run load
@@ -1724,7 +1724,7 @@ class TestNodetool(Tester):
         time.sleep(1)
         node.start(wait_for_binary_proto=wait_for_binary_proto, wait_other_notice=wait_other_notice)
 
-    def test_concurrent_restart(self, fixture_set_cluster_settings):
+    def test_concurrent_restart(self):
         """
         Start a cluster with 2 nodes
         run load
@@ -2050,7 +2050,7 @@ class TestGetTraceProbability(Tester):
     valid_tolerance = {0.001: 0.00075, 0: 0, 0.6: 0.030, 1: 0}
     default_value = 0
 
-    @pytest.fixture(scope='function')
+    @pytest.fixture(scope='function', autouse=True)
     def fixture_set_cluster_settings(self, fixture_dtest_setup):
         self.cluster.populate(3).start()
         self.node1, self.node2, self.node3 = self.cluster.nodelist()
@@ -2078,7 +2078,7 @@ class TestGetTraceProbability(Tester):
         assert diff <= allowed_diff, message
         return count
 
-    def test_after_stop_start_value_is_default(self, fixture_set_cluster_settings, subtests):
+    def test_after_stop_start_value_is_default(self, subtests):
         for valid_value in self.valid_values:
             with subtests.test(valid_value=valid_value):
                 set_node_probability(self.node1, valid_value)
@@ -2089,7 +2089,7 @@ class TestGetTraceProbability(Tester):
                 value_node1 = get_node_probability(self.node1)
                 assert value_node1 == self.default_value, f'node1 Expect: {valid_value} Actual: {value_node1}'
 
-    def test_invalid_value_not_changing_trace_probability(self, fixture_set_cluster_settings, subtests):
+    def test_invalid_value_not_changing_trace_probability(self, subtests):
         valid_value = 0.001
         for invalid_value in self.invalid_values_map:
             with subtests.test(invalid_value=invalid_value):
@@ -2099,7 +2099,7 @@ class TestGetTraceProbability(Tester):
                 probability_node1 = get_node_probability(self.node1)
                 assert probability_node1 == valid_value, f'Expected: {valid_value} Actual: {probability_node1}'
 
-    def test_valid_value_affect_only_one_node(self, fixture_set_cluster_settings, subtests):
+    def test_valid_value_affect_only_one_node(self, subtests):
         node2_value = 0.1234
         set_node_probability(self.node2, node2_value)
         for valid_value in self.valid_values:
@@ -2109,7 +2109,7 @@ class TestGetTraceProbability(Tester):
                 assert probability_node1 == valid_value, f'node1 Expected: {valid_value} Actual: {probability_node1}'
                 assert node2_value == node2_value, f'node2 Expected: {node2_value} Actual: {probability_node2}'
 
-    def test_value_affect_tracing_table(self, fixture_set_cluster_settings, subtests):
+    def test_value_affect_tracing_table(self, subtests):
         create_ks(self.session, 'ks', 2)
         create_cf(self.session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         prev_count = 0
