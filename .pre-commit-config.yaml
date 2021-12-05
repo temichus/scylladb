@@ -151,13 +151,14 @@ repos:
                 pytest_cql_additional_tests.py|
                 repair_additional_test.py|
                 upgrade_tests/*|
+                cdc_snapshot_operation_test.py|
                 rest_api_tests.py|
                 error_example_test.py|
-                limits_test.py |
+                limits_test.py|
                 metadata_tests.py|
-                repair_test.py |
-                paging_additional_test.py |
-                nodetool_additional_test.py |
+                repair_test.py|
+                paging_additional_test.py|
+                nodetool_additional_test.py|
                 global_row_key_cache_test.py
             )$
         language: system

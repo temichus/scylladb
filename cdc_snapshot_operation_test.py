@@ -2,22 +2,23 @@ import pprint
 import shutil
 import os
 
-from nose.plugins.attrib import attr
+import pytest
 from cassandra.cluster import Session, SimpleStatement
 from cassandra.concurrent import execute_concurrent_with_args
 
 from ccmlib.scylla_cluster import ScyllaNode
-from tools import require, make_snapshot, restore_snapshot_with_refresh
-from dtest import Tester
+from tools.snapshots import make_snapshot, restore_snapshot_with_refresh
+from dtest_class import Tester, create_ks
 from cdc_tests import CDCInitializeHelper
 
 
 PP = pprint.PrettyPrinter(indent=2)
 
 
-@attr('dtest-full')
-@attr('scylla-cdc')
-class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
+@pytest.mark.dtest_full
+@pytest.mark.scylla_cdc
+@pytest.mark.single_node
+class TestCDCSnapshotOperation(Tester, CDCInitializeHelper):
     """To restore cdc log table from snapshot should be used only operation with refresh"""
     keyspace = "ks"
     table = "cf"
@@ -56,7 +57,7 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         statement += "}"
         session.execute(
             f"ALTER keyspace system_distributed with replication={{'class': 'SimpleStrategy', 'replication_factor': {rf} }}")
-        self.create_ks(session, self.keyspace, rf=rf)
+        create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
     def drop_keyspaces_and_clear_files(self, session, ks, node):
@@ -102,7 +103,7 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         self.workflow_with_restore_snapshot_with_refresh(
             value_type='ascii', preimage_enable=True, postimage_enable=True)
 
-    @attr('next-gating')
+    @pytest.mark.next_gating
     def test_create_snapshot_with_native_type_with_base_rows_delete_preimage_postimage(self):
         self.workflow_with_restore_snapshot_with_refresh(value_type='ascii', preimage_enable=True,
                                                          postimage_enable=True, with_delete_rows=True)
@@ -213,15 +214,15 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
 
         restore_snapshot_with_refresh(snapshot_dir, node, self.keyspace, self.table, name="basic")
         restored_base_rows = self.get_base_rows(session)
-        self.assertListEqual(base_rows, restored_base_rows, "Base table rows are differs")
+        assert base_rows == restored_base_rows, "Base table rows are differs"
         no_restored_log_rows = self.get_log_rows(session)
-        self.assertListEqual(no_restored_log_rows, [])
+        assert no_restored_log_rows == []
 
         restore_snapshot_with_refresh(snapshot_dir, node, self.keyspace, self.table_cdc_log, name="basic")
 
         restored_log_rows = self.get_log_rows(session)
-        self.assertEqual(len(log_rows), len(restored_log_rows))
-        self.assertListEqual(log_rows, restored_log_rows)
+        assert len(log_rows) == len(restored_log_rows)
+        assert log_rows == restored_log_rows
 
     def populate_base_table(self, session, value_type='text', delete_rows=False):
         if value_type in ['text', 'varchar', 'ascii']:
@@ -233,7 +234,7 @@ class CDCSnapshotOperationTest(Tester, CDCInitializeHelper):
         elif "map" in value_type:
             self.populate_base_table_with_collection_map_type(session, delete_rows)
         else:
-            self.fail("The assigned value_type isn't valid")
+            pytest.fail("The assigned value_type isn't valid")
 
     def populate_base_table_with_native_type(self, session, delete_rows=False):
         insert_values = [{"pkey": i % 10, "ckey": i, "value": f"{i}"} for i in range(100)]
