@@ -11,11 +11,9 @@ import pytest
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
-from assertions import assert_none
-from dtest import DISABLE_VNODES
 from dtest_class import Tester, create_ks, create_cf
 from thrift_bindings.thrift010.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
-from tools.assertions import assert_unavailable
+from tools.assertions import assert_unavailable, assert_none
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, insert_columns, rows_to_list
 from tools.paging import PageFetcher
 from tools.thrift import get_thrift_client
@@ -27,6 +25,12 @@ class TestHelper(Tester):
     sessions = None
     nodes = None
     rf_value = None
+    DISABLE_VNODES = False
+
+    @classmethod
+    @pytest.fixture(scope='class', autouse=True)
+    def pre_setup(cls, dtest_config):
+        cls.DISABLE_VNODES = not dtest_config.use_vnodes
 
     @staticmethod
     def _name(cl_value):
@@ -768,7 +772,7 @@ class TestAccuracy(TestHelper):
 
 
 @pytest.mark.dtest_full
-class TestConsistency(Tester):
+class TestConsistency(TestHelper):
     def test_short_read(self):
         """
         @jira_ticket CASSANDRA-9460
@@ -905,7 +909,6 @@ class TestConsistency(Tester):
         assert_none(
             session, "SELECT * FROM t WHERE id = 0 LIMIT 1", cl=ConsistencyLevel.QUORUM)
 
-    @pytest.mark.skip('BLAAAAAAAAA')
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_readrepair(self):
@@ -914,7 +917,7 @@ class TestConsistency(Tester):
             values={'hinted_handoff_enabled': False})
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
 
-        if DISABLE_VNODES:
+        if self.DISABLE_VNODES:
             cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         else:
             tokens = cluster.balanced_tokens(2)
@@ -999,7 +1002,7 @@ class TestConsistency(Tester):
         logger.info("Creating a ring")
         cluster = self.cluster
         cluster.set_configuration_options(values={'cache_hit_rate_read_balancing': False})
-        if DISABLE_VNODES:
+        if self.DISABLE_VNODES:
             cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         else:
             tokens = cluster.balanced_tokens(3)

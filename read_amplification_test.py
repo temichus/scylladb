@@ -14,7 +14,7 @@ from cassandra import ConsistencyLevel
 from ccmlib.node import TimeoutError
 from ccmlib.scylla_node import ScyllaNode
 
-from dtest import retry_with_func_attempts
+from tools.retrying import retry_with_func_attempts
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2
 from tools.metrics import get_node_metrics

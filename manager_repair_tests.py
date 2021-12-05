@@ -10,7 +10,7 @@ from dtest_scylla_manager import HostRestStatus, ScyllaManagerTool, ScyllaManage
 from dtest_class import Tester, WaitTimeoutExpired, create_ks, create_cf
 from dtest_scylla_manager import TaskStatus
 from tools.data import insert_c1c2
-from assertions import assert_all
+from tools.assertions import assert_all
 
 CLUSTER_NAME = 'cluster1'
 

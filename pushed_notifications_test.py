@@ -9,7 +9,7 @@ from cassandra.query import SimpleStatement
 from dtest_class import Tester, create_ks, get_ip_from_node
 from tools.data import insert_c1c2
 from threading import Event
-from assertions import assert_invalid
+from tools.assertions import assert_invalid
 from pkg_resources import parse_version
 from tools.funcutils import assertDictContainsSubset
 

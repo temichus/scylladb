@@ -5,7 +5,7 @@ import pytest
 from cassandra import Unauthorized
 from ccmlib.common import is_win
 
-from assertions import assert_all, assert_invalid
+from tools.assertions import assert_all, assert_invalid
 from dtest_class import Tester
 from tools.misc import ImmutableMapping
 from dtest_setup import DTestSetup

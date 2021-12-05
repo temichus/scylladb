@@ -8,7 +8,7 @@ from cassandra.cluster import NoHostAvailable
 from cassandra.protocol import SyntaxException  # pylint:disable=no-name-in-module
 
 from dtest_class import Tester
-from assertions import assert_one, assert_all, assert_invalid
+from tools.assertions import assert_one, assert_all, assert_invalid
 from tools.log_utils import wait_for_any_log
 from tools.permission import data_resource_creator_permissions, role_creator_permissions, \
     function_resource_creator_permissions

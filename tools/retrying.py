@@ -43,3 +43,6 @@ class retrying(object):
             return func(*args, **kwargs)
 
         return inner
+
+
+retry_with_func_attempts = retrying(num_attempts=1, sleep_time=10)

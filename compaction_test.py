@@ -7,7 +7,7 @@ import pytest
 import logging
 from pkg_resources import parse_version
 
-from assertions import assert_none, assert_one
+from tools.assertions import assert_none, assert_one
 from dtest_class import Tester, create_ks, is_autocompaction_enabled
 from tools.data import create_c1c2_table, insert_c1c2, chunks_list
 from tools.misc import ImmutableMapping

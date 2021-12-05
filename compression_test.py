@@ -2,7 +2,7 @@ import os
 import pytest
 
 from scrub_test import TestHelper
-from assertions import assert_crc_check_chance_equal
+from tools.assertions import assert_crc_check_chance_equal
 from dtest_class import create_ks
 
 

@@ -7,7 +7,7 @@ from deepdiff import DeepDiff
 
 from alternator.utils import enums
 from alternator_utils import BaseAlternatorStream, NUM_OF_ITEMS, TABLE_NAME, StreamsTable
-from dtest import retrying
+from tools.retrying import retrying
 from tools.cluster import new_node
 
 
