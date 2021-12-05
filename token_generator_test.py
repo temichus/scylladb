@@ -3,14 +3,17 @@
 import re
 import subprocess
 import time
+import logging
 
 from ccmlib import common
-from dtest import Tester, debug
-from tools import rows_to_list
+from dtest_class import Tester
+from tools.data import rows_to_list
 from cassandra.util import sortedset
 
+logger = logging.getLogger(__name__)
 
-class TokenGenerator(Tester):
+
+class TestTokenGenerator(Tester):
     """
     Basic tools/bin/token-generator test.
     """
@@ -28,7 +31,7 @@ class TokenGenerator(Tester):
         for n in nodes:
             args.append(str(n))
 
-        debug('Invoking %s' % (args,))
+        logging.debug('Invoking %s' % (args,))
         token_gen_output = subprocess.check_output(args)
         lines = token_gen_output.split("\n")
         dc_tokens = None
@@ -99,12 +102,12 @@ class TokenGenerator(Tester):
             tok = int(cluster_token)
             self.assertGreaterEqual(dc_tokens.index(tok), 0, "token in cluster does not match generated tokens")
 
-    def token_gen_def_test(self, nodes=3):
+    def test_token_gen_def(self, nodes=3):
         """ Validate token-generator with Murmur3Partitioner with default token-generator behavior """
 
         self._token_gen_test(nodes)
 
-    def token_gen_murmur3_test(self, nodes=3):
+    def test_token_gen_murmur3(self, nodes=3):
         """ Validate token-generator with Murmur3Partitioner with explicit murmur3 """
 
         self._token_gen_test(nodes, False)
@@ -127,23 +130,22 @@ class TokenGenerator(Tester):
             all_tokens = sortedset()
             node_count = 0
             generated_tokens = self.call_token_generator(self.cluster.get_install_dir(), defaultPart, dc_nodes)
-            self.assertEqual(dc_nodes.__len__(), generated_tokens.__len__())
+            assert dc_nodes.__len__() == generated_tokens.__len__()
             for n in range(0, dc_nodes.__len__()):
                 nodes = dc_nodes[n]
                 node_count += nodes
                 tokens = generated_tokens[n]
-                self.assertEqual(nodes, tokens.__len__())
+                assert nodes == tokens.__len__()
                 for tok in tokens:
-                    self.assertTrue(t_min <= tok < t_max,
-                                    "Generated token %r out of Murmur3Partitioner range %r..%r" % (tok, t_min, t_max - 1))
-                    self.assertTrue(not all_tokens.__contains__(
-                        tok), "Duplicate token %r for nodes-counts %r" % (tok, dc_nodes))
+                    assert t_min <= tok < t_max, \
+                        "Generated token %r out of Murmur3Partitioner range %r..%r" % (tok, t_min, t_max - 1)
+                    assert not all_tokens.__contains__(tok), "Duplicate token %r for nodes-counts %r" % (tok, dc_nodes)
                     all_tokens.add(tok)
-            self.assertEqual(all_tokens.__len__(), node_count, "Number of tokens %r and number of nodes %r does not match for %r" % (
-                all_tokens.__len__(), node_count, dc_nodes))
+            assert all_tokens.__len__() == node_count, "Number of tokens %r and number of nodes %r does not match for %r" % (
+                all_tokens.__len__(), node_count, dc_nodes)
 
-    def multi_dc_tokens_default_test(self):
+    def test_multi_dc_tokens_default(self):
         self._multi_dc_tokens()
 
-    def multi_dc_tokens_murmur3_test(self):
+    def test_multi_dc_tokens_murmur3(self):
         self._multi_dc_tokens(False)
