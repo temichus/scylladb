@@ -5,7 +5,6 @@ from cassandra import (InvalidRequest, ReadFailure, ReadTimeout, Unauthorized,
                        Unavailable, WriteFailure, WriteTimeout)
 from cassandra.query import SimpleStatement, ConsistencyLevel
 
-from tools.data import run_query_with_data_processing
 from tools.retrying import retrying
 
 """
@@ -521,6 +520,7 @@ def assert_row_count_not_zero(session, table_name, consistency_level=Consistency
     Function to validate the row count expected in table_name
     :param num_attempts: defines how many time try to assert data in case failure. Used in retry_with_func_attempts decorator
     """
+    from tools.data import run_query_with_data_processing  # to avoid cyclic dependency
 
     query = "SELECT count(*) FROM {}".format(table_name)
     count = run_query_with_data_processing(session, query, consistency_level=consistency_level, session_timeout=timeout)
