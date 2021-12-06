@@ -529,8 +529,19 @@ class TestBatch(Tester):
         logger.debug('Upgrading sstables')
         node.nodetool('upgradesstables -a')
 
-    def _base_batchlog_manager_issue(self, rack_names):
+    @pytest.mark.parametrize("rack_names", [['rc', 'rc2', 'rc3', 'rc4'], ['1a', '1b', '1c', '1d'], ['rc1', 'rc2', 'rc3', 'rc4']])
+    def test_batchlog_manager_issue(self, rack_names):
+        """
+        This subtest is used to reproduce batchlog manager issue(scylla/issues/3229)
+        """
+
+        # To reproduce the bug we depend on how hash table hashes its elements,
+        # this depends on an implementation and the elements itself.
+        # Here we try with multiple cases.
         cluster = self.cluster
+        cluster.populate([4])
+        cluster.set_configuration_options(
+            values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
 
         for i, node in enumerate(cluster.nodelist()):
             with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
@@ -542,7 +553,8 @@ class TestBatch(Tester):
         cluster.start(wait_for_binary_proto=True)
 
         logger.debug('Running stress ...')
-        node.stress(["user", "no-warmup", "profile=%s" % os.path.realpath('test_data/batch-test/complex_schema.yaml'), "ops(insert=1)", "cl=ALL",
+        node.stress(["user", "no-warmup", "profile=%s" % os.path.realpath('test_data/batch-test/complex_schema.yaml'),
+                     "ops(insert=1)", "cl=ALL",
                      # node.stress(["user", "no-warmup", "profile=/tmp/complex_schema.yaml", "ops(insert=1)", "cl=ALL",
                      "duration=5s", "-mode", "cql3", "native", "-rate", "threads=100", "-pop", "seq=1..500"])
 
@@ -555,20 +567,3 @@ class TestBatch(Tester):
             assert 0 == count, f"Expect 0 , found 'unknown endpoint' {count} times"
             count = len(node.grep_log('fail to connect: connect: Invalid argument'))
             assert 0 == count, "Expect 0 ,found 'fail to connect: connect: Invalid argument' {count} times"
-
-        for node in list(cluster.nodelist()):
-            node.clear(only_data=True)
-
-    def test_batchlog_manager_issue(self):
-        """
-        This subtest is used to reproduce batchlog manager issue(scylla/issues/3229)
-        """
-        cluster = self.cluster
-        cluster.populate([4])
-        cluster.set_configuration_options(
-            values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
-        # To reproduce the bug we depend on how hash table hashes its elements,
-        # this depends on an implementation and the elements itself.
-        # Here we try with multiple cases.
-        for rack_names in [['rc', 'rc2', 'rc3', 'rc4'], ['1a', '1b', '1c', '1d'], ['rc1', 'rc2', 'rc3', 'rc4']]:
-            self._base_batchlog_manager_issue(rack_names)
