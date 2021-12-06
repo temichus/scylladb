@@ -6,7 +6,7 @@ from filelock import FileLock
 from cassandra import ReadTimeout, ReadFailure
 from cassandra import ConsistencyLevel as CL
 from cassandra.query import SimpleStatement
-from dtest_class import Tester, create_ks, get_ip_from_node
+from dtest_class import Tester, create_ks, get_ip_from_node, create_cf
 from tools.data import insert_c1c2
 from threading import Event
 from tools.assertions import assert_invalid
@@ -369,8 +369,8 @@ class TestPushedNotifications(Tester):
 
         # Try to connect the server when any notification is received
         session = self.cql_connection(node2)
-        self.create_ks(session, 'ks', 2)
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 2)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(100))
 
         received_new_node_event = False
