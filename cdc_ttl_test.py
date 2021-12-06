@@ -12,7 +12,7 @@ from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
 from tools.cluster import new_node
 
-from cdc_tests import CdcLogOperations, CDCInitializeHelper
+from cdc_test import CdcLogOperations, CDCInitializeHelper
 
 
 PP = pprint.PrettyPrinter(indent=4)

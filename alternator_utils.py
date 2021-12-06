@@ -27,7 +27,7 @@ import requests
 from requests.exceptions import ConnectionError
 from alternator.utils import schemas, enums
 
-from cdc_tests import CDCInitializeHelper
+from cdc_test import CDCInitializeHelper
 from dtest_class import Tester, get_ip_from_node
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping

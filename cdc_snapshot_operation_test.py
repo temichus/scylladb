@@ -9,7 +9,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib.scylla_cluster import ScyllaNode
 from tools.snapshots import make_snapshot, restore_snapshot_with_refresh
 from dtest_class import Tester, create_ks
-from cdc_tests import CDCInitializeHelper
+from cdc_test import CDCInitializeHelper
 
 
 PP = pprint.PrettyPrinter(indent=2)

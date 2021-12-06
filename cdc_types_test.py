@@ -7,7 +7,7 @@ from uuid import UUID, uuid1
 
 from cassandra.cluster import Session, SimpleStatement
 from cassandra.util import uuid_from_time, Time, OrderedMapSerializedKey
-from cdc_tests import CdcLogOperations, CDCInitializeHelper
+from cdc_test import CdcLogOperations, CDCInitializeHelper
 from dtest_class import Tester, create_ks
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping

@@ -600,7 +600,6 @@ class TestCdc(Tester, CDCInitializeHelper):
         prev_range_end = gen_description[-1].range_end
         for entry in gen_description:
             range_end = entry.range_end
-            vnode_size = 0
             if range_end > prev_range_end:
                 vnode_size = range_end - prev_range_end
             else:

@@ -61,7 +61,7 @@ repos:
                 read_amplification_test.py|
                 cfid_test.py|
                 cdc_ttl_test|
-                cdc_tests|
+                cdc_test.py|
                 cql_system_clients_test.py|
                 cql_tracing_addition_test.py|
                 data_distribution_balance_test.py|
