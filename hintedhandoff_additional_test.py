@@ -4,10 +4,13 @@ import pytest
 import requests
 import time
 
+from concurrent.futures import ThreadPoolExecutor
+
 from distutils.util import strtobool
 from cassandra import ConsistencyLevel
 
 from ccmlib.scylla_cluster import ScyllaCluster
+
 from dtest_class import Tester, wait_for, create_ks, get_ip_from_node
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
 from tools.metrics import get_node_metrics
@@ -613,9 +616,215 @@ class TestHintedHandoff(Tester):
     def hintedhandoff_switch_config_in_runtime_via_http_api(self, fixture_dtest_setup):
         self.hintedhandoff_switch_config_in_runtime_template(fixture_dtest_setup, self.__update_hh_enabled_via_http_api)
 
+    @pytest.mark.dtest_debug
+    @pytest.mark.scylla_mode('!release')
+    def hintedhandoff_sync_point_api_test(self):
+        """
+        Tests the HTTP API for hint sync points.
+        Hint sync points allow to wait until all current hints are sent
+        between two specified sets of nodes: sources and destinations.
 
-########################################################################################################################
+        There are two subtests:
+        - Check that waiting for a point finishes after all waited on hints are replayed
+        - Check that waiting for a point aborts when the waiting node shuts down
+        - Check that waiting for a point works after the node is restarted with a different number of shards
+        - Check that waiting for a point created on another node is forbidden
+        - Check that waiting for a point works when the waiting node is being decommissioned
+        """
 
+        self.__start_cluster_with_hints(num=2, custom_args=['--smp', '3'])
+
+        node1, node2 = self.cluster.nodelist()
+
+        hint_sync_point_url = 'http://{}:10000/hinted_handoff/sync_point'
+
+        def create_sync_point(node=node1):
+            url = hint_sync_point_url.format(self.get_ip_from_node(node))
+            sync_point_id = requests.post(url, params={
+                "target_hosts": self.get_ip_from_node(node2),
+            }).json()
+            logger.debug("Created hint sync point with ID {}".format(sync_point_id))
+            self.assertTrue(isinstance(sync_point_id, str))
+            return sync_point_id
+
+        def wait_for_sync_point(sync_point_id, timeout, expect, node=node1):
+            url = hint_sync_point_url.format(self.get_ip_from_node(node))
+            status = requests.get(url, params={
+                "id": sync_point_id,
+                "timeout": str(timeout),
+            })
+            if expect == 'FAILED':
+                self.assertFalse(status.ok)
+            else:
+                self.assertEqual(status.json(), expect)
+            logger.debug("Got status {}, which was expected".format(status.json()))
+
+        # An executor which will be used to asynchronously wait for sync points
+        waiter_executor = ThreadPoolExecutor(max_workers=1)
+
+        # We are using RF=1, so roughly half of the writes will be written as hints
+        keys1 = list(range(0, 100))
+        keys2 = list(range(100, 200))
+        keys3 = list(range(200, 300))
+
+        # Nothing is written for subtest 4
+        keys5 = list(range(400, 500))
+
+        session = self.patient_cql_connection(node1)
+        logger.debug("Creating a keyspace...")
+        self.create_ks(session, 'ks', 1)
+
+        logger.debug("Creating a table...")
+        create_c1c2_table(self, session)
+
+        logger.debug("SUBTEST 1: Create a hint sync point, unpause hint replay and wait until they are replayed to the end")
+
+        logger.debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        logger.debug("Pause hint replay on node1")
+        self.enable_error("hinted_handoff_pause_hint_replay", node1)
+
+        logger.debug("Inserting {} keys...".format(len(keys1)))
+        insert_c1c2(session, keys=keys1, consistency=ConsistencyLevel.ANY)
+
+        logger.debug("Starting node2...")
+        node2.start(wait_other_notice=True)
+
+        logger.debug("Create hint sync point")
+        sync_point_id = create_sync_point()
+
+        logger.debug("Check that the sync point is not immediately resolved (because hint replay is paused)")
+        wait_for_sync_point(sync_point_id, 0, expect="IN_PROGRESS")
+
+        logger.debug("Start waiting for the point, asynchonously, with infinite timeout")
+        fut = waiter_executor.submit(wait_for_sync_point, sync_point_id, -1, expect="DONE")
+
+        logger.debug("Unpause hint replay on node1")
+        self.disable_error("hinted_handoff_pause_hint_replay", node1)
+
+        # Waiting should resolve soon - successfully
+        logger.debug("Join with the future waiting for the point")
+        fut.result(timeout=60)
+
+        logger.debug("Check that the sync point still returns success")
+        wait_for_sync_point(sync_point_id, 0, expect="DONE")
+
+        logger.debug("Verifying that hints replayed all of the data...")
+        for x in keys1:
+            query_c1c2(session, x, ConsistencyLevel.ONE)
+
+        logger.debug("SUBTEST 2: Create a hint sync point, shutdown the waiting node and observe the failure")
+
+        logger.debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        logger.debug("Pause hint replay on node1")
+        self.enable_error("hinted_handoff_pause_hint_replay", node1)
+
+        logger.debug("Inserting {} keys...".format(len(keys2)))
+        insert_c1c2(session, keys=keys2, consistency=ConsistencyLevel.ANY)
+
+        logger.debug("Starting node2...")
+        node2.start(wait_other_notice=True)
+
+        logger.debug("Create hint sync point...")
+        sync_point_id = create_sync_point()
+
+        # Asynchronously wait, indefinitely
+        logger.debug("Start waiting for the point, asynchonously, with infinite timeout")
+        fut = waiter_executor.submit(wait_for_sync_point, sync_point_id, -1, expect="FAILED")
+
+        logger.debug("Stopping node1...")
+        node1.stop(wait_other_notice=True)
+
+        logger.debug("Join with the future waiting for the point")
+        fut.result(timeout=60)
+
+        logger.debug("Starting node1...")
+        node1.start(wait_other_notice=True, jvm_args=['--smp', '3'])
+
+        # Error injections are reset on restart, so hint replay will be unpaused at this point
+
+        logger.debug("SUBTEST 3: Create a hint sync point, restart with different shard count and wait until hints are replayed")
+
+        logger.debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        logger.debug("Pause hint replay on node1")
+        self.enable_error("hinted_handoff_pause_hint_replay", node1)
+
+        logger.debug("Inserting {} keys...".format(len(keys3)))
+        insert_c1c2(session, keys=keys3, consistency=ConsistencyLevel.ANY)
+
+        logger.debug("Starting node2...")
+        node2.start(wait_other_notice=True)
+
+        logger.debug("Create hint sync point")
+        sync_point_id = create_sync_point()
+
+        logger.debug("Stopping node1...")
+        node1.stop(wait_other_notice=True)
+
+        logger.debug("Starting node1 with SMP=2...")
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
+
+        # Hint replay is unpaused because of the restart
+
+        logger.debug("Wait until all hints are successfully replayed...")
+        wait_for_sync_point(sync_point_id, 60, expect="DONE")
+
+        logger.debug("Verifying that hints replayed all of the data...")
+        for x in keys3:
+            query_c1c2(session, x, ConsistencyLevel.ONE)
+
+        logger.debug("SUBTEST 4: Create a hint sync point and try to use it on another node - should fail")
+
+        logger.debug("Create hint sync point on node1")
+        sync_point_id = create_sync_point(node=node1)
+
+        logger.debug("Try waiting for the point on node2 - should fail")
+        wait_for_sync_point(sync_point_id, 0, expect='FAILED', node=node2)
+
+        #####
+        logger.debug("SUBTEST 5: Create a hint sync point and decommission the target node - waiting should succeed")
+
+        logger.debug("Stopping node2...")
+        node2.stop(wait_other_notice=True)
+
+        logger.debug("Pause hint replay on node1")
+        self.enable_error("hinted_handoff_pause_hint_replay", node1)
+
+        logger.debug("Inserting {} keys...".format(len(keys5)))
+        insert_c1c2(session, keys=keys5, consistency=ConsistencyLevel.ANY)
+
+        logger.debug("Starting node2...")
+        node2.start(wait_other_notice=True)
+
+        logger.debug("Create hint sync point on node1")
+        sync_point_id = create_sync_point(node=node1)
+
+        logger.debug("Decommissioning node2...")
+        node2.decommission()
+
+        logger.debug("Check that the sync point is not yet resolved (because hint replay is paused)")
+        wait_for_sync_point(sync_point_id, 0, expect="IN_PROGRESS")
+
+        logger.debug("Start waiting for the point, asynchonously, with infinite timeout")
+        fut = waiter_executor.submit(wait_for_sync_point, sync_point_id, -1, expect="DONE")
+
+        logger.debug("Unpause hint replay on node1")
+        self.disable_error("hinted_handoff_pause_hint_replay", node1)
+
+        # Waiting should resolve soon - successfully
+        logger.debug("Join with the future waiting for the point")
+        fut.result(timeout=60)
+
+        logger.debug("Verifying that hints replayed all of the data...")
+        for x in keys5:
+            query_c1c2(session, x, ConsistencyLevel.ONE)
+
+        waiter_executor.shutdown()
 
     @property
     def __hint_flush_threshold(self):
