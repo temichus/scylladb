@@ -12,7 +12,7 @@ import pytest
 from cassandra import ConsistencyLevel, InvalidRequest, Unauthorized
 from cassandra.query import SimpleStatement
 from cassandra.query import UNSET_VALUE
-from cassandra.protocol import ConfigurationException  # pylint: disable=no-name-in-module
+from cassandra.protocol import ConfigurationException
 
 from dtest_class import Tester, create_ks, create_cf
 from tools.assertions import assert_invalid, assert_one

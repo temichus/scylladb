@@ -3,7 +3,7 @@ from time import sleep
 
 import pytest
 from cassandra import ConsistencyLevel, Unavailable, WriteFailure
-from cassandra.protocol import ConfigurationException  # pylint: disable=no-name-in-module
+from cassandra.protocol import ConfigurationException
 from cassandra.query import SimpleStatement
 
 from dtest_class import Tester, create_ks, get_ip_from_node, create_cf

@@ -5,7 +5,7 @@ import pytest
 
 from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest
 from cassandra.cluster import NoHostAvailable
-from cassandra.protocol import SyntaxException  # pylint:disable=no-name-in-module
+from cassandra.protocol import SyntaxException
 
 from dtest_class import Tester
 from tools.assertions import assert_one, assert_all, assert_invalid

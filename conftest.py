@@ -13,7 +13,7 @@ import github
 from psutil import virtual_memory
 from botocore.exceptions import ClientError as AwsClientError
 import netifaces as ni
-from netifaces import AF_INET  # pylint: disable=no-name-in-module
+from netifaces import AF_INET
 
 import ccmlib.repository
 from ccmlib.common import validate_install_dir, get_version_from_build

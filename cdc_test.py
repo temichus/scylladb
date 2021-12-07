@@ -12,8 +12,8 @@ from uuid import UUID
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
-from cassandra.connection import ConnectionException  # pylint: disable=no-name-in-module
-from cassandra.metadata import Murmur3Token  # pylint: disable=no-name-in-module
+from cassandra.connection import ConnectionException
+from cassandra.metadata import Murmur3Token
 from cassandra.query import SimpleStatement
 from cassandra.util import datetime_from_uuid1
 from cassandra.policies import FallthroughRetryPolicy

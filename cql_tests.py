@@ -9,7 +9,7 @@ from math import ceil
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
-from cassandra.protocol import ConfigurationException  # pylint: disable=no-name-in-module
+from cassandra.protocol import ConfigurationException
 from cassandra.policies import FallthroughRetryPolicy
 from cassandra.query import SimpleStatement
 from ccmlib.scylla_cluster import ScyllaCluster
