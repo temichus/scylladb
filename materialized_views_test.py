@@ -3855,7 +3855,7 @@ def thread_session(ip, queue, start, end, rows, num_partitions):
         queue.close()
 
 
-@pytest.mark.skipif(sys.platform == 'win32', 'Bug in python on Windows: https://bugs.python.org/issue10128')
+@pytest.mark.skipif(sys.platform == 'win32', reason='Bug in python on Windows: https://bugs.python.org/issue10128')
 @pytest.mark.dtest_full
 class TestMaterializedViewsConsistency(Tester):
 

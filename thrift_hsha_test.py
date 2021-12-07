@@ -32,7 +32,7 @@ except KeyError:
 
 class TestThriftHSHA(Tester):
 
-    @pytest.mark.skipif(sys.platform == "win32", 'Could not be executed on Windows')
+    @pytest.mark.skipif(sys.platform == "win32", reason='Could not be executed on Windows')
     def test_closing_connections(self):
         """
         @jira_ticket CASSANDRA-6546
@@ -79,8 +79,8 @@ class TestThriftHSHA(Tester):
                 time.sleep(1)
             self.assertEqual(len(lines), 0, "There are non-closed connections: %s" % stdout)
 
-    @pytest.mark.skipif(not os.path.exists(ATTACK_JAR), "No attack jar found")
-    @pytest.mark.skipif(not os.path.exists(JNA_PATH), "No JNA jar found")
+    @pytest.mark.skipif(not os.path.exists(ATTACK_JAR), reason="No attack jar found")
+    @pytest.mark.skipif(not os.path.exists(JNA_PATH), reason="No JNA jar found")
     def test_6285(self):
         """
         @jira_ticket CASSANDRA-6285
