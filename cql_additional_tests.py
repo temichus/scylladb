@@ -30,10 +30,7 @@ from tools.retrying import retrying
 from dtest_class import Tester, create_ks, create_cf
 from scylla_tools import CassandraCluster, get_rows_set_from_res, wait_for_view
 from thrift_bindings.thrift010.ttypes import CfDef
-from thrift_bindings.thrift010.ttypes import Column
-from thrift_bindings.thrift010.ttypes import ColumnOrSuperColumn
-from thrift_bindings.thrift010.ttypes import Mutation
-from thrift_bindings.thrift010.ttypes import ConsistencyLevel as ThriftConsistencyLevel
+
 
 from thrift_tests import get_thrift_client
 
@@ -711,7 +708,7 @@ class TestCQL(Tester):
         invalid_values = (160616626311127, 16061662631112228,)
         self.query_coloumn_timeuuid(invalid_values, subtests)
 
-    @require('#7691')
+    @pytest.mark.require('#7691')
     def test_query_coloumn_timeuuid_with_invalid_values_issue7691(self, subtests):
         """Test time functions combination and invalid time values issue #7691"""
         invalid_values = (16061662631112223339,)
@@ -2202,7 +2199,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT a, b, c, d, e, f FROM test WHERE a = 1 AND b = 1 AND c = 1 AND d = 1 AND e >= 2;")
         assert rows_to_list(res) == [[1, 1, 1, 1, 2, '2'], [1, 1, 1, 1, 3, '3'], [1, 1, 1, 1, 5, '5']], list(res)
 
-    @require('#5424')
+    @pytest.mark.require('#5424')
     @pytest.mark.single_node
     def test_update_type(self):
         """ Test altering the type of a column, including the one in the primary key (#4041) """
@@ -2470,7 +2467,7 @@ class TestCQL(Tester):
         res = session.execute("SELECT count(c), max(b)  FROM together WHERE a = 3 ")
         assert rows_to_list(res) == [[2, 8]], list(res)
 
-    @require("#5823")
+    @pytest.mark.require("#5823")
     def test_partition_key_as_secondary_index(self):
 
         session = self.prepare(ordered=True)
@@ -5753,7 +5750,7 @@ class TestCQL(Tester):
         session.execute("alter table test drop v")
         session.execute("alter table test add v int")
 
-    @require('#5421')
+    @pytest.mark.require('#5421')
     @pytest.mark.single_node
     def test_invalid_string_literals(self):
         """
@@ -6566,9 +6563,9 @@ class TestsCQLAdditional(Tester):
         c = """CREATE INDEX ryear ON racing.rank_by_year_and_name (race_year)"""
         try:
             session.execute(c)
-        except Exception as e:
-            assert(str(e) == "Indexes are not supported yet")
-            assert(e.code == 0000)
+        except Exception as err:
+            assert str(err) == "Indexes are not supported yet"
+            assert getattr(err, "code") == 0000
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -6618,9 +6615,9 @@ class TestsCQLAdditional(Tester):
         c = """GRANT SELECT ON ALL KEYSPACES TO benoit"""
         try:
             session.execute(c)
-        except Exception as e:
-            assert(str(e) == "Not implemented: GRANT")
-            assert(e.code == 0000)
+        except Exception as err:
+            assert str(err) == "Not implemented: GRANT"
+            assert getattr(err, "code") == 0000
 
     @pytest.mark.single_node
     def test_revoke(self):
@@ -6639,9 +6636,9 @@ class TestsCQLAdditional(Tester):
         c = """REVOKE SELECT ON ks.user FROM benoit"""
         try:
             session.execute(c)
-        except Exception as e:
-            assert(str(e) == "Not implemented: REVOKE")
-            assert(e.code == 0000)
+        except Exception as err:
+            assert str(err) == "Not implemented: REVOKE"
+            assert getattr(err, "code") == 0000
 
     @pytest.mark.single_node
     def test_list(self):
@@ -6656,9 +6653,9 @@ class TestsCQLAdditional(Tester):
         c = """LIST ALL PERMISSIONS ON ks.boo"""
         try:
             session.execute(c)
-        except Exception as e:
-            assert(str(e) == "Not implemented: LIST")
-            assert(e.code == 0000)
+        except Exception as err:
+            assert str(err) == "Not implemented: LIST"
+            assert getattr(err, "code") == 0000
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -6716,7 +6713,7 @@ class TestsCQLAdditional(Tester):
         num_rows = int(re.search(regex, out).group(1))
         assert num_rows == 100
 
-    @require('2251')
+    @pytest.mark.require('2251')
     @pytest.mark.single_node
     def test_limit_date_value_out_of_range_lower_limit(self):
         cluster = self.prepare()

@@ -159,7 +159,8 @@ repos:
                 repair_test.py|
                 paging_additional_test.py|
                 nodetool_additional_test.py|
-                global_row_key_cache_test.py
+                global_row_key_cache_test.py|
+                cql_additional_tests.py
             )$
         language: system
         types: [python]
