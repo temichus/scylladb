@@ -103,6 +103,12 @@ def get_strategies_upgrade_options():
 @pytest.mark.dtest_full
 @pytest.mark.single_node
 class TestCompactionAdditional(CompactionAdditionalTester):
+    SSTABLE_PREFIX_REG_EXPR = "m[c-e]|n[a-b]"
+    REG_EXPR_TEMPLATE = (r"\[shard (?P<run_shard>\d+)\] compaction - \[.* {ks}\.{table} (?P<run_task_id>.*)\] "
+                         r"((?P<compaction_type>Compacting|Cleaning) \[(?P<sstables>.*\/{ks}\/{table}-.*\/(?:%s)-.*))|"
+                         r"\[shard (?P<stop_shard>\d+)\] compaction - \[Compact {ks}\.{table} (?P<stop_task_id>.*)\] "
+                         r"Compacting of .* (?P<interrupt>interrupted due) to: .* user-triggered operation"
+                         % SSTABLE_PREFIX_REG_EXPR)
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -672,13 +678,10 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         while dt.now().second > 5:
             time.sleep(1)
 
-    @staticmethod
-    def get_compacted_sstable_numbers(node, exprs, from_mark):
-        regular_compact_sstables = []
-        special_compact_sstables = []
+    def get_sstables_compactions_flow(self, node, exprs, from_mark):
+        compact_sstables = []
         for expr in exprs:
-            regular_one = []
-            special_one = []
+            compact_one_expr = []
             matches = node.grep_log(expr=expr, from_mark=from_mark)
             assert matches, f"Compactions were not started. Expression: {expr}"
 
@@ -689,32 +692,71 @@ class TestCompactionAdditional(CompactionAdditionalTester):
             #   origin=memtable,
             #   .dtest/dtest-e7ugljs7/test/node1/data/ks/cf2-cb269cf0195611ec8aaf6d8518342838/md-1-big-Data.db:level=0:
             #   origin=memtable]
-            split_pattern = re.compile(r"(?:m[c-e]|n[a-b])-(\d+)-")
+            # split_pattern = re.compile(r"(?:m[c-e]|n[a-b])-(\d+)-")
+            split_pattern = re.compile(rf"(?:{self.SSTABLE_PREFIX_REG_EXPR})-(\d+)-")
             for one_match in matches:
-                line_groups = one_match[1].groups()
+                line_groups = one_match[1].groupdict()
                 if not line_groups:
                     continue
 
-                compaction_type = line_groups[0]
-                sstable_numbers = re.findall(split_pattern, line_groups[1])
-                if compaction_type == 'Compacting':
-                    regular_one.extend(sstable_numbers)
-                else:
-                    special_one.extend(sstable_numbers)
-            regular_compact_sstables.append(regular_one)
-            special_compact_sstables.append(special_one)
+               # line_groups[0:4] are Null for "Stopping" message
+                event_type = line_groups["compaction_type"] or line_groups["interrupt"]
+                # Find how many compaction tasks were stopped.
+                # Example of line:
+                #   compaction - [Compact ks.cf 6737cef0-ab8a-11ec-beb6-c840fb266497] Compacting of 1 sstables
+                #   interrupted due to: sstables::compaction_stopped_exception (Compaction for ks/cf was stopped due
+                #   to: user-triggered operation)
+                if event_type == 'interrupted due':
+                    compact_one_expr.append({"type": "Stopping", "shard": line_groups["stop_shard"],
+                                             "task_id": line_groups["stop_task_id"]})
+                    continue
 
-        return regular_compact_sstables, special_compact_sstables
+                if event_type not in ["Compacting", "Cleaning"]:
+                    raise ValueError(f"Unexpected compaction type: {event_type}. Line: {one_match[0]}")
+
+                sstable_numbers = re.findall(split_pattern, line_groups["sstables"])
+                compact_one_expr.append({"type": event_type, "sstables": sstable_numbers,
+                                         "shard": line_groups["run_shard"], "task_id": line_groups["run_task_id"]})
+            compact_sstables.append(compact_one_expr)
+
+        return compact_sstables
 
     @staticmethod
-    def search_and_assert_for_double_compactions(regular_compact, cleanup_compact, tables):
+    def search_and_assert_for_double_compactions(compaction_flow, tables):
+        """
+        3 operations in the flow:
+        1. Compacting (maybe major or ongoing)
+        2. Cleaning
+        3. Stop ongoing/major compaction task (before running cleaning)
+
+        If stop task found, previous compacting events will be removed from list of running compactions according to
+        amount of stopped task (found it in the log "Stopping 2 tasks for 1 ongoing compactions")
+
+        This function checks that compaction on sstable is stopped before Cleaning task starts on the same sstable
+        """
         logger.debug("Search for double compactions on the same sstable")
-        for i, one_expression_result in enumerate(regular_compact):
+        for i, compacted_sstables_of_one_table in enumerate(compaction_flow):
+            logger.debug(f"Compaction flow for '{tables[i]}' table: {compacted_sstables_of_one_table}")
+            stopped_tasks = [task["task_id"] for task in compacted_sstables_of_one_table if task["type"] == 'Stopping']
+            regular_compact = []
+            cleanup_compact = []
+            for compact_sstables in compacted_sstables_of_one_table:
+                if compact_sstables["type"] == "Compacting":
+                    if compact_sstables["task_id"] not in stopped_tasks:
+                        regular_compact.append(compact_sstables["sstables"])
+                elif compact_sstables["type"] == "Cleaning":
+                    cleanup_compact.extend(compact_sstables["sstables"])
+                elif compact_sstables["type"] == "Stopping":
+                    continue
+                else:
+                    raise ValueError("Unexpected compaction type: %s", compact_sstables["type"])
+
+            regular_compact = list(itertools.chain(*regular_compact))
             logger.debug(f"Sstable files of table '{tables[i]}' were compacted by regular compactions: "
-                         f"{one_expression_result}")
+                         f"{regular_compact}")
             logger.debug(f"Sstable files of table '{tables[i]}' were compacted by cleanup compactions: "
-                         "{cleanup_compact[i]}")
-            double_compacted_sstables = list(set(one_expression_result).intersection(cleanup_compact[i]))
+                         f"{cleanup_compact}")
+            double_compacted_sstables = list(set(regular_compact).intersection(cleanup_compact))
             assert not double_compacted_sstables, \
                 f"Found sstables that were compacted by both regular compactions and cleanup " \
                 f"(table '{tables[i]}'): {double_compacted_sstables}"
@@ -767,13 +809,17 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         #   origin=memtable,
         #   .dtest/dtest-e7ugljs7/test/node1/data/ks/cf-cb269cf0195611ec8aaf6d8518342838/md-1-big-Data.db:level=0:
         #   origin=memtable]
-        regular_compact, cleanup_compact = self.get_compacted_sstable_numbers(
+        #
+        #   compaction - [Compact ks.cf 6737cef0-ab8a-11ec-beb6-c840fb266497] Compacting of 1 sstables interrupted due
+        #   to: sstables::compaction_stopped_exception (Compaction for ks/cf was stopped due to: user-triggered
+        #   operation)
+        compaction_flow = self.get_sstables_compactions_flow(
             node=node1,
-            exprs=[r"(Compacting|Cleaning) (.*\/ks\/cf.*\/(?:m[c-e]|n[a-b])-.*)"],
+            exprs=[self.REG_EXPR_TEMPLATE.format(ks='ks', table='cf')],
             from_mark=mark
         )
 
-        self.search_and_assert_for_double_compactions(regular_compact, cleanup_compact, tables=["cf"])
+        self.search_and_assert_for_double_compactions(compaction_flow, tables=["cf"])
 
         errors = node1.grep_log_for_errors()
         assert not errors, f"Failed with error: {errors}"
@@ -830,14 +876,17 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         #   origin=memtable,
         #   .dtest/dtest-e7ugljs7/test/node1/data/ks/cf2-cb269cf0195611ec8aaf6d8518342838/md-1-big-Data.db:level=0:
         #   origin=memtable]
-        reg_expr_template = r"(Compacting|Cleaning) (.*\/ks\/{}-.*\/(?:m[c-e]|n[a-b])-.*)"
-        regular_compact, cleanup_compact = self.get_compacted_sstable_numbers(
+        #
+        #   compaction - [Compact ks.cf 6737cef0-ab8a-11ec-beb6-c840fb266497] Compacting of 1 sstables interrupted due
+        #   to: sstables::compaction_stopped_exception (Compaction for ks/cf was stopped due to: user-triggered
+        #   operation)
+        compacting_flow = self.get_sstables_compactions_flow(
             node=node1,
-            exprs=[reg_expr_template.format(table) for table in tables],
+            exprs=[self.REG_EXPR_TEMPLATE.format(ks='ks', table=table) for table in tables],
             from_mark=mark
         )
 
-        self.search_and_assert_for_double_compactions(regular_compact, cleanup_compact, tables=tables)
+        self.search_and_assert_for_double_compactions(compacting_flow, tables=tables)
 
         logger.debug("Validate expected rows")
         for table in tables:
