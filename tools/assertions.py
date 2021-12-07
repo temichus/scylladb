@@ -1,4 +1,5 @@
 import re
+from collections import Counter
 from time import sleep
 
 from cassandra import (InvalidRequest, ReadFailure, ReadTimeout, Unauthorized,
@@ -527,3 +528,14 @@ def assert_row_count_not_zero(session, table_name, consistency_level=Consistency
     if isinstance(count, list):
         count = count[0][0]
     assert count > 0, "Expected that the table is not empty, but it's empty"
+
+
+def assert_count_equal(actual, expected):
+    """
+    Basic implementation for assertCountEqual method.
+    Check and verify for lift of list or int values
+    """
+    def covert_to_hash_type(val):
+        return (str(key) if isinstance(key, int) else tuple(key) for key in val)
+
+    assert Counter(covert_to_hash_type(actual)) == Counter(covert_to_hash_type(expected))

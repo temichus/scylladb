@@ -11,13 +11,12 @@ from pkg_resources import parse_version
 from tempfile import NamedTemporaryFile
 from uuid import UUID, uuid4
 import logging
-import unittest
 
 import pytest
 from cassandra import InvalidRequest
 from cassandra.concurrent import execute_concurrent_with_args
 
-from tools.assertions import assert_all, assert_none
+from tools.assertions import assert_all, assert_none, assert_count_equal
 from ccmlib import common
 from .cqlsh_tools import monkeypatch_driver, unmonkeypatch_driver
 from dtest_class import Tester, create_ks, create_cf
@@ -948,8 +947,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         with open(self.tempfile.name, 'r') as csvfile:
             csvreader = csv.reader(csvfile)
             result_list = [list(map(str, cql_row)) for cql_row in results]
-            t = unittest.TestCase()
-            t.assertCountEqual(result_list, csvreader)
+            assert_count_equal(result_list, csvreader)
 
         # import the CSV file with COPY FROM
         session.execute("TRUNCATE ks.testcopyto")
