@@ -36,9 +36,9 @@ function cleanup_workspace {
   sudo rm -Rf $HOME/.dtest
   sudo rm -Rf $HOME/.ccm
   sudo rm -Rf logs
-  sudo rm -Rf logs-$mode.$NODE_INDEX
-  mkdir logs-$mode.$NODE_INDEX
-  rm -Rf $WORKSPACE/scylla-dtest.$mode.$NODE_INDEX.xml
+  sudo rm -Rf logs-$dtest_type.$mode.$NODE_INDEX
+  mkdir logs-$dtest_type.$mode.$NODE_INDEX
+  rm -Rf $WORKSPACE/scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml
   set -e
 }
 
@@ -51,7 +51,7 @@ function setup_environment_vars {
   echo "LC_ALL=\"$LC_ALL\""
   echo "LANG=\"$LANG\""
   echo "LANGUAGE=\"$LANGUAGE\""
-  export LOG_SAVED_DIR=`pwd`/logs-$mode.$NODE_INDEX
+  export LOG_SAVED_DIR=`pwd`/logs-$dtest_type.$mode.$NODE_INDEX
   echo "Env settings done"
 }
 
