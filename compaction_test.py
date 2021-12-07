@@ -372,7 +372,7 @@ class TestCompaction(Tester):
         large_partition_ret = list(session.execute("SELECT * from system.large_partitions"))
         assert len(large_partition_ret) == 1
         row = large_partition_ret[0]
-        assert row.partition_size == 20974000
+        assert row.partition_size == pytest.approx(20974000, 50)
         assert row.partition_key == 'user'
 
     def test_disable_autocompaction_nodetool(self):
