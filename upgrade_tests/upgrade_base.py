@@ -60,8 +60,8 @@ def get_default_upgrade_path(job_version, cdir=None):
         upgrade_version = start_2_2_X_release
     elif '3.0' <= job_version < '3.1':
         try:
-            from tools import cassandra_git_branch
-            branch = cassandra_git_branch(cdir=cdir)
+            from tools.git import cassandra_git_branch
+            branch = cassandra_git_branch(cassandra_dir=cdir)
         except:
             branch = None
         start_version = ('binary:3.0.0-rc1'
@@ -89,7 +89,9 @@ class UpgradeTester(Tester):
     When run on 3.0, this will test the upgrade path to trunk. When run on
     versions above 3.0, this will test the upgrade path from 3.0 to HEAD.
     """
-    NODES, RF, __test__, CL = 2, 1, False, None
+    NODES = 2
+    RF = 1
+    CL = None
 
     def prepare(self, create_keyspace=True, use_cache=False,
                 nodes=None, rf=None, protocol_version=None, cl=None, **kwargs):
@@ -100,13 +102,12 @@ class UpgradeTester(Tester):
         self.CL = cl  # store for later use in do_upgrade
 
         assert nodes >= 2, "backwards compatibility tests require at least two nodes"
-        assert not self._preserve_cluster, "preserve_cluster cannot be True for upgrade tests"
 
         self.protocol_version = protocol_version
 
         cluster = self.cluster
 
-        if (use_cache):
+        if use_cache:
             cluster.set_configuration_options(values={'row_cache_size_in_mb': 100})
 
         start_rpc = kwargs.pop('start_rpc', False)
@@ -204,10 +205,10 @@ class UpgradeTester(Tester):
             node1.set_install_dir(**install_kwargs)
             # this is a bandaid; after refactoring, upgrades should account for protocol version
             new_version_from_build = get_version_from_build(node1.get_install_dir())
-            if (new_version_from_build >= '3' and self.protocol_version is not None and self.protocol_version < 3):
+            if new_version_from_build >= '3' and self.protocol_version is not None and self.protocol_version < 3:
                 self.skip('Protocol version {} incompatible '
                           'with Cassandra version {}'.format(self.protocol_version, new_version_from_build))
-            node1.set_log_level("DEBUG" if DEBUG else "INFO")
+            node1.set_log_level("DEBUG")
             node1.set_configuration_options(values={'internode_compression': 'none'})
             node1.start(wait_for_binary_proto=True)
 
@@ -215,10 +216,10 @@ class UpgradeTester(Tester):
             node2.set_install_dir(**install_kwargs)
             # this is a bandaid; after refactoring, upgrades should account for protocol version
             new_version_from_build = get_version_from_build(node1.get_install_dir())
-            if (new_version_from_build >= '3' and self.protocol_version is not None and self.protocol_version < 3):
+            if new_version_from_build >= '3' and self.protocol_version is not None and self.protocol_version < 3:
                 self.skip('Protocol version {} incompatible '
                           'with Cassandra version {}'.format(self.protocol_version, new_version_from_build))
-            node2.set_log_level("DEBUG" if DEBUG else "INFO")
+            node2.set_log_level("DEBUG")
             node2.set_configuration_options(values={'internode_compression': 'none'})
             node2.start(wait_for_binary_proto=True)
 
@@ -256,14 +257,3 @@ class UpgradeTester(Tester):
         node_versions = self.get_node_versions()
         self.assertLessEqual(len(set(node_versions)), 2)
         return max(node_versions) if is_upgraded else min(node_versions)
-
-    def tearDown(self):
-        # Ignore errors before upgrade on Windows
-        # We ignore errors from 2.1, because windows 2.1
-        # support is only beta. There are frequent log errors,
-        # related to filesystem interactions that are a direct result
-        # of the lack of full functionality on 2.1 Windows, and we dont
-        # want these to pollute our results.
-        if is_win() and UPGRADE_MODE != "all" and self.cluster.version() <= '2.2':
-            self.cluster.nodelist()[1].mark_log_for_errors()
-        super(UpgradeTester, self).tearDown()

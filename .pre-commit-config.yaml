@@ -150,7 +150,7 @@ repos:
                 update_cluster_layout_tests.py|
                 pytest_cql_additional_tests.py|
                 repair_additional_test.py|
-                upgrade_tests/*|
+                upgrade_tests/cql_tests.py|
                 cdc_snapshot_operation_test.py|
                 rest_api_tests.py|
                 error_example_test.py|
