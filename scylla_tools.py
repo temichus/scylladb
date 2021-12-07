@@ -1278,7 +1278,9 @@ class CassandraCluster(object):
             con.cluster.shutdown()
         dtest_setup.connections = []
 
-        failed = False
+        rep_setup = getattr(self.request.node, "rep_setup", None)
+        rep_call = getattr(self.request.node, "rep_call", None)
+        failed = getattr(rep_setup, 'failed', False) or getattr(rep_call, 'failed', False)
         try:
             if not dtest_setup.allow_log_errors:
                 try:
@@ -1289,7 +1291,7 @@ class CassandraCluster(object):
         finally:
             try:
                 # save the logs for inspection
-                if failed or not self.dtest_config.delete_logs:
+                if (failed and self.dtest_config.delete_logs == 'passed') or self.dtest_config.delete_logs == 'none':
                     from dtest_setup import copy_logs
                     copy_logs(self.request, dtest_setup)
             except Exception as e:

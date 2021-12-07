@@ -1625,7 +1625,9 @@ class ScyllaManagerMixin:
 
         yield dtest_setup.cluster
 
-        failed = False
+        rep_setup = getattr(request.node, "rep_setup", None)
+        rep_call = getattr(request.node, "rep_call", None)
+        failed = getattr(rep_setup, 'failed', False) or getattr(rep_call, 'failed', False)
         try:
             if not dtest_setup.allow_log_errors:
                 try:
@@ -1636,7 +1638,7 @@ class ScyllaManagerMixin:
         finally:
             try:
                 # save the logs for inspection
-                if failed or not dtest_config.delete_logs:
+                if (failed and dtest_config.delete_logs == 'passed') or dtest_config.delete_logs == 'none':
                     copy_logs(request, dtest_setup)
             except Exception as e:
                 logger.error("Error saving log: %s", str(e))

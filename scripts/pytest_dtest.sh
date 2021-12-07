@@ -293,7 +293,7 @@ export HOME=$home_dir
 export mb_per_cpu=512
 export nodes_per_cluster=3
 
-PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml"
+PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml  --delete-logs=passed"
 export XDIST_PROCESSES=$(xdist_processes "$smp" "$nodes_per_cluster" "$mb_per_cpu")
 PYTEST_FLAGS="${PYTEST_FLAGS} -n ${XDIST_PROCESSES}"
 

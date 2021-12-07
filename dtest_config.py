@@ -21,7 +21,7 @@ class DTestConfig:
         self.scylla_mode = None
         self.cassandra_version_from_build = None
         self.scylla_full_version = None
-        self.delete_logs = False
+        self.delete_logs = 'all'
         self.execute_upgrade_tests = False
         self.disable_active_log_watching = False
         self.keep_test_dir = False

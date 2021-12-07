@@ -66,7 +66,7 @@ def pytest_addoption(parser):
     parser.addoption("--cassandra-version", action="store", default=None,
                      help="A specific C* version to run the dtests against. The dtest framework will "
                           "pull the required artifacts for this version.")
-    parser.addoption("--delete-logs", action="store_true", default=False,
+    parser.addoption("--delete-logs", action="store", default='none',
                      help="Delete all generated logs created by a test after the completion of a test.")
     parser.addoption("--execute-upgrade-tests", action="store_true", default=False,
                      help="Execute Cassandra Upgrade Tests (e.g. tests annotated with the upgrade_test mark)")
@@ -223,6 +223,16 @@ def fixture_dtest_create_cluster_func():
     return DTestSetup.create_ccm_cluster
 
 
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    # execute all other hooks to obtain the report object
+    outcome = yield
+    rep = outcome.get_result()
+    # set a report attribute for each phase of a call, which can
+    # be "setup", "call", "teardown"
+    setattr(item, "rep_" + rep.when, rep)
+
+
 @pytest.fixture(scope='function', autouse=False)
 def fixture_dtest_setup(request,
                         dtest_config,
@@ -268,7 +278,9 @@ def fixture_dtest_setup(request,
         con.cluster.shutdown()
     dtest_setup.connections = []
 
-    failed = False
+    rep_setup = getattr(request.node, "rep_setup", None)
+    rep_call = getattr(request.node, "rep_call", None)
+    failed = getattr(rep_setup, 'failed', False) or getattr(rep_call, 'failed', False)
     try:
         if not dtest_setup.allow_log_errors:
             try:
@@ -279,7 +291,7 @@ def fixture_dtest_setup(request,
     finally:
         try:
             # save the logs for inspection
-            if failed or not dtest_config.delete_logs:
+            if (failed and dtest_config.delete_logs == 'passed') or dtest_config.delete_logs == 'none':
                 copy_logs(request, dtest_setup)
         except Exception as e:
             logger.error("Error saving log: %s", str(e))
