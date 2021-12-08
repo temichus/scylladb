@@ -289,6 +289,7 @@ class TestSystemClients(Tester):
             nodes=len(self._test_users) + 1,
             ssl_optional=True,
             require_ssl_auth=False,
+            system_auth_rf=len(self._test_users) + 1
         )
         session_store = SessionStore()
         # Success SSL connection test
