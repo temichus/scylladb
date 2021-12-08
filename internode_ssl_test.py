@@ -62,6 +62,15 @@ class TestInternodeSSL(Tester):
                                          reload_certs=False):
         cluster = self.cluster
 
+        self.ignore_log_patterns += [
+            'connection dropped: The TLS connection was non-properly terminated',
+            'connection dropped: The certificate is NOT trusted',
+            'connection dropped: sendmsg: Broken pipe',
+            'connection dropped: The specified session has been invalidated for some reason',
+            'storage_service -.*fail to update tokens for',
+            'storage_service -.*fail to update schema_version for',
+        ]
+
         logger.debug("***using internode ssl***")
         generate_ssl_stores(self.test_path)
         cluster.set_configuration_options({'internode_compression': internode_compression})
@@ -76,15 +85,6 @@ class TestInternodeSSL(Tester):
                 no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
         else:
             raise Exception('Invalid parameter dcs: {}. Must be greater than or equal to 1'.format(dcs))
-
-        self.ignore_log_patterns += [
-            'connection dropped: The TLS connection was non-properly terminated',
-            'connection dropped: The certificate is NOT trusted',
-            'connection dropped: sendmsg: Broken pipe',
-            'connection dropped: The specified session has been invalidated for some reason',
-            'storage_service -.*fail to update tokens for',
-            'storage_service -.*fail to update schema_version for',
-        ]
 
         if reload_certs:
             logger.debug("rewriting certs")
@@ -118,7 +118,7 @@ class TestInternodeSSL(Tester):
         pytest.param(0),
         pytest.param(None, marks=pytest.mark.require('#7500')),
     ])
-    def test_testlisten_ports_conf(self, disable_value):
+    def test_listen_ports_conf(self, disable_value):
         """
         Test storage ports configuration, and verify the listening storage ports after start
 
