@@ -1,6 +1,7 @@
 import itertools
 import time
 import uuid
+from pprint import pprint
 from unittest import SkipTest
 import logging
 
@@ -10,26 +11,21 @@ from cassandra import InvalidRequest, ReadFailure, ReadTimeout
 from cassandra.query import SimpleStatement, dict_factory, named_tuple_factory
 
 from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
+from dtest_setup import DTestSetup
+from tools.assertions import assert_count_equal
 from tools.paging import run_scenarios
 from tools.data import rows_to_list
-from .upgrade_base import UpgradeTester
+from upgrade_test import UpgradeTester
 
 logger = logging.getLogger(__name__)
 
 
 def assert_read_timeout_or_failure(session, query):
-    try:
-        res = session.execute(query)
-        assert False, "Expecting query to be invalid: got %s" % res
-    except AssertionError as e:
-        raise e
-    except ReadTimeout as e:
-        pass
-    except ReadFailure as e:
-        pass
+    with pytest.raises(expected_exception=(ReadTimeout, ReadFailure)):
+        session.execute(query)
 
 
-class Page(object):
+class Page:
     data = None
 
     def __init__(self):
@@ -39,7 +35,7 @@ class Page(object):
         self.data.append(row)
 
 
-class PageFetcher(object):
+class PageFetcher:
     """
     Requests pages, handles their receipt,
     and provides paged data for testing.
@@ -77,7 +73,7 @@ class PageFetcher(object):
 
     def handle_page(self, rows):
         # occasionally get a final blank page that is useless
-        if rows == []:
+        if not rows:
             self.retrieved_empty_pages += 1
             return
 
@@ -183,13 +179,18 @@ class PageFetcher(object):
         return self.future.has_more_pages
 
 
-class PageAssertionMixin(object):
+class PageAssertionMixin:
     """Can be added to subclasses of unittest.Tester"""
 
-    def assertEqualIgnoreOrder(self, actual, expected):
-        return self.assertItemsEqual(actual, expected)
+    @staticmethod
+    def assert_equal_ignore_order(actual, expected):
+        if isinstance(actual, list) and len(actual) == 1 and isinstance(actual[0], list):
+            actual = actual[0]
+            expected = expected[0]
+        return assert_count_equal(actual=actual, expected=expected)
 
-    def assertIsSubsetOf(self, subset, superset):
+    @staticmethod
+    def assert_is_subset_of(subset, superset):
         assert flatten_into_set(subset).issubset(flatten_into_set(superset))
 
 
@@ -199,6 +200,10 @@ class BasePagingTester(UpgradeTester):
         cursor = UpgradeTester.prepare(self, *args, **kwargs)
         cursor.row_factory = dict_factory
         return cursor
+
+
+def random_txt(_):
+    return str(uuid.uuid4())
 
 
 class TestPagingSize(BasePagingTester, PageAssertionMixin):
@@ -216,17 +221,17 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
 
             # run a query that has no results and make sure it's exhausted
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test", fetch_size=100, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future)
-            pf.request_all()
-            self.assertEqual([], pf.all_data())
-            self.assertFalse(pf.has_more_pages)
+            page_fetcher = PageFetcher(future)
+            page_fetcher.request_all()
+            assert page_fetcher.all_data() == []
+            assert not page_fetcher.has_more_pages
 
     def test_with_less_results_than_page_size(self):
         cursor = self.prepare()
@@ -234,7 +239,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -250,11 +255,11 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test", fetch_size=100, consistency_level=CL.ALL)
             )
-            pf = PageFetcher(future)
-            pf.request_all()
+            page_fetcher = PageFetcher(future)
+            page_fetcher.request_all()
 
-            self.assertFalse(pf.has_more_pages)
-            self.assertEqual(len(expected_data), len(pf.all_data()))
+            assert not page_fetcher.has_more_pages
+            assert len(page_fetcher.all_data()) == len(expected_data)
 
     def test_with_more_results_than_page_size(self):
         cursor = self.prepare()
@@ -262,7 +267,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -283,13 +288,13 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
                 SimpleStatement("select * from paging_test", fetch_size=5, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            self.assertEqual(pf.pagecount(), 2)
-            self.assertEqual(pf.num_results_all(), [5, 4])
+            assert page_fetcher.pagecount() == 2
+            assert page_fetcher.num_results_all() == [5, 4]
 
             # make sure expected and actual have same data elements (ignoring order)
-            self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
+            self.assert_equal_ignore_order(page_fetcher.all_data(), expected_data)
 
     def test_with_equal_results_to_page_size(self):
         cursor = self.prepare()
@@ -297,7 +302,7 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -314,13 +319,13 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
                 SimpleStatement("select * from paging_test", fetch_size=5, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            self.assertEqual(pf.num_results_all(), [5])
-            self.assertEqual(pf.pagecount(), 1)
+            assert page_fetcher.num_results_all() == [5]
+            assert page_fetcher.pagecount() == 1
 
             # make sure expected and actual have same data elements (ignoring order)
-            self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
+            self.assert_equal_ignore_order(page_fetcher.all_data(), expected_data)
 
     def test_undefined_page_size_default(self):
         """
@@ -329,12 +334,9 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id uuid PRIMARY KEY, value text )")
 
-        def random_txt(text):
-            return uuid.uuid4()
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -348,21 +350,24 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
                 SimpleStatement("select * from paging_test", consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            self.assertEqual(pf.num_results_all(), [5000, 1])
+            assert page_fetcher.num_results_all() == [5000, 1]
 
-            self.maxDiff = None
+            self.max_diff = None
             # make sure expected and actual have same data elements (ignoring order)
-            self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
+            self.assert_equal_ignore_order(page_fetcher.all_data(), expected_data)
 
 
 class TestPagingSizeNodes3RF3(TestPagingSize):
-    NODES, RF, __test__, CL = 3, 3, True, CL.ALL
+    NODES = 3
+    RF = 3
+    CL = CL.ALL
 
 
 class TestPagingSizeNodes2RF1(TestPagingSize):
-    NODES, RF, __test__ = 2, 1, True
+    NODES = 2
+    RF = 1
 
 
 class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
@@ -387,7 +392,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -411,16 +416,17 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                                 fetch_size=5, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            self.assertEqual(pf.pagecount(), 2)
-            self.assertEqual(pf.num_results_all(), [5, 5])
+            assert page_fetcher.pagecount() == 2
+            assert page_fetcher.num_results_all() == [5, 5]
 
             # these should be equal (in the same order)
-            self.assertEqual(pf.all_data(), expected_data)
+            assert page_fetcher.all_data() == expected_data
 
             # make sure we don't allow paging over multiple partitions with order because that's weird
-            with self.assertRaisesRegexp(InvalidRequest, 'Cannot page queries with both ORDER BY and a IN restriction on the partition key'):
+            with self.assertRaisesRegexp(InvalidRequest, 'Cannot page queries with both ORDER BY and a IN '
+                                                         'restriction on the partition key'):
                 stmt = SimpleStatement(
                     "select * from paging_test where id in (1,2) order by value asc", consistency_level=CL.ALL)
                 cursor.execute(stmt)
@@ -443,7 +449,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -468,38 +474,35 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                                 fetch_size=3, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            print("pages:", pf.num_results_all())
-            self.assertEqual(pf.pagecount(), 4)
-            self.assertEqual(pf.num_results_all(), [3, 3, 3, 1])
+            logger.info("pages: %s", page_fetcher.num_results_all())
+            assert page_fetcher.pagecount() == 4
+            assert page_fetcher.num_results_all() == [3, 3, 3, 1]
 
             # these should be equal (in the same order)
-            self.assertEqual(pf.all_data(), expected_data)
+            assert page_fetcher.all_data() == expected_data
 
             # drop the ORDER BY
             future = cursor.execute_async(
                 SimpleStatement("select * from paging_test where id = 1", fetch_size=3, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            self.assertEqual(pf.pagecount(), 4)
-            self.assertEqual(pf.num_results_all(), [3, 3, 3, 1])
+            assert page_fetcher.pagecount() == 4
+            assert page_fetcher.num_results_all() == [3, 3, 3, 1]
 
             # these should be equal (in the same order)
-            self.assertEqual(pf.all_data(), list(reversed(expected_data)))
+            assert page_fetcher.all_data() == list(reversed(expected_data))
 
     def test_with_limit(self):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id int, value text, PRIMARY KEY (id, value) )")
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -530,34 +533,34 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                     'expect_pgcount': 1, 'expect_pgsizes': [10]},      # data < fetch < limit
 
                 # using 'in' clause w/multi partitions
-                {'limit': 9, 'fetch': 20, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 1, 'expect_pgsizes': [
-                    9]},  # limit < fetch < data
-                {'limit': 10, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 1, 'expect_pgsizes': [
-                    10]},      # limit < data < fetch
-                {'limit': 20, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id in (4,5)', 'expect_pgcount': 2, 'expect_pgsizes': [
-                    10, 10]},  # fetch < limit < data
-                {'limit': 30, 'fetch': 10, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 2, 'expect_pgsizes': [
-                    10, 10]},  # fetch < data < limit
-                {'limit': 20, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [
-                    10]},      # data < limit < fetch
-                {'limit': 30, 'fetch': 20, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [
-                    10]},      # data < fetch < limit
+                {'limit': 9, 'fetch': 20, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)',
+                 'expect_pgcount': 1, 'expect_pgsizes': [9]},  # limit < fetch < data
+                {'limit': 10, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 1,
+                 'expect_pgsizes': [10]},      # limit < data < fetch
+                {'limit': 20, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id in (4,5)', 'expect_pgcount': 2,
+                 'expect_pgsizes': [10, 10]},  # fetch < limit < data
+                {'limit': 30, 'fetch': 10, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 2,
+                 'expect_pgsizes': [10, 10]},  # fetch < data < limit
+                {'limit': 20, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1,
+                 'expect_pgsizes': [10]},      # data < limit < fetch
+                {'limit': 30, 'fetch': 20, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1,
+                 'expect_pgsizes': [10]},      # data < fetch < limit
 
                 # no limit but with a defined pagesize. Scenarios added for CASSANDRA-8408.
-                {'limit': None, 'fetch': 20, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 4, 'expect_pgsizes': [
-                    20, 20, 20, 20]},  # fetch < data
-                {'limit': None, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 1, 'expect_pgsizes': [
-                    20]},          # data < fetch
-                {'limit': None, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id in (4,5)', 'expect_pgcount': 3, 'expect_pgsizes': [
-                    10, 10, 10]},  # fetch < data
-                {'limit': None, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [
-                    10]},          # data < fetch
+                {'limit': None, 'fetch': 20, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)',
+                 'expect_pgcount': 4, 'expect_pgsizes': [20, 20, 20, 20]},  # fetch < data
+                {'limit': None, 'fetch': 30, 'data_size': 20, 'whereclause': 'WHERE id in (3,4)', 'expect_pgcount': 1,
+                 'expect_pgsizes': [20]},          # data < fetch
+                {'limit': None, 'fetch': 10, 'data_size': 30, 'whereclause': 'WHERE id in (4,5)', 'expect_pgcount': 3,
+                 'expect_pgsizes': [10, 10, 10]},  # fetch < data
+                {'limit': None, 'fetch': 30, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1,
+                 'expect_pgsizes': [10]},          # data < fetch
 
                 # not setting fetch_size (unpaged) but using limit. Scenarios added for CASSANDRA-8408.
-                {'limit': 9, 'fetch': None, 'data_size': 80,
-                    'whereclause': 'WHERE id in (1,2,3,4,5,6)', 'expect_pgcount': 1, 'expect_pgsizes': [9]},  # limit < data
-                {'limit': 30, 'fetch': None, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1, 'expect_pgsizes': [
-                    10]},        # data < limit
+                {'limit': 9, 'fetch': None, 'data_size': 80, 'whereclause': 'WHERE id in (1,2,3,4,5,6)',
+                 'expect_pgcount': 1, 'expect_pgsizes': [9]},  # limit < data
+                {'limit': 30, 'fetch': None, 'data_size': 10, 'whereclause': 'WHERE id in (1,2)', 'expect_pgcount': 1,
+                 'expect_pgsizes': [10]},        # data < limit
             ]
 
             def handle_scenario(scenario):
@@ -586,14 +589,14 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                     # this should not happen
                     assert False
 
-                pf = PageFetcher(future).request_all()
-                self.assertEqual(pf.num_results_all(), scenario['expect_pgsizes'])
-                self.assertEqual(pf.pagecount(), scenario['expect_pgcount'])
+                page_fetcher = PageFetcher(future).request_all()
+                self.assertEqual(page_fetcher.num_results_all(), scenario['expect_pgsizes'])
+                self.assertEqual(page_fetcher.pagecount(), scenario['expect_pgcount'])
 
                 # make sure all the data retrieved is a subset of input data
-                self.assertIsSubsetOf(pf.all_data(), expected_data)
+                self.assert_is_subset_of(page_fetcher.all_data(), expected_data)
 
-            run_scenarios(scenarios, handle_scenario, deferred_exceptions=(AssertionError,))
+            run_scenarios(scenarios, handle_scenario)
 
     def test_with_allow_filtering(self):
         cursor = self.prepare()
@@ -601,7 +604,7 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -623,14 +626,14 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
                                 fetch_size=4, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            self.assertEqual(pf.pagecount(), 2)
-            self.assertEqual(pf.num_results_all(), [4, 3])
+            assert page_fetcher.pagecount() == 2
+            assert page_fetcher.num_results_all() == [4, 3]
 
             # make sure the allow filtering query matches the expected results (ignoring order)
-            self.assertEqualIgnoreOrder(
-                pf.all_data(),
+            self.assert_equal_ignore_order(
+                page_fetcher.all_data(),
                 parse_data_into_dicts(
                     """
                     |id|value           |
@@ -647,11 +650,14 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
 
 
 class TestPagingWithModifiersNodes3RF3(TestPagingWithModifiers):
-    NODES, RF, __test__, CL = 3, 3, True, CL.ALL
+    NODES = 3
+    RF = 3
+    CL = CL.ALL
 
 
 class TestPagingWithModifiersNodes2RF1(TestPagingWithModifiers):
-    NODES, RF, __test__ = 2, 1, True
+    NODES = 2
+    RF = 1
 
 
 class TestPagingData(BasePagingTester, PageAssertionMixin):
@@ -682,28 +688,28 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         """)
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE test")
             cursor.execute("TRUNCATE test2")
 
             for table in ("test", "test2"):
-                logger.debug("Querying table %s" % (table,))
+                logger.debug("Querying table %s" % table)
                 expected = []
                 # match the key ordering for murmur3
-                for k in (1, 0, 2):
-                    for c in range(5):
-                        value = "%d.%d" % (k, c)
-                        cursor.execute("INSERT INTO " + table + " (k, c, v) VALUES (%s, %s, %s)", (k, c, value))
-                        expected.append([k, c, value])
+                for key_value in (1, 0, 2):
+                    for c_value in range(5):
+                        value = "%d.%d" % (key_value, c_value)
+                        cursor.execute("INSERT INTO " + table + " (k, c, v) VALUES (%s, %s, %s)",
+                                       (key_value, c_value, value))
+                        expected.append([key_value, c_value, value])
 
                 for fetch_size in (2, 3, 5, 10, 100):
                     logger.debug("Using fetch size %d" % fetch_size)
                     cursor.default_fetch_size = fetch_size
                     results = rows_to_list(cursor.execute("SELECT * FROM %s" % (table,)))
-                    import pprint
-                    pprint.pprint(results)
-                    self.assertEqual(len(expected), len(results))
-                    self.assertEqual(expected, results)
+                    pprint(results)
+                    assert len(results) == len(expected)
+                    assert results == expected
 
     def test_basic_compound_paging(self):
         cursor = self.prepare()
@@ -729,39 +735,36 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         """)
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE test")
             cursor.execute("TRUNCATE test2")
 
             for table in ("test", "test2"):
-                logger.debug("Querying table %s" % (table,))
+                logger.debug("Querying table %s" % table)
                 expected = []
                 # match the key ordering for murmur3
-                for k in (1, 0, 2):
-                    for c in range(5):
-                        value = "%d.%d" % (k, c)
-                        cursor.execute("INSERT INTO " + table + " (k, c1, c2, v) VALUES (%s, %s, 0, %s)", (k, c, value))
-                        expected.append([k, c, 0, value])
+                for k_value in (1, 0, 2):
+                    for c_value in range(5):
+                        value = "%d.%d" % (k_value, c_value)
+                        cursor.execute("INSERT INTO " + table + " (k, c1, c2, v) VALUES (%s, %s, 0, %s)",
+                                       (k_value, c_value, value))
+                        expected.append([k_value, c_value, 0, value])
 
                 for fetch_size in (2, 3, 5, 10, 100):
                     logger.debug("Using fetch size %d" % fetch_size)
                     cursor.default_fetch_size = fetch_size
                     results = rows_to_list(cursor.execute("SELECT * FROM %s" % (table,)))
-                    import pprint
-                    pprint.pprint(results)
-                    self.assertEqual(len(expected), len(results))
-                    self.assertEqual(expected, results)
+                    pprint(results)
+                    assert len(results) == len(expected)
+                    assert results == expected
 
     def test_paging_a_single_wide_row(self):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id int, value text, PRIMARY KEY (id, value) )")
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -775,26 +778,23 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                 SimpleStatement("select * from paging_test where id = 1", fetch_size=3000, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            self.assertEqual(pf.pagecount(), 4)
-            self.assertEqual(pf.num_results_all(), [3000, 3000, 3000, 1000])
+            assert page_fetcher.pagecount() == 4
+            assert page_fetcher.num_results_all() == [3000, 3000, 3000, 1000]
 
-            all_results = pf.all_data()
-            self.assertEqual(len(expected_data), len(all_results))
-            self.maxDiff = None
-            self.assertEqualIgnoreOrder(expected_data, all_results)
+            all_results = page_fetcher.all_data()
+            assert len(all_results) == len(expected_data)
+            self.max_diff = None
+            self.assert_equal_ignore_order(expected_data, all_results)
 
     def test_paging_across_multi_wide_rows(self):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id int, value text, PRIMARY KEY (id, value) )")
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -810,27 +810,24 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                                 fetch_size=3000, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
-            self.assertEqual(pf.pagecount(), 4)
-            self.assertEqual(pf.num_results_all(), [3000, 3000, 3000, 1000])
+            assert page_fetcher.pagecount() == 4
+            assert page_fetcher.num_results_all() == [3000, 3000, 3000, 1000]
 
-            self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
+            self.assert_equal_ignore_order(page_fetcher.all_data(), expected_data)
 
     def test_paging_using_secondary_indexes(self):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id int, mybool boolean, sometext text, PRIMARY KEY (id, sometext) )")
         cursor.execute("CREATE INDEX ON paging_test(mybool)")
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         def bool_from_str_int(text):
             return bool(int(text))
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -850,14 +847,14 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                                 fetch_size=400, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
             # the query only searched for True rows, so let's pare down the expectations for comparison
-            expected_data = filter(lambda x: x.get('mybool') is True, all_data)
+            expected_data = list(filter(lambda x: x.get('mybool') is True, all_data))
 
-            self.assertEqual(pf.pagecount(), 2)
-            self.assertEqual(pf.num_results_all(), [400, 200])
-            self.assertEqualIgnoreOrder(expected_data, pf.all_data())
+            assert page_fetcher.pagecount() == 2
+            assert page_fetcher.num_results_all() == [400, 200]
+            self.assert_equal_ignore_order(expected_data, page_fetcher.all_data())
 
     @pytest.mark.since('2.0.6')
     def test_static_columns_paging(self):
@@ -877,13 +874,14 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                                'skipping'.format(latest_ver=latest_version_with_bug, min_ver=min_version))
 
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE test")
             cursor.row_factory = named_tuple_factory
 
-            for i in range(4):
-                for j in range(4):
-                    cursor.execute("INSERT INTO test (a, b, c, s1, s2) VALUES (%d, %d, %d, %d, %d)" % (i, j, j, 17, 42))
+            for a_value in range(4):
+                for b_and_c_value in range(4):
+                    cursor.execute("INSERT INTO test (a, b, c, s1, s2) VALUES (%d, %d, %d, %d, %d)" %
+                                   (a_value, b_and_c_value, b_and_c_value, 17, 42))
 
             selectors = (
                 "*",
@@ -893,222 +891,220 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                 "a, b, c")
 
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute("SELECT %s FROM test" % selector))
-                    import pprint
-                    pprint.pprint(results)
+                    pprint(results)
                     # self.assertEqual(16, len(results))
-                    self.assertEqual([0] * 4 + [1] * 4 + [2] * 4 + [3] * 4, sorted([r.a for r in results]))
-                    self.assertEqual([0, 1, 2, 3] * 4, [r.b for r in results])
-                    self.assertEqual([0, 1, 2, 3] * 4, [r.c for r in results])
+                    assert sorted([res.a for res in results]) == [0] * 4 + [1] * 4 + [2] * 4 + [3] * 4
+                    assert [res.b for res in results] == [0, 1, 2, 3] * 4
+                    assert [res.c for res in results] == [0, 1, 2, 3] * 4
                     if "s1" in selector:
-                        self.assertEqual([17] * 16, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 16
                     if "s2" in selector:
-                        self.assertEqual([42] * 16, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 16
 
             # IN over the partitions
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute("SELECT %s FROM test WHERE a IN (0, 1, 2, 3)" % selector))
-                    self.assertEqual(16, len(results))
-                    self.assertEqual([0] * 4 + [1] * 4 + [2] * 4 + [3] * 4, sorted([r.a for r in results]))
-                    self.assertEqual([0, 1, 2, 3] * 4, [r.b for r in results])
-                    self.assertEqual([0, 1, 2, 3] * 4, [r.c for r in results])
+                    assert len(results) == 16
+                    assert sorted([res.a for res in results]) == [0] * 4 + [1] * 4 + [2] * 4 + [3] * 4
+                    assert [res.b for res in results] == [0, 1, 2, 3] * 4
+                    assert [res.c for res in results] == [0, 1, 2, 3] * 4
                     if "s1" in selector:
-                        self.assertEqual([17] * 16, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 16
                     if "s2" in selector:
-                        self.assertEqual([42] * 16, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 16
 
             # single partition
-            for i in range(16):
-                cursor.execute("INSERT INTO test (a, b, c, s1, s2) VALUES (%d, %d, %d, %d, %d)" % (99, i, i, 17, 42))
+            for a_value in range(16):
+                cursor.execute("INSERT INTO test (a, b, c, s1, s2) VALUES (%d, %d, %d, %d, %d)" % (
+                    99, a_value, a_value, 17, 42))
 
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99" % selector))
-                    self.assertEqual(16, len(results))
-                    self.assertEqual([99] * 16, [r.a for r in results])
-                    self.assertEqual(range(16), [r.b for r in results])
-                    self.assertEqual(range(16), [r.c for r in results])
+                    assert len(results) == 16
+                    assert [res.a for res in results] == [99] * 16
+                    assert [res.b for res in results] == list(range(16))
+                    assert [res.c for res in results] == list(range(16))
                     if "s1" in selector:
-                        self.assertEqual([17] * 16, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 16
                     if "s2" in selector:
-                        self.assertEqual([42] * 16, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 16
 
             # reversed
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99 ORDER BY b DESC" % selector))
-                    self.assertEqual(16, len(results))
-                    self.assertEqual([99] * 16, [r.a for r in results])
-                    self.assertEqual(list(reversed(range(16))), [r.b for r in results])
-                    self.assertEqual(list(reversed(range(16))), [r.c for r in results])
+                    assert len(results) == 16
+                    assert [res.a for res in results] == [99] * 16
+                    assert [res.b for res in results] == list(reversed(range(16)))
+                    self.assertEqual(list(reversed(range(16))), [res.c for res in results])
                     if "s1" in selector:
-                        self.assertEqual([17] * 16, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 16
                     if "s2" in selector:
-                        self.assertEqual([42] * 16, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 16
 
             # IN on clustering column
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b IN (3, 4, 8, 14, 15)" % selector))
-                    self.assertEqual(5, len(results))
-                    self.assertEqual([99] * 5, [r.a for r in results])
-                    self.assertEqual([3, 4, 8, 14, 15], [r.b for r in results])
-                    self.assertEqual([3, 4, 8, 14, 15], [r.c for r in results])
+                    assert len(results) == 5
+                    assert [res.a for res in results] == [99] * 5
+                    assert [res.b for res in results] == [3, 4, 8, 14, 15]
+                    assert [res.c for res in results] == [3, 4, 8, 14, 15]
                     if "s1" in selector:
-                        self.assertEqual([17] * 5, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 16
                     if "s2" in selector:
-                        self.assertEqual([42] * 5, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 16
 
             # reversed IN on clustering column
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b IN (3, 4, 8, 14, 15) ORDER BY b DESC" % selector))
-                    self.assertEqual(5, len(results))
-                    self.assertEqual([99] * 5, [r.a for r in results])
-                    self.assertEqual(list(reversed([3, 4, 8, 14, 15])), [r.b for r in results])
-                    self.assertEqual(list(reversed([3, 4, 8, 14, 15])), [r.c for r in results])
+                    assert len(results) == 5
+                    assert [res.a for res in results] == [99] * 5
+                    assert [res.b for res in results] == list(reversed([3, 4, 8, 14, 15]))
+                    assert [res.c for res in results] == list(reversed([3, 4, 8, 14, 15]))
                     if "s1" in selector:
-                        self.assertEqual([17] * 5, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 16
                     if "s2" in selector:
-                        self.assertEqual([42] * 5, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 16
 
             # slice on clustering column with set start
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99 AND b > 3" % selector))
-                    self.assertEqual(12, len(results))
-                    self.assertEqual([99] * 12, [r.a for r in results])
-                    self.assertEqual(range(4, 16), [r.b for r in results])
-                    self.assertEqual(range(4, 16), [r.c for r in results])
+                    assert len(results) == 12
+                    assert [res.a for res in results] == [99] * 12
+                    assert [res.b for res in results] == list(range(4, 16))
+                    assert [res.c for res in results] == list(range(4, 16))
                     if "s1" in selector:
-                        self.assertEqual([17] * 12, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 12
                     if "s2" in selector:
-                        self.assertEqual([42] * 12, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 12
 
             # reversed slice on clustering column with set finish
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b > 3 ORDER BY b DESC" % selector))
-                    self.assertEqual(12, len(results))
-                    self.assertEqual([99] * 12, [r.a for r in results])
-                    self.assertEqual(list(reversed(range(4, 16))), [r.b for r in results])
-                    self.assertEqual(list(reversed(range(4, 16))), [r.c for r in results])
+                    assert len(results) == 12
+                    assert [res.a for res in results] == [99] * 12
+                    assert [res.b for res in results] == list(reversed(range(4, 16)))
+                    assert [res.c for res in results] == list(reversed(range(4, 16)))
                     if "s1" in selector:
-                        self.assertEqual([17] * 12, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 12
                     if "s2" in selector:
-                        self.assertEqual([42] * 12, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 12
 
             # slice on clustering column with set finish
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99 AND b < 14" % selector))
-                    self.assertEqual(14, len(results))
-                    self.assertEqual([99] * 14, [r.a for r in results])
-                    self.assertEqual(range(14), [r.b for r in results])
-                    self.assertEqual(range(14), [r.c for r in results])
+                    assert len(results) == 14
+                    assert [res.a for res in results] == [99] * 14
+                    assert [res.b for res in results] == list(range(14))
+                    assert [res.c for res in results] == list(range(14))
                     if "s1" in selector:
-                        self.assertEqual([17] * 14, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 14
                     if "s2" in selector:
-                        self.assertEqual([42] * 14, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 14
 
             # reversed slice on clustering column with set start
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b < 14 ORDER BY b DESC" % selector))
-                    self.assertEqual(14, len(results))
-                    self.assertEqual([99] * 14, [r.a for r in results])
-                    self.assertEqual(list(reversed(range(14))), [r.b for r in results])
-                    self.assertEqual(list(reversed(range(14))), [r.c for r in results])
+                    assert len(results) == 14
+                    assert [res.a for res in results] == [99] * 14
+                    assert [res.b for res in results] == list(reversed(range(14)))
+                    assert list(reversed(range(14))) == [res.c for res in results]
                     if "s1" in selector:
-                        self.assertEqual([17] * 14, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 14
                     if "s2" in selector:
-                        self.assertEqual([42] * 14, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 14
 
             # slice on clustering column with start and finish
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute("SELECT %s FROM test WHERE a = 99 AND b > 3 AND b < 14" % selector))
-                    self.assertEqual(10, len(results))
-                    self.assertEqual([99] * 10, [r.a for r in results])
-                    self.assertEqual(range(4, 14), [r.b for r in results])
-                    self.assertEqual(range(4, 14), [r.c for r in results])
+                    assert len(results) == 10
+                    assert [res.a for res in results] == [99] * 10
+                    assert [res.b for res in results] == list(range(4, 14))
+                    assert [res.c for res in results] == list(range(4, 14))
                     if "s1" in selector:
-                        self.assertEqual([17] * 10, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 10
                     if "s2" in selector:
-                        self.assertEqual([42] * 10, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 10
 
             # reversed slice on clustering column with start and finish
             for page_size in (2, 3, 4, 5, 15, 16, 17, 100):
-                logger.debug("Using page size of %d" % page_size)
+                logger.debug("Using page size of %d", page_size)
                 cursor.default_fetch_size = page_size
                 for selector in selectors:
-                    logger.debug("Using selector '%s'" % (selector,))
+                    logger.debug("Using selector '%s'", selector)
                     results = list(cursor.execute(
                         "SELECT %s FROM test WHERE a = 99 AND b > 3 AND b < 14 ORDER BY b DESC" % selector))
-                    self.assertEqual(10, len(results))
-                    self.assertEqual([99] * 10, [r.a for r in results])
-                    self.assertEqual(list(reversed(range(4, 14))), [r.b for r in results])
-                    self.assertEqual(list(reversed(range(4, 14))), [r.c for r in results])
+                    assert len(results) == 10
+                    assert [res.a for res in results] == [99] * 10
+                    self.assertEqual(list(reversed(range(4, 14))), [res.b for res in results])
+                    self.assertEqual(list(reversed(range(4, 14))), [res.c for res in results])
                     if "s1" in selector:
-                        self.assertEqual([17] * 10, [r.s1 for r in results])
+                        assert [res.s1 for res in results] == [17] * 10
                     if "s2" in selector:
-                        self.assertEqual([42] * 10, [r.s2 for r in results])
+                        assert [res.s2 for res in results] == [42] * 10
 
     @pytest.mark.since('2.0')
     def test_paging_using_secondary_indexes_with_static_cols(self):
         cursor = self.prepare()
         cursor.execute(
-            "CREATE TABLE paging_test ( id int, s1 int static, s2 int static, mybool boolean, sometext text, PRIMARY KEY (id, sometext) )")
+            "CREATE TABLE paging_test ( id int, s1 int static, s2 int static, mybool boolean, sometext text,"
+            " PRIMARY KEY (id, sometext) )")
         cursor.execute("CREATE INDEX ON paging_test(mybool)")
-
-        def random_txt(text):
-            return str(uuid.uuid4())
 
         def bool_from_str_int(text):
             return bool(int(text))
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -1128,22 +1124,25 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                                 fetch_size=400, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future).request_all()
+            page_fetcher = PageFetcher(future).request_all()
 
             # the query only searched for True rows, so let's pare down the expectations for comparison
-            expected_data = filter(lambda x: x.get('mybool') is True, all_data)
+            expected_data = list(filter(lambda x: x.get('mybool') is True, all_data))
 
-            self.assertEqual(pf.pagecount(), 2)
-            self.assertEqual(pf.num_results_all(), [400, 200])
-            self.assertEqualIgnoreOrder(expected_data, pf.all_data())
+            assert page_fetcher.pagecount() == 2
+            assert page_fetcher.num_results_all() == [400, 200]
+            assert expected_data == page_fetcher.all_data()
 
 
 class TestPagingDataNodes3RF3(TestPagingData):
-    NODES, RF, __test__, CL = 3, 3, True, CL.ALL
+    NODES = 3
+    RF = 3
+    CL = CL.ALL
 
 
 class TestPagingDataNodes2RF1(TestPagingData):
-    NODES, RF, __test__ = 2, 1, True
+    NODES = 2
+    RF = 1
 
 
 class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
@@ -1155,12 +1154,9 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id int, mytext text, PRIMARY KEY (id, mytext) )")
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -1176,7 +1172,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
                 SimpleStatement("select * from paging_test where id in (1,2)", fetch_size=501, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future)
+            page_fetcher = PageFetcher(future)
             # no need to request page here, because the first page is automatically retrieved
 
             # we got one page and should be done with the first partition (for id=1)
@@ -1184,22 +1180,19 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
             cursor.execute(SimpleStatement(
                 "insert into paging_test (id, mytext) values (1, 'foo')", consistency_level=CL.ALL))
 
-            pf.request_all()
-            self.assertEqual(pf.pagecount(), 2)
-            self.assertEqual(pf.num_results_all(), [501, 499])
+            page_fetcher.request_all()
+            assert page_fetcher.pagecount() == 2
+            assert page_fetcher.num_results_all() == [501, 499]
 
-            self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
+            self.assert_equal_ignore_order(page_fetcher.all_data(), expected_data)
 
     def test_data_change_impacting_later_page(self):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id int, mytext text, PRIMARY KEY (id, mytext) )")
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -1214,7 +1207,7 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
                 SimpleStatement("select * from paging_test where id in (1,2)", fetch_size=500, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future)
+            page_fetcher = PageFetcher(future)
             # no need to request page here, because the first page is automatically retrieved
 
             # we've already paged the first partition, but adding a row for the second (id=2)
@@ -1222,24 +1215,21 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
             cursor.execute(SimpleStatement(
                 "insert into paging_test (id, mytext) values (2, 'foo')", consistency_level=CL.ALL))
 
-            pf.request_all()
-            self.assertEqual(pf.pagecount(), 2)
-            self.assertEqual(pf.num_results_all(), [500, 500])
+            page_fetcher.request_all()
+            assert page_fetcher.pagecount() == 2
+            assert page_fetcher.num_results_all() == [500, 500]
 
             # add the new row to the expected data and then do a compare
             expected_data.append({u'id': 2, u'mytext': u'foo'})
-            self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
+            self.assert_equal_ignore_order(page_fetcher.all_data(), expected_data)
 
-    def test_row_TTL_expiry_during_paging(self):
+    def test_row_ttl_expiry_during_paging(self):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id int, mytext text, PRIMARY KEY (id, mytext) )")
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             # create rows with TTL (some of which we'll try to get after expiry)
@@ -1266,18 +1256,18 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
                                 fetch_size=300, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future)
+            oage_fetcher = PageFetcher(future)
             # no need to request page here, because the first page is automatically retrieved
             # this page will be partition id=1, it has TTL rows but they are not expired yet
 
             # sleep so that the remaining TTL rows from partition id=2 expire
             time.sleep(15)
 
-            pf.request_all()
-            self.assertEqual(pf.pagecount(), 3)
-            self.assertEqual(pf.num_results_all(), [300, 300, 200])
+            oage_fetcher.request_all()
+            assert oage_fetcher.pagecount() == 3
+            assert oage_fetcher.num_results_all() == [300, 300, 200]
 
-    def test_cell_TTL_expiry_during_paging(self):
+    def test_cell_ttl_expiry_during_paging(self):
         cursor = self.prepare()
         cursor.execute("""
             CREATE TABLE paging_test (
@@ -1288,12 +1278,9 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
                 PRIMARY KEY (id, mytext) )
             """)
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = create_rows(
@@ -1311,11 +1298,11 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
                                 fetch_size=500, consistency_level=CL.ALL)
             )
 
-            pf = PageFetcher(future)
+            page_fetcher = PageFetcher(future)
 
             # no need to request page here, because the first page is automatically retrieved
-            page1 = pf.page_data(1)
-            self.assertEqualIgnoreOrder(page1, data[:500])
+            page1 = page_fetcher.page_data(1)
+            self.assert_equal_ignore_order(page1, data[:500])
 
             # set some TTLs for data on page 3
             for row in data[1000:1500]:
@@ -1329,9 +1316,9 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
                 cursor.execute(stmt)
 
             # check page two
-            pf.request_one()
-            page2 = pf.page_data(2)
-            self.assertEqualIgnoreOrder(page2, data[500:1000])
+            page_fetcher.request_one()
+            page2 = page_fetcher.page_data(2)
+            self.assert_equal_ignore_order(page2, data[500:1000])
 
             page3expected = []
             for row in data[1000:1500]:
@@ -1342,17 +1329,20 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
 
             time.sleep(15)
 
-            pf.request_one()
-            page3 = pf.page_data(3)
-            self.assertEqualIgnoreOrder(page3, page3expected)
+            page_fetcher.request_one()
+            page3 = page_fetcher.page_data(3)
+            self.assert_equal_ignore_order(page3, page3expected)
 
 
 class TestPagingDatasetChangesNodes3RF3(TestPagingDatasetChanges):
-    NODES, RF, __test__, CL = 3, 3, True, CL.ALL
+    NODES = 3
+    RF = 3
+    CL = CL.ALL
 
 
 class TestPagingDatasetChangesNodes2RF1(TestPagingDatasetChanges):
-    NODES, RF, __test__ = 2, 1, True
+    NODES = 2
+    RF = 1
 
 
 class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
@@ -1367,12 +1357,9 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
         cursor = self.prepare()
         cursor.execute("CREATE TABLE paging_test ( id int, mytext text, PRIMARY KEY (id, mytext) )")
 
-        def random_txt(text):
-            return str(uuid.uuid4())
-
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             data = """
@@ -1413,57 +1400,60 @@ class TestPagingQueryIsolation(BasePagingTester, PageAssertionMixin):
                 page_fetchers.append(PageFetcher(future))
                 # first page is auto-retrieved, so no need to request it
 
-            for pf in page_fetchers:
-                pf.request_one(timeout=10)
+            for page_fetcher in page_fetchers:
+                page_fetcher.request_one(timeout=10)
 
-            for pf in page_fetchers:
-                pf.request_one(timeout=10)
+            for page_fetcher in page_fetchers:
+                page_fetcher.request_one(timeout=10)
 
-            for pf in page_fetchers:
-                pf.request_all(timeout=10)
+            for page_fetcher in page_fetchers:
+                page_fetcher.request_all(timeout=10)
 
-            self.assertEqual(page_fetchers[0].pagecount(), 10)
-            self.assertEqual(page_fetchers[1].pagecount(), 9)
-            self.assertEqual(page_fetchers[2].pagecount(), 8)
-            self.assertEqual(page_fetchers[3].pagecount(), 7)
-            self.assertEqual(page_fetchers[4].pagecount(), 6)
-            self.assertEqual(page_fetchers[5].pagecount(), 5)
-            self.assertEqual(page_fetchers[6].pagecount(), 5)
-            self.assertEqual(page_fetchers[7].pagecount(), 5)
-            self.assertEqual(page_fetchers[8].pagecount(), 4)
-            self.assertEqual(page_fetchers[9].pagecount(), 4)
-            self.assertEqual(page_fetchers[10].pagecount(), 34)
+            assert page_fetchers[0].pagecount() == 10
+            assert page_fetchers[1].pagecount() == 9
+            assert page_fetchers[2].pagecount() == 8
+            assert page_fetchers[3].pagecount() == 7
+            assert page_fetchers[4].pagecount() == 6
+            assert page_fetchers[5].pagecount() == 5
+            assert page_fetchers[6].pagecount() == 5
+            assert page_fetchers[7].pagecount() == 5
+            assert page_fetchers[8].pagecount() == 4
+            assert page_fetchers[9].pagecount() == 4
+            assert page_fetchers[10].pagecount() == 34
 
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[0].all_data()), flatten_into_set(expected_data[:5000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[1].all_data()), flatten_into_set(expected_data[5000:10000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[2].all_data()), flatten_into_set(expected_data[10000:15000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[3].all_data()), flatten_into_set(expected_data[15000:20000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[4].all_data()), flatten_into_set(expected_data[20000:25000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[5].all_data()), flatten_into_set(expected_data[:5000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[6].all_data()), flatten_into_set(expected_data[5000:10000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[7].all_data()), flatten_into_set(expected_data[10000:15000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[8].all_data()), flatten_into_set(expected_data[15000:20000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[9].all_data()), flatten_into_set(expected_data[20000:25000]))
-            self.assertEqualIgnoreOrder(flatten_into_set(
+            self.assert_equal_ignore_order(flatten_into_set(
                 page_fetchers[10].all_data()), flatten_into_set(expected_data[:50000]))
 
 
 class TestPagingQueryIsolationNodes3RF3(TestPagingQueryIsolation):
-    NODES, RF, __test__, CL = 3, 3, True, CL.ALL
+    NODES = 3
+    RF = 3
+    CL = CL.ALL
 
 
 class TestPagingQueryIsolationNodes2RF1(TestPagingQueryIsolation):
-    NODES, RF, __test__ = 2, 1, True
+    NODES = 2
+    RF = 1
 
 
 class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
@@ -1471,15 +1461,13 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
     Tests concerned with paging when deletions occur.
     """
 
-    def setup_schema(self, cursor):
+    @staticmethod
+    def setup_schema(cursor):
         cursor.execute("CREATE TABLE paging_test ( "
                        "id int, mytext text, col1 int, col2 int, col3 int, "
                        "PRIMARY KEY (id, mytext) )")
 
     def setup_data(self, cursor):
-
-        def random_txt(text):
-            return str(uuid.uuid4())
 
         data = """
              | id | mytext   | col1 | col2 | col3 |
@@ -1499,11 +1487,12 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
                         'col3': int
                     })
 
-        pf = self.get_page_fetcher(cursor)
-        pf.request_all()
-        return pf.all_data()
+        page_fetcher = self.get_page_fetcher(cursor)
+        page_fetcher.request_all()
+        return page_fetcher.all_data()
 
-    def get_page_fetcher(self, cursor):
+    @staticmethod
+    def get_page_fetcher(cursor):
         future = cursor.execute_async(
             SimpleStatement("select * from paging_test where id in (1,2,3,4,5)", fetch_size=25,
                             consistency_level=CL.ALL)
@@ -1518,14 +1507,14 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
         expected_pages_data = [expected_data[x:x + page_size] for x in
                                range(0, len(expected_data), page_size)]
 
-        pf = self.get_page_fetcher(cursor)
-        pf.request_all(timeout=timeout)
-        self.assertEqual(pf.pagecount(), pagecount)
-        self.assertEqual(pf.num_results_all(), num_page_results)
+        page_fetcher = self.get_page_fetcher(cursor)
+        page_fetcher.request_all(timeout=timeout)
+        assert page_fetcher.pagecount() == pagecount
+        assert num_page_results == page_fetcher.num_results_all()
 
-        for i in range(pf.pagecount()):
-            page_data = pf.page_data(i + 1)
-            self.assertEquals(page_data, expected_pages_data[i])
+        for page_fetcher_idx in range(page_fetcher.pagecount()):
+            page_data = page_fetcher.page_data(page_fetcher_idx + 1)
+            assert page_data == expected_pages_data[page_fetcher_idx]
 
     def test_single_partition_deletions(self):
         """Test single partition deletions """
@@ -1534,7 +1523,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
 
             expected_data = self.setup_data(cursor)
@@ -1581,7 +1570,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
             expected_data = self.setup_data(cursor)
 
@@ -1601,7 +1590,7 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
             expected_data = self.setup_data(cursor)
 
@@ -1652,15 +1641,15 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
             expected_data = self.setup_data(cursor)
 
             # Delete the first cell of some rows of the last partition
             pkeys = [r['mytext'] for r in expected_data if r['id'] == 5][:20]
-            for r in expected_data:
-                if r['id'] == 5 and r['mytext'] in pkeys:
-                    r['col1'] = None
+            for row in expected_data:
+                if row['id'] == 5 and row['mytext'] in pkeys:
+                    row['col1'] = None
 
             for pkey in pkeys:
                 cursor.execute(SimpleStatement(
@@ -1672,9 +1661,9 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
             # Delete the mid cell of some rows of the first partition
             pkeys = [r['mytext'] for r in expected_data if r['id'] == 1][20:]
-            for r in expected_data:
-                if r['id'] == 1 and r['mytext'] in pkeys:
-                    r['col2'] = None
+            for row in expected_data:
+                if row['id'] == 1 and row['mytext'] in pkeys:
+                    row['col2'] = None
 
             for pkey in pkeys:
                 cursor.execute(SimpleStatement(
@@ -1686,9 +1675,9 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
             # Delete the last cell of all rows of the mid partition
             pkeys = [r['mytext'] for r in expected_data if r['id'] == 3]
-            for r in expected_data:
-                if r['id'] == 3 and r['mytext'] in pkeys:
-                    r['col3'] = None
+            for row in expected_data:
+                if row['id'] == 3 and row['mytext'] in pkeys:
+                    row['col3'] = None
 
             for pkey in pkeys:
                 cursor.execute(SimpleStatement(
@@ -1705,16 +1694,16 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
             expected_data = self.setup_data(cursor)
 
             # Delete the multiple cells of some rows of the second partition
             pkeys = [r['mytext'] for r in expected_data if r['id'] == 2][20:]
-            for r in expected_data:
-                if r['id'] == 2 and r['mytext'] in pkeys:
-                    r['col1'] = None
-                    r['col2'] = None
+            for row in expected_data:
+                if row['id'] == 2 and row['mytext'] in pkeys:
+                    row['col1'] = None
+                    row['col2'] = None
 
             for pkey in pkeys:
                 cursor.execute(SimpleStatement(
@@ -1726,10 +1715,10 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
             # Delete the multiple cells of all rows of the fourth partition
             pkeys = [r['mytext'] for r in expected_data if r['id'] == 4]
-            for r in expected_data:
-                if r['id'] == 4 and r['mytext'] in pkeys:
-                    r['col2'] = None
-                    r['col3'] = None
+            for row in expected_data:
+                if row['id'] == 4 and row['mytext'] in pkeys:
+                    row['col2'] = None
+                    row['col3'] = None
 
             for pkey in pkeys:
                 cursor.execute(SimpleStatement(
@@ -1746,23 +1735,22 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
             data = self.setup_data(cursor)
 
             # Set TTL to all row
             for row in data:
-                s = ("insert into paging_test (id, mytext, col1, col2, col3) "
-                     "values ({}, '{}', {}, {}, {}) using ttl 3;").format(
-                         row['id'], row['mytext'], row['col1'],
-                         row['col2'], row['col3'])
-                cursor.execute(SimpleStatement(s, consistency_level=CL.ALL))
+                query_string = ("insert into paging_test (id, mytext, col1, col2, col3) "
+                                "values ({}, '{}', {}, {}, {}) using ttl 3;").format(
+                                    row['id'], row['mytext'], row['col1'], row['col2'], row['col3'])
+                cursor.execute(SimpleStatement(query_string, consistency_level=CL.ALL))
             time.sleep(5)
             self.check_all_paging_results(cursor, [], 0, [])
 
-    def test_failure_threshold_deletions(self):
+    def test_failure_threshold_deletions(self, fixture_dtest_setup: DTestSetup):
         """Test that paging throws a failure in case of tombstone threshold """
-        self.allow_log_errors = True
+        fixture_dtest_setup.allow_log_errors = True
         self.cluster.set_configuration_options(
             values={'tombstone_failure_threshold': 500,
                     'read_request_timeout_in_ms': 1000,
@@ -1775,13 +1763,12 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         for is_upgraded, cursor in self.do_upgrade(cursor):
             cursor.row_factory = dict_factory
-            logger.debug("Querying %s node" % ("upgraded" if is_upgraded else "old",))
+            logger.debug("Querying %s node" % "upgraded" if is_upgraded else "old")
             cursor.execute("TRUNCATE paging_test")
             self.setup_data(cursor)
 
             # Add more data
-            values = map(lambda i: uuid.uuid4(), range(3000))
-            for value in values:
+            for value in map(lambda i: uuid.uuid4(), range(3000)):
                 cursor.execute(SimpleStatement(
                     "insert into paging_test (id, mytext, col1) values (1, '{}', null) ".format(
                         value
@@ -1792,18 +1779,22 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
             stmt = SimpleStatement("select * from paging_test", fetch_size=1000, consistency_level=CL.ALL)
             assert_read_timeout_or_failure(cursor, stmt)
 
-            patterns = [r"Scanned over.* tombstones during query 'SELECT \* FROM ks.paging_test.* query aborted",  # new pattern
+            # new pattern
+            patterns = [r"Scanned over.* tombstones during query 'SELECT \* FROM ks.paging_test.* query aborted",
                         "Scanned over.* tombstones in ks.paging_test.* query aborted"]  # old pattern
 
             failed = any([n.grep_log(m) for n, m in itertools.product(nodes, patterns)])
 
-            self.assertTrue(failed, "Cannot find tombstone failure threshold error in log for {} node".format(
-                ("upgraded" if is_upgraded else "old")))
+            assert failed == "Cannot find tombstone failure threshold error in log for {} node".format(
+                "upgraded" if is_upgraded else "old")
 
 
 class TestPagingWithDeletionsNodes3RF3(TestPagingWithDeletions):
-    NODES, RF, __test__, CL = 3, 3, True, CL.ALL
+    NODES = 3
+    RF = 3
+    CL = CL.ALL
 
 
 class TestPagingWithDeletionsNodes2RF1(TestPagingWithDeletions):
-    NODES, RF, __test__ = 2, 1, True
+    NODES = 2
+    RF = 1
