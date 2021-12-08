@@ -28,15 +28,15 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.parametrize("rbo_status", [True, False], ids=["rbo_enabled", "rbo_disabled"])
 class TestReplaceAddress(Tester):
-
-    rbo_enabled = False
-    __test__ = False
+    rbo_enabled: bool
 
     @pytest.fixture(scope='function', autouse=True)
-    def fixture_dtest_setup_overrides(self, dtest_config):
+    def fixture_dtest_setup_overrides(self, dtest_config, rbo_status):
         dtest_setup_overrides = DTestSetupOverrides()
         dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
+        self.rbo_enabled = rbo_status
         return dtest_setup_overrides
 
     @pytest.fixture(autouse=True)
@@ -720,7 +720,7 @@ class TestReplaceAddress(Tester):
         metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
         writes_when_replace_ops_started = 0
         for node in [6, 1, 2, 3, 4]:
-            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            node_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
             logger.debug("scylla_database_total_writes: node{}={}".format(node, node_metrics))
             if node == 6:
                 writes_when_replace_ops_started = node_metrics['scylla_database_total_writes']
@@ -732,7 +732,7 @@ class TestReplaceAddress(Tester):
         metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
         writes_when_replace_ops_done = 0
         for node in [6, 1, 2, 3, 4]:
-            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            node_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
             logger.debug("scylla_database_total_writes: node{}={}".format(node, node_metrics))
             if node == 6:
                 writes_when_replace_ops_done = node_metrics['scylla_database_total_writes']
@@ -808,7 +808,7 @@ class TestReplaceAddress(Tester):
         logger.info("Get metrics when other knows replacing node = HIBERNATE")
         writes_when_replace_ops_started = 0
         for node in [5, 4, 3, 2, 1]:
-            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            node_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
             logger.info("metrics: node{}={}".format(node, node_metrics))
             if node == 5:
                 writes_when_replace_ops_started = node_metrics['scylla_database_total_writes']
@@ -819,7 +819,7 @@ class TestReplaceAddress(Tester):
         metrics = ['scylla_database_total_writes', 'scylla_database_total_reads']
         writes_when_replace_ops_done = 0
         for node in [5, 4, 3, 2, 1]:
-            node_metrics = self.get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
+            node_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(node), metrics=metrics)
             logger.info("metrics: node{}={}".format(node, node_metrics))
             if node == 5:
                 writes_when_replace_ops_done = node_metrics['scylla_database_total_writes']
@@ -832,8 +832,3 @@ class TestReplaceAddress(Tester):
         session = self.patient_cql_connection(node5)
 
         write_thread.result()
-
-
-for rbo_status in [True, False]:
-    cls_name = "TestReplaceAddress_rbo_enabled" if rbo_status else "TestReplaceAddress_rbo_disabled"
-    vars()[cls_name] = type(cls_name, (TestReplaceAddress,), {"rbo_enabled": rbo_status, "__test__": True})
