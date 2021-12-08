@@ -2429,9 +2429,10 @@ class TestGetTraceProbability(Tester):
 
     @pytest.fixture(scope='function', autouse=True)
     def fixture_set_cluster_settings(self, fixture_dtest_setup):
-        self.cluster.populate(3).start()
-        self.node1, self.node2, self.node3 = self.cluster.nodelist()
-        self.session = self.patient_cql_connection(self.node1)
+        cluster = fixture_dtest_setup.cluster
+        cluster.populate(3).start()
+        self.node1, self.node2, self.node3 = cluster.nodelist()
+        self.session = fixture_dtest_setup.patient_cql_connection(self.node1)
 
     def set_invalid_trace_probability(self, node, invalid_value, message: str):
         with pytest.raises(NodetoolError) as error:
