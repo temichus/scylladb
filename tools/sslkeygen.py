@@ -1,12 +1,16 @@
+import datetime
 import logging
 import os
 import os.path
 import tempfile
 import subprocess
-import warnings
 from socket import gethostname
 
-from OpenSSL import crypto
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 logger = logging.getLogger(__name__)
 
@@ -108,34 +112,53 @@ def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_f
     key_file = os.path.join(test_path, key_file)
 
     # Create private RSA key
-    rsa_key = crypto.PKey()
-    rsa_key.generate_key(crypto.TYPE_RSA, 2048)
+    one_day = datetime.timedelta(1, 0, 0)
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend()
+    )
+    public_key = private_key.public_key()
 
     # create a self-signed cert
-    cert = crypto.X509()
-    cert.get_subject().C = "IL"
-    cert.get_subject().ST = "None"
-    cert.get_subject().L = "None"
-    cert.get_subject().O = "None"
-    cert.get_subject().OU = "None"
-    cert.get_subject().CN = gethostname()
-    cert.set_serial_number(1000)
-    cert.gmtime_adj_notBefore(0)
-    cert.gmtime_adj_notAfter(24 * 60 * 60)
-    cert.set_issuer(cert.get_subject())
-    cert.set_pubkey(rsa_key)
-    cert.sign(rsa_key, 'sha512')
+    builder = x509.CertificateBuilder()
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, u"IL"),
+        x509.NameAttribute(NameOID.STREET_ADDRESS, u"None"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, u"None"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"None"),
+        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, u"None"),
+        x509.NameAttribute(NameOID.SERIAL_NUMBER, u"1000"),
+        x509.NameAttribute(NameOID.COMMON_NAME, gethostname()),
 
-    with open(file=cert_file, mode='w') as file:
-        file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode())
-    with open(file=key_file, mode='w') as file:
-        file.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, rsa_key).decode())
+    ])
+    builder = builder.subject_name(subject)
+    builder = builder.issuer_name(issuer)
+    builder = builder.not_valid_before(datetime.datetime.today() - one_day)
+    builder = builder.not_valid_after(datetime.datetime.today() + (one_day * 30))
+    builder = builder.serial_number(x509.random_serial_number())
+    builder = builder.public_key(public_key)
+    builder = builder.add_extension(
+        x509.SubjectAlternativeName(
+            [x509.DNSName(gethostname())]
+        ),
+        critical=False
+    )
+    builder = builder.add_extension(
+        x509.BasicConstraints(ca=False, path_length=None), critical=True,
+    )
+    certificate = builder.sign(
+        private_key=private_key, algorithm=hashes.SHA256(), backend=default_backend()
+    )
 
-    # When tests are run with HTTPS, the server often won't have its SSL
-    # certificate signed by a known authority. So we will disable certificate
-    # verification with the "verify=False" request option. However, once we do
-    # that, we start getting scary-looking warning messages, saying that this
-    # makes HTTPS insecure. The following silences those warnings:
-    warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+    with open(file=cert_file, mode="wb") as file:
+        file.write(certificate.public_bytes(serialization.Encoding.PEM))
+    with open(file=key_file, mode="wb") as file:
+        file.write(private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        ))
+
     logger.debug(f'Created certificate file in "{cert_file}" path, and private key in "{key_file}" path')
     return cert_file, key_file
