@@ -298,7 +298,7 @@ def doParallelDtest (Map args) {
                     finally {
                         if (!dryRun) {
                             publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
-                            publishFailed |= artifact.publishArtifactsStatus("**/logs-${dtestType}.${args.dtestMode}.${NODE_INDEX}/**/*", 'scylla-dtest')
+                            publishFailed |= artifact.publishArtifactsStatus("**/logs-${dtestType}.${args.dtestMode}.${NODE_INDEX}/**", 'scylla-dtest')
                             publishFailed |= publishTestResults("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
                         }
                     }

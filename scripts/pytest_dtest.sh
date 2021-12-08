@@ -357,7 +357,7 @@ if [ "$last_core_pattern" != "$core_pattern" ]; then
 fi
 
 # Fix results file - hack for now https://issues.jenkins-ci.org/browse/JENKINS-51914
-run_cmd sed -i s/skip=/skipped=/g ../scylla-dtest.$mode.$NODE_INDEX.xml
+run_cmd sed -i s/skip=/skipped=/g ../scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml
 
 # When all dtest pass, no logs are available. Don't fail build in this nice case.
 
@@ -366,6 +366,6 @@ if [ $(find $HOME/.dtest -maxdepth 1 -name 'dtest-*' -type d | wc -l) -ne 0 ]; t
 	copy_orphaned_logs
 fi
 
-ls -la logs-$mode.$NODE_INDEX
+ls -la logs-$dtest_type.$mode.$NODE_INDEX
 
 exit $exitStatus
