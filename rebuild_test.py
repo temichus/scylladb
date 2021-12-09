@@ -128,11 +128,10 @@ class TestRebuild(Tester):
         errors = 0
         for ks in keyspaces:
             for cf in tables:
-                cf_name = '{}.{}'.format(ks, cf)
                 for i in keys:
                     total += 1
                     try:
-                        query_c1c2(session, i, ks=ks, cf=cf_name, consistency=cl)
+                        query_c1c2(session, i, ks=ks, cf=cf, consistency=cl)
                     except AssertionError:
                         errors += 1
         assert errors == 0, "Found {} errors out of {} keys".format(errors, total)
