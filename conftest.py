@@ -366,7 +366,7 @@ def fixture_skip_version(request, fixture_dtest_setup):
 def fixture_require_version(request, fixture_dtest_setup):
     marker = request.node.get_closest_marker('require')
     if marker is not None:
-        issue = marker.kwargs.get('require_pattern')
+        issue = marker.kwargs.get('require_pattern', marker.args[0])
         if check_issue_closed(issue) and DTEST_REQUIRE != "disabled":
             print(f"Issue {issue} closed. Test will be run")
         else:
@@ -500,10 +500,11 @@ def pytest_collection_modifyitems(items, config):
 
         require_mark = item.get_closest_marker("require")
         if require_mark and collect_require:
-            if not check_issue_closed(require_mark.kwargs.get('require_pattern')):
-                print(f"* {item.nodeid} - {require_mark.kwargs.get('require_pattern')}")
+            issue = require_mark.kwargs.get('require_pattern', next(iter(require_mark.args), None))
+            if not check_issue_closed(issue):
+                print(f"* {item.nodeid} - {issue}")
             else:
-                print(f"* {item.nodeid} - marked with closed issue {require_mark.kwargs.get('require_pattern')}")
+                print(f"* {item.nodeid} - marked with closed issue {issue}")
 
         if deselect_test:
             deselected_items.append(item)
