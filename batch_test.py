@@ -530,12 +530,7 @@ class TestBatch(Tester):
         node.nodetool('upgradesstables -a')
 
     def _base_batchlog_manager_issue(self, rack_names):
-        if not hasattr(self, 'cluster') or not getattr(self, 'cluster'):
-            self.cluster = self.get_cluster(version=self.cassandra_version)
         cluster = self.cluster
-        cluster.populate([4])
-        cluster.set_configuration_options(
-            values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
 
         for i, node in enumerate(cluster.nodelist()):
             with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
@@ -561,15 +556,17 @@ class TestBatch(Tester):
             count = len(node.grep_log('fail to connect: connect: Invalid argument'))
             assert 0 == count, "Expect 0 ,found 'fail to connect: connect: Invalid argument' {count} times"
 
-        # self._cleanup_cluster() https://trello.com/c/iEnYe12a/3138-pytest-migrate-infra-selfcleanupcluster
-        self.cluster = None
+        for node in list(cluster.nodelist()):
+            node.clear(only_data=True)
 
-    @pytest.mark.require("task to migrate infrasructure self._cleanup_cluster()")
     def test_batchlog_manager_issue(self):
         """
         This subtest is used to reproduce batchlog manager issue(scylla/issues/3229)
         """
-
+        cluster = self.cluster
+        cluster.populate([4])
+        cluster.set_configuration_options(
+            values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
         # To reproduce the bug we depend on how hash table hashes its elements,
         # this depends on an implementation and the elements itself.
         # Here we try with multiple cases.
