@@ -29,6 +29,7 @@ from distutils.version import LooseVersion
 from dtest_config import DTestConfig
 from tools.context import log_filter
 from tools.funcutils import merge_dicts
+from tools.log_utils import remove_control_chars
 
 logger = logging.getLogger(__name__)
 
@@ -537,7 +538,7 @@ class DTestSetup:
         pattern = re.compile('|'.join(["({})".format(p) for p in set(patterns)]))
         for e in errors:
             if not pattern.search(e):
-                yield e
+                yield remove_control_chars(e)
 
     def get_jfr_jvm_args(self):
         """
