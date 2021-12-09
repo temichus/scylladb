@@ -54,7 +54,7 @@ class TestUserTypes(Tester):
         """
         Tests that a type cannot be dropped when in use, and otherwise can be dropped.
         """
-        self.ignore_log_patterns = [
+        self.ignore_log_patterns += [
             r'Cannot drop user type .* as it is still used by .*',
         ]
         cluster = self.cluster
@@ -120,7 +120,7 @@ class TestUserTypes(Tester):
         """
         Confirm a user type can't be dropped when being used by another user type.
         """
-        self.ignore_log_patterns = [
+        self.ignore_log_patterns += [
             r'Cannot drop user type .* as it is still used by .*',
         ]
         cluster = self.cluster
@@ -523,7 +523,7 @@ class TestUserTypes(Tester):
         """
         Confirm permissions are respected for types in different keyspaces
         """
-        self.ignore_log_patterns = [
+        self.ignore_log_patterns += [
             # I think this happens when permissions change and a node becomes temporarily unavailable
             # and it's probably ok to ignore on this test, as I can see the schema changes propogating
             # almost immediately after

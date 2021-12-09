@@ -2761,7 +2761,7 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
 class TestUnpagedQueryLimit(Tester):
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup):
-        fixture_dtest_setup.ignore_log_patterns = [
+        fixture_dtest_setup.ignore_log_patterns += [
             r'Memory usage of unpaged query exceeds hard limit of [0-9]+'
             r' \(configured via max_memory_for_unlimited_query_hard_limit\)'
         ]

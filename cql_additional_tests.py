@@ -137,7 +137,7 @@ class TestCQL(Tester):
 
         cluster = self.cluster
         node1 = cluster.nodelist()[0]
-        self.ignore_log_patterns = ["Detected collection for table"]
+        self.ignore_log_patterns += ["Detected collection for table"]
 
         session.execute("""
             CREATE TABLE maps (

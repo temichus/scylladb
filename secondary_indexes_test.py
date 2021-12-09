@@ -748,6 +748,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         session = self.prepare(self, nodes=4, rf=3)
         test = 'oversize' if value_length == OVERSIZE_LENGTH else 'long'
 
+        self.ignore_log_patterns += [expect_message]
+
         logger.debug('Insert {} value into non-PK column'.format(test))
         self.insert_row_with_long_value(self,
                                         "CREATE TABLE %s(a int, b int, c varchar, PRIMARY KEY (a)) "
@@ -783,8 +785,6 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                         "INSERT INTO %s (a, b) VALUES (0, ?)",
                                         session, column_name='b', value_length=value_length,
                                         expect_message=expect_message)
-
-        self.check_errors_all_nodes(exclude_errors=expect_message)
 
     @pytest.mark.skip('Not relevant for Scylla - manual index rebuild is not supported')
     def test_manual_rebuild_index(self):
@@ -931,6 +931,9 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         view_id = get_view_id(session=session, keyspace_name=keyspace_name, view_name=index_view_name)
         logger.debug('View ID: {}'.format(view_id))
 
+        self.ignore_log_patterns += ['Can\'t find a column family with UUID {}'.format(view_id),
+                                     'mutation_write_failure_exception']
+
         session.execute('DROP INDEX {}'.format(index_name))
 
         self.cluster.wait_for_compactions()
@@ -947,10 +950,6 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_none(session, view_built_status_query(ks=keyspace_name, view=index_view_name))
         assert_invalid(session, 'SELECT * FROM {0} WHERE {1} = 0x00'.format(table_name, index_column),
                        matching='use ALLOW FILTERING', expected=Exception)
-
-        exclude_errors = ['Can\'t find a column family with UUID {}'.format(view_id),
-                          'mutation_write_failure_exception']
-        self.check_errors(node, exclude_errors=exclude_errors)
 
     def test_multi_index_filtering_query(self):
         """
@@ -1485,7 +1484,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                           rf'failed for {keyspace_name}\.{index_name}_index - received 0 responses and 1 failures from '
                           f'1 CL=ONE)',
                           ]
-        self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
+        self.ignore_log_patterns += exclude_errors
 
         # Perform action on second node
         self.node_action_with_delay(self, node_action, node=node2)
@@ -1825,8 +1824,7 @@ class TestPreJoinCallback(Tester, SecondaryIndexesHelpers):
 
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
-        fixture_dtest_setup.allow_log_errors = True
-        self.fixture_dtest_setup.ignore_log_patterns = [
+        self.fixture_dtest_setup.ignore_log_patterns += [
             # ignore all streaming errors during bootstrap
             r'Exception encountered during startup',
             r'Streaming error occurred',
@@ -2145,7 +2143,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         (OVERSIZE_LENGTH, "Key size too large"),
         (LONG_TEXT_LENGTH, None),
     ], ids=["oversize", "long"])
-    def test_local_indexed_values(self, value_length, expect_message, fixture_dtest_setup: DTestSetup):
+    def test_local_indexed_values(self, value_length, expect_message):
         """
         First test:
          Reject inserts & updates where values of any indexed column is > 64k
@@ -2156,9 +2154,10 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         # This test is negative, and there are errors in the cluster' logs.
         # The teardown fails because it expects a cluster doesn't contain errors if the test is passed.
         if OVERSIZE_LENGTH == value_length:
-            fixture_dtest_setup.ignore_log_patterns += [
+            self.ignore_log_patterns += [
                 r".*std::runtime_error \(Key size too large: .*? > 65535\).*",
             ]
+        self.ignore_log_patterns += [expect_message]
 
         session = self.prepare(self, nodes=4, rf=3)
         test = 'oversize' if value_length == OVERSIZE_LENGTH else 'long'
@@ -2189,8 +2188,6 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
                                         "INSERT INTO %s (a, b) VALUES (0, ?)",
                                         session, column_name='b', value_length=value_length,
                                         expect_message=expect_message)
-
-        self.check_errors_all_nodes(self.cluster.nodelist(), exclude_errors=expect_message)
 
     def test_drop_local_index_while_building(self):
         """
@@ -2228,7 +2225,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
 
         exclude_errors = ['Can\'t find a column family with UUID {}'.format(view_id),
                           'mutation_write_failure_exception']
-        self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
+        self.ignore_log_patterns += exclude_errors
 
         # Restart the node to trigger any eventual unexpected index rebuild
         session = self.drain_and_restart_node(self, node, keyspace_name)
@@ -2549,7 +2546,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
             'Index %s is not built' % index_name
 
         exclude_errors = ['Can\'t send migration request: node {} is down'.format(node2_ip)]
-        self.fixture_dtest_setup.ignore_log_patterns += exclude_errors
+        self.ignore_log_patterns += exclude_errors
 
         # Perform action on second node
         self.node_action_with_delay(self, node_action, node=node2)

@@ -134,7 +134,7 @@ class TestCqlTracing(PrepareClusterHelper):
         node1, node2 = self.cluster.nodelist()
 
         # FIXME: remove when https://github.com/scylladb/scylla/issues/5697 issue is fixed
-        self.ignore_log_patterns = [
+        self.ignore_log_patterns += [
             r'seastar - Timer callback failed: seastar::metrics::double_registration \
             (registering metrics twice for metrics: '
             r'storage_proxy_coordinator_background_replica_writes_failed_remote_node\)']
@@ -332,7 +332,7 @@ class TestSlowQueryTracing(PrepareClusterHelper):
 #        @jira_ticket CASSANDRA-10392
 #        """
 #        expected_error = 'Cannot use class junk for tracing'
-#        self.ignore_log_patterns = [expected_error]
+#        self.ignore_log_patterns += [expected_error]
 #        session = self.prepare(jvm_args=['-Dcassandra.custom_tracing_class=junk'])
 #        self.trace(session)
 #
@@ -364,7 +364,7 @@ class TestSlowQueryTracing(PrepareClusterHelper):
 #        @jira_ticket CASSANDRA-10392
 #        """
 #        expected_error = 'Cannot use class org.apache.cassandra.tracing.TracingImpl'
-#        self.ignore_log_patterns = [expected_error]
+#        self.ignore_log_patterns += [expected_error]
 #        session = self.prepare(jvm_args=['-Dcassandra.custom_tracing_class=org.apache.cassandra.tracing.TracingImpl'])
 #        self.trace(session)
 #

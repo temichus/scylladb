@@ -32,7 +32,7 @@ class UpgradeTester(Tester):
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
         fixture_dtest_setup.allow_log_errors = True
-        fixture_dtest_setup.ignore_log_patterns = [
+        fixture_dtest_setup.ignore_log_patterns += [
             # from sdcm.sct_events.group_common_events.ignore_upgrade_schema_errors
             "Failed to load schema",
             "Failed to pull schema",

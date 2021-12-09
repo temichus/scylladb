@@ -706,9 +706,9 @@ class TestSnitchConfigurationUpdate(Tester):
 
         Confirm that switching data centers fails to bring up the node.
         """
-        expected_error = (r"Cannot start node if snitch's data center (.*) differs from previous data center (.*)\. "
-                          "Please fix the snitch configuration, decommission and rebootstrap this node or use the flag -Dcassandra.ignore_dc=true.")
-        self.ignore_log_patterns = [expected_error]
+        expected_error = [r"Cannot start node if snitch's data center (.*) differs from previous data center (.*)\. "
+                          "Please fix the snitch configuration, decommission and rebootstrap this node or use the flag -Dcassandra.ignore_dc=true."]
+        self.ignore_log_patterns += expected_error
 
         cluster = self.cluster
         cluster.populate(1)
