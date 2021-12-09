@@ -9,7 +9,6 @@ from pkg_resources import parse_version
 from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester
-from dtest_setup_overrides import DTestSetupOverrides
 from thrift_bindings.thrift010 import Cassandra
 from thrift_bindings.thrift010.Cassandra import (CfDef, Column, ColumnDef,
                                                  ColumnOrSuperColumn, ColumnParent,
@@ -22,10 +21,8 @@ from thrift_bindings.thrift010.Cassandra import (CfDef, Column, ColumnDef,
                                                  Mutation, NotFoundException,
                                                  SlicePredicate, SliceRange,
                                                  SuperColumn)
-from tools.misc import ImmutableMapping
-from tools.thrift import get_thrift_client
 from tools.assertions import assert_one, assert_none
-
+from tools.thrift import get_thrift_client
 
 logger = logging.getLogger(__file__)
 pid_fname = "system_test.pid"
@@ -58,17 +55,11 @@ class BaseTester(Tester):
         # ever use one node.
         if not fixture_dtest_setup.dtest_config.use_vnodes:
             node1.set_configuration_options(values={'initial_token': 1})
+        node1.set_configuration_options(
+            values={'start_rpc': 'true', 'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner'})
+
         cluster.start()
         yield fixture_dtest_setup
-
-    @pytest.fixture(scope='function', autouse=True)
-    def fixture_dtest_setup_overrides(self, dtest_config):
-        dtest_setup_overrides = DTestSetupOverrides()
-        dtest_setup_overrides.cluster_options = ImmutableMapping({
-            'partitioner': 'org.apache.cassandra.dht.Murmur3Partitioner',
-            'start_rpc': 'true',
-        })
-        return dtest_setup_overrides
 
     def define_schema(self, client):
         raise NotImplementedError()
