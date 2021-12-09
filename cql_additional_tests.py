@@ -639,7 +639,7 @@ class TestCQL(Tester):
         assert rows_list == [[0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 0, 1, 1, -1],
                              [0, 0, 1, 0, 2], [0, -1, 2, 2, 2]], rows_list
 
-    @pytest.mark.required("#64")
+    @pytest.mark.require("#64")
     @pytest.mark.single_node
     def test_simple_tuple_query(self):
         """
