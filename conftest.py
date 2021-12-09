@@ -378,7 +378,7 @@ def fixture_skip_version(request, fixture_dtest_setup):
 def fixture_require_version(request, fixture_dtest_setup):
     marker = request.node.get_closest_marker('require')
     if marker is not None:
-        issue = marker.kwargs.get('require_pattern', marker.args[0])
+        issue = marker.kwargs.get('require_pattern', next(iter(marker.args), None))
         if check_issue_closed(issue) and DTEST_REQUIRE != "disabled":
             print(f"Issue {issue} closed. Test will be run")
         else:
