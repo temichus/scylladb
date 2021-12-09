@@ -259,6 +259,7 @@ else
 		export tests="$tests --exclude `echo $excluded_tests | sed s/' '/'\|'/g`"
 	fi
 fi
+PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml  --delete-logs=passed --log-file=${LOG_SAVED_DIR}/dtest.log"
 
 if [[ -n "$random" ]]; then
     echo "Selecting $random random tests"
@@ -293,7 +294,6 @@ export HOME=$home_dir
 export mb_per_cpu=512
 export nodes_per_cluster=3
 
-PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml  --delete-logs=passed"
 export XDIST_PROCESSES=$(xdist_processes "$smp" "$nodes_per_cluster" "$mb_per_cpu")
 PYTEST_FLAGS="${PYTEST_FLAGS} -n ${XDIST_PROCESSES}"
 
