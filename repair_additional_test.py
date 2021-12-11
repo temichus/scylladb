@@ -2,10 +2,10 @@
 import string
 import random
 import re
+from datetime import datetime
 import time
 import tempfile
 import os
-import sys
 from subprocess import getoutput
 from concurrent.futures import ThreadPoolExecutor
 import logging
@@ -35,6 +35,7 @@ class RepairAdditionalBase(Tester):
     PARTITIONS = 100
     ROWS_IN_PARTITION = 20
     BIG_PARTITION_ROWS = 10000
+    OFF_STRATEGY_REPAIR_TIMEOUT = 300
 
     @staticmethod
     def default_config_options():
@@ -184,6 +185,40 @@ class RepairAdditionalBase(Tester):
 
     def _repair(self, node, options=[]):
         return node.repair(options)
+
+    def _run_repair_and_wait_for_compactions(self, node, more_options, ks: str, cf: str, aux_cf: str = None):
+        repair_logs = [
+            'repair - repair.*: Started to shutdown off-strategy compaction updater',
+            'repair - repair.*: Finished to shutdown off-strategy compaction updater',
+            'repair - repair id .* completed successfully',
+        ]
+        off_strategy_compaction_logs = [
+            f'table - Starting off-strategy compaction for {ks}.{cf}',
+            f'table - Done with off-strategy compaction for {ks}.{cf}'
+        ]
+        from_mark = node.mark_log()
+
+        logger.debug('Start repair on the %s.%s', ks, cf)
+        node.repair(options=[*more_options, ks, cf])
+
+        logger.debug('Check if repair complected successfully')
+        assert node.watch_log_for(
+            exprs=repair_logs,
+            from_mark=from_mark,
+            timeout=120,
+        ), "Failed to wait for repair logs"
+
+        if aux_cf:
+            logger.debug('Run repair on other table to make sure that repair on one table does not affect '
+                         'off-strategy compaction timer on other table')
+            node.repair(options=[*more_options, ks, aux_cf])
+
+        logger.debug('Wait till off-strategy compactions have been started and completed')
+        assert node.watch_log_for(
+            exprs=off_strategy_compaction_logs,
+            from_mark=from_mark,
+            timeout=self.OFF_STRATEGY_REPAIR_TIMEOUT + 60,
+        ), f"Off-strategy compactions did not start after {self.OFF_STRATEGY_REPAIR_TIMEOUT // 60} minutes"
 
     def _repair_disjoint_data_test(self, more_options=[]):
         """
@@ -2701,9 +2736,37 @@ class RepairAdditionalBase(Tester):
 
 @pytest.mark.dtest_full
 class TestRepairAdditional(RepairAdditionalBase):
+    @pytest.mark.dtest_debug
+    def test_repair_triggering_off_strategy_compaction(self):
+        """
+        This test is checking that repair triggers off strategy on a timer
+        """
+        self.cluster.set_configuration_options(values=self.default_config_options())
 
-    def test_repair_disjoint_data(self):
-        return self._repair_disjoint_data_test()
+        # Create a cluster of 2 nodes, and a keyspace with RF=2 on all nodes
+        # (disable read repair, as we want to test the full repair).
+        logger.debug("Starting cluster...")
+        self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2 = self.cluster.nodelist()
+        with self.patient_cql_connection(node1) as session:
+            create_ks(session, 'ks', 2)
+            create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+            create_cf(session, 'cf2', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        # Bring 2nd node down to make a keys for repair to work on
+        node2.flush()
+        node2.stop(wait_other_notice=True)
+
+        # Populating some data
+        with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
+            insert_c1c2(session1, cf='cf1', keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+            insert_c1c2(session1, cf='cf2', keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # Test if compactions triggered properly
+        self._run_repair_and_wait_for_compactions(
+            node=node2, more_options=[], ks='ks', cf='cf1', aux_cf='cf2')
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
