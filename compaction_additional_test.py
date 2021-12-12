@@ -72,13 +72,13 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
     strategies = [
         # Expect sstables are more than min_threshold in level 0
-        {'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb': 1, 'max_threshold': 1, 'min_threshold': 1},
+        {'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb': 1, 'min_threshold': 2},
         # Expect sstables are generated in multiple minutes for TimeWindowCompactionStrategy
         {'class': 'TimeWindowCompactionStrategy', 'split_during_flush': False, 'compaction_window_size': 1,
-         'compaction_window_unit': 'MINUTES', 'max_threshold': 1, 'min_threshold': 1},
+         'compaction_window_unit': 'MINUTES', 'min_threshold': 2},
         # Expect there are more sstables than min_threshold in same bucket
         {'class': 'SizeTieredCompactionStrategy', 'bucket_high': 1.5, 'bucket_low': 0.5,
-         'min_sstable_size': 1, 'max_threshold': 1, 'min_threshold': 1},
+         'min_sstable_size': 1, 'min_threshold': 2},
         {'class': 'DateTieredCompactionStrategy'}]
 
     @pytest.mark.next_gating
