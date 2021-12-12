@@ -14,7 +14,7 @@ from tools.cluster import new_node
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.dtest_full
+# @pytest.mark.dtest_full
 class TestAlternatorStreams(BaseAlternatorStream):
 
     def test_verify_all_nodes_have_same_stream(self):
