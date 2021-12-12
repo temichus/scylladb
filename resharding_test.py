@@ -35,7 +35,7 @@ class ReshardingBase(Tester):
         assert cpu_count >= 4, "Resharding tests require a minimum of 4 cpus"
         self.smp = min(cpu_count // 2 + 1, 5)
         self.SMP_FOR_INCREASE = min(self.smp + 1, cpu_count, 9)
-        self.SMP_FOR_DECREASE = min(1, self.smp // 2)
+        self.SMP_FOR_DECREASE = max(2, self.smp // 2)
 
         self.murmur3 = murmur3 or self.DEFAULT_MURMUR3_PARTITIONER
         self.nodes = node_count or self.DEFAULT_NODES
