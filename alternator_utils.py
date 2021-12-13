@@ -348,7 +348,8 @@ class BaseAlternator(Tester):
     # pylint:disable=too-many-arguments
     def batch_write_actions(self, table_name: str, node: ScyllaNode, new_items: List[Dict[str, Any]] = None,
                             delete_items: List[Dict[str, str]] = None,
-                            schema: Union[tuple, Dict] = schemas.HASH_SCHEMA, ignore_errors: bool = False, verbose=True):
+                            schema: Union[tuple, Dict] = schemas.HASH_SCHEMA, ignore_errors: bool = False,
+                            verbose=True):
         dynamodb_api = self.get_dynamodb_api(node=node)
         table_keys = [key["AttributeName"] for key in schema[0][1]]
         assert new_items or delete_items, "should pass new_items or delete_items, other it's a no-op"
@@ -373,7 +374,7 @@ class BaseAlternator(Tester):
         return table
 
     def update_items(self, table_name: str, node: ScyllaNode, items: List[Dict] = None,
-                     primary_key: str = None) -> None:
+                     primary_key: str = None, action: str = "PUT") -> None:
         items = items or self.create_items(num_of_items=NUM_OF_ITEMS)
         dynamodb_api = self.get_dynamodb_api(node=node)
         primary_key = primary_key or self._table_primary_key
@@ -386,7 +387,7 @@ class BaseAlternator(Tester):
             else:
                 table.update_item(**dict(
                     Key={primary_key: update_item[primary_key]}, AttributeUpdates={
-                        key: dict(Value=value, Action="PUT") for key, value in update_item.items()
+                        key: dict(Value=value, Action=action) for key, value in update_item.items()
                         if key != primary_key}))
 
     def scan_table(self, table_name: str, node: ScyllaNode, threads_num: int = None,

@@ -7,6 +7,8 @@ import string
 import subprocess
 import tempfile
 import time
+from ast import literal_eval
+from contextlib import ExitStack
 from copy import deepcopy
 from concurrent.futures.thread import ThreadPoolExecutor
 from distutils import dir_util
@@ -26,6 +28,7 @@ from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError, EndpointConnectionError
 from ccmlib.scylla_node import ScyllaNode
 from deepdiff import DeepDiff
+from mypy_boto3_dynamodb import DynamoDBServiceResource
 
 from alternator.utils import schemas
 from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
@@ -1167,6 +1170,114 @@ class TesterAlternator(BaseAlternator):
 
         stress_thread.join()
         decommission_thread.join()
+
+    @pytest.mark.single_node
+    @pytest.mark.parametrize("value", ["1", [1], {1}, Decimal(1)],
+                             ids=["str_value", "list_value", "set_value", "decimal_value"])
+    def test_exception_error_for_update_item_with_add_action(self, value):
+        """
+        The test checks that the item cannot update with another item with a different variable type.
+        The test verifies that "ValidationException" error has been received for each of ADD types.
+        """
+        # The test is negative, and it examines negative cases. Therefore, the variable type of "value" should be
+        # removed (two items with the same type aren't negative case).
+        valid_add_types = {str, Decimal, set, list} - {type(value)}
+        item = {
+            self._table_primary_key: "test_1",
+            "value": value,
+        }
+        invalid_add_operations = [
+            {
+                self._table_primary_key: item[self._table_primary_key],
+                "value": var_type([1]) if var_type in (set, list) else var_type(1),
+            }
+            for var_type in valid_add_types
+        ]
+        table_name = TABLE_NAME
+
+        self.prepare_dynamodb_cluster(num_of_nodes=1)
+        node1 = self.cluster.nodelist()[0]
+        self.create_table(table_name=table_name, node=node1)
+
+        logger.info("Inserting '%s' item", str(item))
+        self.batch_write_actions(table_name=table_name, node=node1, new_items=[item])
+
+        for invalid_add_operation in invalid_add_operations:
+            logger.info("Adding invalid item with '%s' type to '%s' type", type(invalid_add_operation), type(item))
+            with pytest.raises(ClientError, match="ValidationException.*[Oo]perand type"):
+                self.update_items(table_name=table_name, node=node1, items=[invalid_add_operation],
+                                  primary_key=self._table_primary_key, action="ADD")
+
+    @pytest.mark.single_node
+    @pytest.mark.parametrize("value,isolation", [
+        (value, isolation)
+        for value in ("[1]", "{1}", "1")
+        for isolation in (WriteIsolation.ALWAYS_USE_LWT, WriteIsolation.UNSAFE_RMW)
+    ])
+    def test_update_items_from_multiple_threads(self, value: str, isolation: WriteIsolation):
+        """
+        Add multiple values to same item from multiple threads and verify the result:
+         * Number  - The result should contain the sum of the values from all items added.
+         * Set - The result should contain the set of the values from all items added without duplicates.
+         * List - The result should contain the list of the values from all items added with duplicates.
+        """
+        value = literal_eval(value)
+        num_of_items = 10000
+        num_of_threads = 3
+        var_type = type(value)
+        item = {
+            self._table_primary_key: "test_1",
+            "value": value,
+        }
+        is_value_iter = var_type in (set, list)
+        add_operations = [
+            {
+                self._table_primary_key: item[self._table_primary_key],
+                "value": var_type([idx]) if is_value_iter else var_type(idx),
+            }
+            for idx in range(num_of_items)
+        ]
+        expected_item = {
+            self._table_primary_key: "test_1",
+            "value": Decimal(sum(sum(add_operation["value"] if is_value_iter else [add_operation["value"]])
+                                 for add_operation in add_operations)),
+        }
+        if not isinstance(value, set):
+            expected_item["value"] += value[0] if is_value_iter else value
+        table_name = TABLE_NAME
+
+        self.prepare_dynamodb_cluster(num_of_nodes=1)
+        node1 = self.cluster.nodelist()[0]
+        table: DynamoDBServiceResource.Table = self.create_table(table_name=table_name, node=node1)
+        set_write_isolation(table=table, isolation=isolation)
+
+        logger.info("Inserting '%s' item", str(item))
+        self.batch_write_actions(table_name=table_name, node=node1, new_items=[item])
+
+        logger.info("Executing '%d' add operations in parallel from '%d' threads", len(add_operations), num_of_threads)
+        with ThreadPoolExecutor(max_workers=num_of_threads) as pool:
+            threads = []
+            chunk_size = num_of_items // num_of_threads
+            for chunk_idx in range(0, len(add_operations), chunk_size):
+                threads.append(pool.submit(self.update_items, table_name=table_name, node=node1,
+                                           items=add_operations[chunk_idx: chunk_idx + chunk_size],
+                                           primary_key=self._table_primary_key, action="ADD"))
+            logger.info("Waiting 60 seconds until all threads will finish")
+            for thread in threads:
+                thread.result(timeout=60)
+
+        result = self.scan_table(table_name=table_name, node=node1)
+        assert len(result) == 1
+        # If the result is a list or set, one needs to go through it to summarize all the values because the insert
+        # was in parallel, from several different threads, it is not possible to check the order of the result.
+        if is_value_iter:
+            result[0]["value"] = sum(result[0]["value"])
+
+        with ExitStack() as stack:
+            if isolation is WriteIsolation.UNSAFE_RMW:
+                stack.enter_context(pytest.raises(expected_exception=AssertionError))
+            assert result[0]["value"] == expected_item["value"], \
+                "The value of the result is not equal to the sum of the values added through the threads"
 
 
 class ConcurrencyLimitNotExceeded(Exception):
