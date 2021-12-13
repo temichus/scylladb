@@ -337,6 +337,7 @@ def doDtest (Map args) {
 	String dtestRepeats = args.dtestRepeats ?: "1"
 	String testRunner = args.testRunner ?: ""
 	String architecture = args.architecture ?: ""
+    String dtestType = args.dtestType ?: "full"
 
 	echo "Calling dtest in docker toolchain"
 	String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
@@ -351,7 +352,8 @@ def doDtest (Map args) {
 			extEnv: extEnv,
 			randomDtests: randomDtests,
 			randomDtestsSeed: randomDtestsSeed,
-			dtestRepeats: dtestRepeats
+			dtestRepeats: dtestRepeats,
+			dtestType: args.dtestType
 		)
 
 	boolean dtestFailed = false
@@ -361,7 +363,7 @@ def doDtest (Map args) {
 	env.NODE_INDEX = generalProperties.smpNumber
 
 	try {
-        sh "set -o pipefail; $dtestScript $dtestParameters 2>&1 | tee output_${args.dtestType}_dtest.txt"
+        sh "set -o pipefail; $dtestScript $dtestParameters 2>&1 | tee output_${dtestType}_dtest.txt"
 	} catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException interruptEx) {
 		currentBuild.result = 'ABORTED'
 		error("Interrupt exception (abort) while dtest phase, error: |$interruptEx|")
@@ -375,9 +377,9 @@ def doDtest (Map args) {
 		}
 	} finally {
 		if (needToPublish) {
-			publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${args.dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
-			publishFailed |= artifact.publishArtifactsStatus("**/logs-${args.dtestType}.${args.dtestMode}.${NODE_INDEX}/**/*", 'scylla-dtest')
-			publishFailed |= publishTestResults("scylla-dtest.${args.dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+			publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+			publishFailed |= artifact.publishArtifactsStatus("**/logs-${dtestType}.${args.dtestMode}.${NODE_INDEX}/**/*", 'scylla-dtest')
+			publishFailed |= publishTestResults("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
 		}
 	}
 
