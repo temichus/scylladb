@@ -416,12 +416,11 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         # Insert one key to trigger a sstable expiration check (expired_sstable_check_frequency_seconds': '60').
         insert_c1c2(session, n=10, consistency=ConsistencyLevel.ONE)
         node1.flush()
-        # Non mandatory Sleep, just to let any unfinished compaction to finish.
-        time.sleep(5)
+        node1.wait_for_compactions()
         # CHECK log: should have something like:
         # "Compacted 2 sstables to []. 36623 bytes to 0 (~0% of original) in 2ms = 0.00MB/s.
         #  ~512 total partitions merged to 0."
-        found = node1.watch_log_for(r"Compacted [0-9]+ sstables to \[\]",
+        found = node1.watch_log_for(r"Compact ks.cf .* Compacted [0-9]+ sstables to \[\]",
                                     timeout=5, from_mark=mark)
         logger.debug(found)
         # Save the names of the current sstable files
