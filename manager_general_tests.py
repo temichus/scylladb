@@ -4,7 +4,7 @@ from time import sleep
 from datetime import datetime, timedelta
 
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin, NodeStatus, \
-    CqlStatus, HostRestStatus, HostHealth
+    HostHealth
 from dtest_class import Tester, wait_for
 
 logger = logging.getLogger(__name__)
@@ -95,6 +95,11 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
                                               "in the cluster"
 
     def test_removing_node_from_managed_cluster(self):
+        def has_removed_node_reached_dn(removed_node_address):
+            all_nodes_details = mgr_cluster.get_hosts_health()
+            removed_node_details: HostHealth = all_nodes_details[removed_node_address]
+            return removed_node_details.node_status == NodeStatus.DOWN
+
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2, node3 = self.cluster.nodelist()
         step = 3
@@ -105,18 +110,17 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
 
         self.cluster.remove(node3)
+        wait_for(func=has_removed_node_reached_dn, step=step, text="Node status has yet to reach DN", timeout=timeout,
+                 removed_node_address=node3.address())
         cluster_status = mgr_cluster.get_hosts_health()
         node_details: HostHealth = cluster_status[node3.address()]
-        logger.info(f"Checking the status of CQL and REST after node '{node3.name}' is removed")
-        assert node_details.cql.status == CqlStatus.DOWN, \
-            f"The CQL status of node '{node3.name}' should be '{CqlStatus.DOWN}'"
-        assert node_details.rest.status == HostRestStatus.DOWN, \
-            f"The CQL status of node '{node3.name}' should be '{HostRestStatus.DOWN}'"
-        logger.info(f"Waiting until the status node '{node3.name}' changing to '{NodeStatus.DOWN}'")
-
-        err_msg = f"The status of node '{node3.name}' should be '{NodeStatus.DOWN}'"
-        wait_for(func=lambda: mgr_cluster.get_hosts_health()[node3.address()].node_status == NodeStatus.DOWN,
-                 text=err_msg, step=step, timeout=timeout)
+        assert node_details.node_status == NodeStatus.DOWN, \
+            f"Even after an ample time window (>30s), the status of the removed node did not reach" \
+            f" {NodeStatus.DOWN}, but instead remained in {node_details.node_status}"
+        assert node_details.cql.status is None, \
+            f"The CQL status of the removed node is {node_details.cql.status}, while it should be empty"
+        assert node_details.rest.status is None, \
+            f"The Rest status of the removed node is {node_details.rest.status}, while it should be empty"
 
     def cluster_list(self):
         pass
