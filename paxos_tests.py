@@ -2,7 +2,6 @@
 
 import time
 import random
-import itertools
 import logging
 from threading import Thread, Event
 
@@ -343,7 +342,7 @@ class TestPaxos(Tester):
 
         # Execute the LWT query leaving an unfinished paxos round behind
         key = 0
-        with self.assertRaises(WriteFailure):
+        with pytest.raises(WriteFailure):
             logger.debug(f"Execute the first INSERT query on key {key}")
             insert_action(session, key)
 
