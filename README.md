@@ -51,10 +51,10 @@ Running using docker
 Use `scripts/run_test.sh` to run the distributed tests in the `scylla-dtest` docker container.
 
 Optional values can be set via environment variables:
-    `SCYLLA_DIR`, `TOOLS_JAVA_DIR`, `JMX_DIR`, `DTEST_DIR`, `CCM_DIR`, `SCYLLA_DBUILD_SO_DIR`, `SCYLLA_EXT_OPTS`, `NOSE_PROCESSES`, `NOSE_PROCESS_TIMEOUT`, `CLUSTER_ID_ALLOCATOR`
+    `SCYLLA_DIR`, `TOOLS_JAVA_DIR`, `JMX_DIR`, `DTEST_DIR`, `CCM_DIR`, `SCYLLA_DBUILD_SO_DIR`, `SCYLLA_EXT_OPTS`, `CLUSTER_ID_ALLOCATOR`
 
 The script pulls the latest `docker.io/scylladb/scylla-dtest` image (and if that fails, it builds it)
-and the it runs nosetests in a docker container based on this image.
+and the it runs pytest in a docker container based on this image.
 
 This method requires _no_ setup of a virtualenv.
 
@@ -103,31 +103,13 @@ To start using the virtual environment in a new terminal just source the `bin/ac
 
 Usage
 -----
-
-The tests are run by nosetests. There are a few settings that are
-required to run the tests reliably:
-
-The environment variable NOSE_PROCESSES must be set to 1, or maybe
-greater (not tested). With the default of 0 tests are unreliable and
-after awhile start failing with "Cluster was not allocated".
-
-Fixing the need for NOSE_PROCESSES=1 is tracked by
-https://github.com/scylladb/scylla-dtest/issues/942.
-
-The corresponding --process=1 option doesn't seem to work. Fixing that
-is tracked by https://github.com/scylladb/scylla-dtest/issues/943.
-
-The command line --process-timeout must be set to a value much higher
-than the default of 10 or many tests fail with TimedOutException. A
-value of 7200 seems to work for all next-gating tests.
-
 ### Running with relocatable packages
 
 The only thing needed is the location of the (compiled) sources for Scylla. This is done by pointing
 the `SCYLLA_VERSION` to shortname representing the directory in our `s3://downloads.scylladb.com`:
 
 ```bash
-SCYLLA_VERSION=unstable/master:201910240141 nosetests  [nose parameters]
+pytest --scylla-version=unstable/master:201910240141 [other pytest parameters]
 ```
 
 Getting the listings or the latest version can be done like that:
@@ -146,9 +128,8 @@ see scylla [docs/building-packages.md#scylla-server](https://github.com/scylladb
 ccm currently isn't very smart on the way it's caching the versions.
 
 ```bash
-SCYLLA_VERSION=unstable/master:201910240141
 SCYLLA_CORE_PACKAGE=../scylla/build/dev/scylla-package.tar.gz
-nosetests [nose parameters]
+pytest --scylla-version=unstable/master:201910240141  [more pytest parameters]
 ```
 
 Also `SCYLLA_JAVA_TOOLS_PACKAGE` or `SCYLLA_JMX_PACKAGE` can be used for replacing other relocatable packages relevant.
@@ -158,14 +139,14 @@ All the `*_PACKAGE` environment variables can also point to public available fil
 ### Running from the compiled source
 
 The only thing needed is the location of the (compiled) sources for Scylla. This is done by pointing
-the `CASSANDRA_DIR` to the path of the Scylla repository:
+the `--cassandra_dir` to the path of the Scylla repository:
 
-    CASSANDRA_DIR=~/path/to/scylla nosetests --process-timeout=7200
+    pytest --cassandra-dir=~/path/to/scylla
 
 To target a Scylla executable compiled in a specific mode include the full path
 to the build dir:
 
-    CASSANDRA_DIR=~/path/to/scylla/build/debug nosetests --process-timeout=7200
+    pytest --cassandra-dir=~/path/to/scylla/build/debug
 
 The shell script `scylla_dtest_env.sh` will set this automatically for you to a
 value that works in most deployments, it assumes the Scylla sources are next to
@@ -196,10 +177,10 @@ environment variable (that still will have precedence if given though).
 
 To run a specific test in a test file concatenate class and test:
 
-    nosetests -v <file>.py:<class>.<test>
+    pytest <file>.py::<class>::<test>
 
 To run the same tests that are used to validate changes into master,
-use `-a next-gating`.
+use `-m next_gating`.
 
 Note: To run the upgrade tests, you have must both JDK7 and JDK8 installed. Paths
 to these installations should be defined in the environment variables
@@ -209,63 +190,36 @@ See more information about dtest here: [Scylla-DTEST](https://github.com/scyllad
 
 ### Changing the Cluster ID Allocator
 
-The Cluster ID allocator controls the base ip address allocated to each test's cluster.
-Historically, clusters used the localhost subnet such that node1 will use `127.0.0.1`,
-and any node \<i> will use `127.0.0.<i>`.
-
-This method may be suitable with no parallelism (and has other drawbacks as well)
-and it naturally can't be used when a number of clusters are started in parallel.
-
 The default allocator was changed to the RandomClusterIdAllocator that draws
 a random number in the range [1, 99] and allocates it by creating a symbolic link
 in the ~/.dtest directory by that name, pointing at the cluster directory.
 This way conflicts are resolved with no need for shared memory-based coordination
-between nosetests processes.  However, if nosetests is aborted before the symbolic
+between pytest processes.  pytest, if pytest is aborted before the symbolic
 link has been removed, there may be stale symlinks that prevent re-allocating
 those cluster IDs.  These should be cleaned up by hand.
-
-To select the Cluster ID allocator, use:
-    `CLUSTER_ID_ALLOCATOR=random` for the random Cluster ID Allocator (default selection if unset).
-    `CLUSTER_ID_ALLOCATOR=single` for the legacy allocator used with no parallelism (with `NOSE_PROCESSES` unset or set to `0`).
-    `CLUSTER_ID_ALLOCATOR=multiprocess` for the old, shared-memory based allocator used with NOSE_PROCESSES > 0.
 
 Common Optional Environment Variables
 -------------------------------------
 
 To set the maximum number of tests to run concurrently (1 by default), use, for example:
 
-    NOSE_PROCESSES=4
-
-To set the test timeout (in seconds, 7200 by default), use, for example:
-
-    NOSE_PROCESS_TIMEOUT=3600
+    pytest -n 3
 
 To print additional test debug messages, use:
 
-    PRINT_DEBUG=true
-
-And for trace:
-
-    PRINT_TRACE=true
-
-
-To set scylla/cassandra default log-level to DEBUG/TRACE, use:
-
-    DEBUG=true
-     or
-    TRACE=true
+    pytest --log-cli-level=debug
 
 To (re)use a directory for saving the system-under-test nodes' logs, use:
 
     LOG_SAVED_DIR=<logs_dir>
 
-To keep logs of all tests in `$LOG_SAVED_DIR`, rather than just those that failed, use:
+To keep logs of just failed tests in `$LOG_SAVED_DIR`, rather than all tests, use:
 
-    KEEP_LOGS=true
+    pytest --delete-logs=pass
 
 To keep all test cluster directories (under `$HOME/.dtest/`), use:
 
-    KEEP_TEST_DIR=true
+    pytest --keep-test-dir
 
 > See also "Test Directories" below.
 
@@ -305,8 +259,8 @@ The file `scylla_tests` in the root of this repository holds the list of stable
 tests that are run regularly on scylla master and release branches.
 
 The file lists either complete test files (e.g. `auth_test.py`),
-in which case, nosetests runs all test cases in the file (unless skipped
-with the `@skip()` directive), or individual test cases, using the
+in which case, pytest runs all test cases in the file (unless skipped
+with the `@pytest.mark.skip()` directive), or individual test cases, using the
 `<file>:<class>.<test>` notation.
 
 Installation Instructions
