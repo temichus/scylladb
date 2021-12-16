@@ -76,14 +76,13 @@ toppartitions_test.py
 like_operator_test.py
 paxos_tests.py
 rest_api_tests.py
-cdc_tests.py
+cdc_test.py
 cdc_types_test.py
-cdc_snapshot_operation.py
+cdc_snapshot_operation_test.py
 lwt_test.py
 lwt_destructive_ddl_test.py
 cql_prepared_test.py
 alternator_tests.py
-alternator_stream_tests.py
 lwt_random_test.py
 lwt_banking_load_test.py
 database_metrics_test.py
