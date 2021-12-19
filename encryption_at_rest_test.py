@@ -4,24 +4,32 @@ import subprocess
 import os
 import shutil
 import re
-
 from enum import Enum
+import logging
+
+import pytest
 from cassandra import ReadFailure, ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
 
-from dtest import Tester, debug, warning
-from tools import rows_to_list, get_table_description, require
-from scylla_tools import flush_by_node, insert_c1c2, query_c1c2
-from assertions import assert_one
+from dtest_class import Tester, create_ks, create_cf
+from tools.data import insert_c1c2, query_c1c2, rows_to_list
+from tools.snapshots import get_table_description
+from tools.misc import flush_by_node
+from tools.assertions import assert_one
+from tools.log_utils import wait_for_any_log
+
+logger = logging.getLogger(__name__)
 
 
-class InMemoryTest(Tester):
+@pytest.mark.single_node
+@pytest.mark.dtest_enterprise
+class TestInMemory(Tester):
     """
     Test in memory sstable when Encryption at-rest is enabled.
     a reproducer for scylla-enterprise/issues/925
     """
 
-    def restart_query_test(self):
+    def test_restart_query(self):
         self.cluster.set_configuration_options(values={'in_memory_storage_size_mb': 100})
         self.cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = self.cluster.nodelist()[0]
@@ -35,16 +43,16 @@ class InMemoryTest(Tester):
         session.execute("insert into rest.table1 (key, name) values ('key1', 'name1')")
         node1.flush()
         result = session.execute("select * from rest.table1")
-        debug(list(result))
+        logger.debug(list(result))
 
         for node in self.cluster.nodelist():
             node.stop()
             node.start(wait_for_binary_proto=True, wait_other_notice=True)
         session = self.patient_cql_connection(node1)
         result = session.execute("select * from rest.table1")
-        debug(list(result))
+        logger.debug(list(result))
 
-    def workload_without_restart_test(self):
+    def test_workload_without_restart(self):
         self.cluster.set_configuration_options(values={'in_memory_storage_size_mb': 100})
         self.cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = self.cluster.nodelist()[0]
@@ -55,7 +63,7 @@ class InMemoryTest(Tester):
             WITH scylla_encryption_options = {'key_provider': 'LocalFileSystemKeyProviderFactory', 'secret_key_file': '/tmp/secret_key'} AND
             in_memory=true AND compaction={'class': 'InMemoryCompactionStrategy'} """)
         node1.stress(['write', 'n=100000', 'cl=QUORUM', '-rate', 'threads=8'])
-        debug('flushing ...')
+        logger.debug('flushing ...')
         self.cluster.flush()
         node1.stress(['read', 'n=100000', 'cl=QUORUM', '-rate', 'threads=8'])
 
@@ -97,13 +105,13 @@ class BaseKeyProviderFactory(Tester):
         pass
 
     def break_key(self, filename):
-        debug('Break key : %s' % filename)
-        debug(subprocess.getoutput('head %s*' % filename))
+        logger.debug('Break key : %s' % filename)
+        logger.debug(subprocess.getoutput('head %s*' % filename))
         os.rename(filename, filename + '.break_backup')
 
     def restore_key(self, filename):
-        debug('Restore key : %s' % filename)
-        debug(subprocess.getoutput('head %s*' % filename))
+        logger.debug('Restore key : %s' % filename)
+        logger.debug(subprocess.getoutput('head %s*' % filename))
         os.rename(filename + '.break_backup', filename)
 
     def prepare(self, node_num=2):
@@ -122,7 +130,7 @@ class BaseKeyProviderFactory(Tester):
 
         self.cluster.set_configuration_options({'system_key_directory': dirname})
         self.system_keyfile = dest
-        debug('set system_key_directory to %s' % dirname)
+        logger.debug('set system_key_directory to %s' % dirname)
 
     def create_encrypted_cf(self, session, name='cf', columns={'c1': 'text', 'c2': 'text'},
                             cipher_algorithm=None, secret_key_strength=None,
@@ -142,30 +150,30 @@ class BaseKeyProviderFactory(Tester):
             self.prepare_system_key(dirname='./resources/system_keys', keyfile=system_key_file)
         if secret_key_file:
             options.update({'secret_key_file': secret_key_file})
-        self.create_cf(session, name, columns=columns, scylla_encryption_options=options, compression=compression)
+        create_cf(session, name, columns=columns, scylla_encryption_options=options, compression=compression)
         return options
 
     def read_verify_workload(self, session, ks='ks', cf='cf'):
-        debug('Verify data by read stress: %s.%s' % (ks, cf))
+        logger.debug('Verify data by read stress: %s.%s' % (ks, cf))
         for i in range(100):
             query_c1c2(session, i, ConsistencyLevel.QUORUM, ks=ks, cf=cf)
 
     def prepare_write_workload(self, session, ks='ks', cf='cf', flush=True):
-        debug('Insert data to encrypted table: %s.%s' % (ks, cf))
+        logger.debug('Insert data to encrypted table: %s.%s' % (ks, cf))
         insert_c1c2(session, keys=list(range(100)), consistency=ConsistencyLevel.ALL, ks=ks, cf=cf)
         if flush:
-            debug('flush cluster')
+            logger.debug('flush cluster')
             self.cluster.flush()
 
     def verify_no_secret_key(self):
-        debug('Verify that system key is not generated automatically')
+        logger.debug('Verify that system key is not generated automatically')
         keyfile = os.path.join(self.Tester.test_path, 'test/node1/conf/data_encryption_keys')
-        self.assertFalse(os.path.exists(keyfile), 'Default system_key is generated unexpectedly')
+        assert not os.path.exists(keyfile), 'Default system_key is generated unexpectedly'
 
     def verify_secret_key(self, cipher_algorithm=None, secret_key_strength=None):
-        debug('Verify that system key is generated automatically')
+        logger.debug('Verify that system key is generated automatically')
         keyfile = os.path.join(self.Tester.test_path, 'test/node1/conf/data_encryption_keys')
-        self.assertTrue(os.path.exists(keyfile), 'Default system_key is not generated')
+        assert os.path.exists(keyfile), 'Default system_key is not generated'
 
         if cipher_algorithm is None:
             cipher_algorithm = 'AES/CBC/PKCS5Padding'
@@ -175,9 +183,9 @@ class BaseKeyProviderFactory(Tester):
         with open(keyfile) as f:
             for line in f.readlines():
                 if line.startswith('%s:%d:' % (cipher_algorithm, secret_key_strength)):
-                    debug('Found system key: %s' % line)
+                    logger.debug('Found system key: %s' % line)
                     found = True
-        self.assertTrue(found, 'Did not found specific system key in %s' % keyfile)
+        assert found, 'Did not found specific system key in %s' % keyfile
 
     def _grep_database_files(self, pattern, path, expect=None, skip=False, debug_detail=False):
         """
@@ -185,24 +193,24 @@ class BaseKeyProviderFactory(Tester):
         """
         grep_commitlog_cmd = "grep -r '%s' %s" % (pattern, os.path.join(self.Tester.test_path, 'test/node*/', path))
         output = subprocess.getoutput(grep_commitlog_cmd)
-        debug('\tExpect: %s, Result: %s' % (expect, len(output) > 0))
+        logger.debug('\tExpect: %s, Result: %s' % (expect, len(output) > 0))
         if debug_detail:
-            debug('\tCMD: %s' % grep_commitlog_cmd)
-            debug(output)
+            logger.debug('\tCMD: %s' % grep_commitlog_cmd)
+            logger.debug(output)
         if skip:
             return len(output) != 0
         if expect is not False and (len(output) == 0):
             # try to search pattern in top directory (contains both data & commitlogs) for trouble shooting.
             # such as, data isn't flush from commitlogs to disk,
-            warning('%s does not exist in %s!!' % (pattern, path))
+            logger.warning('%s does not exist in %s!!' % (pattern, path))
             self._grep_database_files(pattern, '', skip=True)
         if expect is not None:
-            self.assertTrue(expect ^ (len(output) == 0), "Grep result isn't expected")
+            assert expect ^ (len(output) == 0), "Grep result isn't expected"
         return len(output) != 0
 
     def _generate_rand_unique_str(self, prefix=''):
         time.sleep(0.1)
-        return prefix + md5.new(str(time.time())).hexdigest()
+        return prefix + md5(str(time.time()).encode('utf-8')).hexdigest()
 
 
 class DefaultKeyProviderFactory(BaseKeyProviderFactory):
@@ -252,7 +260,6 @@ class KmipKeyProviderFactory(BaseKeyProviderFactory):
 
 
 class EncryptionAtRestBase(Tester):
-    __test__ = False
     multiple_num = 3
     default_node_num = 2
 
@@ -279,7 +286,7 @@ class EncryptionAtRestBase(Tester):
             session.execute('DROP KEYSPACE IF EXISTS %s' % ks)
 
     def rolling_restart(self, user=None, password=None, allow_start_failure=False):
-        debug(f'Restart nodes one by one ...{" (start failures allowed)" if allow_start_failure else ""}')
+        logger.debug(f'Restart nodes one by one ...{" (start failures allowed)" if allow_start_failure else ""}')
         errors = []
         for node in self.cluster.nodelist():
             node.stop(wait_other_notice=True)
@@ -293,7 +300,7 @@ class EncryptionAtRestBase(Tester):
             return self.get_session(user=user, password=password)
 
     def cluster_restart(self, user=None, password=None):
-        debug('Restart cluster ...')
+        logger.debug('Restart cluster ...')
         self.cluster.stop(wait_other_notice=True)
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         return self.get_session(user=user, password=password)
@@ -317,8 +324,8 @@ class EncryptionAtRestBase(Tester):
         # Test fails with error: Invalid key data length 80 for RC2/CBC and kmip.
         # Decided (Roy) don't test it
         if key_provider == KeyProviderEnum.kmip and 'RC2' in cipher_algorithm and secret_key_strength == 80:
-            debug("Our KMIP server is not configured to support this configuration. "
-                  "The test will not be run with this configuration")
+            logger.debug("Our KMIP server is not configured to support this configuration. "
+                         "The test will not be run with this configuration")
             return
 
         kp = self.get_key_provider(key_provider)
@@ -349,7 +356,7 @@ class EncryptionAtRestBase(Tester):
         query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
 
         kp.prepare_write_workload(session)
-        debug('disable encryption at-rest')
+        logger.debug('disable encryption at-rest')
         session.execute(query % "{'key_provider': 'none'}")
         table_desc = get_table_description(node1, "ks", "cf")
         assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
@@ -357,7 +364,7 @@ class EncryptionAtRestBase(Tester):
         session = self.rolling_restart()
         kp.read_verify_workload(session)
 
-        debug('re-enable encryption at-rest: %s' % options)
+        logger.debug('re-enable encryption at-rest: %s' % options)
         session.execute(query % options)
         table_desc = get_table_description(node1, "ks", "cf")
         if key_provider == KeyProviderEnum.default:
@@ -392,6 +399,7 @@ class EncryptionAtRestBase(Tester):
         kp.break_key(key_file)
         kp.read_verify_workload(session)
         kp.prepare_write_workload(session)
+        scylla_ext_opt = None
         try:
             scylla_ext_opt = os.environ['SCYLLA_EXT_OPTS']
             new_scylla_ext_opt = re.sub(r'--abort-on-seastar-bad-alloc', '', scylla_ext_opt)
@@ -404,7 +412,7 @@ class EncryptionAtRestBase(Tester):
             try:
                 kp.read_verify_workload(session)
             except ReadFailure as e:
-                debug(str(e))
+                logger.debug(str(e))
         errors = [
             'SSTable reader found an exception when reading sstable',
             'Exception while populating keyspace',
@@ -417,7 +425,7 @@ class EncryptionAtRestBase(Tester):
 
         if scylla_ext_opt:
             os.environ['SCYLLA_EXT_OPTS'] = scylla_ext_opt
-        debug('Restart to trigger the read error')
+        logger.debug('Restart to trigger the read error')
         # https://github.com/scylladb/scylla-enterprise/issues/755
         # secret_key_file missing can only be identified by read workload after restart #755
         session = self.cluster_restart()
@@ -426,7 +434,7 @@ class EncryptionAtRestBase(Tester):
         try:
             kp.read_verify_workload(session)
         except ReadFailure as e:
-            debug('Encryption key has been re-generated, expect to fail. %s' % str(e))
+            logger.debug('Encryption key has been re-generated, expect to fail. %s' % str(e))
 
     def _multiple_ks_test(self, key_provider=KeyProviderEnum.local):
         kss = ['mks_%s' % i for i in range(self.multiple_num)]
@@ -479,22 +487,22 @@ class EncryptionAtRestBase(Tester):
 
         for node in self.cluster.nodelist()[1:]:
             for i in range(3):
-                debug('Kill node {}, and restart'.format(node.name))
+                logger.debug('Kill node {}, and restart'.format(node.name))
                 node.stop(gently=False)
                 node.start(wait_for_binary_proto=True, wait_other_notice=False)
             kp.read_verify_workload(self.get_session())
 
 
-class EncryptionAtRestTest(EncryptionAtRestBase):
-    __test__ = True
+@pytest.mark.dtest_enterprise
+class TestEncryptionAtRest(EncryptionAtRestBase):
     default_node_num = 1
 
     def _test_one_cipher_mode(self, tested_cipher_key_string: str, key_size: int, value: KeyProviderEnum) -> str:
-        debug(f'---- Test with {tested_cipher_key_string} , length {key_size}, key provider {value} ----')
+        logger.debug(f'---- Test with {tested_cipher_key_string} , length {key_size}, key provider {value} ----')
         try:
-            EncryptionAtRestBase._smoke_test(self, key_provider=value,
-                                             cipher_algorithm=tested_cipher_key_string,
-                                             secret_key_strength=key_size)
+            self._smoke_test(key_provider=value,
+                             cipher_algorithm=tested_cipher_key_string,
+                             secret_key_strength=key_size)
             # Our KMIP server is not configured to support this configuration.
             # Test fails with error: Invalid key data length 80 for RC2/CBC and kmip.
             # Decided (Roy) don't test it
@@ -508,7 +516,7 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
 
         except NoHostAvailable as exc_details:
             error_message_to_str = str(exc_details)
-            debug(error_message_to_str)
+            logger.debug(error_message_to_str)
             assert (f"Invalid algorithm string: {tested_cipher_key_string}" in error_message_to_str
                     or (f"Invalid algorithm" in error_message_to_str and
                         tested_cipher_key_string in error_message_to_str)
@@ -528,17 +536,17 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
                     f"'cipher_algorithm': '{tested_cipher_key_string}', "
                     f"'secret_key_strength': {key_size}")
 
-        EncryptionAtRestBase.cleanup(self)
+        self.cleanup()
 
         return ''
 
-    def encryption_table_compression_test(self):
+    def test_encryption_table_compression(self):
         for i in [None, 'LZ4', 'Snappy', 'Deflate']:
-            debug('---- Test with compression: %s -----' % i)
-            EncryptionAtRestBase._smoke_test(self, key_provider=KeyProviderEnum.local, compression=i)
-            EncryptionAtRestBase.cleanup(self)
+            logger.debug('---- Test with compression: %s -----' % i)
+            self._smoke_test(key_provider=KeyProviderEnum.local, compression=i)
+            self.cleanup()
 
-    def test_wrong_cipher_algorithm_test(self):
+    def test_wrong_cipher_algorithm(self):
         errors = []
         # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
         # unexpected_success = []
@@ -561,26 +569,26 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
 
         assert not errors, errors
 
-    def supported_cipher_algorithms_test(self):
+    def test_supported_cipher_algorithms(self):
         errors = []
         for cipher_key_string, key_sizes in supported_cipher_algorithms.items():
             for key_size in key_sizes:
                 for value in KeyProviderEnum:
-                    debug(f'---- Test with {cipher_key_string} , length {key_size}, key provider {value} ----')
+                    logger.debug(f'---- Test with {cipher_key_string} , length {key_size}, key provider {value} ----')
                     try:
-                        EncryptionAtRestBase._smoke_test(self, key_provider=value,
-                                                         cipher_algorithm=cipher_key_string,
-                                                         secret_key_strength=key_size)
+                        self._smoke_test(key_provider=value,
+                                         cipher_algorithm=cipher_key_string,
+                                         secret_key_strength=key_size)
                     except Exception as e:
-                        debug(str(e))
+                        logger.debug(str(e))
                         errors.append(f"Test with configuration '{cipher_key_string}, length {key_size}, "
                                       f"key provider {value}' failed. Error {e}")
 
-                    EncryptionAtRestBase.cleanup(self)
+                    self.cleanup()
 
         assert len(errors) == 0, errors
 
-    def abbreviated_supported_cipher_algorithms_test(self):
+    def test_abbreviated_supported_cipher_algorithms(self):
         tested = set()
         for k, v in supported_cipher_algorithms.items():
             if not v:
@@ -590,42 +598,43 @@ class EncryptionAtRestTest(EncryptionAtRestBase):
                 continue
             tested.add(k)
             i = v[0]
-            debug('---- Test with %s , length %s ----' % (k, i))
+            logger.debug('---- Test with %s , length %s ----' % (k, i))
             for value in KeyProviderEnum:
                 try:
-                    EncryptionAtRestBase._smoke_test(self, key_provider=value,
-                                                     cipher_algorithm=k, secret_key_strength=i)
+                    self._smoke_test(key_provider=value,
+                                     cipher_algorithm=k, secret_key_strength=i)
                 except Exception as e:
-                    debug(str(e))
+                    logger.debug(str(e))
                 finally:
-                    EncryptionAtRestBase.cleanup(self)
+                    self.cleanup()
 
-    def multiple_ks_test(self):
+    def test_multiple_ks(self):
         for value in KeyProviderEnum:
-            kss = EncryptionAtRestBase._multiple_ks_test(self, key_provider=value)
-            EncryptionAtRestBase.cleanup(self, kss=kss)
+            kss = self._multiple_ks_test(key_provider=value)
+            self.cleanup(kss=kss)
 
-    def multiple_cf_test(self):
+    def test_multiple_cf(self):
         for value in KeyProviderEnum:
-            EncryptionAtRestBase._multiple_cf_test(self, key_provider=value)
-            EncryptionAtRestBase.cleanup(self)
+            self._multiple_cf_test(key_provider=value)
+            self.cleanup()
 
-    def reboot_test(self):
+    def test_reboot(self):
         for value in KeyProviderEnum:
-            EncryptionAtRestBase._reboot_test(self, key_provider=value)
-            EncryptionAtRestBase.cleanup(self)
+            self._reboot_test(key_provider=value)
+            self.cleanup()
 
-    @require('scylladb/scylla-enterprise#1787')
-    def alter_test(self):
+    @pytest.mark.require('scylladb/scylla-enterprise#1787')
+    def test_alter(self):
         for value in KeyProviderEnum:
-            EncryptionAtRestBase._alter_test(self, key_provider=value)
-            EncryptionAtRestBase.cleanup(self)
+            self._alter_test(key_provider=value)
+            self.cleanup()
 
-    def key_break_test(self):
-        EncryptionAtRestBase._key_break_test(self, key_provider=KeyProviderEnum.local)
+    def test_key_break(self):
+        self._key_break_test(key_provider=KeyProviderEnum.local)
 
 
-class SystemInfoEncryptionTest(EncryptionAtRestBase):
+@pytest.mark.dtest_enterprise
+class TestSystemInfoEncryption(EncryptionAtRestBase):
 
     def verify_system_info(self, session, key_provider, ks_suffix='', expect=True):
         table_num = 10
@@ -634,61 +643,62 @@ class SystemInfoEncryptionTest(EncryptionAtRestBase):
         rand_password = key_provider._generate_rand_unique_str('pwd_')
         rand_comment = key_provider._generate_rand_unique_str('comment_')
         flush_by_node(self.cluster)
-        debug('Add %d users for updating system_auth.roles' % user_num)
+        logger.debug('Add %d users for updating system_auth.roles' % user_num)
         for i in range(user_num):
             rand_user = '%s_%d' % (rand_user_prefix, i)
             session.execute("CREATE USER %s WITH PASSWORD '%s' NOSUPERUSER" % (rand_user, rand_password))
         rand_user = '%s_%d' % (rand_user_prefix, 0)
-        debug('First user: %s, Password: %s' % (rand_user, rand_password))
+        logger.debug('First user: %s, Password: %s' % (rand_user, rand_password))
         assert_one(session, "LIST ROLES of %s" % rand_user, [rand_user, False, True, {}])
 
-        debug('Verify PART 1: check commitlogs -------------')
+        logger.debug('Verify PART 1: check commitlogs -------------')
         time.sleep(10)  # sleep to wait data to be wrote into commitlogs
-        debug('GREP_DB_FILES: Check original password in commitlogs .... Original password should never be saved')
+        logger.debug('GREP_DB_FILES: Check original password in commitlogs .... Original password should never be saved')
         key_provider._grep_database_files(rand_password, 'commitlogs/', expect=False)
         res = session.execute("SELECT salted_hash FROM system_auth.roles WHERE role='%s'" % rand_user)
         salted_hash = rows_to_list(res)[0][0]
-        debug('Original salted_hash in system_auth.roles:\n%s' % salted_hash)
+        logger.debug('Original salted_hash in system_auth.roles:\n%s' % salted_hash)
         # ignore short prefix and suffix in searching binary to avoid error
         # skip fixed prefix `$6$`, one more byte, and 2 chars suffix
         salted_hash = salted_hash[4:-2].replace('/', r'\/')
-        debug('GREP_DB_FILES: Check PM key user in commitlogs ....')
+        logger.debug('GREP_DB_FILES: Check PM key user in commitlogs ....')
         key_provider._grep_database_files(rand_user, 'commitlogs/', expect=expect)
-        debug('GREP_DB_FILES: Check salted_hash of password in commitlogs ....')
+        logger.debug('GREP_DB_FILES: Check salted_hash of password in commitlogs ....')
         key_provider._grep_database_files(salted_hash, 'commitlogs/', expect=expect)
 
         ks_name = 'ks_' + ks_suffix
-        self.create_ks(session, ks_name, 3)
+        create_ks(session, ks_name, 3)
         for i in range(table_num):
             table_name = '%s.table_%d' % (ks_name, i)
-            self.create_cf(session, table_name)
+            create_cf(session, table_name)
             session.execute("ALTER TABLE %s WITH comment = '%s'" % (table_name, rand_comment))
-        debug('GREP_DB_FILES: Check table comment in commitlogs ....')
+        logger.debug('GREP_DB_FILES: Check table comment in commitlogs ....')
         key_provider._grep_database_files(rand_comment, 'commitlogs/', expect=expect)
 
-        debug('Flushing cluster ......')
+        logger.debug('Flushing cluster ......')
         self.cluster.flush()
 
-        debug("Verify PART 2: check sstable files -------------\n`system_info_encryption` won't encrypt sstable files on disk")
-        debug('GREP_DB_FILES: Check PM key user in sstable file ....')
+        logger.debug(
+            "Verify PART 2: check sstable files -------------\n`system_info_encryption` won't encrypt sstable files on disk")
+        logger.debug('GREP_DB_FILES: Check PM key user in sstable file ....')
         key_provider._grep_database_files(rand_user, 'data/system_auth/', expect=True)
-        debug('GREP_DB_FILES: Check original password in commitlogs .... Original password should never be saved')
+        logger.debug('GREP_DB_FILES: Check original password in commitlogs .... Original password should never be saved')
         key_provider._grep_database_files(rand_password, 'data/system_auth/', expect=False)
-        debug("GREP_DB_FILES: Check salted_hash of password in sstable file ....")
+        logger.debug("GREP_DB_FILES: Check salted_hash of password in sstable file ....")
         key_provider._grep_database_files(salted_hash, 'data/system_auth/', expect=True)
-        debug('GREP_DB_FILES: Check table comment in sstable file ....')
+        logger.debug('GREP_DB_FILES: Check table comment in sstable file ....')
         key_provider._grep_database_files(rand_comment.replace('comment_', ''), 'data/system_schema/', expect=True)
 
-    def system_auth_encryption_test(self, key_provider=KeyProviderEnum.local):
+    def test_system_auth_encryption(self, key_provider=KeyProviderEnum.local):
         options = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                    'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'
                    }
         self.cluster.set_configuration_options(options)
         self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
-        self.wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
+        wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
-        debug('Set RF of system_auth to 3')
+        logger.debug('Set RF of system_auth to 3')
         session.execute("ALTER KEYSPACE system_auth "
                         "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};")
         self.cluster.repair()
@@ -697,12 +707,12 @@ class SystemInfoEncryptionTest(EncryptionAtRestBase):
 
         options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
         self.cluster.set_configuration_options(options)
-        debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
+        logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
         session = self.rolling_restart(user='cassandra', password='cassandra')
-        debug("Re-verify system info after system_info_encryption is enabled")
+        logger.debug("Re-verify system info after system_info_encryption is enabled")
         self.verify_system_info(session, kp, ks_suffix='encrypt', expect=False)
 
-    def reboot_test(self):
+    def test_reboot(self):
         """
         The test is used to reproduce a scylla crash, enable commitlog encryption and reboot.
         https://github.com/scylladb/scylla-enterprise/issues/1332
@@ -713,7 +723,7 @@ class SystemInfoEncryptionTest(EncryptionAtRestBase):
         self.prepare(n=3, restart=False)
         options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
         self.cluster.set_configuration_options(options)
-        debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
+        logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
         session = self.rolling_restart()
 
         kp.create_encrypted_cf(session, name='ks.cf')
@@ -721,7 +731,7 @@ class SystemInfoEncryptionTest(EncryptionAtRestBase):
 
         for node in self.cluster.nodelist()[1:]:
             for i in range(3):
-                debug('Kill node {}, and restart'.format(node.name))
+                logger.debug('Kill node {}, and restart'.format(node.name))
                 node.stop(gently=False)
                 node.start(wait_for_binary_proto=True)
             kp.read_verify_workload(self.get_session())

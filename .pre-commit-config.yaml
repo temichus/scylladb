@@ -10,7 +10,8 @@ repos:
                 .git/*|
                 test_data/.*|
                 cassandra-sstables/.*|
-                alternator/.*
+                alternator/.*|
+                resources/.*|
             )$
     -   id: end-of-file-fixer
         exclude: >
@@ -28,6 +29,10 @@ repos:
     -   id: check-json
     -   id: detect-aws-credentials
     -   id: detect-private-key
+        exclude: >
+            (?x)^(
+                resources/scylla.pem
+            )$
 
 -   repo: local
     hooks:
@@ -156,6 +161,7 @@ repos:
                 repair_additional_test.py|
                 upgrade_tests/.*|
                 cdc_snapshot_operation_test.py|
+                encryption_at_rest_test.py|
                 rest_api_tests.py|
                 error_example_test.py|
                 limits_test.py|
