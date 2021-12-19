@@ -1,10 +1,14 @@
 import os
-import time
+import logging
+
 import docker
 from ldap3 import Server, Connection, ALL, ALL_ATTRIBUTES
-from dtest import debug
-from dtest import retrying
 from ldap3.core.exceptions import LDAPSocketOpenError
+
+from tools.retrying import retrying
+
+
+logger = logging.getLogger(__name__)
 
 
 def running_in_docker():
@@ -43,7 +47,7 @@ def dump_ldap_log_on_failure(func):
         try:
             return func(*args, **kwargs)
         except:
-            debug(f"LDAP SERVER LOG DUMP: {args[0].container.logs().decode('utf-8')}")
+            logger.debug(f"LDAP SERVER LOG DUMP: {args[0].container.logs().decode('utf-8')}")
             raise
     return inner
 

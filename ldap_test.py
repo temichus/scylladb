@@ -1,35 +1,42 @@
 import uuid
-import ldap_docker
 import os
 import random
 import shutil
 import subprocess
+import logging
 
-from dtest import Tester, info, debug
+import pytest
 from cassandra import Unauthorized
 from cassandra.cluster import NoHostAvailable
 
+from dtest_class import Tester, create_ks, create_cf
+from tools.ldap_docker import LdapDocker
 
+logger = logging.getLogger(__name__)
+
+
+@pytest.mark.dtest_enterprise
 class TestLdap(Tester):
     _multiprocess_can_split_ = False
     LDAP_USER = 'scylla-qa'
     LDAP_PASSWORD = 'cassandra'
     use_saslauth = False
 
-    def tearDown(self):
-        if self.saslauthd_proc is not None:
-            self.saslauthd_proc.kill()  # Using terminate() here somehow terminates nosetests itself. o_O
-            self.saslauthd_proc.wait()
-        shutil.rmtree(self.saslauthd_dir)  # Next line requires self.test_path directory to be empty.
-        Tester.tearDown(self)  # Keep LDAP up to avoid Scylla shutdown logging errors, failing the test.
-        self.test_ldap_docker.remove_container(force=True)
-
-    def setUp(self):
-        Tester.setUp(self)
+    @pytest.fixture(scope='function', autouse=True)
+    def setup(self, fixture_dtest_setup):
         self.create_ldap_container()
         self.saslauthd_dir = os.path.join(self.test_path, 'saslauthd')
         os.mkdir(self.saslauthd_dir)
         self.saslauthd_proc = None
+
+        yield
+
+        if self.saslauthd_proc is not None:
+            self.saslauthd_proc.kill()  # Using terminate() here somehow terminates nosetests itself. o_O
+            self.saslauthd_proc.wait()
+        # Next line requires self.test_path directory to be empty.
+        shutil.rmtree(self.saslauthd_dir, ignore_errors=True)
+        self.test_ldap_docker.remove_container(force=True)
 
     def get_default_scylla_yaml_ldap_config(self):
         return {'role_manager': 'com.scylladb.auth.LDAPRoleManager',
@@ -90,11 +97,11 @@ class TestLdap(Tester):
                        'permissions_validity_in_ms': 0})
 
         if self.use_saslauth and configure_ldap:
-            info('Using com.scylladb.auth.SaslauthdAuthenticator')
+            logger.info('Using com.scylladb.auth.SaslauthdAuthenticator')
             config.update({'authenticator': 'com.scylladb.auth.SaslauthdAuthenticator',
                            'saslauthd_socket_path': os.path.join(self.saslauthd_dir, 'mux')})
         else:
-            info('Using org.apache.cassandra.auth.PasswordAuthenticator')
+            logger.info('Using org.apache.cassandra.auth.PasswordAuthenticator')
             config.update({'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator'})
         cluster.set_configuration_options(values=config)
 
@@ -110,13 +117,13 @@ class TestLdap(Tester):
         if create_role:
             self.create_role(session, self.LDAP_USER, self.LDAP_PASSWORD)
         if create_ks_and_table:
-            self.create_ks(session, name='ks', rf=1)
-            self.create_cf(session, name='cf')
+            create_ks(session, name='ks', rf=1)
+            create_cf(session, name='cf')
             session.execute('INSERT INTO ks.cf (key, c, v) VALUES (\'key1\', \'c1\', \'v1\')')
 
     def create_ldap_container(self):
         docker_name = '-'.join(['openldap', f'{uuid.uuid4()}'[:8]])
-        self.test_ldap_docker = ldap_docker.LdapDocker()
+        self.test_ldap_docker = LdapDocker()
         self.test_ldap_docker.create_ldap_container(name=docker_name)
 
     def add_role_to_ldap(self, ldap_role='cassandra', ldap_password=LDAP_PASSWORD, unique_members=None):
@@ -145,19 +152,19 @@ class TestLdap(Tester):
         random_name = uuid.uuid4().__repr__()[6:14]
         # trying to create objects if there is create permission
         if 'create' not in permission_dict['permissions']:
-            with self.assertRaisesRegexp(Unauthorized, f"User {permission_dict['user']} has no CREATE permission on "):
-                self.create_ks(session=session, name=f'ks_{random_name}', rf=1)
-            with self.assertRaisesRegexp(Unauthorized, f"User {permission_dict['user']} has no CREATE permission on "):
-                self.create_cf(session=session, name=f'ks_{random_name}.table_{random_name}')
+            with pytest.raises(Unauthorized, match=rf"User {permission_dict['user']} has no CREATE permission on "):
+                create_ks(session=session, name=f'ks_{random_name}', rf=1)
+            with pytest.raises(Unauthorized, match=rf"User {permission_dict['user']} has no CREATE permission on "):
+                create_cf(session=session, name=f'ks_{random_name}.table_{random_name}')
         else:
-            self.create_ks(session=session, name=f'ks_{random_name}', rf=1)
-            self.create_cf(session=session, name=f'table_{random_name}')
+            create_ks(session=session, name=f'ks_{random_name}', rf=1)
+            create_cf(session=session, name=f'table_{random_name}')
         if 'modify' not in permission_dict['permissions']:
-            with self.assertRaisesRegexp(Unauthorized, f"User {permission_dict['user']} has no MODIFY permission on "):
+            with pytest.raises(Unauthorized, match=rf"User {permission_dict['user']} has no MODIFY permission on "):
                 session.execute('INSERT INTO ks.cf (key, c, v) VALUES (\'key\', \'c\', \'v\')')
-            with self.assertRaisesRegexp(Unauthorized, f"User {permission_dict['user']} has no MODIFY permission on "):
+            with pytest.raises(Unauthorized, match=rf"User {permission_dict['user']} has no MODIFY permission on "):
                 session.execute('UPDATE ks.cf SET v = \'vv\' WHERE key = \'key\' and c = \'c\'')
-            with self.assertRaisesRegexp(Unauthorized, f"User {permission_dict['user']} has no MODIFY permission on "):
+            with pytest.raises(Unauthorized, match=rf"User {permission_dict['user']} has no MODIFY permission on "):
                 session.execute('DELETE from ks.cf WHERE key = \'key\' and c = \'c\'')
         else:
             session.execute('INSERT INTO ks.cf (key, c, v) VALUES (\'key\', \'c\', \'v\')')
@@ -165,7 +172,7 @@ class TestLdap(Tester):
             session.execute('DELETE from ks.cf WHERE key = \'key\' and c = \'c\'')
         # trying to read data from a table
         if 'select' not in permission_dict['permissions']:
-            with self.assertRaisesRegexp(Unauthorized, f"User {permission_dict['user']} has no SELECT permission on "):
+            with pytest.raises(Unauthorized, match=rf"User {permission_dict['user']} has no SELECT permission on "):
                 session.execute('SELECT * from ks.cf LIMIT 1')
         else:
             session.execute('SELECT * from ks.cf LIMIT 1')
@@ -199,7 +206,7 @@ class TestLdap(Tester):
         try:
             self.cql_connection(self.nodes[0], user='abcd', password=self.LDAP_PASSWORD)
         except Exception:
-            info(f'Failed to get a session for an user that does\'t exist - Success')
+            logger.info(f'Failed to get a session for an user that does\'t exist - Success')
             failed = True
         if not failed:
             raise Exception('User succeeded to create a session, instead of failing')
@@ -240,13 +247,13 @@ class TestLdap(Tester):
                            'create_select': create_select_permission, 'modify_select': modify_select_permission,
                            'create_modify_select': create_modify_select_permission}
         for k, permission_dict in all_permissions.items():
-            info(f'Starting with {k}')
+            logger.info(f'Starting with {k}')
             session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
             self.create_role_grant_permission(session=session, permission_dict=permission_dict)
             self.create_role(session, permission_dict['user'], permission_dict['password'])
             self.add_role_to_ldap(ldap_role=permission_dict['role'], unique_members=[permission_dict['user']])
             self.check_user_permissions(permission_dict=permission_dict)
-            info(f'Finished with {k}')
+            logger.info(f'Finished with {k}')
 
     def test_hard_restart_scylla(self):
         self.prepare()
@@ -293,7 +300,7 @@ class TestLdap(Tester):
         self.prepare(create_role=False)
         actions_list = ['create', 'modify', 'select']
         permission = random.choice(actions_list)
-        info(f'permission={permission}')
+        logger.info(f'permission={permission}')
         list_of_roles = ['r1', 'r2', 'r3', 'r4', 'r5']
         cassandra_session = self.patient_cql_connection(node=self.nodes[0], user='cassandra', password='cassandra')
         self.create_role(cassandra_session, self.LDAP_USER, self.LDAP_PASSWORD)
@@ -456,7 +463,7 @@ class TestLdap(Tester):
         try:
             self.check_user_permissions(permission_dict=permission)
         except Unauthorized as ex:
-            info(f'User {permission["user"]} was removed, and it was supposed to fail to connect to scylla')
+            logger.info(f'User {permission["user"]} was removed, and it was supposed to fail to connect to scylla')
         session = self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
         self.create_role(session, new_user, permission['password'])
         self.check_user_permissions(permission_dict=new_permission)
@@ -486,20 +493,19 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
 
+@pytest.mark.dtest_enterprise
 class TestLdapSaslAuth(TestLdap):
-    def setUp(self):
-        TestLdap.setUp(self)
-        TestLdap.use_saslauth = True
+    use_saslauth = True
 
     def test_authentication(self):
-        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):  # User 'cassandra' absent from LDAP.
+        with pytest.raises(NoHostAvailable, match=r'Bad credentials'):  # User 'cassandra' absent from LDAP.
             self.prepare(add_cassandra_superuser_to_ldap=False)
         self.test_ldap_docker.add_ldap_object(
             f'uid=cassandra,ou=Person,{self.test_ldap_docker.ldap_base_object}',
             ['uidObject', 'organizationalPerson', 'top'],
             {'userPassword': 'cassandra', 'sn': 'Cassandra', 'cn': 'Cassandra'})
         self.patient_cql_connection(self.nodes[0], user='cassandra', password='cassandra')
-        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
+        with pytest.raises(NoHostAvailable, match=r'Bad credentials'):
             self.patient_cql_connection(self.nodes[0], user='cassandra', password='wrong-password')
 
     def test_switch_with_password_auth(self):
@@ -510,16 +516,16 @@ class TestLdapSaslAuth(TestLdap):
         """
         self.prepare(nodes=2)
         node1 = self.nodes[0]
-        debug(
+        logger.debug(
             f"A {self.LDAP_USER} user was created without password in Scylla, the password only exists in LDAP server")
         session = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
         self.patient_cql_connection(node1, user=self.LDAP_USER, password=self.LDAP_PASSWORD)
 
         # Verify that it's not supported to set password in Scylla by cqlsh when SaslauthdAuthenticator is used
-        with self.assertRaisesRegexp(Exception, 'Cannot modify passwords with SaslauthdAuthenticator'):
+        with pytest.raises(Exception, match=r'Cannot modify passwords with SaslauthdAuthenticator'):
             session.execute(f"ALTER ROLE '{self.LDAP_USER}' WITH PASSWORD = 'new_password'")
 
-        debug("Switch to org.apache.cassandra.auth.PasswordAuthenticator, and restart the cluster ...")
+        logger.debug("Switch to org.apache.cassandra.auth.PasswordAuthenticator, and restart the cluster ...")
         self.cluster.set_configuration_options(values={'authenticator':
                                                        'org.apache.cassandra.auth.PasswordAuthenticator'})
         self.cluster.stop()
@@ -527,24 +533,24 @@ class TestLdapSaslAuth(TestLdap):
 
         session = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
 
-        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
-            debug(f'Try to login by {self.LDAP_USER} without password')
+        with pytest.raises(NoHostAvailable, match=r'Bad credentials'):
+            logger.debug(f'Try to login by {self.LDAP_USER} without password')
             self.patient_cql_connection(node1, user=self.LDAP_USER)
-        with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
-            debug(
+        with pytest.raises(NoHostAvailable, match=r'Bad credentials'):
+            logger.debug(
                 f'Try to login by {self.LDAP_USER} with password, but there is no password in Scylla for the user')
             self.patient_cql_connection(node1, user=self.LDAP_USER, password=self.LDAP_PASSWORD)
 
-        debug(f'Set password for {self.LDAP_USER} in Scylla, and relogin')
+        logger.debug(f'Set password for {self.LDAP_USER} in Scylla, and relogin')
         session.execute(f"ALTER ROLE '{self.LDAP_USER}' WITH PASSWORD = '{self.LDAP_PASSWORD}-new'")
         self.patient_cql_connection(node1, user=self.LDAP_USER, password=f'{self.LDAP_PASSWORD}-new')
 
-        debug("Switch back to com.scylladb.auth.SaslauthdAuthenticator, and restart the cluster ...")
+        logger.debug("Switch back to com.scylladb.auth.SaslauthdAuthenticator, and restart the cluster ...")
         self.cluster.set_configuration_options(values={'authenticator':
                                                        'com.scylladb.auth.SaslauthdAuthenticator'})
         self.cluster.stop()
         self.cluster.start(wait_for_binary_proto=True)
-        debug('Try to login with old password in ldap')
+        logger.debug('Try to login with old password in ldap')
         self.patient_cql_connection(node1, user=self.LDAP_USER, password=f'{self.LDAP_PASSWORD}')
 
     def test_invalid_saslauthd_socket(self):
@@ -561,13 +567,13 @@ class TestLdapSaslAuth(TestLdap):
 
         for sock_path in [orig_socket_path, '/tmp/', '/tmp/unexist_socket_path',
                           '/dev/zero', '/run/systemd/journal/stdout']:
-            debug(f'Set an invalid saslauthd_socket_path {sock_path}, and restart cluster ...')
+            logger.debug(f'Set an invalid saslauthd_socket_path {sock_path}, and restart cluster ...')
             self.cluster.set_configuration_options(values={'saslauthd_socket_path': '/tmp/'})
             self.cluster.stop()
             self.cluster.start(wait_for_binary_proto=True)
 
-            debug('Try to login ...')
-            with self.assertRaisesRegexp(NoHostAvailable, 'Bad credentials'):
+            logger.debug('Try to login ...')
+            with pytest.raises(NoHostAvailable, match=r'Bad credentials'):
                 self.patient_cql_connection(node1, user=self.LDAP_USER,
                                             password=self.LDAP_PASSWORD)
         subprocess.getoutput(f'sudo chown $USER:$USER {orig_socket_path}')
