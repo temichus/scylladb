@@ -1,31 +1,33 @@
-import re
-import tempfile
-import time
-import os
-import shutil
+import datetime
 import glob
 import itertools
-import pytest
 import logging
+import os
 import random
-
-from threading import Thread
-from concurrent.futures import ThreadPoolExecutor
+import re
+import shutil
+import tempfile
+import time
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime as dt
+from threading import Thread
+from typing import Optional
 
+import pytest
 import sstable_tools.statistics
-
-from ccmlib.node import NodetoolError, TimeoutError
 from cassandra import ConsistencyLevel, concurrent
+from ccmlib.node import NodetoolError, TimeoutError
+
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
-from tools.data import insert_c1c2, delete_c1c2, run_in_parallel
+from tools.assertions import assert_none, assert_all, assert_row_count
+from tools.cluster import new_node
+from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_table
 from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables
 from tools.misc import ImmutableMapping
 from tools.stress import fill_data_by_cs
-from tools.assertions import assert_none, assert_all, assert_row_count
-from tools.cluster import new_node
 
 logger = logging.getLogger(__name__)
 
@@ -565,6 +567,83 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         assert_reshape_and_verify_data(srcdir='staging/', log_mark=mark, verify_reshape=verify_reshape)
 
         shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
+
+    @pytest.mark.parametrize("cf_sizes", [(100, 10_000, 100_000),
+                                          (10_000, 100, 100_000),
+                                          (10_000, 100_000, 100),
+                                          (100, 100_000, 10_000),
+                                          (100_000, 10_000, 100),
+                                          (100_000, 100, 10_00)],
+                             ids=["cf_3 > cf_2 > cf_1",
+                                  "cf_3 > cf_1 > cf_2",
+                                  "cf_2 > cf 1 > cf_3",
+                                  "cf_2 > cf_3 > cf_1",
+                                  "cf_1 > cf_2 > cf_3",
+                                  "cf_1 > cf_3 > cf_2"])
+    @pytest.mark.single_node
+    @pytest.mark.dtest_full
+    def test_major_compaction_processes_tables_in_order_by_size(self, cf_sizes: tuple):
+        """
+        Major compaction should process tables in a sorted order,
+        from smallest to largest. The test checks if the ordering is correct.
+
+        Steps:
+        1. Create 3 tables of different sizes.
+        2. Trigger a major compaction.
+        3. Query the system.compaction_history table to get the history of
+        compactions.
+        4. Sort the query results by time and by table size.
+        5. Assert that the 2 sorts give identical results.
+        """
+        @dataclass
+        class CfSizeTime:
+            name: str
+            size: Optional[int]
+            compaction_time: Optional[datetime.datetime]
+
+        def _prepare_tables_with_data(cf_sizes: tuple):
+            cf_size_time = []
+
+            for size in cf_sizes:
+                cf_name = cf_names[cf_sizes.index(size)]
+                create_c1c2_table(session=session, cf=cf_name)
+                insert_c1c2(session=session, ks=ks_name, cf=cf_name, n=size, consistency=ConsistencyLevel.ONE)
+                cf_size_time.append(CfSizeTime(name=cf_name, size=size, compaction_time=None))
+
+            return cf_size_time
+
+        def _perform_major_compaction():
+            node1.flush()
+            node1.compact()
+            node1.wait_for_compactions()
+
+        def _get_compaction_history() -> list:
+            compaction_history_query = f"SELECT columnfamily_name, compacted_at, keyspace_name " \
+                                       f"FROM system.compaction_history"
+            compaction_history_result = session.execute(compaction_history_query).all()
+            return [row for row in compaction_history_result if row.keyspace_name == ks_name]
+
+        def _sort_compaction_history(compaction_history: list) -> tuple:
+            for item in cf_size_time:
+                for row in compaction_history:
+                    if item.name == row.columnfamily_name:
+                        item.compaction_time = row.compacted_at
+            by_time = sorted(cf_size_time, key=lambda x: x.compaction_time)
+            by_size = sorted(cf_size_time, key=lambda x: x.size)
+            return by_time, by_size
+
+        nodelist, session = self.prepare(nodes=1)
+        node1 = nodelist[0]
+        ks_name = "ks"
+        cf_names = ["cf_1", "cf_2", "cf_3"]
+        create_ks(session=session, name=ks_name, rf=1)
+        cf_size_time = _prepare_tables_with_data(cf_sizes=cf_sizes)
+
+        _perform_major_compaction()
+        sorted_by_time, sorted_by_size = _sort_compaction_history(_get_compaction_history())
+
+        assert sorted_by_time == sorted_by_size, "The list of rows sorted by size is not identical" \
+                                                 " to the list of rows sorted by compaction time"
 
     def wait_for_new_minute(self):
         while dt.now().second > 5:
