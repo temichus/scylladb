@@ -446,14 +446,14 @@ def pytest_collection_modifyitems(items, config):
                 raise Exception("Required dtest arguments were missing! You must provide either --cassandra-dir "
                                 "or --cassandra-version. Refer to the documentation or invoke the help with --help.")
 
-        # Either cassandra_version or cassandra_dir is defined, so figure out the version
-        CASSANDRA_VERSION = cassandra_version or get_version_from_build(cassandra_dir)
+            # Either cassandra_version or cassandra_dir is defined, so figure out the version
+            CASSANDRA_VERSION = cassandra_version or get_version_from_build(cassandra_dir)
 
-        # Check that use_off_heap_memtables is supported in this c* version
-        if config.getoption("--use-off-heap-memtables") and ("3.0" <= CASSANDRA_VERSION < "3.4"):
-            raise Exception("The selected Cassandra version %s doesn't support the provided option "
-                            "--use-off-heap-memtables, see https://issues.apache.org/jira/browse/CASSANDRA-9472 "
-                            "for details" % CASSANDRA_VERSION)
+            # Check that use_off_heap_memtables is supported in this c* version
+            if config.getoption("--use-off-heap-memtables") and ("3.0" <= CASSANDRA_VERSION < "3.4"):
+                raise Exception("The selected Cassandra version %s doesn't support the provided option "
+                                "--use-off-heap-memtables, see https://issues.apache.org/jira/browse/CASSANDRA-9472 "
+                                "for details" % CASSANDRA_VERSION)
 
     selected_items = []
     deselected_items = []
@@ -548,12 +548,19 @@ def pytest_plugin_registered(plugin, manager):
 
 
 @pytest.fixture(scope='session', autouse=True)
-def configure_es(elk_reporter, dtest_config):
-    extra_data = {
-        "SCYLLA_FULL_VERSION": dtest_config.scylla_full_version,
-        "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
-    }
-    elk_reporter.session_data.update(**extra_data)
+def configure_es(request: pytest.FixtureRequest, dtest_config):
+    elk_reporter = None
+    try:
+        elk_reporter = request.getfixturevalue("elk_reporter")
+    except:
+        pass
+
+    if elk_reporter:
+        extra_data = {
+            "SCYLLA_FULL_VERSION": dtest_config.scylla_full_version,
+            "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
+        }
+        elk_reporter.session_data.update(**extra_data)
 
 
 def check_issue_closed(pattern):
