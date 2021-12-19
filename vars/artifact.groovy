@@ -48,7 +48,17 @@ def getRelocArtifacts (String cloudUrl, String buildMode) {
 	// Parameters:
 	def artifactsTargets = [:]
     String url = getRelocatableLink(cloudUrl)
-    artifactsTargets.scyllaReloc = [artifact: "${params.PRODUCT_NAME}-package.tar.gz",
+    String architecture = ""
+
+    String packageName = relocPackageName (
+		checkLocal: false,
+		mustExist: true,
+		urlOrPath: url,
+		packagePrefix: params.PRODUCT_NAME,
+		buildMode: buildMode,
+		architecture: architecture,
+	)
+    artifactsTargets.scyllaReloc = [artifact: packageName,
                                     target: "$WORKSPACE/scylla/build/${buildMode}/dist/tar"]
     artifactsTargets.jmxReloc = [artifact: "${params.PRODUCT_NAME}-jmx-package.tar.gz",
                                  target: "$WORKSPACE/scylla/build/${buildMode}/dist/tar"]
@@ -61,4 +71,107 @@ def getRelocArtifacts (String cloudUrl, String buildMode) {
 			targetPath: val.target,
 			sourceUrl: url)
 	}
+}
+
+boolean fileExistsOnPath(String file, String path=WORKSPACE) {
+    boolean exists = fileExists "$path/$file"
+    if (exists) {
+        echo "File |$file| exists on path |$path|"
+        return true
+    } else {
+        echo "File |$file| does not exist on path |$path|"
+        return false
+    }
+}
+
+String relocPackageName (Map args) {
+	// returns Scylla package name on cloud
+	// Assuming a package naming convention: "${package name}-${build mode not on release}-${optional architecture}-package.tar.gz"
+	// Parameters:
+	// boolean (default false): dryRun - Run builds on dry run (that will show commands instead of really run them).
+	// boolean (default false) checkLocal - true to check on local disk, false to check on cloud
+	// boolean (default true) mustExist - If must exist - error if not found, else, return ""
+	// String (mandatory): packagePrefix - The name of the package with no mode, architecture, package and tar.
+	// String (default local): urlOrPath - From where to download the artifacts - local path or a URL.
+	// String (default: none): buildMode (release | debug | dev)
+	// String (default null): architecture Which architecture to publish x86_64|aarch64 Default null is for backwards competability
+
+	jenkins.traceFunctionParams("artifact.relocPackageName", args)
+
+	boolean checkLocal = args.checkLocal ?: false
+	boolean dryRun = args.dryRun ?: false
+	boolean mustExist = args.mustExist != null ? args.mustExist : true
+	if (dryRun) {
+		mustExist = false
+	}
+	String buildMode = args.buildMode ?: ""
+	String architecture = args.architecture ?: ""
+	if (architecture){
+		architecture += "-"
+	}
+	String packageName = "${args.packagePrefix}-${architecture}package.tar.gz"
+	String packageNameNoArch = "${args.packagePrefix}-package.tar.gz"
+	String packageNameX86 = "${args.packagePrefix}-${generalProperties.x86ArchName}-package.tar.gz"
+	String lsOutput = ""
+	if (buildMode.contains("debug") && args.packagePrefix == branchProperties.productName) {
+		packageName = "${args.packagePrefix}-${buildMode}-${architecture}package.tar.gz"
+		packageNameNoArch = "${args.packagePrefix}-${buildMode}-package.tar.gz"
+		packageNameX86 = "${args.packagePrefix}-${buildMode}-${generalProperties.x86ArchName}-package.tar.gz"
+	}
+
+	if ((checkLocal && fileExistsOnPath(packageName, args.urlOrPath)) ||
+			(! checkLocal && fileExistsOnCloud("${args.urlOrPath}/${packageName}"))) {
+		echo "Found package $packageName with architecture if given, or with no architecture if not given"
+		return packageName
+	}
+	echo "Could not find package with architecture if given, or no arch if not given. Trying another way."
+
+	String packageNameToReturn = ""
+	if (architecture) {
+		packageNameToReturn = packageNameNoArch
+	} else {
+		packageNameToReturn = packageNameX86
+	}
+	if ((checkLocal && fileExistsOnPath(packageNameToReturn, args.urlOrPath)) ||
+			(! checkLocal && fileExistsOnCloud("${args.urlOrPath}/${packageNameToReturn}"))) {
+		echo "Found package $packageNameToReturn with architecture"
+		return packageNameToReturn
+	}
+	if (mustExist) {
+		error ("No package (with or without architecture) found")
+	} else {
+		echo "Didn't find any package"
+		return ""
+	}
+}
+
+def runOrDryRunShOutput (boolean dryRun = false, String cmd, String description) {
+    echo "$description"
+    def cmdOutput = ""
+    if (dryRun) {
+        echo "Dry-run: |$cmd|"
+        cmdOutput = "Dry-run"
+    } else {
+        echo "Running sh cmd: |$cmd|"
+        cmdOutput = sh(script: "$cmd", returnStdout:true).trim()
+    }
+    echo "Command output: |$cmdOutput|"
+    return cmdOutput
+}
+
+boolean fileExistsOnCloud(String url) {
+    try {
+        def lsOutput = runOrDryRunShOutput (false, "aws s3 ls $url", "Check if $url exists")
+        echo "aws s3 ls output: |$lsOutput|"
+        if (lsOutput) {
+            echo "URL: |$url| exists."
+            return true
+        } else {
+            echo "URL: |$url| does not exist."
+            return false
+        }
+    } catch (error) {
+        echo "URL: |$url| does not exist."
+        return false
+    }
 }

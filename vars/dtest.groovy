@@ -84,13 +84,35 @@ def artifactScyllaVersion() {
 	return scyllaSha
 }
 
-def setupTestEnv(String buildMode) {
+def setupTestEnv(String buildMode, String architecture="", boolean dryRun=false) {
 	// This override of HOME as an empty dir is needed by ccm
 	echo "Setting test environment, mode: |$buildMode|"
 	def homeDir="$WORKSPACE/cluster_home"
 	createEmptyDir(homeDir)
-	def scyllaPackageName = "${params.PRODUCT_NAME}-package.tar.gz"
-	def scyllaRelocPkgFile = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${scyllaPackageName}"
+	// First look for local built package
+	String scyllaPackageName = artifact.relocPackageName (
+		dryRun: dryRun,
+		checkLocal: true,
+		mustExist: false,
+		urlOrPath: "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar",
+		packagePrefix: branchProperties.productName,
+		buildMode: buildMode,
+		architecture: architecture,
+	)
+	// If not found - look where artifacts are downloaded
+	if (! scyllaPackageName) {
+		scyllaPackageName = artifact.relocPackageName (
+			dryRun: dryRun,
+			checkLocal: true,
+			mustExist: true,
+			urlOrPath: WORKSPACE,
+			packagePrefix: branchProperties.productName,
+			buildMode: buildMode,
+			architecture: architecture,
+		)
+	}
+    String scyllaRelocPkgFile = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${scyllaPackageName}"
+
 	boolean pkgFileExists = fileExists scyllaRelocPkgFile
 	if (pkgFileExists) {
 		echo "Reloc pkg file exists. Setting testing env vars."
