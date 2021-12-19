@@ -79,6 +79,7 @@ repos:
                 udtencoding_test.py|
                 clustering_key_filter_test.py|
                 ttl_test.py|
+                audit_test.py|
                 user_types_test.py|
                 user_functions_test.py|
                 hintedhandoff_test.py|

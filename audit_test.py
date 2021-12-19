@@ -1,17 +1,18 @@
 import os.path
+import logging
 
-from nose.plugins.attrib import attr
-
+import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodeError
 
-from assertions import assert_invalid
-from dtest import Tester, debug
-from tools import rows_to_list
+from tools.assertions import assert_invalid
+from dtest_class import Tester, create_ks
+from tools.data import rows_to_list
+
+logger = logging.getLogger(__name__)
 
 
-@attr('single_node')
 class AuditTester(Tester):
     audit_default_settings = {'audit': 'table',
                               'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
@@ -19,8 +20,8 @@ class AuditTester(Tester):
 
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None,
                 user=None, password=None, experimental=False, audit_settings=audit_default_settings, **kwargs):
-        debug(f"Preparing cluster with {nodes} node(s): rf={rf} ordered={ordered} use_cache={use_cache} "
-              f"audit_settings={audit_settings}")
+        logger.debug(f"Preparing cluster with {nodes} node(s): rf={rf} ordered={ordered} use_cache={use_cache} "
+                     f"audit_settings={audit_settings}")
 
         cluster = self.cluster
 
@@ -51,27 +52,28 @@ class AuditTester(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version, user=user, password=password)
         if create_keyspace:
-            if self._preserve_cluster:
-                session.execute("DROP KEYSPACE IF EXISTS ks")
-            self.create_ks(session, 'ks', rf)
+            session.execute("DROP KEYSPACE IF EXISTS ks")
+            create_ks(session, 'ks', rf)
         return session
 
 
-class CQLAuditTester(AuditTester):
+@pytest.mark.dtest_enterprise
+@pytest.mark.single_node
+class TestCQLAudit(AuditTester):
     """
     Make sure CQL statements are audited
     """
 
     def assertAuditRow(self, row, category, statement, table="", ks="ks", user="anonymous", cl="ONE", error=False):
-        self.assertEqual(row[1], self.cluster.get_node_ip(1))
-        self.assertEqual(row[3], category)
-        self.assertEqual(row[4], cl)
-        self.assertEqual(row[5], error)
-        self.assertEqual(row[6], ks)
-        self.assertEqual(row[7], statement)
-        self.assertEqual(row[8], "127.0.0.1")
-        self.assertEqual(row[9], table)
-        self.assertEqual(row[10], user)
+        assert row[1] == self.cluster.get_node_ip(1)
+        assert row[3] == category
+        assert row[4] == cl
+        assert row[5] == error
+        assert row[6] == ks
+        assert row[7] == statement
+        assert row[8] == "127.0.0.1"
+        assert row[9] == table
+        assert row[10] == user
 
     def assertLastAuditRow(self, session, category, statement, table="", ks="ks", user="anonymous", cl="ONE",
                            error=False, match=True):
@@ -81,14 +83,14 @@ class CQLAuditTester(AuditTester):
         assert len(res_list) > 0
         try:
             self.assertAuditRow(res_list[len(res_list) - 1], category, statement, table, ks, user, cl, error)
-            self.assertTrue(match)
+            assert match
         except:
-            self.assertFalse(match)
+            assert not match
 
     def getAuditEntriesCount(self, session):
         res = session.execute("SELECT * FROM audit.audit_log")
         res_list = rows_to_list(res)
-        debug('Printing audit table content: {}'.format(res_list))
+        logger.debug('Printing audit table content: {}'.format(res_list))
         return len(res_list)
 
     def verify_keyspace(self, audit_settings=None):
@@ -208,27 +210,27 @@ class CQLAuditTester(AuditTester):
         count_after = self.getAuditEntriesCount(session)
         assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
 
-    def audit_keyspace_test(self):
+    def test_audit_keyspace(self):
         self.verify_keyspace(audit_settings=AuditTester.audit_default_settings)
 
-    def audit_keyspace_extra_parameter_test(self):
+    def test_audit_keyspace_extra_parameter(self):
         self.verify_keyspace(audit_settings={'audit': 'table',
                                              'audit_categories': 'ADMIN,AUTH,DML,DDL,DCL',
                                              'audit_keyspaces': 'ks',
                                              'extra_parameter': 'new'})
 
-    def audit_keyspace_many_ks_test(self):
+    def test_audit_keyspace_many_ks(self):
         self.verify_keyspace(audit_settings={'audit': 'table',
                                              'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
                                              'audit_keyspaces': 'a,b,c,ks'})
 
-    def audit_keyspace_table_not_exists_test(self):
+    def test_audit_keyspace_table_not_exists(self):
         self.verify_keyspace(audit_settings={'audit': 'table',
                                              'audit_categories': 'DML,DDL',
                                              'audit_keyspaces': 'ks',
                                              'audit_tables': 'ks.fake'})
 
-    def audit_type_none_test(self):
+    def test_audit_type_none(self):
         """
         'audit': None
          CREATE KEYSPACE, USE KEYSPACE, ALTER KEYSPACE, DROP KEYSPACE statements
@@ -251,7 +253,7 @@ class CQLAuditTester(AuditTester):
         session.execute("DROP KEYSPACE ks")
         assert_invalid(session, "use audit;", expected=InvalidRequest)
 
-    def audit_type_syslog_test(self):
+    def test_audit_type_syslog(self):
         """
         'audit': syslog
          CREATE KEYSPACE, USE KEYSPACE, ALTER KEYSPACE, DROP KEYSPACE statements
@@ -278,14 +280,14 @@ class CQLAuditTester(AuditTester):
         assert_invalid(session, "use audit;", expected=InvalidRequest)
         # to see audit logs in /var/log/scylla-audit.log we need to set in /etc/rsyslog.conf
         # if $programname contains 'scylla-audit' then /var/log/scylla-audit.log
-        self.assertFalse(os.path.exists(audit_log))
+        assert not os.path.exists(audit_log)
 
-    def audit_type_invalid_test(self):
+    def test_audit_type_invalid(self):
         """
         'audit': invalid
          check node not started
         """
-        self.allow_log_errors = True
+        self.fixture_dtest_setup.allow_log_errors = True
 
         audit_settings = {'audit': 'invalid', 'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
                           'audit_keyspaces': 'ks'}
@@ -303,7 +305,7 @@ class CQLAuditTester(AuditTester):
         self.ignore_log_patterns.append(expected_error)
         self.cluster.nodes['node1'].watch_log_for(expected_error)
 
-    def audit_empty_settings_test(self):
+    def test_audit_empty_settings(self):
         """
         'audit': {}
          check node started, ks audit not created
@@ -311,7 +313,7 @@ class CQLAuditTester(AuditTester):
         session = self.prepare(create_keyspace=False, audit_settings={})
         assert_invalid(session, "use audit;", expected=InvalidRequest)
 
-    def audit_audit_ks_test(self):
+    def test_audit_audit_ks(self):
         """
         'audit_keyspaces': 'audit'
         check node started, ks audit created
@@ -322,12 +324,12 @@ class CQLAuditTester(AuditTester):
 
         self.assertLastAuditRow(session, "QUERY", "SELECT * FROM audit.audit_log", ks="audit", table="audit_log")
 
-    def audit_categories_invalid_test(self):
+    def test_audit_categories_invalid(self):
         """
         'audit_categories': invalid
         check node not started
         """
-        self.allow_log_errors = True
+        self.fixture_dtest_setup.allow_log_errors = True
 
         audit_settings = {'audit': 'table', 'audit_categories': 'INVALID',
                           'audit_keyspaces': 'ks'}
@@ -344,42 +346,42 @@ class CQLAuditTester(AuditTester):
         self.ignore_log_patterns.append(expected_error)
         self.cluster.nodes['node1'].watch_log_for(expected_error)
 
-    def audit_table_test(self):
+    def test_audit_table(self):
         self.verify_table(audit_settings=AuditTester.audit_default_settings)
 
-    def audit_table_extra_parameter_test(self):
+    def test_audit_table_extra_parameter(self):
         self.verify_table(audit_settings={'audit': 'table',
                                           'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
                                           'audit_keyspaces': 'ks',
                                           'extra_parameter': 'new'})
 
-    def audit_table_audit_keyspaces_empty_test(self):
+    def test_audit_table_audit_keyspaces_empty(self):
         self.verify_table(audit_settings={'audit': 'table',
                                           'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
                                           'audit_keyspaces': '',
                                           'audit_tables': 'ks.test1, ks.test2'})
 
-    def audit_table_no_ks_test(self):
+    def test_audit_table_no_ks(self):
         self.verify_table(audit_settings={'audit': 'table',
                                           'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
                                           'audit_tables': 'ks.test2, ks.test1'})
 
-    def audit_categories_part1_test(self):
+    def test_audit_categories_part1(self):
         self.verify_table(audit_settings={'audit': 'table',
                                           'audit_categories': 'AUTH,QUERY,DDL',
                                           'audit_tables': 'ks.test2, ks.test1'})
 
-    def audit_categories_part2_test(self):
+    def test_audit_categories_part2(self):
         self.verify_table(audit_settings={'audit': 'table',
                                           'audit_categories': 'DDL, ADMIN,AUTH,DCL',
                                           'audit_keyspaces': 'ks'})
 
-    def audit_categories_part3_test(self):
+    def test_audit_categories_part3(self):
         self.verify_table(audit_settings={'audit': 'table',
                                           'audit_categories': 'DDL, ADMIN,AUTH',
                                           'audit_keyspaces': 'ks'})
 
-    def user_password_masking_test(self):
+    def test_user_password_masking(self):
         """
         CREATE USER, ALTER USER, DROP USER statements
         """
@@ -394,7 +396,7 @@ class CQLAuditTester(AuditTester):
         session.execute("DROP USER user1")
         self.assertLastAuditRow(session, "DCL", "DROP USER user1", ks="", user="cassandra")
 
-    def role_password_masking_test(self):
+    def test_role_password_masking(self):
         """
         CREATE ROLE, ALTER ROLE, DROP ROLE statements
         """
@@ -409,14 +411,14 @@ class CQLAuditTester(AuditTester):
         session.execute("DROP ROLE role1")
         self.assertLastAuditRow(session, "DCL", "DROP ROLE role1", ks="", user="cassandra")
 
-    def login_test(self):
+    def test_login(self):
         """
         USER LOGIN
         """
         session = self.prepare(user='cassandra', password='cassandra', create_keyspace=False)
         self.assertLastAuditRow(session, "AUTH", "LOGIN", ks="", user="cassandra", cl="")
 
-    def categories_test(self):
+    def test_categories(self):
         """
         Test filtering audit categories
         """
@@ -455,7 +457,7 @@ class CQLAuditTester(AuditTester):
         count_after = self.getAuditEntriesCount(session)
         assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
 
-    def prepare_test(self):
+    def test_prepare(self):
         """ Test prepare statement """
         session = self.prepare()
 
@@ -475,7 +477,7 @@ class CQLAuditTester(AuditTester):
         session.execute(pq, ['foo', 4])
         self.assertLastAuditRow(session, "DML", "INSERT INTO cf (k, c) VALUES (?, ?);", "cf")
 
-    def permissions_test(self):
+    def test_permissions(self):
         """ Test user permissions """
         session = self.prepare(user='cassandra', password='cassandra')
         session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
