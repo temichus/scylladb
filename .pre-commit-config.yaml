@@ -146,6 +146,7 @@ repos:
                 upgrade_internal_auth_test.py|
                 partitioner_tests.py|
                 rebuild_test.py|
+                ics_compaction_test.py|
                 offline_tools_test.py|
                 update_cluster_layout_tests.py|
                 pytest_cql_additional_tests.py|

@@ -1,21 +1,19 @@
 import os
 import random
-
 import shutil
 import string
+import logging
 
-from nose.plugins.attrib import attr
+import pytest
 
-from assertions import assert_row_count
-from dtest import Tester, debug, wait_for
-from scylla_defines import TABLE_NAME, KEYSPACE_NAME, CompactionStrategy, FULL_TABLE_NAME
-from scylla_tools import get_sstables_files, get_cf_dir
-from tools import make_snapshot, restore_snapshot_with_refresh, restore_snapshot_with_sstableloader
+from tools.assertions import assert_row_count
+from dtest_class import Tester, create_ks, create_cf, wait_for
+from tools.scylla_defines import TABLE_NAME, KEYSPACE_NAME, CompactionStrategy, FULL_TABLE_NAME, KB, MB
+from tools.files import get_sstables_files, get_cf_dir
+from tools.snapshots import make_snapshot, restore_snapshot_with_refresh, restore_snapshot_with_sstableloader
 
 NUM_OF_NODES = 2
 RF = NUM_OF_NODES
-KB = 1024
-MB = 1024 * 1024
 WRITE_SIZE_UNIT_IN_MB = 1
 COLUMN_DEFAULT_SIZE = MB
 NUM_OF_COLUMNS = 50
@@ -25,6 +23,8 @@ BIG_PARTITION_ROWS = 10000
 NUM_OF_GENERATED_SSTABLES = 4
 NUM_WRITES_PER_SSTABLE = 1
 START_INDEX = 1
+
+logger = logging.getLogger(__name__)
 
 
 def create_table(session, compaction_strategy=None,
@@ -51,13 +51,13 @@ def create_table(session, compaction_strategy=None,
         compaction_params.update(compaction_additional_params)
     query += f" WITH compaction = {compaction_params}"
 
-    debug("query is:{}".format(query))
+    logger.debug("query is:{}".format(query))
 
     session.execute(query)
 
 
-@attr('dtest-full')
-class IcsCompactionTest(Tester):
+@pytest.mark.dtest_enterprise
+class TestIcsCompaction(Tester):
 
     #######################   Helper Functions Start  ###########################################################################
     def alter_table_compaction(self, compaction_strategy=None, table_name=TABLE_NAME, keyspace_name=KEYSPACE_NAME,
@@ -81,23 +81,23 @@ class IcsCompactionTest(Tester):
                 dict_requested_compaction.update(param)
 
         full_alter_query = base_query + str(dict_requested_compaction)
-        debug("query is: {}".format(full_alter_query))
+        logger.debug("query is: {}".format(full_alter_query))
         self.execute_session_cql_query(query=full_alter_query)
 
         if assert_altered_compaction:
-            self.assertTrue(self._get_table_compaction_strategy(keyspace_name=keyspace_name,
-                                                                table_name=table_name) == compaction_strategy)
+            assert self._get_table_compaction_strategy(keyspace_name=keyspace_name,
+                                                       table_name=table_name) == compaction_strategy
 
     def _get_table_compaction_strategy(self, table_name=TABLE_NAME, keyspace_name=KEYSPACE_NAME, ):
         verify_query = "SELECT keyspace_name, table_name, compaction FROM system_schema.tables WHERE keyspace_name = '{}' AND table_name = '{}'".format(
             keyspace_name, table_name)
         result_matrix = list(self.execute_session_cql_query(query=verify_query))
-        debug(result_matrix)
+        logger.debug(result_matrix)
         retrieved_compaction = "Unknown"
         if result_matrix[0].keyspace_name == keyspace_name and result_matrix[0].table_name == table_name:
             retrieved_compaction = CompactionStrategy.from_str(result_matrix[0].compaction['class'])
-            debug("Retrieved compaction strategy for {}.{} is: {}".format(keyspace_name, table_name,
-                                                                          retrieved_compaction))
+            logger.debug("Retrieved compaction strategy for {}.{} is: {}".format(keyspace_name, table_name,
+                                                                                 retrieved_compaction))
         return retrieved_compaction
 
     def create_cluster(self, num_of_nodes, configuration_options=None, jvm_args=None):
@@ -116,24 +116,30 @@ class IcsCompactionTest(Tester):
         if jvm_args:
             all_jvm_args += jvm_args
         session = self.create_cluster(num_of_nodes=num_of_nodes, jvm_args=all_jvm_args)
-        self.create_ks(session=session, name=keyspace_name, rf=r_factor)
+        create_ks(session=session, name=keyspace_name, rf=r_factor)
         create_table(session=session, compaction_strategy=compaction_strategy,
                      keyspace_name=keyspace_name, table_name=table_name,
                      sstable_size_in_mb=sstable_size_in_mb, is_large_partitions=is_large_partitions,
                      compaction_additional_params=compaction_additional_params)
         return session
 
+    def execute_session_cql_query(self, query, node=None):
+        node = node or self.cluster.nodelist()[0]
+        with self.patient_cql_connection(node) as session:
+            res = session.execute(query)
+        return res
+
     def _count_table_entries(self, keyspace=KEYSPACE_NAME, table=TABLE_NAME):
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
         res = session.execute(
             "SELECT COUNT(*) FROM {}.{}".format(keyspace, table))
         count = res.current_rows[0].count
-        debug("Current count of DB entries: {}".format(count))
+        logger.debug("Current count of DB entries: {}".format(count))
         return count
 
     @staticmethod
     def _get_sstables_file_size_in_mb(list_sstable_files, cf_dir):
-        debug("Get sstables file size for: {}".format(list_sstable_files))
+        logger.debug("Get sstables file size for: {}".format(list_sstable_files))
         list_files_size = []
         for file in list_sstable_files:
             # A sample returned value of os.path.getsize is: '3165790' - which is converted to 3MB
@@ -142,7 +148,8 @@ class IcsCompactionTest(Tester):
         return list_files_size
 
     def _check_sstable_file_size_limit(self, list_sstable_files, sstable_size_in_mb):
-        debug("Validating maximum sstable file size of {} for: {}".format(sstable_size_in_mb, list_sstable_files))
+        logger.debug("Validating maximum sstable file size of {} for: {}".format(
+            sstable_size_in_mb, list_sstable_files))
         cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', KEYSPACE_NAME), TABLE_NAME)
         for file in list_sstable_files:
             file_size_in_mb = os.path.getsize(os.path.join(cf_dir, file)) >> 20
@@ -176,7 +183,7 @@ class IcsCompactionTest(Tester):
         cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', KEYSPACE_NAME), TABLE_NAME)
         sstables_files = get_sstables_files(cf_dir, f_type='Data')
         files_size = self._get_sstables_file_size_in_mb(list_sstable_files=sstables_files, cf_dir=cf_dir)
-        debug("Files sizes are: {}".format(files_size))
+        logger.debug("Files sizes are: {}".format(files_size))
         return sstables_files, files_size
 
     def _write_and_flush_sstables(self, start_index=START_INDEX, num_of_generated_sstables=NUM_OF_GENERATED_SSTABLES,
@@ -216,12 +223,12 @@ class IcsCompactionTest(Tester):
                              "n=fixed(1)",
                              "size=fixed({})".format(write_size),
                              "-rate", "threads=1"]
-            debug("stress node1 #{idx}: ( {stress_params} )".format(**locals()))
+            logger.debug(f"stress node1 #{idx}: ( {stress_params} )")
             results, errors = node1.stress(stress_params, capture_output=True)
-            debug('Stress results:\n' + ''.join(results + errors))
-            self.assertFalse(errors, "Some errors during stress %s" % errors)
+            logger.debug('Stress results:\n' + ''.join(results + errors))
+            assert not errors, "Some errors during stress %s" % errors
             if not read_only:
-                debug("flush #{}".format(idx))
+                logger.debug("flush #{}".format(idx))
                 node1.flush()
                 self._count_table_entries()
             start_index += write_range
@@ -284,7 +291,7 @@ class IcsCompactionTest(Tester):
         session.execute('DROP KEYSPACE {}'.format(KEYSPACE_NAME))
         shutil.rmtree(os.path.join(node1.get_path(), 'data', KEYSPACE_NAME))
 
-        self.create_ks(session, name=KEYSPACE_NAME, rf=RF)
+        create_ks(session, name=KEYSPACE_NAME, rf=RF)
         create_table(session=session, compaction_strategy=CompactionStrategy.INCREMENTAL,
                      keyspace_name=KEYSPACE_NAME, table_name=TABLE_NAME,
                      sstable_size_in_mb=sstable_size_in_mb)
@@ -299,13 +306,13 @@ class IcsCompactionTest(Tester):
             restore_snapshot_with_refresh(snapshot_dir, node1, KEYSPACE_NAME, TABLE_NAME)
         node1.nodetool('refresh {} {}'.format(KEYSPACE_NAME, TABLE_NAME))
         # Check that the number of table entries on snapshot is restored.
-        debug("Verifying data")
+        logger.debug("Verifying data")
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=4)
 
-        debug("Writing more data")
+        logger.debug("Writing more data")
         self._write_and_flush_sstables(num_of_generated_sstables=1, start_index=1)
         node1.wait_for_compactions()
-        debug("Stopping node")
+        logger.debug("Stopping node")
         node1.stop()
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
         for size in files_size:
@@ -315,7 +322,7 @@ class IcsCompactionTest(Tester):
         assert total_size == expected_total_size, f"Expected total sstable size of {expected_total_size}, but found {total_size}. files_size: {files_size}"
 
         # clean up
-        debug("removing snapshot_dir: " + snapshot_dir)
+        logger.debug("removing snapshot_dir: " + snapshot_dir)
         shutil.rmtree(snapshot_dir)
 
     @staticmethod
@@ -323,8 +330,8 @@ class IcsCompactionTest(Tester):
                                            partition_range_start=1,
                                            table_name=TABLE_NAME, num_of_columns=NUM_OF_COLUMNS):
 
-        debug('Create {} partitions of {} columns with {} rows'.format(partition_range_end, num_of_columns,
-                                                                       rows_in_partition))
+        logger.debug('Create {} partitions of {} columns with {} rows'.format(partition_range_end, num_of_columns,
+                                                                              rows_in_partition))
         for i in range(partition_range_start, partition_range_end + 1):
             for k in range(1, rows_in_partition + 1):
                 str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
@@ -344,14 +351,14 @@ class IcsCompactionTest(Tester):
 
     #######################   Helper Functions End  ###########################################################################
 
-    def check_default_compaction_strategy_test(self):
+    def test_check_default_compaction_strategy(self):
         session = self.create_cluster(num_of_nodes=1)
-        self.create_ks(session=session, name=KEYSPACE_NAME, rf=1)
-        self.create_cf(session=session, name=TABLE_NAME, columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session=session, name=KEYSPACE_NAME, rf=1)
+        create_cf(session=session, name=TABLE_NAME, columns={'c1': 'text', 'c2': 'text'})
         compaction = self._get_table_compaction_strategy()
         assert compaction == CompactionStrategy.INCREMENTAL, "Default compaction is: {}".format(compaction)
 
-    def alter_table_stcs_to_lcs_to_ics_test(self):
+    def test_alter_table_stcs_to_lcs_to_ics(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.LEVELED,
                                                 original_compaction=CompactionStrategy.SIZE_TIERED)
         self.alter_table_compaction(compaction_strategy=CompactionStrategy.INCREMENTAL, assert_altered_compaction=True)
@@ -359,7 +366,7 @@ class IcsCompactionTest(Tester):
         node1.compact()
         node1.wait_for_compactions()
 
-    def alter_table_stcs_to_ics_to_stcs_test(self):
+    def test_alter_table_stcs_to_ics_to_stcs(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.SIZE_TIERED)
         self.alter_table_compaction(compaction_strategy=CompactionStrategy.SIZE_TIERED, assert_altered_compaction=True)
@@ -367,43 +374,43 @@ class IcsCompactionTest(Tester):
         node1.compact()
         node1.wait_for_compactions()
 
-    def alter_table_ics_to_stcs_test(self):
+    def test_alter_table_ics_to_stcs(self):
         self._create_table_and_alter_compaction(original_compaction=CompactionStrategy.INCREMENTAL,
                                                 new_compaction=CompactionStrategy.SIZE_TIERED)
 
-    def alter_table_ics_to_lcs_test(self):
+    def test_alter_table_ics_to_lcs(self):
         self._create_table_and_alter_compaction(original_compaction=CompactionStrategy.INCREMENTAL,
                                                 new_compaction=CompactionStrategy.LEVELED)
 
-    def alter_table_ics_to_time_window_test(self):
+    def test_alter_table_ics_to_time_window(self):
         self._create_table_and_alter_compaction(original_compaction=CompactionStrategy.INCREMENTAL,
                                                 new_compaction=CompactionStrategy.TIME_WINDOW)
 
-    def alter_table_stcs_to_ics_test(self):
+    def test_alter_table_stcs_to_ics(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.SIZE_TIERED)
 
-    def alter_table_lcs_to_ics_test(self):
+    def test_alter_table_lcs_to_ics(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.LEVELED)
 
-    def alter_table_time_window_to_ics_test(self):
+    def test_alter_table_time_window_to_ics(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.TIME_WINDOW)
 
-    def ics_snapshot_and_restore_with_sstableloader_test(self):
+    def test_ics_snapshot_and_restore_with_sstableloader(self):
         """
         Test snapshot and restore with ICS and sstable-loader.
         """
         self.basic_snapshot_and_restore(use_sstableloader=True)
 
-    def ics_snapshot_and_restore_with_refresh_test(self):
+    def test_ics_snapshot_and_restore_with_refresh(self):
         """
         Test snapshot and restore with ICS and nodetool refresh.
         """
         self.basic_snapshot_and_restore(use_sstableloader=False)
 
-    def time_window_to_ics_snapshot_refresh_test(self):
+    def test_time_window_to_ics_snapshot_refresh(self):
         """
         Test snapshot restore with ICS and nodetool refresh of source Time-Window sstables.
         """
@@ -417,7 +424,7 @@ class IcsCompactionTest(Tester):
                                       table=TABLE_NAME)
         self._read_generated_sstables_data(increasing_write_size=True)
 
-    def lcs_to_ics_snapshot_refresh_test(self):
+    def test_lcs_to_ics_snapshot_refresh(self):
         """
         Test snapshot restore with ICS and nodetool refresh of source LCS sstables.
         """
@@ -431,7 +438,7 @@ class IcsCompactionTest(Tester):
                                       table=TABLE_NAME)
         self._read_generated_sstables_data(increasing_write_size=True)
 
-    def stcs_to_ics_snapshot_refresh_test(self):
+    def test_stcs_to_ics_snapshot_refresh(self):
         """
         Test snapshot restore with ICS and nodetool refresh of source STCS sstables.
         """
@@ -445,7 +452,7 @@ class IcsCompactionTest(Tester):
                                       table=TABLE_NAME)
         self._read_generated_sstables_data(increasing_write_size=True)
 
-    def ics_refresh_with_big_sstable_files_test(self):
+    def test_ics_refresh_with_big_sstable_files(self):
         """
 
         1. Create a keyspace and a table with STCS
@@ -485,7 +492,7 @@ class IcsCompactionTest(Tester):
         shutil.rmtree(os.path.join(node1.get_path(), 'data', KEYSPACE_NAME))
 
         # Re-create a clean table as ICS
-        self.create_ks(session, name=KEYSPACE_NAME, rf=1)
+        create_ks(session, name=KEYSPACE_NAME, rf=1)
         create_table(session=session, compaction_strategy=CompactionStrategy.INCREMENTAL,
                      keyspace_name=KEYSPACE_NAME, table_name=TABLE_NAME,
                      sstable_size_in_mb=sstable_size_in_mb)
@@ -503,10 +510,10 @@ class IcsCompactionTest(Tester):
                          expected=num_rows_per_sstable * num_of_generated_sstables)
 
         # clean up
-        debug("removing snapshot_dir: " + snapshot_dir)
+        logger.debug("removing snapshot_dir: " + snapshot_dir)
         shutil.rmtree(snapshot_dir)
 
-    def ics_sstables_refresh_with_collisions_test(self):
+    def test_ics_sstables_refresh_with_collisions(self):
         """
 
         1. Create a keyspace and a table with chosen compaction strategy
@@ -530,10 +537,10 @@ class IcsCompactionTest(Tester):
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=8)
 
         # clean up
-        debug("removing snapshot_dir: " + snapshot_dir)
+        logger.debug("removing snapshot_dir: " + snapshot_dir)
         shutil.rmtree(snapshot_dir)
 
-    def ics_with_partitions_larger_than_sstable_size_test(self):
+    def test_ics_with_partitions_larger_than_sstable_size(self):
         """
         Check ics with variable size partitions, smaller and larger than sstable size on flush and on compaction.
         """
@@ -555,7 +562,7 @@ class IcsCompactionTest(Tester):
 
         def is_compaction_executed():
             sstables_files1, _ = self._get_sstable_files_and_sizes()
-            debug("Found {} sstables, out of {} originally created".format(
+            logger.debug("Found {} sstables, out of {} originally created".format(
                 len(sstables_files1), num_of_generated_sstables))
             return len(sstables_files1) < num_of_generated_sstables
 
@@ -566,14 +573,13 @@ class IcsCompactionTest(Tester):
                  timeout=100)
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
         max_found_file_size = max(files_size)
-        debug("Number of files after {} flushes is: {} , {}".format(num_of_generated_sstables, len(sstables_files1),
-                                                                    sstables_files1))
-        self.assertGreater(a=len(sstables_files1), b=1, msg="More than 1 sstable is expected")
-        self.assertLessEqual(a=max_found_file_size, b=max_expected_file_size,
-                             msg="Maximum file size exceeds expected limit of {}: {}".format(max_expected_file_size,
-                                                                                             max_found_file_size))
+        logger.debug("Number of files after {} flushes is: {} , {}".format(num_of_generated_sstables, len(sstables_files1),
+                                                                           sstables_files1))
+        assert len(sstables_files1) > 1, "More than 1 sstable is expected"
+        assert max_found_file_size <= max_expected_file_size, \
+            "Maximum file size exceeds expected limit of {}: {}".format(max_expected_file_size, max_found_file_size)
 
-    def lcs_major_compaction_then_ics_major_compaction_test(self):
+    def test_lcs_major_compaction_then_ics_major_compaction(self):
         """
         Check number and size of incremental compaction strategy sstables after generating load and running a major compaction via nodetool.
         """
@@ -588,7 +594,7 @@ class IcsCompactionTest(Tester):
         self.alter_table_compaction(compaction_strategy=CompactionStrategy.INCREMENTAL, assert_altered_compaction=True)
         node1.compact()
 
-    def sstable_files_validations_with_ics_compaction_test(self):
+    def test_sstable_files_validations_with_ics_compaction(self):
         """
         Check number and size of incremental compaction strategy sstables after generating load and running a major compaction via nodetool.
         """
@@ -605,12 +611,11 @@ class IcsCompactionTest(Tester):
         node1.compact()
         sstables_files2, files_size2 = self._get_sstable_files_and_sizes()
         table = ".".join([KEYSPACE_NAME, TABLE_NAME])
-        assert len(
-            sstables_files2) >= num_of_generated_sstables, "Less than {num_of_generated_sstables} SSTable files found for {table} after ICS compaction!".format(
-            **locals())
+        assert len(sstables_files2) >= num_of_generated_sstables, \
+            f"Less than {num_of_generated_sstables} SSTable files found for {table} after ICS compaction!"
         self._check_sstable_file_size_limit(list_sstable_files=sstables_files2, sstable_size_in_mb=sstable_size_in_mb)
 
-    def ics_sstables_basic_large_partitions_test(self):
+    def test_ics_sstables_basic_large_partitions(self):
         """
                 Add new keys on large-partitions-table for cluster nodes.
         """
@@ -621,7 +626,7 @@ class IcsCompactionTest(Tester):
                                                 rows_in_partition=ROWS_IN_PARTITION)
 
         big_partition = PARTITIONS + 1
-        debug('Create partition where pk = {} with {} rows'.format(big_partition, BIG_PARTITION_ROWS))
+        logger.debug('Create partition where pk = {} with {} rows'.format(big_partition, BIG_PARTITION_ROWS))
         self.insert_large_partitions_table_data(session=test_session, partition_range_start=big_partition,
                                                 partition_range_end=big_partition,
                                                 rows_in_partition=BIG_PARTITION_ROWS)
@@ -633,7 +638,7 @@ class IcsCompactionTest(Tester):
         node1 = self.cluster.nodelist()[0]
         self.cluster.flush()
 
-        debug("Inserting new data to nodes...")
+        logger.debug("Inserting new data to nodes...")
         session = self.patient_cql_connection(node1)
         session.set_keyspace(KEYSPACE_NAME)
         num_of_new_rows = 50
@@ -641,11 +646,11 @@ class IcsCompactionTest(Tester):
         num_of_new_rows_per_flush = num_of_new_rows // num_of_flushes
         current_row_index = 1
         stmts = []
-        debug("Going to generate {} CQL inserts, for table {}".format(
+        logger.debug("Going to generate {} CQL inserts, for table {}".format(
             num_of_new_rows, TABLE_NAME))
         for flush in range(num_of_flushes):
             for i in range(current_row_index, current_row_index + num_of_new_rows_per_flush):
-                debug("#{} cmd - ".format(i))
+                logger.debug("#{} cmd - ".format(i))
                 stmt = 'insert into {table_name} (pk, ck) values ({pk}, {ck})'.format(table_name=TABLE_NAME,
                                                                                       pk=big_partition + i,
                                                                                       ck=random.randint(1,
@@ -661,7 +666,7 @@ class IcsCompactionTest(Tester):
         self.cluster.flush()
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=total_rows)
 
-    def space_amplification_goal_trigger_test(self):
+    def test_space_amplification_goal_trigger(self):
         """
         Check that space_amplification_goal triggers a compaction of 2 tiers appropriately when threshold is met.
         """
@@ -687,10 +692,9 @@ class IcsCompactionTest(Tester):
         node1.wait_for_compactions()
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
         assert sorted(files_size) == [1, 10], "Cross-tier compaction was not triggered after " \
-            "space_amplification_goal is exceeded!".format(
-            **locals())
+            "space_amplification_goal is exceeded!"
 
-    def space_amplification_goal_3_buckets_test(self):
+    def test_space_amplification_goal_3_buckets(self):
         """
         Check that space_amplification_goal triggers a compaction of 2 tiers appropriately when threshold is met.
         """
@@ -715,13 +719,12 @@ class IcsCompactionTest(Tester):
         # Check that compaction was triggered by min_threshold and the new sstables are compacted without the big one.
         node1.wait_for_compactions()
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
-        assert sorted(files_size) == [4, 10], "Unexpected compacted sstable sizes.".format(
-            **locals())
+        assert sorted(files_size) == [4, 10], "Unexpected compacted sstable sizes."
+
         self._write_and_flush_sstables(num_of_generated_sstables=1, write_range=5, start_index=1,
                                        num_writes_per_sstable=5)
         # Check that cross-tier compaction was triggered since 5 + 4 sstables > 7 (70% of 10 )
         node1.wait_for_compactions()
         sstables_files1, files_size = self._get_sstable_files_and_sizes()
-        assert files_size == [
-            10], "Cross-tier compaction was not triggered after space_amplification_goal is exceeded!".format(
-            **locals())
+        assert files_size == [10], \
+            "Cross-tier compaction was not triggered after space_amplification_goal is exceeded!"
