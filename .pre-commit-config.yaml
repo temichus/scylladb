@@ -82,6 +82,7 @@ repos:
                 audit_test.py|
                 user_types_test.py|
                 user_functions_test.py|
+                in_memory_test.py|
                 hintedhandoff_test.py|
                 hintedhandoff_additional_test.py|
                 materialized_views_test.py|

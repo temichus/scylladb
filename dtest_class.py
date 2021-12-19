@@ -360,7 +360,7 @@ def create_cf(session, name, key_type="varchar", speculative_retry=None, read_re
               gc_grace=None, columns=None, validation="UTF8Type", compact_storage=False,
               compaction_strategy='SizeTieredCompactionStrategy', primary_key=None, clustering=None, default_ttl=None,
               compaction=None, debug_query=False, caching=True, paxos_grace_seconds=None,
-              dclocal_read_repair_chance=None):
+              dclocal_read_repair_chance=None, in_memory=None):
 
     compaction_fragment = "compaction = {'class': '%s', 'enabled': 'true'}"
     if compaction_strategy == '':
@@ -409,7 +409,8 @@ def create_cf(session, name, key_type="varchar", speculative_retry=None, read_re
         query = '%s AND default_time_to_live=%d' % (query, default_ttl)
     if speculative_retry is not None:
         query = '%s AND speculative_retry=\'%s\'' % (query, speculative_retry)
-
+    if in_memory:
+        query += ' AND in_memory=true'
     if compact_storage:
         query += ' AND COMPACT STORAGE'
 
