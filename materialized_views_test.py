@@ -4045,7 +4045,7 @@ class TestMaterializedViewsConsistency(Tester):
 
 
 @pytest.mark.dtest_full
-class InterruptBuildProcess(CommonUtils):
+class TestInterruptBuildProcess(CommonUtils):
     # running multiple test cases in parallel with max/half number of shards
     # might exhaust aio-max-nr
     lock = Lock()
@@ -4084,7 +4084,7 @@ class InterruptBuildProcess(CommonUtils):
     @pytest.mark.dtest_heavy
     def test_interrupt_build_process_test(self):
         logger.debug("Acquiring lock")
-        with InterruptBuildProcess.lock:
+        with TestInterruptBuildProcess.lock:
             logger.debug("Running test")
             self._interrupt_build_process_test()
 
@@ -4187,7 +4187,7 @@ class InterruptBuildProcess(CommonUtils):
 
     def _do_resharding_test(self, smp_before, smp_after, compression='LZ4Compressor', interrupt_resharding=False):
         logger.debug("Acquiring lock")
-        with InterruptBuildProcess.lock:
+        with TestInterruptBuildProcess.lock:
             self.__do_resharding_test(smp_before, smp_after, compression, interrupt_resharding)
 
     def __do_resharding_test(self, smp_before, smp_after, compression, interrupt_resharding):
