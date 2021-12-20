@@ -144,6 +144,16 @@ def fixture_logging_setup(request):
     name_filer = TestNameFilter()
     logging_plugin.log_file_handler.addFilter(name_filer)
 
+    # handle xdist case and create file per worker
+    worker_id = os.environ.get('PYTEST_XDIST_WORKER', '')
+    if worker_id and 'worker_id' not in log_per_process_data.keys():
+        filename, ext = os.path.splitext(logging_plugin.log_file_handler.baseFilename)
+        filename = f"{filename}-{worker_id}{ext}"
+        logging_plugin.log_file_handler.close()
+        logging_plugin.log_file_handler.baseFilename = filename
+        logging_plugin.log_file_handler.stream = open(filename, mode="w", encoding="UTF-8")
+        log_per_process_data["worker_id"] = worker_id
+
     # configure the error logger to go only to log file
     if 'error_logger' not in log_per_process_data:
         error_logger = logging.getLogger("errors")
