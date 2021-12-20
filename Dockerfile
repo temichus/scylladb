@@ -9,7 +9,8 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 ADD docker/etc /etc
 ADD requirements.txt requirements.txt
 
-RUN pip3 install -U pip setuptools wheel
+# pinnning setuptools cause of https://github.com/pypa/setuptools/issues/2938
+RUN pip3 install -U pip setuptools==59.8.0 wheel
 RUN pip3 install -r requirements.txt --ignore-installed
 
 RUN ccm create cas-tmp --vnodes -n 1 --version=3.11.3
