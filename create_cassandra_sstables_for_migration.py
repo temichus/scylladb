@@ -107,7 +107,7 @@ def main(args):
         print('Error: {}'.format(e))
     finally:
         if cc:
-            cc.tearDown()
+            cc.tear_down()
 
 
 if __name__ == "__main__":

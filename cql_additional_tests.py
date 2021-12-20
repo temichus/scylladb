@@ -6007,24 +6007,13 @@ class TestCQL(Tester):
     def mc_migrate_scylla_to_cassandra(self, keyspace_name, table_name, dataset, data_amount,
                                        columns=['"ID"', '"Ck1"', '"cK2"', '"Columnfamily_for_mc_sstables_column1"'],
                                        keys_columns_amount=3, request=None):
-        cc = None
-        try:
-            cc = CassandraCluster(cassandra_version='3.11.3', request=request)
-            cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path,
-                                               keyspace_names_list=[keyspace_name])
-            cassandra_session = self.patient_cql_connection(cassandra_node1, keyspace=keyspace_name.replace('"', ''))
+        cc = CassandraCluster(cassandra_version='3.11.3', request=request)
+        cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path,
+                                           keyspace_names_list=[keyspace_name])
+        cassandra_session = self.patient_cql_connection(cassandra_node1, keyspace=keyspace_name.replace('"', ''))
 
-            self.mc_validate_data(session=cassandra_session, table_name=table_name, data_amount=data_amount, dataset=dataset,
-                                  columns=columns, keys_columns_amount=keys_columns_amount)
-        except:
-            raise
-        finally:
-            try:
-                if cc:
-                    cc.tearDown()
-            except Exception as ex:
-                logger.debug(ex)
-                traceback.print_exc()
+        self.mc_validate_data(session=cassandra_session, table_name=table_name, data_amount=data_amount, dataset=dataset,
+                              columns=columns, keys_columns_amount=keys_columns_amount)
 
     def test_mc_sstables_case_sensitive_insert(self, request, compaction_strategy_for_migration):
         """

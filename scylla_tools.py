@@ -5,6 +5,7 @@ import unittest
 import subprocess
 import logging
 
+import pytest
 import tabulate
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args, execute_concurrent
@@ -1110,7 +1111,7 @@ class CassandraCluster(object):
 
     def __init__(self, cassandra_version, request):
         self.cassandra_version = cassandra_version
-        self.request = request
+        self.request: pytest.FixtureRequest = request
         self.dtest_config = DTestConfig()
         self.dtest_config.setup(self.request)
         self.dtest_config.cassandra_version = cassandra_version
@@ -1132,15 +1133,12 @@ class CassandraCluster(object):
             self.scylla_cluster.stop(wait_other_notice=True)
         # Set up Cassandra cluster
         self.dtest_setup.initialize_cluster(DTestSetup.create_ccm_cluster)
-
+        self.request.addfinalizer(self.tear_down)
         self.cluster = self.dtest_setup.cluster
         self.cluster.set_configuration_options(values=config_options)
         logger.debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
         self.cluster.populate(nodes)
-        try:
-            self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
-        except:
-            raise
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         self.test_path = self.dtest_setup.test_path
         return self.cluster.nodelist()[0]
 
@@ -1265,7 +1263,7 @@ class CassandraCluster(object):
         self.migrate_data_to_cassandra(nodes=nodes_list)
         return node1
 
-    def tearDown(self):
+    def tear_down(self):
         logger.debug('Remove temporary folder with Scylla data')
         if self.scylla_data_tmp_folder and os.path.exists(self.scylla_data_tmp_folder):
             shutil.rmtree(self.scylla_data_tmp_folder)

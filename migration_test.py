@@ -1088,28 +1088,21 @@ class TestTTLWithMigrate(Tester):
         os.unlink(cassandra_json_path)
 
     def migrate_to_cassandra(self, keyspace_name, table_name, take_dump=True, scylla_big_partition_count=None, count_query='', request=None):
-        cc = None
         cassandra_data_json, cassandra_json_path = '', ''
-        try:
-            cc = CassandraCluster(cassandra_version='3.11.3', request=request)
-            cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path,
-                                               keyspace_names_list=[keyspace_name], table_names=[table_name])
-            if take_dump:
-                cassandra_data_json, cassandra_json_path = self._dump_data(cluster=cc.cluster, node=cassandra_node1,
-                                                                           node_owner='Cassandra')
+        cc = CassandraCluster(cassandra_version='3.11.3', request=request)
+        cassandra_node1 = cc.run_migration(scylla_cluster=self.cluster, scylla_test_path=self.test_path,
+                                           keyspace_names_list=[keyspace_name], table_names=[table_name])
+        if take_dump:
+            cassandra_data_json, cassandra_json_path = self._dump_data(cluster=cc.cluster, node=cassandra_node1,
+                                                                       node_owner='Cassandra')
 
-            # We want to validate the rows amount in the large partition.
-            # But the count query fails on timeout in Cassandra. Comment meanwhile
-            # Error in the log: org.apache.cassandra.service.DigestMismatchException: Mismatch for key DecoratedKey
-            # https://stackoverflow.com/questions/39765813/datastax-mismatch-for-key-issue
-            # if scylla_big_partition_count is not None:
-            #     cassandra_session = self.patient_cql_connection(cassandra_node1, keyspace=keyspace_name)
-            #     assert_one(cassandra_session, count_query, [scylla_big_partition_count], cl=ConsistencyLevel.ALL, timeout=300)
-        except:
-            raise
-        finally:
-            if cc:
-                cc.tearDown()
+        # We want to validate the rows amount in the large partition.
+        # But the count query fails on timeout in Cassandra. Comment meanwhile
+        # Error in the log: org.apache.cassandra.service.DigestMismatchException: Mismatch for key DecoratedKey
+        # https://stackoverflow.com/questions/39765813/datastax-mismatch-for-key-issue
+        # if scylla_big_partition_count is not None:
+        #     cassandra_session = self.patient_cql_connection(cassandra_node1, keyspace=keyspace_name)
+        #     assert_one(cassandra_session, count_query, [scylla_big_partition_count], cl=ConsistencyLevel.ALL, timeout=300)
 
         return cassandra_data_json, cassandra_json_path
 
