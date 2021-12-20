@@ -8,6 +8,7 @@ from cassandra.query import SimpleStatement
 
 from dtest_class import Tester, create_ks, get_ip_from_node, create_cf
 from dtest_setup import DTestSetup
+from scylla_tools import prepare_statement
 from tools.assertions import assert_one, assert_none, assert_all, assert_row_count
 from tools.data import rows_to_list
 from tools.metrics import get_node_metrics
@@ -22,7 +23,7 @@ class TestLwt(Tester):
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):  # pylint: disable=no-self-use
         fixture_dtest_setup.allow_log_errors = True
 
-    def case_prologue(self, jvm_args=None):
+    def case_prologue(self, jvm_args=None, table_cql="CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"):
         """ Assorted actions in preparation for a test case"""
         cluster = self.cluster
         cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
@@ -31,8 +32,7 @@ class TestLwt(Tester):
 
         session = self.patient_cql_connection(node, protocol_version=4)
         create_ks(session=session, name="lwt", rf=1)
-        cql = "CREATE TABLE IF NOT EXISTS t (a INT PRIMARY KEY, b INT)"
-        session.execute(cql)
+        session.execute(table_cql)
         return node, session
 
     @pytest.mark.single_node
@@ -658,6 +658,28 @@ class TestLwt(Tester):
         # assert_all(session1, f"select key, v1 from lwt.{table_name}", expected=[[0, 202]])
         # assert_all(session2, f"select key, v1 from lwt.{table_name}", expected=[[0, 202]])
         # assert_all(session3, f"select key, v1 from lwt.{table_name}", expected=[[0, 202]])
+
+    def test_not_deterministic_function_in_pk(self):
+        table_name = "test"
+        node, session = self.case_prologue(
+            table_cql=f"CREATE TABLE IF NOT EXISTS {table_name} (pk1 uuid, pk2 timestamp, ck date, "
+                      "PRIMARY KEY((pk1, pk2), ck))")
+
+        insert_cql = f"INSERT INTO {table_name}(pk1, pk2, ck) " \
+                     f"VALUES (uuid(), currentTimestamp(), currentDate()) IF NOT EXISTS"
+
+        rows = 1000
+        logger.debug(f"Insert {rows} rows using not prepared query")
+        for _ in range(rows):
+            session.execute(insert_cql)
+        assert_row_count(session=session, table_name=table_name, expected=rows)
+
+        logger.debug(f"Insert {rows} rows using prepared query")
+        prepared_cql = prepare_statement(session, insert_cql)
+        for _ in range(rows):
+            session.execute(prepared_cql, [])
+        rows += 1000
+        assert_row_count(session=session, table_name=table_name, expected=rows)
 
 
 @pytest.mark.dtest_full
