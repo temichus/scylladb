@@ -1172,10 +1172,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
             load_and_stream_result = self.run_load_and_stream(node1)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream." \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         # Copy sstables from 2 nodes to node2
         for node_load_from in ['node3', 'node4']:
@@ -1183,10 +1180,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
             load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream." \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1222,10 +1216,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
             load_and_stream_result = self.run_load_and_stream(node1)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream." \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         # Copy sstables from 2 nodes to node2
         for node_load_from in ['node3', 'node4']:
@@ -1233,10 +1224,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
             load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream." \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=mv_name)
 
@@ -1279,10 +1267,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
             load_and_stream_result = self.run_load_and_stream(node1)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream." \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         # Copy sstables from 2 nodes to node2
         for node_load_from in ['node3', 'node4']:
@@ -1290,10 +1275,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
             load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream." \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=f'{index_name}_index')
 
@@ -1339,10 +1321,7 @@ class TestLoadAndStream(BaseHelpers):
 
         for node in [node1, node4]:
             load_and_stream_result = self.run_load_and_stream(node)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=f'{index_name}_index')
 
@@ -1382,10 +1361,7 @@ class TestLoadAndStream(BaseHelpers):
 
         for node in [node3, node4]:
             load_and_stream_result = self.run_load_and_stream(node)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1415,10 +1391,7 @@ class TestLoadAndStream(BaseHelpers):
 
         for node in [node1, node4]:
             load_and_stream_result = self.run_load_and_stream(node)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1447,10 +1420,7 @@ class TestLoadAndStream(BaseHelpers):
         for source_files in ['from-cluster-2-nodes/node1', 'from-cluster-2-nodes/node2']:
             self.copy_sstables_to_node(copy_to_node=node3, migrated_files_dir=source_files)
             load_and_stream_result = self.run_load_and_stream(node3)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1490,10 +1460,7 @@ class TestLoadAndStream(BaseHelpers):
 
         for node in [node1, node4]:
             load_and_stream_result = self.run_load_and_stream(node)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=mv_name)
 
@@ -1537,10 +1504,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-2-nodes/{node_map[0]}')
             load_and_stream_result = self.run_load_and_stream(node_map[1])
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream on {self.TABLE_NAME}. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1551,6 +1515,7 @@ class TestLoadAndStream(BaseHelpers):
                        c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
                        ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
 
+    @pytest.mark.skip("scylla-tools-java:#282")
     def test_load_and_stream_primary_replica_only(self):
         """
         Test for the feature load_and_stream:
@@ -1580,10 +1545,7 @@ class TestLoadAndStream(BaseHelpers):
                                    migrated_files_dir='from-cluster-2-nodes/node1')
 
         load_and_stream_result = self.run_load_and_stream(node2, primary_replica_only=True)
-        assert load_and_stream_result.status_code == requests.codes.ok, \
-            f"Failed to run load and stream on {self.TABLE_NAME}. " \
-            f"Response code is {load_and_stream_result.status_code}. " \
-            f"Message: {load_and_stream_result.text}"
+        assert load_and_stream_result, f"Failed to run load and stream."
 
         for node in self.cluster.nodelist():
             node.nodetool('repair -pr')
@@ -1618,10 +1580,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes-frozen-pk/{node}')
             load_and_stream_result = self.run_load_and_stream(node1)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         logger.debug(f"Copy sstables of node3 to node2")
         self.copy_sstables_to_node(copy_to_node=node2,
@@ -1633,10 +1592,7 @@ class TestLoadAndStream(BaseHelpers):
 
         for node in [node2, node3]:
             load_and_stream_result = self.run_load_and_stream(node)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1669,10 +1625,7 @@ class TestLoadAndStream(BaseHelpers):
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes-2-columns-pk/{node}')
             load_and_stream_result = self.run_load_and_stream(node1)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         logger.debug(f"Copy sstables of node1 to node2")
         self.copy_sstables_to_node(copy_to_node=node2,
@@ -1684,10 +1637,7 @@ class TestLoadAndStream(BaseHelpers):
 
         for node in [node2, node3]:
             load_and_stream_result = self.run_load_and_stream(node)
-            assert load_and_stream_result.status_code == requests.codes.ok, \
-                f"Failed to run load and stream. " \
-                f"Response code is {load_and_stream_result.status_code}. " \
-                f"Message: {load_and_stream_result.text}"
+            assert load_and_stream_result, f"Failed to run load and stream."
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1707,24 +1657,22 @@ class TestLoadAndStream(BaseHelpers):
                               c1_value=f'customtext1{key}', c2_value=f'customtext2{key}')
 
     def run_load_and_stream(self, node: ScyllaNode, primary_replica_only: bool = False):
-        # TODO: load_and_stream_parameter is not supported by nodetool yet. Run it using api as workaround
-        # node.nodetool(f"refresh --load-and-stream -- {self.KEYSPACE_NAME} {self.TABLE_NAME}")
+        mark = node.mark_log()
 
         logger.debug(f"Running load and stream on the node {node.name} for {self.KEYSPACE_NAME}.{self.TABLE_NAME}'")
-        mark = node.mark_log()
-        try:
-            api_cmd = f"http://{node.address()}:10000/storage_service/sstables/{self.KEYSPACE_NAME}?" \
-                      f"cf={self.TABLE_NAME}&load_and_stream=true&primary_replica_only={primary_replica_only}"
-            logger.debug(f"Send load_and_stream api: {api_cmd}")
-            r = requests.post(api_cmd)
-            logger.debug(f"Request answer: {r.text}")
+        nodetool_cmd = f"refresh --load-and-stream -- {self.KEYSPACE_NAME} {self.TABLE_NAME}"
+        if primary_replica_only:
+            nodetool_cmd += f" --primary-replica-only {str(primary_replica_only).lower()}"
 
-        except Exception:
-            log_errors = node.grep_log_for_errors(from_mark=mark)
-            logger.error(f"Load and stream API request failed. Errors in the node log: {log_errors}")
+        try:
+            node.nodetool(nodetool_cmd)
+        except NodetoolError:
             raise
 
-        return r
+        result = node.watch_log_for(f"Loading new SSTables for keyspace={self.KEYSPACE_NAME}, table={self.TABLE_NAME}, "
+                                    f"load_and_stream=true, primary_replica_only={str(primary_replica_only).lower()}",
+                                    from_mark=mark, timeout=10)
+        return result
 
     def copy_sstables_to_node(self, copy_to_node: ScyllaNode, migrated_files_dir: str):
         dtest_path = os.path.dirname(os.path.realpath(__file__))

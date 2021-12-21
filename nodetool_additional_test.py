@@ -1594,9 +1594,27 @@ class TestNodetool(Tester):
                           "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
 
         node.nodetool("refresh -las -- ks cf")
-        node.watch_log_for("load_and_stream=true", timeout=10)
+        node.watch_log_for(f"Loading new SSTables for keyspace=ks, table=cf, "
+                           f"load_and_stream=true, primary_replica_only=false", timeout=10)
         node.nodetool("refresh -- ks cf")
-        node.watch_log_for("load_and_stream=false", timeout=10)
+        node.watch_log_for(f"Loading new SSTables for keyspace=ks, table=cf, "
+                           f"load_and_stream=false, primary_replica_only=false", timeout=10)
+
+    @pytest.mark.skip("scylla-tools-java:#282")
+    @pytest.mark.single_node
+    def test_nodetool_refresh_with_load_and_stream_with_primary_replica_only(self):
+        """
+        Test nodetool refresh with `--load-and-stream` option
+        """
+        cluster = self.run_cluster(nodes=1)
+        node = cluster[0]
+        session = self.patient_cql_connection(node)
+        self.create_table(session, {"ks": {"rf": "1", "tables": {
+                          "cf": {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
+
+        node.nodetool("refresh -las -- ks cf --primary-replica-only true")
+        node.watch_log_for(f"Loading new SSTables for keyspace=ks, table=cf, "
+                           f"load_and_stream=true, primary_replica_only=true", timeout=10)
 
     def proxyhistograms(self, node=None):
         if node is None:
