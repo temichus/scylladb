@@ -401,6 +401,7 @@ def fixture_skip_scylla_mode(request, fixture_dtest_setup):
     if marker is not None:
         modes = marker.args[0]
         mode = fixture_dtest_setup.dtest_config.scylla_mode
+        assert mode is not None, f"dtest_config does not contain scylla_mode"
         found = (modes.find(mode) != -1)
         if modes[0] != '!':
             do_skip = not found
