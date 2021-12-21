@@ -3730,11 +3730,10 @@ class TestMaterializedViews(CommonUtils):
                                              f"({i}, {2 * i}, {-i})", consistency_level=ConsistencyLevel.ALL))
         self.cluster.flush()
 
-        def get_all(session):
-            return session.execute(SimpleStatement("SELECT * FROM ks.mv", consistency_level=ConsistencyLevel.ALL))
+        get_all = "SELECT * FROM ks.mv"
 
-        self.eventually(lambda: self.assert_equal(len(get_all(session).current_rows), 20))
-        self.eventually(lambda: self.assert_equal(len(get_all(session2).current_rows), 20))
+        self.eventually(lambda: assert_row_count_in_select(session, get_all, 20, ConsistencyLevel.ALL))
+        self.eventually(lambda: assert_row_count_in_select(session2, get_all, 20, ConsistencyLevel.ALL))
 
 
 # For read verification
