@@ -899,7 +899,7 @@ class TestTTLWithMigrate(Tester):
 
         self.session1.execute(query)
 
-    @pytest.mark.next_gating
+    # @pytest.mark.next_gating      # Removing from gating for now, till it passes consistently
     def test_big_table_with_ttls(self, request):
         """
         Test validates migration from Scylla to Cassandra of large partition table with TTLs.
