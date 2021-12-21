@@ -6494,6 +6494,36 @@ class TestCQL(Tester):
             res = session.execute("SELECT v1, v2 FROM test1 WHERE k = %d" % i)
             assert rows_to_list(res) == [[x, x] for x in range(i * cpr + col1, (i + 1) * cpr)], list(res)
 
+    def test_cql_warning_when_filtering_potentially_infinite_partitions(self):
+        """
+        Test queries which contain a clustering key filter but does not contain a primary key constraint,
+        resulting in a potentially unlimited partition slice.
+        pre 4.6.rc1: No warning
+        post 4.6.rc1: Warning
+        future: Exception
+        """
+        expected_message = "This query should use ALLOW FILTERING and will be rejected in future versions."
+        session = self.prepare()
+
+        session.execute("""
+            CREATE TABLE test_infinite_partition_filtering (
+                pk int,
+                ck int,
+                v1 int,
+                v2 int,
+                PRIMARY KEY(pk, ck)
+            );
+        """)
+
+        for pk_mult in range(10):
+            session.execute("INSERT INTO test_infinite_partition_filtering(pk, ck, v1, v2) "
+                            f"VALUES ({pk_mult * 1000}, 2, 100, 50)")
+
+        result = session.execute("SELECT pk, ck FROM test_infinite_partition_filtering WHERE ck = 2")
+        assert result.response_future.warnings and expected_message in result.response_future.warnings, \
+            "Starting with 4.6 a warning should be generated for query"\
+            " which can potentially contain infinite partitions"
+
 
 @pytest.mark.dtest_full
 class TestsCQLAdditional(Tester):
