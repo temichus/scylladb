@@ -89,6 +89,7 @@ def setupTestEnv(String buildMode, String architecture="", boolean dryRun=false)
 	echo "Setting test environment, mode: |$buildMode|"
 	def homeDir="$WORKSPACE/cluster_home"
 	createEmptyDir(homeDir)
+	env.HOME = homeDir
 	// First look for local built package
 	String scyllaPackageName = artifact.relocPackageName (
 		dryRun: dryRun,
