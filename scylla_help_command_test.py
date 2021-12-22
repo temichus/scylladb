@@ -2,12 +2,14 @@ import re
 import subprocess
 from itertools import chain
 from pathlib import Path
+import logging
 
 import docker
 import pytest
 
-from dtest import debug
 from dtest_class import Tester
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
@@ -32,7 +34,7 @@ class TestScyllaHelpCommand(Tester):
             help_text = container.logs().decode()
         else:
             cli_args = [Path(self.cluster.get_install_dir()) / "scylla" / "bin" / "scylla", "--help"]
-            debug(f"running command: {' '.join([str(a) for a in cli_args])}")
+            logger.debug(f"running command: {' '.join([str(a) for a in cli_args])}")
             help_text = subprocess.run(cli_args, capture_output=True, universal_newlines=True).stdout
         assert "Scylla options:" in help_text, f"Scylla help text is wrong: {help_text}"
         return help_text
