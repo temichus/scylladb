@@ -15,7 +15,7 @@ def pullRequestSetResult(String status, String context, String description){
 
 def pullRequestContainsLabels(String labels){
 	result = false
-	if (changeRequest() || env.CHANGE_ID){
+	if (env.CHANGE_ID){
         def labels_to_look_for = labels.split(',')
 
         pullRequest.labels.each {
@@ -47,11 +47,6 @@ pipeline {
     }
     stages {
         stage("precommit") {
-            when {
-                expression {
-                    return changeRequest() || env.CHANGE_ID
-                }
-            }
             options {
                 timeout(time: 30, unit: 'MINUTES')
             }
@@ -76,7 +71,7 @@ pipeline {
         stage("test") {
             when {
                 expression {
-                    return (changeRequest() || env.CHANGE_ID) && pullRequestContainsLabels("test/PR")
+                    return env.CHANGE_ID && pullRequestContainsLabels("test/PR")
                 }
             }
             options {
