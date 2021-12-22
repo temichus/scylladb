@@ -11,3 +11,5 @@ import groovy.transform.Field
 @Field String armMetadataFile= "metadata_aarch64.txt"
 @Field String x86ArchName= "x86_64"
 @Field String armArchName= "aarch64"
+
+@Field String jobSummaryFile = "job-summary-results.properties"

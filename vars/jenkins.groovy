@@ -83,3 +83,20 @@ def getChangedFilesList() {
     }
     return changedFiles
 }
+
+def isSpotTermination (String lastStage = env.STAGE_NAME) {
+	try {
+		echo "Last stage: |$lastStage|"
+		sh """
+			echo 'lastStage=$lastStage' >> $WORKSPACE/$generalProperties.jobSummaryFile
+			echo 'result=$currentBuild.currentResult' >> $WORKSPACE/$generalProperties.jobSummaryFile
+		"""
+		artifact.publishArtifactsStatus(generalProperties.jobSummaryFile, WORKSPACE)
+	} catch (java.io.IOException e) {
+		echo "Spot termination. Writing job description"
+		currentBuild.description = "spot termination"
+		error("Spot termination")
+	} catch (error) {
+		echo "Other error: |$error|"
+	}
+}

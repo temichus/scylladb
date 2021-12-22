@@ -45,6 +45,7 @@ def call(Map pipelineParams) {
             stage ('Prepare') {
                 steps {
                     script {
+                        lastStage = env.STAGE_NAME
                         baseRelocJob = params.RELOC_JOB_NAME ?: "next"
                         buildMode = params.BUILD_MODE
                         excludeTests = params.EXCLUDE_DTESTS ?: ""
@@ -99,6 +100,7 @@ def call(Map pipelineParams) {
             //Order is: always, changed, fixed, regression, aborted, failure, success, unstable, and cleanup.
             always {
                 script {
+                    jenkins.isSpotTermination(lastStage)
                     jenkins.cleanWorkSpaceUponRequest(params.PRESERVE_WORKSPACE)
                 }
             }
@@ -108,6 +110,7 @@ def call(Map pipelineParams) {
 
 def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType) {
 	echo "runDtest"
+	lastStage = env.STAGE_NAME
 	dtest.prepareDtestLocalTree (
 		preserveWorkspace: params.PRESERVE_WORKSPACE,
 		dtestBranch: params.SCYLLA_DTEST_BRANCH,

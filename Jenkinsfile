@@ -43,6 +43,7 @@ pipeline {
         string(name: 'PRODUCT_NAME', defaultValue: "scylla", description: 'Choose: scylla|scylla-enterprise')
         string(name: 'BRANCH', defaultValue: "master", description: 'Choose: master|branch-4.4')
         booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Check this to check pipeline syntax. will not perform anything.')
+        booleanParam(name: 'PRESERVE_WORKSPACE', defaultValue: false, description: 'Check this if you need the workspace to remain (for debug)')
     }
     stages {
         stage("precommit") {
@@ -56,6 +57,7 @@ pipeline {
             }
             steps {
                 script {
+                    lastStage = env.STAGE_NAME
                     try {
                         sh '''
                         rm -rf ./temp_home
@@ -82,6 +84,7 @@ pipeline {
             }
             steps {
                 script {
+                    lastStage = env.STAGE_NAME
                     try {
                         def changedFiles = jenkins.getChangedFilesList()
                         def testFiles = changedFiles.findAll({it =~ /.*_test.*py/})
@@ -113,6 +116,16 @@ pipeline {
                         pullRequestSetResult('failure', 'jenkins/test/PR', 'test failed')
                     }
                 }
+            }
+        }
+    }
+
+    post {
+        //Order is: always, changed, fixed, regression, aborted, failure, success, unstable, and cleanup.
+        always {
+            script {
+                jenkins.isSpotTermination(lastStage)
+                jenkins.cleanWorkSpaceUponRequest(params.PRESERVE_WORKSPACE)
             }
         }
     }
