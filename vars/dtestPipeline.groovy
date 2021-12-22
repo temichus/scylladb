@@ -51,7 +51,7 @@ def call(Map pipelineParams) {
                         excludeTests = params.EXCLUDE_DTESTS ?: ""
                         includeDtests = params.INCLUDE_DTESTS ?: ""
 
-                        nodeParam = "packager"
+                        nodeParam = "aws-sct-builders-us-east-1"
                         splitMaxNodesForHeavyAndLong = "10"
 
                         echo "Build mode upon parameter |${params.BUILD_MODE}| or upon job name |${JOB_NAME}|: |${buildMode}|"
@@ -68,9 +68,7 @@ def call(Map pipelineParams) {
                     parallel (
                         FullDtest: {
                             script {
-                                node(nodeParam) {
                                     runDtest (params.SPLIT_MAX_NODES, includeDtests, "full")
-                                }
                             }
                         },
                         HeavyDtest: {
