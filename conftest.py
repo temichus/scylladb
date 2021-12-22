@@ -18,7 +18,6 @@ from netifaces import AF_INET
 import ccmlib.repository
 from ccmlib.common import validate_install_dir, get_version_from_build
 
-from dtest_class import running_in_docker, cleanup_docker_environment_before_test_execution
 from dtest_config import DTestConfig
 from dtest_setup import DTestSetup, copy_logs
 from dtest_setup_overrides import DTestSetupOverrides
@@ -250,8 +249,6 @@ def fixture_dtest_setup(request,
                         fixture_logging_setup,
                         fixture_dtest_cluster_name,
                         fixture_dtest_create_cluster_func):
-    if running_in_docker():
-        cleanup_docker_environment_before_test_execution()
 
     # do all of our setup operations to get the enviornment ready for the actual test
     # to run (e.g. bring up a cluster with the necessary config, populate variables, etc)
