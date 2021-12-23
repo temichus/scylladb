@@ -434,7 +434,7 @@ class TestMiscellaneousCQL(CQLTester):
         result = list(session.execute(explicit_prepared.bind(None)))
         assert result == [(0, 0, 0, None)]
 
-    def test_reverse_query(self):
+    def test_reverse_query(self, subtests):
         """
          Issue: https://github.com/scylladb/scylla/issues/6171
          Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
@@ -461,15 +461,15 @@ class TestMiscellaneousCQL(CQLTester):
 
         read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str}) ORDER BY ck DESC, ck1 DESC"
 
-        with self.subTest('Read without BYPASS CACHE'):
+        with subtests.test('Read without BYPASS CACHE'):
             logger.debug(f'Read without BYPASS CACHE with query: {read_stmt}')
             assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
 
-        with self.subTest('Read with BYPASS CACHE'):
+        with subtests.test('Read with BYPASS CACHE'):
             logger.debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
             assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
-    def test_normal_query(self):
+    def test_normal_query(self, subtests):
         """
          Issue: https://github.com/scylladb/scylla/issues/6171
          Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
@@ -496,15 +496,15 @@ class TestMiscellaneousCQL(CQLTester):
 
         read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str})"
 
-        with self.subTest('Read without BYPASS CACHE'):
+        with subtests.test('Read without BYPASS CACHE'):
             logger.debug(f'Read without BYPASS CACHE with query: {read_stmt}')
             assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
 
-        with self.subTest('Read with BYPASS CACHE'):
+        with subtests.test('Read with BYPASS CACHE'):
             logger.debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
             assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
-    def test_reverse_query_ck_collect(self):
+    def test_reverse_query_ck_collect(self, subtests):
         """
          Issue: https://github.com/scylladb/scylla/issues/6171
          Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
@@ -532,15 +532,15 @@ class TestMiscellaneousCQL(CQLTester):
 
         read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) ORDER BY ck DESC"
 
-        with self.subTest('Read without BYPASS CACHE'):
+        with subtests.test('Read without BYPASS CACHE'):
             logger.debug(f'Read without BYPASS CACHE with query: {read_stmt}')
             assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
 
-        with self.subTest('Read with BYPASS CACHE'):
+        with subtests.test('Read with BYPASS CACHE'):
             logger.debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
             assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
-    def test_reverse_query_table_desc(self):
+    def test_reverse_query_table_desc(self, subtests):
         """
          Issue: https://github.com/scylladb/scylla/issues/6171
          Commit: https://github.com/scylladb/scylla/commit/791acc7f3858e5541ee216034f4c7111818510c5
@@ -568,11 +568,11 @@ class TestMiscellaneousCQL(CQLTester):
 
         read_stmt = f"SELECT v FROM cf WHERE pk = 0 and ck in ({in_str}) and ck1 in ({in_str}) ORDER BY ck DESC, ck1 DESC"
 
-        with self.subTest('Read without BYPASS CACHE'):
+        with subtests.test('Read without BYPASS CACHE'):
             logger.debug(f'Read without BYPASS CACHE with query: {read_stmt}')
             assert_all(session, read_stmt, expected_results, cl=ConsistencyLevel.QUORUM)
 
-        with self.subTest('Read with BYPASS CACHE'):
+        with subtests.test('Read with BYPASS CACHE'):
             logger.debug(f'Read with BYPASS CACHE with query: {read_stmt} BYPASS CACHE')
             assert_all(session, f"{read_stmt} BYPASS CACHE", expected_results, cl=ConsistencyLevel.QUORUM)
 
