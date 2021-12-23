@@ -8,6 +8,7 @@ import re
 from itertools import zip_longest
 from datetime import datetime
 from distutils.version import LooseVersion
+from pkg_resources import parse_version
 
 import github
 from psutil import virtual_memory
@@ -24,6 +25,7 @@ from dtest_setup_overrides import DTestSetupOverrides
 from tools.keystore import KeyStore
 from tools.log_utils import log_per_process_data, TestNameFilter
 from tools.env import GITHUB_TOKEN, DTEST_REQUIRE
+from tools.marks import get_version
 
 logger = logging.getLogger(__name__)
 
@@ -544,6 +546,13 @@ def pytest_collection_modifyitems(items, config):
     items[:] = selected_items
     if collect_require:
         pytest.exit(msg="--collect-require was used", returncode=0)
+
+
+def pytest_markeval_namespace():
+    return dict(
+        parse_version=parse_version,
+        get_version=get_version,
+    )
 
 
 def pytest_plugin_registered(plugin, manager):
