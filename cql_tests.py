@@ -3,9 +3,7 @@ import string
 import struct
 import time
 import logging
-from unittest import skip
 from random import randint
-from math import ceil
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
@@ -25,7 +23,6 @@ from tools.assertions import assert_invalid, assert_one, assert_unavailable, ass
 from dtest_class import Tester, create_ks, FlakyRetryPolicy
 from tools.data import rows_to_list
 from tools.cluster import new_node
-from tools.misc import require
 from scylla_tools import get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
 
 
@@ -145,7 +142,6 @@ class TestStorageProxyCQL(CQLTester):
         assert_invalid(session, "SELECT * FROM test1", expected=InvalidRequest)
         assert_invalid(session, "SELECT * FROM test2", expected=InvalidRequest)
 
-    @skip('Scylla does not support CREATE INDEX')
     def test_index(self):
         """
         CREATE INDEX, DROP INDEX statements
@@ -264,7 +260,7 @@ class TestStorageProxyCQL(CQLTester):
 
 
 @pytest.mark.dtest_full
-class MiscellaneousCQLTester(CQLTester):
+class TestMiscellaneousCQL(CQLTester):
     """
     CQL tests that cannot be performed as Java unit tests, see CASSANDRA-9160. Please consider
     writing java unit tests for CQL validation, add a new test here only if there is a reason for it,
@@ -302,7 +298,6 @@ class MiscellaneousCQLTester(CQLTester):
                             "first 65535 elements will be returned to the "
                             "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
 
-    @skip('scylla does not support manipulation of regular tables (See scylladb/scylla#7568)')
     def test_cql3_insert_thrift(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
         session = self.prepare(start_rpc=True)
@@ -414,19 +409,19 @@ class MiscellaneousCQLTester(CQLTester):
         wildcard_prepared = session.prepare("SELECT * FROM test")
         explicit_prepared = session.prepare("SELECT k, a, b, c FROM test")
         result = list(session.execute(wildcard_prepared.bind(None)))
-        self.assertEqual(result, [(0, 0, 0, 0)])
+        assert result == [(0, 0, 0, 0)]
 
         session.execute("ALTER TABLE test DROP c")
         result = list(session.execute(wildcard_prepared.bind(None)))
         # wildcard select can be automatically re-prepared by the driver
-        self.assertEqual(result, [(0, 0, 0)])
+        assert result == [(0, 0, 0)]
         # but re-preparing the statement with explicit columns should fail
         # (see PYTHON-207 for why we expect InvalidRequestException instead of the normal exc)
         assert_invalid(session, explicit_prepared.bind(None), expected=InvalidRequest)
 
         session.execute("ALTER TABLE test ADD d int")
         result = list(session.execute(wildcard_prepared.bind(None)))
-        self.assertEqual(result, [(0, 0, 0, None)])
+        assert result == [(0, 0, 0, None)]
 
         explicit_prepared = session.prepare("SELECT k, a, b, d FROM test")
 
@@ -434,10 +429,10 @@ class MiscellaneousCQLTester(CQLTester):
         # by the driver, but the re-preparation should succeed
         session.execute("ALTER TABLE test ALTER d TYPE blob")
         result = list(session.execute(wildcard_prepared.bind(None)))
-        self.assertEqual(result, [(0, 0, 0, None)])
+        assert result == [(0, 0, 0, None)]
 
         result = list(session.execute(explicit_prepared.bind(None)))
-        self.assertEqual(result, [(0, 0, 0, None)])
+        assert result == [(0, 0, 0, None)]
 
     def test_reverse_query(self):
         """
@@ -591,7 +586,7 @@ class MiscellaneousCQLTester(CQLTester):
         time.sleep(0.2)
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
 
         session.execute("""
             CREATE TABLE test (
@@ -669,7 +664,7 @@ class MiscellaneousCQLTester(CQLTester):
 
 
 @pytest.mark.dtest_full
-class TruncateTester(CQLTester):
+class TestTruncate(CQLTester):
 
     @staticmethod
     def create_schema(session, rf=1):
@@ -697,18 +692,15 @@ class TruncateTester(CQLTester):
 
             # validate truncation entries in the system.truncated table - expected entry
             truncated_time = get_truncated_time_from_system_truncated(session=session, table_id=id)
-            self.assertTrue(truncated_time, msg='Expected truncated entry in the system.truncated table, '
-                                                'but it\'s not found')
+            assert truncated_time, 'Expected truncated entry in the system.truncated table, but it\'s not found'
             truncated_time_per_node.append({node.name: truncated_time})
 
             # validate truncation entries in the system.local table - not expected entry
             truncated_time = get_truncated_time_from_system_local(session=session)
-            self.assertTrue(truncated_time == [[None]],
-                            msg='Not expected truncated entry in the system.local table, '
-                                'but it\'s found')
+            assert truncated_time == [[None]], 'Not expected truncated entry in the system.local table, but it\'s found'
 
         if prev_truncated_time:
-            self.assertTrue(prev_truncated_time == truncated_time_per_node)
+            assert prev_truncated_time == truncated_time_per_node
 
         return truncated_time_per_node
 
@@ -766,7 +758,7 @@ class TruncateTester(CQLTester):
 
         sec_truncated_time_per_node = self.validate_truncated_entries_for_table(keyspace_name='ks', table_name='test1')
 
-        self.assertLessEqual(len(truncated_time_per_node), len(sec_truncated_time_per_node))
+        assert len(truncated_time_per_node) <= len(sec_truncated_time_per_node)
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -810,7 +802,7 @@ class TruncateTester(CQLTester):
         node1 = cluster.nodelist()[0]
 
         session = self.patient_exclusive_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
                     CREATE TABLE t1 (
                         p int,
@@ -886,7 +878,7 @@ class TruncateTester(CQLTester):
 
 
 @pytest.mark.dtest_full
-class AbortedQueriesTester(CQLTester):
+class TestAbortedQueries(CQLTester):
     """
     @jira_ticket CASSANDRA-7392
     Test that read-queries that take longer than read_request_timeout_in_ms time out
@@ -910,7 +902,7 @@ class AbortedQueriesTester(CQLTester):
         node = cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
 
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
             CREATE TABLE test1 (
                 id int PRIMARY KEY,
@@ -951,7 +943,7 @@ class AbortedQueriesTester(CQLTester):
 
         session = self.patient_exclusive_cql_connection(node1)
 
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
             CREATE TABLE test2 (
                 id int,
@@ -1009,7 +1001,7 @@ class AbortedQueriesTester(CQLTester):
         node = cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
 
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
             CREATE TABLE test3 (
                 id int PRIMARY KEY,
@@ -1055,7 +1047,7 @@ class AbortedQueriesTester(CQLTester):
 
         session = self.patient_exclusive_cql_connection(node1)
 
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         session.execute("""
             CREATE TABLE test4 (
                 id int PRIMARY KEY,
