@@ -735,6 +735,7 @@ class DTestSetup:
         else:
             if isScylla(dtest_setup.dtest_config.cassandra_dir):
                 cluster = ScyllaCluster(dtest_setup.test_path, dtest_setup.cluster_name,
+                                        force_wait_for_cluster_start=True,
                                         install_dir=dtest_setup.dtest_config.cassandra_dir)
             else:
                 cluster = Cluster(dtest_setup.test_path, dtest_setup.cluster_name,
