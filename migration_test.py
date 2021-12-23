@@ -1191,7 +1191,6 @@ class TestLoadAndStream(BaseHelpers):
                        c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
                        ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
 
-    @pytest.mark.skip("#9262")
     def test_load_and_stream_decrease_cluster_with_mv(self):
         """
         Test for the feature load_and_stream:
@@ -1243,7 +1242,6 @@ class TestLoadAndStream(BaseHelpers):
                              f"and key='k{n}'",
                        expected=[f"k{n}"], cl=ConsistencyLevel.QUORUM)
 
-    @pytest.mark.skip("#9262")
     def test_load_and_stream_decrease_cluster_with_index_view(self):
         """
         Test for the feature load_and_stream:
@@ -1293,7 +1291,6 @@ class TestLoadAndStream(BaseHelpers):
                        query=f"select key from {self.KEYSPACE_NAME}.{self.TABLE_NAME} where c2 = 'customtext2{n}'",
                        expected=[f"k{n}"], cl=ConsistencyLevel.QUORUM)
 
-    @pytest.mark.skip("#9262")
     def test_load_and_stream_increase_cluster_with_index(self):
         """
         Test for the feature load_and_stream:
@@ -1431,7 +1428,6 @@ class TestLoadAndStream(BaseHelpers):
                        c1_value=f'customtext1{n}', c2_value=f'customtext2{n}',
                        ks=self.KEYSPACE_NAME, cf=self.TABLE_NAME)
 
-    @pytest.mark.skip("#9262")
     def test_load_and_stream_increase_cluster_with_mv(self):
         """
         Test for the feature load_and_stream:
