@@ -207,8 +207,8 @@ class ScyllaClusterTest(DSREntity):
             output = {}
         try:
             # TBD: Add support for table options and columns_definition
-            groups = re.match('CREATE[ \t]+TABLE[ \t]+(?P<ks_name>[^ ]+)\.(?P<table_name>[^ ]+)[ \t]+'
-                              '(IF[ \t]+NOT[ \t]+EXISTS[ \t]+){0,1}\((?P<column_definition>[^\)]+)\)',
+            groups = re.match(r'CREATE[ \t]+TABLE[ \t]+(?P<ks_name>[^ ]+)\.(?P<table_name>[^ ]+)[ \t]+'
+                              r'(IF[ \t]+NOT[ \t]+EXISTS[ \t]+){0,1}\((?P<column_definition>[^\)]+)\)',
                               create_table_stmt).groupdict()
             ks_name = groups['ks_name']
             table_name = groups['table_name']

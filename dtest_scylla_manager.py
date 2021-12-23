@@ -1572,7 +1572,7 @@ class ManagerCluster(ScyllaManagerBase):
             dict_hosts_health[host_health_object.address] = host_health_object
         for message in error_messages:
             message_string = message[0]  # The message string is in a 1 length list
-            node_ip = re.search("\d+\.\d+\.\d+\.\d+", message_string)[0]
+            node_ip = re.search(r"\d+\.\d+\.\d+\.\d+", message_string)[0]
             dict_hosts_health[node_ip].error_messages.append(message_string)
 
         return dict_hosts_health

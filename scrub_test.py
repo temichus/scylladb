@@ -151,7 +151,7 @@ class TestHelper(Tester):
         """
         Set the generation number for an sstable file name
         """
-        return re.sub('(\d(?!\d))\-', lambda x: str(int(x.group(1)) + generation_increment) + '-', sstable)
+        return re.sub(r'(\d(?!\d))\-', lambda x: str(int(x.group(1)) + generation_increment) + '-', sstable)
 
     def increase_sstable_generations(self, sstables):
         """
@@ -159,7 +159,7 @@ class TestHelper(Tester):
         generations by that amount.
         """
         for table_or_index, table_sstables in sstables.items():
-            increment_by = len(set(re.match('.*(\d)[^0-9].*', s).group(1) for s in table_sstables))
+            increment_by = len(set(re.match(r'.*(\d)[^0-9].*', s).group(1) for s in table_sstables))
             sstables[table_or_index] = [self.increment_generation_by(s, increment_by) for s in table_sstables]
 
         logger.debug(f'sstables after increment {str(sstables)}')

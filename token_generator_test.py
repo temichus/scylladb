@@ -44,7 +44,7 @@ class TestTokenGenerator(Tester):
                 dc_tokens = []
             else:
                 if line.__len__() > 0:
-                    m = re.search("^  Node #(\d+): [ ]*([-]?\d+)$", line)
+                    m = re.search(r"^  Node #(\d+): [ ]*([-]?\d+)$", line)
                     self.assertIsNotNone(m, "Line \"%r\" does not match pattern from token-generator %r" % (line, args))
                     node_num = int(m.group(1))
                     node_token = int(m.group(2))

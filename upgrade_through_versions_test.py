@@ -135,8 +135,8 @@ def latest_tag_matching(ver_tuple):
     # if it's a match add it to wrappers and when we complete this process give back the latest version found
     for t in MAPPED_REFS['tags'].keys():
         # let's short circuit if the tag we are checking matches the cassandra-x.y.z format, otherwise make another attempt for x.y.z-foo in case it's something line 1.2.3-tentative
-        match = re.match('^cassandra-({ver_str}\.\d+(-+\w+)*)$'.format(ver_str=ver_str),
-                         t) or re.match('^({ver_str}\.\d*(-+\w+)*)$'.format(ver_str=ver_str), t)
+        match = re.match(r'^cassandra-({ver_str}\.\d+(-+\w+)*)$'.format(ver_str=ver_str),
+                         t) or re.match(r'^({ver_str}\.\d*(-+\w+)*)$'.format(ver_str=ver_str), t)
         if match:
             gsv = GitSemVer(t, match.group(1))
             bisect.insort(wrappers, gsv)

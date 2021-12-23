@@ -202,7 +202,7 @@ class MaptextblobDataGenerator(DataGenerator):
 
 
 def mkident(s):
-    s = re.sub('\s+', '', s)
+    s = re.sub(r'\s+', '', s)
     s = re.sub('[<>,]', '_', s)
     return re.sub('_+$', '', s)
 

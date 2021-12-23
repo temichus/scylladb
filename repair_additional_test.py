@@ -70,10 +70,10 @@ class RepairAdditionalBase(Tester):
         for line in node_to_check.grep_log("stats: repair_reason=repair"):
             line = line[0]
             logger.debug(line)
-            kv = re.findall("tx_row_nr=\d*", line)[0].split('=')
+            kv = re.findall(r"tx_row_nr=\d*", line)[0].split('=')
             logger.debug(kv)
             tx += int(kv[1])
-            kv = re.findall("rx_row_nr=\d*", line)[0].split('=')
+            kv = re.findall(r"rx_row_nr=\d*", line)[0].split('=')
             logger.debug(kv)
             rx += int(kv[1])
         assert tx == expected_tx_row_nr

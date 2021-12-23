@@ -1452,7 +1452,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
 
         # Can't check escape sequence on cmd prompt. Assume no errors is good enough metric.
         if not common.is_win():
-            assert re.search(chr(27) + "\[[0,1,2]?J", out)
+            assert re.search(chr(27) + r"\[[0,1,2]?J", out)
 
     @pytest.mark.single_node
     def test_batch(self):

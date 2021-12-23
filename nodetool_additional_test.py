@@ -79,7 +79,7 @@ class TestNodetool(Tester):
     @staticmethod
     def _to_cfstats(out):
         # pylint: disable=unsubscriptable-object
-        p = re.compile('^\s*([^:]+)\s*:\s*(\S.*)\s*$')
+        p = re.compile(r'^\s*([^:]+)\s*:\s*(\S.*)\s*$')
         res = {}
         ks = None
         obj = {}
@@ -152,7 +152,7 @@ class TestNodetool(Tester):
     def assertIP(self, addr, msg=None):
         if msg is None:
             msg = ""
-        assert addr == PytestRegex("\d+\.\d+\.\d+\.\d+"), msg + ": bad ip format"
+        assert addr == PytestRegex(r"\d+\.\d+\.\d+\.\d+"), msg + ": bad ip format"
 
     def assertMapBetween(self, container, key, a, b, msg=None):
         if msg is None:
@@ -168,7 +168,7 @@ class TestNodetool(Tester):
     def _parse_time(out):
         # Remove time units from output, ex '1.1242845461978741E-4 ms'
         out = out.split()[0]
-        p = re.compile('^\s*([\d\.]+)\s*(\S+)\s*$')
+        p = re.compile(r'^\s*([\d\.]+)\s*(\S+)\s*$')
         m = p.match(out)
         if m:
             if m.group(1) == 'NaN':
@@ -200,18 +200,18 @@ class TestNodetool(Tester):
         res = {}
         out = node.nodetool("status " + keyspace, True)[0]
         logger.info(out)
-        m = re.findall('Datacenter: ([^\s]+)', out, re.MULTILINE)
+        m = re.findall(r'Datacenter: ([^\s]+)', out, re.MULTILINE)
         if m:
             res['Datacenter'] = m[0]
         m = re.findall(
-            '^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
+            r'^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
         res["nodes"] = sorted([self._list2status(s) for s in m], key=lambda s: s["address"])
         return res
 
     def nodetool_info(self, node):
         res = {}
         out = node.nodetool("info", True)[0]
-        m = re.findall('^\s*([^\s][^:]*[^:\s])\s*:\s+(.*)\s*$', out,
+        m = re.findall(r'^\s*([^\s][^:]*[^:\s])\s*:\s+(.*)\s*$', out,
                        re.MULTILINE)
         for k in m:
             sp = k[1].split(',')
@@ -220,12 +220,12 @@ class TestNodetool(Tester):
             else:
                 res[k[0]] = {}
                 for v in sp:
-                    mt = re.match("^\s*([\d\.]+)\s+(.*)\s*$", v)
+                    mt = re.match(r"^\s*([\d\.]+)\s+(.*)\s*$", v)
                     if mt:
                         res[k[0]][mt.group(2).strip()] = float(
                             mt.group(1).strip())
                     else:
-                        mt = re.match("^\s*([^\d]+)\s+([\d\.]+)\s*$", v)
+                        mt = re.match(r"^\s*([^\d]+)\s+([\d\.]+)\s*$", v)
                         if mt:
                             res[k[0]][mt.group(1).strip()] = float(
                                 mt.group(2).strip())
@@ -437,12 +437,12 @@ class TestNodetool(Tester):
 
     def listsnapshots(self, node):
         out = node.nodetool("listsnapshots", True)[0]
-        m = re.findall("^\s*([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d]+\s[^\s]+)\s+([\d]+\s[^\s]+)\s*$", out, re.MULTILINE)
+        m = re.findall(r"^\s*([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d]+\s[^\s]+)\s+([\d]+\s[^\s]+)\s*$", out, re.MULTILINE)
         return [self._snapshot_entry(lst) for lst in m]
 
     def verify_snapshot(self, node1, ks, snapshot, exists=True):
         out = node1.nodetool("listsnapshots", True)[0]
-        m = re.findall(snapshot + "\s+" + ks, out, re.MULTILINE)
+        m = re.findall(snapshot + r"\s+" + ks, out, re.MULTILINE)
         if exists:
             assert m, "snapshot " + snapshot + " is missing in keyspace " + ks
         else:
@@ -567,7 +567,7 @@ class TestNodetool(Tester):
     def get_ring(self, node):
         out = node.nodetool("ring", True)[0]
         m = re.findall(
-            "^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s].*)\s*$", out, re.MULTILINE)
+            r"^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s].*)\s*$", out, re.MULTILINE)
         return [self._list2ring(r) for r in m]
 
     @pytest.mark.single_node
@@ -601,20 +601,20 @@ class TestNodetool(Tester):
     def compactionhistory(self, node):
         out = node.nodetool('compactionhistory', True)[0]
         merged = re.findall(
-            "^\s*([\d\-abcdef]+)\s+([^\s]+)\s+([^\s]+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([^\s]+)?\s*$", out, re.MULTILINE)
+            r"^\s*([\d\-abcdef]+)\s+([^\s]+)\s+([^\s]+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([^\s]+)?\s*$", out, re.MULTILINE)
         res = {}
         res["merged"] = [self._compactionhistory_entry(m) for m in merged]
 
     def _verify_compaction_history(self, cpc):
-        assert cpc["id"] == PytestRegex("[\d\-abcdef]+")
-        assert cpc["keyspace_name"] == PytestRegex("[^\s]+")
-        assert cpc["columnfamily_name"] == PytestRegex("[^\s]+")
-        assert cpc["compacted_at"] == PytestRegex("\d+")
-        assert cpc["bytes_in"] == PytestRegex("\d+")
-        assert cpc["bytes_out"] == PytestRegex("\d+")
+        assert cpc["id"] == PytestRegex(r"[\d\-abcdef]+")
+        assert cpc["keyspace_name"] == PytestRegex(r"[^\s]+")
+        assert cpc["columnfamily_name"] == PytestRegex(r"[^\s]+")
+        assert cpc["compacted_at"] == PytestRegex(r"\d+")
+        assert cpc["bytes_in"] == PytestRegex(r"\d+")
+        assert cpc["bytes_out"] == PytestRegex(r"\d+")
         # Fail testing awaits #1097
         # self.assertNotEqual(cpc["rows_merged"], "", "row merged information is missing")
-        # self.assertRegexpMatches(cpc["rows_merged"], "\{\d+,\d+\}")
+        # self.assertRegexpMatches(cpc["rows_merged"], r"\{\d+,\d+\}")
 
     def _compact(self, keyspace):
         cluster = self.cluster
@@ -701,11 +701,11 @@ class TestNodetool(Tester):
             node = self.cluster.nodelist()[0]
         out = node.nodetool("ring " + keyspace, True)[0]
         res = {}
-        dc = re.findall("^\s*Datacenter: ([^\s]+)\s*$", out, re.MULTILINE)
+        dc = re.findall(r"^\s*Datacenter: ([^\s]+)\s*$", out, re.MULTILINE)
         assert 1 == len(dc), "Failed searching for datacenter"
         res["datacenter"] = dc[0]
         tokens = re.findall(
-            "^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)(?:\s[^\s]{2})?\s+(\-?[\d]+)\s*$", out, re.MULTILINE)
+            r"^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)(?:\s[^\s]{2})?\s+(\-?[\d]+)\s*$", out, re.MULTILINE)
         res["tokens"] = [self._get_ring_entry(m) for m in tokens]
         return res
 
@@ -725,24 +725,24 @@ class TestNodetool(Tester):
         [node1] = cluster.nodelist()
         gossip = self.nodetool_info(node1)['Gossip active']
         assert "true" == gossip, "Gossip is not active"
-        assert self.statusgossip(node1) == PytestRegex("\s*running\s*"), "wrong gossip status"
+        assert self.statusgossip(node1) == PytestRegex(r"\s*running\s*"), "wrong gossip status"
         node1.nodetool("disablegossip")
         gossip = self.nodetool_info(node1)['Gossip active']
         assert "false" == gossip, "Failed to disable gossip"
-        assert self.statusgossip(node1) == PytestRegex("\s*not running\s*"), "wrong gossip status"
+        assert self.statusgossip(node1) == PytestRegex(r"\s*not running\s*"), "wrong gossip status"
         node1.nodetool("enablegossip")
         gossip = self.nodetool_info(node1)['Gossip active']
         assert "true" == gossip, "Failed to re-enable gossip"
-        assert self.statusgossip(node1) == PytestRegex("\s*running\s*"), "wrong gossip status"
+        assert self.statusgossip(node1) == PytestRegex(r"\s*running\s*"), "wrong gossip status"
 
     def isrunning(self, cmd, node=None):
         if not node:
             node = self.cluster.nodelist()[0]
         out = node.nodetool(cmd, True)[0]
         logger.debug(f"{node.name}: nodetool {cmd}: {out.strip()}")
-        if re.search("^\s*running\s*$", out):
+        if re.search(r"^\s*running\s*$", out):
             return True
-        if re.search("^\s*not running\s*$", out):
+        if re.search(r"^\s*not running\s*$", out):
             return False
         pytest.fail(f'{cmd} return wrong value: {out}')
 
@@ -806,19 +806,19 @@ class TestNodetool(Tester):
 
     def _describering_val(self, v):
         vals = re.findall(
-            '^\s*start_token:(-?\d+), end_token:(-?\d+), endpoints:\[([\d\., ]+)\], rpc_endpoints:\[([\d\., ]+)\], endpoint_details:\[(.*)\]\s*$', v, re.MULTILINE)
+            r'^\s*start_token:(-?\d+), end_token:(-?\d+), endpoints:\[([\d\., ]+)\], rpc_endpoints:\[([\d\., ]+)\], endpoint_details:\[(.*)\]\s*$', v, re.MULTILINE)
         heads = ['start_token', 'end_token', 'endpoints', 'rpc_endpoints']
         res = {}
         assert vals, "wrong format of token range: " + v
         for index, attribute in enumerate(heads):
             res[attribute] = vals[0][index].strip()
             res["details"] = [self._list2dic(d, ['host', 'datacenter', 'rack']) for d in
-                              re.findall('EndpointDetails\(host:([\d\.,]+), datacenter:([^,]+), rack:([^\)]+)\),?', vals[0][4])]
+                              re.findall(r'EndpointDetails\(host:([\d\.,]+), datacenter:([^,]+), rack:([^\)]+)\),?', vals[0][4])]
         return res
 
     def describering(self, node, ks):
         out = node.nodetool('describering ' + ks, True)[0]
-        m = re.findall('^\s*TokenRange\((.*)\)\s*$', out, re.MULTILINE)
+        m = re.findall(r'^\s*TokenRange\((.*)\)\s*$', out, re.MULTILINE)
         assert m, "no TokenRange() found in describering"
         return [self._describering_val(v) for v in m]
 
@@ -907,12 +907,12 @@ class TestNodetool(Tester):
 
     def _verify_ring_token(self, entry, msg):
         self.assertIP(entry["Address"], msg)
-        assert entry["Rack"] == PytestRegex("[a-z0-9]+"), msg
+        assert entry["Rack"] == PytestRegex(r"[a-z0-9]+"), msg
         assert entry["Status"] in ["Up", "Down"], msg
         assert "Normal" == entry["State"], msg
         if entry["Owns"] != "?":
-            assert entry["Owns"] == PytestRegex("[0-9\.]+"), msg
-        assert entry["Token"] == PytestRegex("\-?[0-9]+"), msg
+            assert entry["Owns"] == PytestRegex(r"[0-9.]+"), msg
+        assert entry["Token"] == PytestRegex(r"-?[0-9]+"), msg
 
     def check_ring(self, keyspace=""):
         self.run_cluster()
@@ -1047,7 +1047,7 @@ class TestNodetool(Tester):
     @staticmethod
     def describecluster(node):
         out = node.nodetool('describecluster', True)[0]
-        return yaml.safe_load(out.replace('\t', "  "))
+        return yaml.safe_load(out.replace(r'\t', "  "))
 
     def verify_decribecluster(self, node=None):
         node = self.get_node(node)
@@ -1329,10 +1329,10 @@ class TestNodetool(Tester):
             assert h in n, "node status missing " + h
         assert n["status"] == PytestRegex("[UD][NLJM]?"), "Node status has wrong format"
         self.assertIP(n["address"], "Node ip address")
-        assert n["load"] == PytestRegex("\d+\.?\d*\s+[KMGT]B"), "Node load has wrong format"
+        assert n["load"] == PytestRegex(r"\d+\.?\d*\s+[KMGT]B"), "Node load has wrong format"
         if n["owns"] != "?":
-            assert n["owns"] == PytestRegex("\d+\.?\d*(%|\s+[KMGT]B)"), "Node owns has wrong format"
-        assert n["tokens"] == PytestRegex("\d+"), "Node token has wrong format"
+            assert n["owns"] == PytestRegex(r"\d+\.?\d*(%|\s+[KMGT]B)"), "Node owns has wrong format"
+        assert n["tokens"] == PytestRegex(r"\d+"), "Node token has wrong format"
         assert n["host id"] == PytestRegex("[0-9abcdef\-]+"), "Node host id has wrong tokens format"
         assert n["rack"] == PytestRegex("[a-z0-9]+"), "Node rack has wrong tokens format"
 
@@ -1381,7 +1381,7 @@ class TestNodetool(Tester):
         out = node.nodetool('netstats', True)[0]
         lines = out.splitlines()
         res = {}
-        m = re.match("Mode:\s+(.*)$", lines.pop(0))
+        m = re.match(r"Mode:\s+(.*)$", lines.pop(0))
         assert m, "Mode is missing in netstats"
         res["mode"] = m.group(1)
         bootstrap = lines.pop(0)
@@ -1390,13 +1390,13 @@ class TestNodetool(Tester):
         read_repair = False
         stream = None
         for line in lines:
-            ip = re.match("^\s+/([\d\.]+)\s*$", line)
-            strm = re.match("^\s+(\S+) (\d+) files, (\d+) bytes total. Already \S+ (\d+) files, (\d+) bytes total", line)
-            command = re.match("Commands\s+([^\s]+)\s+(\d+)\s+(\d+)", line)
-            responses = re.match("Responses\s+([^\s]+)\s+(\d+)\s+(\d+)", line)
-            messages = re.match("(Large|Small|Gossip) messages\s+([^\s]+)\s+(\d+)\s+(\d+)\s+(\d)", line)
+            ip = re.match(r"^\s+/([\d\.]+)\s*$", line)
+            strm = re.match(r"^\s+(\S+) (\d+) files, (\d+) bytes total. Already \S+ (\d+) files, (\d+) bytes total", line)
+            command = re.match(r"Commands\s+([^\s]+)\s+(\d+)\s+(\d+)", line)
+            responses = re.match(r"Responses\s+([^\s]+)\s+(\d+)\s+(\d+)", line)
+            messages = re.match(r"(Large|Small|Gossip) messages\s+([^\s]+)\s+(\d+)\s+(\d+)\s+(\d)", line)
 
-            rxfile = re.match("\s+(\S+)\s+(\d+)/(\d+) bytes\((\d+)%\)\s+\S+\s+\S+\s+idx:0/([\d\.]+)", line)
+            rxfile = re.match(r"\s+(\S+)\s+(\d+)/(\d+) bytes\((\d+)%\)\s+\S+\s+\S+\s+idx:0/([\d\.]+)", line)
             if line == "Read Repair Statistics:":
                 read_repair = True
                 if stream is not None:
@@ -1443,7 +1443,7 @@ class TestNodetool(Tester):
                 res[type]["Completed"] = self._tonum(messages.group(3))
                 res[type]["Dropped"] = self._tonum(messages.group(4))
             elif read_repair:
-                rr = re.match("^(.*):\s*(\d+)\s*$", line)
+                rr = re.match(r"^(.*):\s*(\d+)\s*$", line)
                 assert rr, "unexpected line in read repair"
                 res[rr.group(1)] = self._tonum(rr.group(2))
             else:
@@ -1621,7 +1621,7 @@ class TestNodetool(Tester):
             node = self.cluster.nodelist()[0]
         out = node.nodetool("proxyhistograms", True)[0]
         histogram = re.findall(
-            "^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$", out, re.MULTILINE)
+            r"^\s*([^\s]+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s*$", out, re.MULTILINE)
         return {m[0]: self._list2dic(m[1:], ["Read Latency", "Write Latency", "Range Latency", "CAS Read", "CAS Write", "View Write"]) for m in histogram}
 
     def _verify_proxyhistogram(self, res):
@@ -1672,7 +1672,7 @@ class TestNodetool(Tester):
     @pytest.mark.single_node
     def test_version(self):
         self.run_cluster(nodes=1)
-        assert self.nodetool_version() == PytestRegex("ReleaseVersion: 3\.\d+\.\d+"), "Wrong version"
+        assert self.nodetool_version() == PytestRegex(r"ReleaseVersion: 3\.\d+\.\d+"), "Wrong version"
 
     def run_cluster(self, nodes=2, configuration=None):
         self.cluster_started = False
@@ -2043,7 +2043,7 @@ class TestNodetool(Tester):
         if type(ret) == type(str()):
             for line in ret.splitlines():
                 # Ignore Java stacktrace lines
-                if (re.search('^\s+(at|\.\.\.)', line)):
+                if (re.search(r'^\s+(at|\.\.\.)', line)):
                     continue
                 error = True
                 for p in expected_errors:
@@ -2402,7 +2402,7 @@ class TestNodetool(Tester):
 
 
 # example for input "Current trace probability: 0.001\n"
-REGEX_GET_TRACE_RESP = re.compile(r'Current trace probability: (?P<probability>[0-9\.eE]+)(\\n)*$')
+REGEX_GET_TRACE_RESP = re.compile('Current trace probability: (?P<probability>[0-9\.eE]+)(\\n)*$')
 
 
 def get_node_probability(node) -> float:

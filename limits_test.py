@@ -45,7 +45,7 @@ class TestLimits(Tester):
 
         c = "CREATE TABLE test1 ({} int PRIMARY KEY)".format(key_name)
         if expect_failure:
-            expected_error = "Key size too large: \d+ > 65535"
+            expected_error = r"Key size too large: \d+ > 65535"
             self.ignore_log_patterns += [expected_error]
             with pytest.raises(Exception,
                                match=expected_error):
@@ -159,7 +159,7 @@ class TestLimits(Tester):
 
         c = """CREATE TABLE test1 (%s blub int PRIMARY KEY,)""" % keys_create
         if expect_failure:
-            expected_error = "Mutation of \d+ bytes is too large for the maximum size of 16777216"
+            expected_error = r"Mutation of \d+ bytes is too large for the maximum size of 16777216"
             self.ignore_log_patterns += [expected_error]
             with pytest.raises(Exception,
                                match=expected_error):

@@ -282,7 +282,7 @@ class TestCompaction(Tester):
 
         matches = block_on_compaction_log(node1)
         stringline = matches[0]
-        throughput_pattern = re.compile('''.*          # it doesn't matter what the line starts with
+        throughput_pattern = re.compile(r'''.*          # it doesn't matter what the line starts with
                                            =           # wait for an equals sign
                                            ([\s\d\.]*) # capture a decimal number, possibly surrounded by whitespace
                                            MB/s.*      # followed by 'MB/s'

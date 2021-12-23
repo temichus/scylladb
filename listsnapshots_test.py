@@ -151,7 +151,7 @@ class TestNodetoolListSnapshots(Tester):
         """
 
         output_regexp = re.compile(
-            '^(?P<snsh_name>[\w]+)\s+(?P<ks>[\w]+)\s+(?P<cf>[\w]+)\s+(?P<true_size>[0-9.]+)\s\w+\s+(?P<size_on_disk>[0-9.]+\s+\w+)\s+$', re.MULTILINE)
+            r'^(?P<snsh_name>[\w]+)\s+(?P<ks>[\w]+)\s+(?P<cf>[\w]+)\s+(?P<true_size>[0-9.]+)\s\w+\s+(?P<size_on_disk>[0-9.]+\s+\w+)\s+$', re.MULTILINE)
         logger.debug('Output of nodetool listsnapshots:\n{}'.format(output))
         return output_regexp.findall(output)
 

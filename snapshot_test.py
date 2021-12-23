@@ -1693,8 +1693,8 @@ class TestSnapshotOptions(SnapshotTester):
 
     @staticmethod
     def _get_memtable_stats_from_tablestats(tablestats_stdout: str) -> Tuple[int, int]:
-        memtable_data_size_pattern = re.compile('(?:Memtable data size:\s*)(\d+)')
-        memtable_switch_count_pattern = re.compile('(?:Memtable switch count:\s*)(\d+)')
+        memtable_data_size_pattern = re.compile(r'(?:Memtable data size:\s*)(\d+)')
+        memtable_switch_count_pattern = re.compile(r'(?:Memtable switch count:\s*)(\d+)')
         memtable_data_szie = int(memtable_data_size_pattern.search(tablestats_stdout)
                                  .group(1))
         memtable_switch_count = int(memtable_switch_count_pattern.search(tablestats_stdout)
