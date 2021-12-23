@@ -164,7 +164,7 @@ class TestAuth(Tester):
 
         jackob = self.get_session(user='jackob', password='12345')
         self.assertUnauthorized(
-            'Only superusers are allowed to perform CREATE (\[ROLE\|USER\]|USER) queries', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
+            r'Only superusers are allowed to perform CREATE (\[ROLE\|USER\]|USER) queries', jackob, "CREATE USER james WITH PASSWORD '54321' NOSUPERUSER")
 
     @pytest.mark.single_node
     def test_create_user_permissions(self):
@@ -273,7 +273,7 @@ class TestAuth(Tester):
         assert 3 == len(rows)
 
         cathy = self.get_session(user='cathy', password='12345')
-        self.assertUnauthorized('Only superusers are allowed to perform DROP (\[ROLE\|USER\]|USER) queries',
+        self.assertUnauthorized(r'Only superusers are allowed to perform DROP (\[ROLE\|USER\]|USER) queries',
                                 cathy, 'DROP USER dave')
 
         rows = list(cassandra.execute("LIST USERS"))
@@ -971,7 +971,7 @@ class TestAuth(Tester):
             for c in cathys:
                 with pytest.raises(
                         Unauthorized,
-                        match='Error from server: code=2100 \[Unauthorized\] message="User cathy has no SELECT '
+                        match=r'Error from server: code=2100 \[Unauthorized\] message="User cathy has no SELECT '
                               'permission on <table ks.cf> or any of its parents"'):
                     c.execute("SELECT * FROM ks.cf")
                     # this should still fail, but if the cache has expired while we paused, try again
@@ -1445,7 +1445,7 @@ class TestAuth(Tester):
                         self.get_session(user='cassandra', password='cassandra')]:
             with pytest.raises(
                     Unauthorized,
-                    match='Error from server: code=2100 \[Unauthorized\] message="You have to be logged in and not '
+                    match=r'Error from server: code=2100 \[Unauthorized\] message="You have to be logged in and not '
                           'anonymous to perform this request"'):
                 session.execute("LIST USERS")
 
@@ -1498,7 +1498,7 @@ class TestAuth(Tester):
         session = self.get_session(user='cassandra', password='cassandra')
         with pytest.raises(
                 InvalidRequest,
-                match='Error from server: code=2200 \[Invalid query\] message="system keyspace is not user-modifiable"'):
+                match=r'Error from server: code=2200 \[Invalid query\] message="system keyspace is not user-modifiable"'):
             session.execute(
                 "create KEYSPACE SyStEM WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
 
@@ -1510,7 +1510,7 @@ class TestAuth(Tester):
 
         with pytest.raises(
                 Unauthorized,
-                match='Error from server: code=2100 \[Unauthorized\] message="system keyspace is not user-modifiable."'):
+                match=r'Error from server: code=2100 \[Unauthorized\] message="system keyspace is not user-modifiable."'):
             session.execute("drop KEYSPACE system")
         # https://github.com/scylladb/scylla/issues/2338
         """for name in ['SYSTEM_tRaCeS', 'SYSTEM_aUtH']:

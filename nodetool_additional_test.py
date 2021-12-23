@@ -1960,7 +1960,7 @@ class TestNodetool(Tester):
         node_address = re.escape("{}{}".format(self.cluster.get_ipprefix(), node))
         addr_msg = "({})?/{}:9042".format(node_address, node_address)
         return [
-            "\[{}\] Connection has been closed".format(addr_msg),
+            r"\[{}\] Connection has been closed".format(addr_msg),
             "Error creating netty channel to {}".format(addr_msg),
             "Connection refused: {}".format(addr_msg),
             "Caused by: java.net.ConnectException: Connection refused",
@@ -1969,7 +1969,7 @@ class TestNodetool(Tester):
             "Unexpected error while querying {}".format(node_address),
             "java.lang.NullPointerException: null",
             "Error creating pool to {}".format(addr_msg),
-            "\[{}\] Cannot connect".format(addr_msg),
+            r"\[{}\] Cannot connect".format(addr_msg),
             "Failed to execute stress action",
             "unexpected error happened while sending requests",
             "Write attempt on defunct connection",
@@ -2254,8 +2254,8 @@ class TestNodetool(Tester):
         timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
         node.watch_log_for('Finished scrubbing', timeout=timeout)
         # Scrub messages changed in scylladb/scylla@f0e2f31839
-        expected_errs = ['\[.* compaction ks.cf\] Invalid clustering row fragment',
-                         '\[.* compaction ks.cf\] Invalid partition']
+        expected_errs = [r'\[.* compaction ks.cf\] Invalid clustering row fragment',
+                         r'\[.* compaction ks.cf\] Invalid partition']
         try:
             node.watch_log_for(expected_errs, timeout=0)
         except TimeoutError:
@@ -2315,7 +2315,7 @@ class TestNodetool(Tester):
         self._scrub_sstable_with_invalid_fragment(mode="VALIDATE", scrub_keyspace=True)
 
     def test_node_graceful_stop_during_stress_and_decommission(self, starting_size=4, node_count=10, rf=1):
-        """
+        r"""
         reference:https://github.com/scylladb/scylla/issues/4491
         1. Create a cluster with 4 nodes and rf=3, insert data
         2. Run stress (write) on node 2

@@ -92,7 +92,7 @@ class TestUpdateableConfig(Tester):
 
         self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', True, 'true')
         mark = node1.mark_log()
-        compact_log = "compaction -.*Compacting \[%s" % os.path.join(node1.get_path(), "data/ks/cf")
+        compact_log = r"compaction -.*Compacting \[%s" % os.path.join(node1.get_path(), "data/ks/cf")
 
         for _ in range(min_threshold - 1):
             insert_c1c2(session, n=insert_keys_num)

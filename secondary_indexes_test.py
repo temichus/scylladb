@@ -2463,7 +2463,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'
+                          rf'Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'
                           r'\(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
                           r'Operation timed out for ks\.b_index_index - received only 0 responses from 1 CL=ONE']
         self.ignore_log_patterns += exclude_errors
