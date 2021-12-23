@@ -1333,7 +1333,7 @@ class TestNodetool(Tester):
         if n["owns"] != "?":
             assert n["owns"] == PytestRegex(r"\d+\.?\d*(%|\s+[KMGT]B)"), "Node owns has wrong format"
         assert n["tokens"] == PytestRegex(r"\d+"), "Node token has wrong format"
-        assert n["host id"] == PytestRegex("[0-9abcdef\-]+"), "Node host id has wrong tokens format"
+        assert n["host id"] == PytestRegex("[0-9abcdef-]+"), "Node host id has wrong tokens format"
         assert n["rack"] == PytestRegex("[a-z0-9]+"), "Node rack has wrong tokens format"
 
     def test_status(self):
@@ -2402,7 +2402,7 @@ class TestNodetool(Tester):
 
 
 # example for input "Current trace probability: 0.001\n"
-REGEX_GET_TRACE_RESP = re.compile('Current trace probability: (?P<probability>[0-9\.eE]+)(\\n)*$')
+REGEX_GET_TRACE_RESP = re.compile('Current trace probability: (?P<probability>[0-9.eE]+)(\\n)*$')
 
 
 def get_node_probability(node) -> float:
