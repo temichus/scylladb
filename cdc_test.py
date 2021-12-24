@@ -2,6 +2,7 @@ import bisect
 import time
 import itertools
 import logging
+import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from enum import IntEnum
@@ -10,6 +11,9 @@ import multiprocessing
 from dataclasses import dataclass
 from uuid import UUID
 from itertools import product
+from typing import Union
+from collections import namedtuple
+
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
@@ -26,6 +30,7 @@ from dtest_class import Tester, wait_for
 from dtest_setup import DTestSetup
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
+
 
 TOKENS_PER_NODE = 256
 
@@ -55,9 +60,9 @@ class CdcLogOperations(IntEnum):
     POSTIMAGE = 9
 
 
-class CDCInitializeHelper:
+class CDCInitializeHelper:  # pylint: disable=no-member
 
-    def populate_sequentially(self, n, wait_other_notice=False):
+    def populate_sequentially(self, n: Union[list, int], wait_other_notice: bool = False):
         cluster = self.cluster  # pylint: disable=no-member
         logger.debug('Starting node 1')
         # We need to use populate() for the first node, because it writes
@@ -66,11 +71,30 @@ class CDCInitializeHelper:
         # with 127.0.0.1 - which is configured to be the default seed - and
         # might fail, because in some environments the first node might listen
         # for gossip on a different address.
-        cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
-        for i in range(2, n + 1):
-            logger.debug('Starting node {}'.format(i))
-            node = self.cluster.new_node(i, auto_bootstrap=True)  # pylint: disable=no-member
-            node.start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
+        n = [n] if isinstance(n, int) else n
+        if len(n) == 1:
+            cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
+            for i in range(2, n[0] + 1):
+                logger.debug('Starting node {}'.format(i))
+                node = self.cluster.new_node(i, auto_bootstrap=True)  # pylint: disable=no-member
+                node.start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
+        else:
+            self.populate_sequentially_multidc(n, wait_other_notice)
+
+    def populate_sequentially_multidc(self, n: list, wait_other_notice: bool = False):
+        cluster: ScyllaCluster = self.cluster
+        first_nodes_in_multidc = [1] * len(n)
+        print(first_nodes_in_multidc)
+        cluster.populate(first_nodes_in_multidc).start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
+        node_idx = len(n)
+
+        for dcx in range(1, len(n) + 1):
+            for _ in range(1, n[dcx - 1]):
+                node_idx += 1
+                logger.debug('Starting node {}'.format(node_idx))
+                node = self.cluster.new_node(
+                    node_idx, data_center=f"dc{dcx}", auto_bootstrap=True)  # pylint: disable=no-member
+                node.start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
 
     # Retrieve the ID of the last known generation from the local tables of the node `session` is connected to.
     # The ID is a (timestamp, uuid) pair.
@@ -131,6 +155,13 @@ class CDCInitializeHelper:
 @pytest.mark.scylla_cdc
 @pytest.mark.dtest_full
 class TestCdc(Tester, CDCInitializeHelper):
+    SINGLE_DC_SIZE = [3]
+    MULTI_DC_SIZE = [3, 3, 3]
+
+    SINGLE_DC_REPL = f"{{'class': 'SimpleStrategy', 'replication_factor': {SINGLE_DC_SIZE[0]}}}"
+    _replication = ", ".join([f"'dc{i}': {n}" for i, n in enumerate(MULTI_DC_SIZE, start=1)])
+    MULTI_DC_REPL = f"{{'class': 'NetworkTopologyStrategy', {_replication}}}"
+
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
         assert dtest_config.is_scylla, 'CDC tests are intended for Scylla only'
@@ -145,22 +176,30 @@ class TestCdc(Tester, CDCInitializeHelper):
         })
         return dtest_setup_overrides
 
-    def simple_cdc_template(self, request, with_preimage):
+    @pytest.fixture(params=[(SINGLE_DC_SIZE, SINGLE_DC_REPL),
+                            (MULTI_DC_SIZE, MULTI_DC_REPL)],
+                    ids=("Single_cluster", "Multi_DC_cluster"),
+                    )
+    def cluster_config(self, request):
+        ClusterConfig = namedtuple("ClusterConfig", "size replication")
+        return ClusterConfig(request.param[0], request.param[1])
+
+    def simple_cdc_template(self, request, cluster_size, replication, with_preimage):
         logger.debug('Setup a cluster')
-        cluster = self.cluster
-        self.populate_sequentially(n=3)
-        node1 = cluster.nodes['node1']
+        cluster: ScyllaCluster = self.cluster
+        self.populate_sequentially(n=cluster_size)
+        node1: ScyllaNode = cluster.nodes['node1']
         session = self.patient_cql_connection(node1)
 
         logger.debug('Wait for the last generation to become active')
         gen_timestamp = self.wait_for_last_generation_to_be_active(session)
-        self.wait_for_metadata_update(session, cluster_size=3)
+        self.wait_for_metadata_update(session, cluster_size=sum(cluster_size))
         ring = self.get_vnode_ring(session)
 
         self.generation_quality_check(session, gen_timestamp, ring)
 
         logger.debug('Create a table with CDC enabled, and start writing to it')
-        finish_writing = self.run_writes_with_counting(request, node1, with_preimage=with_preimage)
+        finish_writing = self.run_writes_with_counting(request, node1, replication, with_preimage=with_preimage)
 
         logger.debug('Write for 15 more seconds, and stop writing')
         time.sleep(15)
@@ -175,34 +214,38 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         logger.debug('Test finished')
 
-    def test_simple_cdc(self, request):
-        self.simple_cdc_template(request=request, with_preimage=False)
+    def test_simple_cdc(self, request, cluster_config):
+        self.simple_cdc_template(request=request, cluster_size=cluster_config.size,
+                                 replication=cluster_config.replication, with_preimage=False)
 
     @pytest.mark.next_gating
-    def test_simple_cdc_with_preimage(self, request):
-        self.simple_cdc_template(request=request, with_preimage=True)
+    def test_simple_cdc_with_preimage(self, request, cluster_config):
+        self.simple_cdc_template(request=request, cluster_size=cluster_config.size,
+                                 replication=cluster_config.replication, with_preimage=True)
 
-    def cluster_expansion_with_cdc_template(self, request, with_preimage):
+    def cluster_expansion_with_cdc_template(self, request, cluster_size, replication, with_preimage):
         logger.debug('Setup a cluster')
-        cluster = self.cluster
-        self.populate_sequentially(n=3)
-        node1 = cluster.nodes['node1']
+        cluster: ScyllaCluster = self.cluster
+        self.populate_sequentially(n=cluster_size)
+        # choose random node from random dc in multidc configuration
+        node1: ScyllaNode = random.choice(cluster.nodelist())
         session = self.patient_cql_connection(node1)
 
         logger.debug('Wait for the last generation to become active')
         gen_timestamp = self.wait_for_last_generation_to_be_active(session)
-        self.wait_for_metadata_update(session, cluster_size=3)
+        self.wait_for_metadata_update(session, cluster_size=sum(cluster_size))
         ring_before_expansion = self.get_vnode_ring(session)
 
         self.generation_quality_check(session, gen_timestamp, ring_before_expansion)
 
         logger.debug('Create a table with CDC enabled, and start writing to it')
-        finish_writing = self.run_writes_with_counting(request, node1, with_preimage=with_preimage)
+        finish_writing = self.run_writes_with_counting(request, node1, replication, with_preimage=with_preimage)
 
         logger.debug('Add new node to the cluster')
         expansion_start_time = datetime.utcnow()
-        node4 = self.cluster.new_node(4, auto_bootstrap=True)
-        node4.start(wait_for_binary_proto=True)
+        new_node = cluster.new_node(sum(cluster_size) + 1, auto_bootstrap=True, data_center=node1.data_center)
+
+        new_node.start(wait_for_binary_proto=True)
 
         logger.debug('Wait until new generation starts')
         gen_timestamp = self.wait_for_last_generation_to_be_active(session)
@@ -211,7 +254,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         time.sleep(15)
         write_count = finish_writing()
 
-        self.wait_for_metadata_update(session, cluster_size=4)
+        self.wait_for_metadata_update(session, cluster_size=sum(cluster_size) + 1)
         ring_after_expansion = self.get_vnode_ring(session)
         assert ring_before_expansion != ring_after_expansion
 
@@ -238,36 +281,42 @@ class TestCdc(Tester, CDCInitializeHelper):
         logger.debug('Test finished')
 
     @pytest.mark.next_gating
-    def test_cluster_expansion_with_cdc(self, request):
-        self.cluster_expansion_with_cdc_template(request, with_preimage=False)
+    def test_cluster_expansion_with_cdc(self, request, cluster_config):
+        self.cluster_expansion_with_cdc_template(request, cluster_size=cluster_config.size,
+                                                 replication=cluster_config.replication, with_preimage=False)
 
-    def test_cluster_expansion_with_cdc_and_preimage(self, request):
-        self.cluster_expansion_with_cdc_template(request=request, with_preimage=True)
+    def test_cluster_expansion_with_cdc_and_preimage(self, request, cluster_config):
+        self.cluster_expansion_with_cdc_template(request=request, cluster_size=cluster_config.size,
+                                                 replication=cluster_config.replication, with_preimage=True)
 
-    def cluster_reduction_with_cdc_template(self, request, with_preimage):
+    def cluster_reduction_with_cdc_template(self, request, cluster_size, replication, with_preimage):
         logger.debug('Setup a cluster')
-        cluster = self.cluster
-        self.populate_sequentially(n=4)
+        cluster: ScyllaCluster = self.cluster
+        # increase cluster size by 1 node in each DC, so
+        # CL=ALL not failed after node decommission
+        cluster_size = list(map(lambda x: x + 1, cluster_size))
+        self.populate_sequentially(n=cluster_size)
         node1 = cluster.nodes['node1']
-        node3 = cluster.nodes['node3']
         session = self.patient_cql_connection(node1)
 
         logger.debug('Wait for the last generation to become active')
         gen_timestamp = self.wait_for_last_generation_to_be_active(session)
-        self.wait_for_metadata_update(session, cluster_size=4)
+        self.wait_for_metadata_update(session, cluster_size=sum(cluster_size))
         ring = self.get_vnode_ring(session)
 
         self.generation_quality_check(session, gen_timestamp, ring)
 
         logger.debug('Create a table with CDC enabled, and start writing to it')
-        finish_writing = self.run_writes_with_counting(request, node1, with_preimage=with_preimage)
+        finish_writing = self.run_writes_with_counting(request, node1, replication, with_preimage=with_preimage)
         time.sleep(15)
 
+        decommission_node = cluster.nodes["node3"]
         logger.debug('Downsize the cluster by one node')
         reduction_start_time = datetime.utcnow()
-        node3.decommission()
+        decommission_node.decommission()
         reduction_end_time = datetime.utcnow()
 
+        logger.debug(f"Decommission of node {decommission_node.name} took {reduction_end_time - reduction_start_time}")
         logger.debug('Write for 15 more seconds, and stop writing')
         time.sleep(15)
         write_count = finish_writing()
@@ -282,28 +331,30 @@ class TestCdc(Tester, CDCInitializeHelper):
         logger.debug('Test finished')
 
     @pytest.mark.next_gating
-    def test_cluster_reduction_with_cdc(self, request):
-        self.cluster_reduction_with_cdc_template(request=request, with_preimage=False)
+    def test_cluster_reduction_with_cdc(self, request, cluster_config):
+        self.cluster_reduction_with_cdc_template(request=request, cluster_size=cluster_config.size,
+                                                 replication=cluster_config.replication, with_preimage=False)
 
-    def test_cluster_reduction_with_cdc_and_preimage(self, request):
-        self.cluster_reduction_with_cdc_template(request=request, with_preimage=True)
+    def test_cluster_reduction_with_cdc_and_preimage(self, request, cluster_config):
+        self.cluster_reduction_with_cdc_template(request=request, cluster_size=cluster_config.size,
+                                                 replication=cluster_config.replication, with_preimage=True)
 
-    def schema_change_template(self, request, alter_query, with_preimage=False, additional_fields=[]):
+    def schema_change_template(self, request, alter_query, cluster_size, replication, with_preimage=False, additional_fields=[]):
         logger.debug('Setup a cluster')
         cluster = self.cluster
-        self.populate_sequentially(n=3)
+        self.populate_sequentially(n=cluster_size)
         node1 = cluster.nodes['node1']
         session = self.patient_cql_connection(node1)
 
         logger.debug('Wait for the last generation to become active')
         gen_timestamp = self.wait_for_last_generation_to_be_active(session)
-        self.wait_for_metadata_update(session, cluster_size=3)
+        self.wait_for_metadata_update(session, cluster_size=sum(cluster_size))
         ring = self.get_vnode_ring(session)
 
         self.generation_quality_check(session, gen_timestamp, ring)
 
         logger.debug('Create a table with CDC enabled, and start writing to it')
-        finish_writing = self.run_writes_with_counting(request=request, node=node1,
+        finish_writing = self.run_writes_with_counting(request=request, node=node1, replication=replication,
                                                        with_preimage=with_preimage,
                                                        additional_fields=additional_fields)
         time.sleep(15)
@@ -325,25 +376,31 @@ class TestCdc(Tester, CDCInitializeHelper):
         logger.debug('Test finished')
 
     @pytest.mark.next_gating
-    def test_change_field_type_with_cdc(self, request):
-        self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob")
+    def test_change_field_type_with_cdc(self, request, cluster_config):
+        self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob",
+                                    cluster_size=cluster_config.size, replication=cluster_config.replication)
 
-    def test_change_field_type_with_cdc_and_preimage(self, request):
-        self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob", with_preimage=True)
-
-    @pytest.mark.next_gating
-    def test_add_field_with_cdc(self, request):
-        self.schema_change_template(request, "ALTER TABLE ks.cf ADD c int")
-
-    def test_add_field_with_cdc_and_preimage(self, request):
-        self.schema_change_template(request, "ALTER TABLE ks.cf ADD c int", with_preimage=True)
+    def test_change_field_type_with_cdc_and_preimage(self, request, cluster_config):
+        self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob",
+                                    cluster_size=cluster_config.size, replication=cluster_config.replication, with_preimage=True)
 
     @pytest.mark.next_gating
-    def test_remove_field_with_cdc(self, request):
-        self.schema_change_template(request, "ALTER TABLE ks.cf DROP c", additional_fields=["c int"])
+    def test_add_field_with_cdc(self, request, cluster_config):
+        self.schema_change_template(request, "ALTER TABLE ks.cf ADD c int",
+                                    cluster_size=cluster_config.size, replication=cluster_config.replication)
 
-    def test_remove_field_with_cdc_and_preimage(self, request):
+    def test_add_field_with_cdc_and_preimage(self, request, cluster_config):
+        self.schema_change_template(request, "ALTER TABLE ks.cf ADD c int",
+                                    cluster_size=cluster_config.size, replication=cluster_config.replication, with_preimage=True)
+
+    @pytest.mark.next_gating
+    def test_remove_field_with_cdc(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf DROP c",
+                                    cluster_size=cluster_config.size, replication=cluster_config.replication, additional_fields=["c int"])
+
+    def test_remove_field_with_cdc_and_preimage(self, request, cluster_config):
+        self.schema_change_template(request, "ALTER TABLE ks.cf DROP c",
+                                    cluster_size=cluster_config.size, replication=cluster_config.replication,
                                     additional_fields=["c int"], with_preimage=True)
 
     # Regression test for Scylla issue #7127
@@ -424,7 +481,7 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         logger.debug('Test finished')
 
-    def run_writes_with_counting(self, request, node, with_preimage=False, additional_fields=[]):
+    def run_writes_with_counting(self, request, node, replication, with_preimage=False, additional_fields=[]):
         cdc_options = "'enabled': true"
         if with_preimage:
             cdc_options += ", 'preimage': true"
@@ -432,8 +489,9 @@ class TestCdc(Tester, CDCInitializeHelper):
         else:
             workers_count = 10
 
+        logger.info(str(replication))
         session = self.patient_cql_connection(node)
-        session.execute("CREATE KEYSPACE ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}")
+        session.execute(f"CREATE KEYSPACE ks WITH replication = {str(replication)}")
         fields = ["a int", "b text"] + additional_fields
         session.execute("CREATE TABLE ks.cf ({fields}, PRIMARY KEY(a)) WITH cdc = {{{cdc_options}}}".format(
             fields=", ".join(fields), cdc_options=cdc_options))
@@ -544,7 +602,7 @@ class TestCdc(Tester, CDCInitializeHelper):
             assert row.b == latest.b
 
     def check_that_every_log_entry_of_one_partition_is_in_one_stream(self, session, update_rows):
-        logger.debug('Check that, within a generation, a particular partition key ' +
+        logger.debug('Check that, within a generation, a particular partition key '
                      'may be written to one stream only')
 
         cdc_desciption_rows = sorted(desc.time for desc in self.get_cdc_description_rows(session))
