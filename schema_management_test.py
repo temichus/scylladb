@@ -364,8 +364,8 @@ class TestLargePartitionAlterSchema(Tester):
         threads = []
         with ThreadPoolExecutor(max_workers=5) as executor:
             # Insert new rows in background
-            threads.append(executor.submit(fn=self.populate, session=session, data=data, ck_start=10, ck_end=1500))
-            threads.append(executor.submit(fn=self.read, session=session, ck_max=1500))
+            threads.append(executor.submit(self.populate, session=session, data=data, ck_start=10, ck_end=1500))
+            threads.append(executor.submit(self.read, session=session, ck_max=1500))
             # Wait for running load
             time.sleep(10)
             self.add_column(session, 'new_clmn', 'int')
@@ -391,8 +391,8 @@ class TestLargePartitionAlterSchema(Tester):
         threads = []
         with ThreadPoolExecutor(max_workers=5) as executor:
             # Insert new rows in background
-            threads.append(executor.submit(fn=self.populate, session=session, data=data, ck_start=10, ck_end=1500))
-            threads.append(executor.submit(fn=self.read, session=session, ck_max=1500))
+            threads.append(executor.submit(self.populate, session=session, data=data, ck_start=10, ck_end=1500))
+            threads.append(executor.submit(self.read, session=session, ck_max=1500))
             # Wait for running load
             time.sleep(10)
             self.drop_column(session=session, column_name='val1')

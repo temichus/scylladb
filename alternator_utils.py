@@ -695,11 +695,11 @@ class BaseAlternator(Tester):
                     f"removing '{len(delete_items)}' items from table '{table_name}'..")
 
             with ThreadPoolExecutor(max_workers=3) as executor:
-                executor.submit(fn=self.batch_write_actions, **dict(
+                executor.submit(self.batch_write_actions, **dict(
                     table_name=table_name, node=node, primary_key=primary_key, new_items=new_items))
-                executor.submit(fn=self.batch_write_actions, **dict(
+                executor.submit(self.batch_write_actions, **dict(
                     table_name=table_name, node=node, primary_key=primary_key, delete_items=delete_items))
-                executor.submit(fn=self.update_items, **dict(
+                executor.submit(self.update_items, **dict(
                     table_name=table_name, node=node, items=update_items, primary_key=primary_key))
             total_items += 1
 
