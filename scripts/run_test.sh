@@ -23,7 +23,7 @@ Script to run dtest from within docker
 
     Running from scylla relocatable packages:
 
-        SCYLLA_VERSION
+        --scylla-version
             a version from scylla downloads: http://downloads.scylladb.com/relocatable/unstable/master/
             for example: 'unstable/master:380'
         SCYLLA_CORE_PACKAGE
@@ -43,17 +43,7 @@ Script to run dtest from within docker
         SCYLLA_EXT_OPTS
         SCYLLA_EXT_ENV
         LOG_SAVED_DIR
-        PRINT_DEBUG
-        PRINT_TRACE
-        DEBUG
-        TRACE
-        KEEP_LOGS
-        KEEP_TEST_DIR
         KEEP_CORES
-        CLUSTER_ID_ALLOCATOR
-        NOSE_PROCESSES (defaults to 1)
-        NOSE_PROCESS_TIMEOUT (defaults to 7200)
-        DRY_RUN
         GITHUB_TOKEN - github api token to get issue states
         DTEST_REQUIRE - auto : check issue state in require decorator and run(state=closed) or skip(state=open) test
                       - enabled : default value, skip test marked with decorator
@@ -110,8 +100,6 @@ if [[ "$mode" == debug ]]; then
     export DEF_SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0:abort_on_error=1:detect_stack_use_after_return=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
 fi
 export SCYLLA_EXT_ENV=${SCYLLA_EXT_ENV:-"$DEF_SCYLLA_EXT_ENV"}
-export NOSE_PROCESSES=${NOSE_PROCESSES:-"1"}
-export NOSE_PROCESS_TIMEOUT=${NOSE_PROCESS_TIMEOUT:-"7200"}
 
 mkdir -p ${HOME}/.dtest
 mkdir -p ${HOME}/.ccm
@@ -134,7 +122,7 @@ function check_directory_exists()
 check_directory_exists DTEST_DIR
 check_directory_exists CCM_DIR
 
-if [[ -z ${SCYLLA_VERSION} ]] && [[ -z ${SCYLLA_DOCKER_IMAGE} ]]; then
+if [[ "$*" == *'--cassandra-dir'* ]]; then
     check_directory_exists CASSANDRA_DIR
     check_directory_exists TOOLS_JAVA_DIR
     check_directory_exists JMX_DIR
@@ -167,13 +155,11 @@ if [[ -z ${SCYLLA_VERSION} ]] && [[ -z ${SCYLLA_DOCKER_IMAGE} ]]; then
     -e SCYLLA_DBUILD_SO_DIR \
     -e CASSANDRA_DIR \
     "
-else
+elif [[ "$*" == *'--scylla-version'*  ]]; then
     DOCKER_COMMAND_PARAMS="
-    -e SCYLLA_VERSION \
     -e SCYLLA_CORE_PACKAGE \
     -e SCYLLA_JAVA_TOOLS_PACKAGE \
-    -e SCYLLA_JMX_PACKAGE \
-    -e SCYLLA_DOCKER_IMAGE
+    -e SCYLLA_JMX_PACKAGE
     "
 fi
 
@@ -190,7 +176,7 @@ else
 fi
 
 echo
-env | grep -E '^((DTEST|CCM|SCYLLA_ROOT|CASSANDRA|TOOLS_JAVA|JMX|SCYLLA_DBUILD_SO|LOG_SAVED)_DIR|HOME|SCYLLA_*|(PRINT_)?DEBUG|TRACE|KEEP_*|NOSE_*|CLUSTER_*|DRY_*|NODE_*|AWS_*)='
+env | grep -E '^((DTEST|CCM|SCYLLA_ROOT|CASSANDRA|TOOLS_JAVA|JMX|SCYLLA_DBUILD_SO|LOG_SAVED)_DIR|HOME|SCYLLA_*|CLUSTER_*|DRY_*|NODE_*|AWS_*)='
 echo
 
 # if in jenkins also mount the workspace into docker
@@ -233,17 +219,7 @@ docker_cmd="docker run --detach=true \
     -e SCYLLA_EXT_OPTS \
     -e SCYLLA_EXT_ENV \
     -e LC_ALL=en_US.UTF-8 \
-    -e PRINT_DEBUG \
-    -e PRINT_TRACE \
-    -e DEBUG \
-    -e TRACE \
-    -e KEEP_LOGS \
-    -e KEEP_TEST_DIR \
     -e KEEP_CORES \
-    -e NOSE_PROCESSES \
-    -e NOSE_PROCESS_TIMEOUT \
-    -e CLUSTER_ID_ALLOCATOR \
-    -e DRY_RUN \
     -e NODE_TOTAL \
     -e NODE_INDEX \
     -e SCYLLA_MANAGER_PACKAGE \

@@ -225,7 +225,7 @@ To keep all test cluster directories (under `$HOME/.dtest/`), use:
 
 To skip all tests and just check that all modules are found:
 
-    DRY_RUN=true
+     pytest --collect-only
 
 To change Scylla CPU and memory configuration:
 

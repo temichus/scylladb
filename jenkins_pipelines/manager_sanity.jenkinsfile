@@ -78,9 +78,6 @@ pipeline {
                                 export SCYLLA_VERSION="unstable/"\$SCYLLA_BRANCH":"\$LATEST_SCYLLA_BUILD_ID
                             fi
                             export CCM_DIR=\$(pwd)"/scylla-ccm"
-                            export PRINT_DEBUG=False
-                            export DEBUG=False
-                            export KEEP_TEST_DIR=True
                             export SCYLLA_MANAGER_PACKAGE="${params.scylla_manager_package}"
                             export MINIO_DOCKER_ID="${MINIO_DOCKER_ID}"
 

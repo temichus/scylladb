@@ -16,8 +16,8 @@ def call(Map pipelineParams) {
             string(name: 'TIMEOUT_PARAM', defaultValue: '4', description: 'hours. This time includes the time needed to wait for local machines. Could be much less for cloud machines.')
             string(name: 'BUILD_MODE', defaultValue: "${pipelineParams.get('BUILD_MODE', 'release')}", description: 'Choose: dev|release|debug, If empty, default to release')
             string(name: 'RELOC_WEB_URL', defaultValue: 'latest', description: 'URL to take reloc items from. Use when reloc is not available on jenkins, or when running on AWS, which will download faster from S3.')
-            booleanParam(name: 'DTEST_DEBUG_INFO', defaultValue: false, description: 'Check this to set env PRINT_DEBUG=true and DEBUG=true when running dtest')
-            booleanParam(name: 'DTEST_KEEP_LOGS', defaultValue: false, description: 'Check this, to keep dtest logs (set KEEP_LOGS=true)')
+            booleanParam(name: 'DTEST_DEBUG_INFO', defaultValue: false, description: 'Check this to print debug to stdout when running dtest')
+            booleanParam(name: 'DTEST_KEEP_LOGS', defaultValue: false, description: 'Check this, to keep dtest logs')
             string(name: 'INCLUDE_DTESTS', defaultValue: '' , description: """Specify which dtests to run. default for release:
                                                                  -m '"dtest_full and not dtest_heavy and not dtest_long"',
                                                                  for debug: -m dtest_debug """)
