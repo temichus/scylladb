@@ -129,7 +129,7 @@ class CDCInitializeHelper:
 class TestCdc(Tester, CDCInitializeHelper):
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
-        assert dtest_config.scylla_version is not None, 'CDC tests are intended for Scylla only'
+        assert dtest_config.is_scylla, 'CDC tests are intended for Scylla only'
 
         ring_delay_sec = 5
         dtest_setup_overrides = DTestSetupOverrides()

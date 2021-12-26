@@ -16,7 +16,7 @@ class TestUserFunctions(Tester):
     @pytest.fixture(scope="function", autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
         dtest_setup_overrides = DTestSetupOverrides()
-        if dtest_config.scylla_version:
+        if dtest_config.is_scylla:
             dtest_setup_overrides.cluster_options = ImmutableMapping({
                 "experimental_features": ["udf"],
                 "enable_user_defined_functions": "true",

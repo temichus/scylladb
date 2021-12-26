@@ -84,7 +84,7 @@ class TestJMXMetrics(Tester):
 
     @pytest.fixture(autouse=True)
     def skip_if_scylla(self, dtest_config):
-        if dtest_config.scylla_version:
+        if dtest_config.is_scylla:
             pytest.skip('Test case is not supposed to be run on scylla')
 
     def test_begin(self):

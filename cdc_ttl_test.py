@@ -28,7 +28,7 @@ class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
 
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
-        if dtest_config.scylla_version is None:
+        if not dtest_config.is_scylla:
             pytest.skip('CDC tests are intended for Scylla only')
         dtest_setup_overrides = DTestSetupOverrides()
         dtest_setup_overrides.cluster_options = ImmutableMapping({"experimental_features": ["cdc"]})

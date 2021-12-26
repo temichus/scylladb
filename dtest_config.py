@@ -3,7 +3,8 @@ import os
 import ccmlib.repository
 import ccmlib.scylla_repository
 
-from ccmlib.common import is_win, get_version_from_build, get_scylla_full_version, scylla_extract_install_dir_and_mode
+from ccmlib.common import is_win, get_version_from_build, get_scylla_full_version, scylla_extract_install_dir_and_mode, \
+    isScylla
 
 
 class DTestConfig:
@@ -80,6 +81,16 @@ class DTestConfig:
         elif self.cassandra_dir is not None:
             _, mode = scylla_extract_install_dir_and_mode(self.cassandra_dir)
         return mode
+
+    @property
+    def is_scylla(self):
+        if self.scylla_version is not None:
+            ccm_repo_cache_dir, _ = ccmlib.scylla_repository.setup(version=self.scylla_version)
+            return isScylla(ccm_repo_cache_dir)
+        elif self.cassandra_dir is not None:
+            return isScylla(self.cassandra_dir)
+        else:
+            return False
 
 
 # Determine the location of the libjemalloc jar so that we can specify it
