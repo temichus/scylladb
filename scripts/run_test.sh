@@ -157,6 +157,7 @@ if [[ "$*" == *'--cassandra-dir'* ]]; then
     "
 elif [[ "$*" == *'--scylla-version'*  ]]; then
     DOCKER_COMMAND_PARAMS="
+    -e SCYLLA_VERSION \
     -e SCYLLA_CORE_PACKAGE \
     -e SCYLLA_JAVA_TOOLS_PACKAGE \
     -e SCYLLA_JMX_PACKAGE
