@@ -762,7 +762,6 @@ class TestTruncate(CQLTester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    @pytest.mark.single_node
     def test_truncate_after_restart(self):
         session = self.prepare(nodes=1, create_keyspace=False)
 
