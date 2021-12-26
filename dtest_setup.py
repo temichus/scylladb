@@ -136,11 +136,12 @@ def copy_logs(request, dtest_config, directory=None, name=None, cores=None):
 
     if KEEP_CORES:
         if cores is None:
-            cores = dtest_config.find_cores()
+            cores, ignored_cores = dtest_config.find_cores()
+            cores += ignored_cores
         if cores:
             for n, src in cores:
                 dst = os.path.join(logdir, "{}-{}".format(n, os.path.basename(src)))
-                print("Moving core file {} to {}".format(src, dst))
+                logger.warning("Moving core file {} to {}".format(src, dst))
                 try:
                     if DTEST_CORE_COMPRESS_TOOL == '':
                         cmd = "mv {} {}".format(src, dst)
@@ -150,7 +151,7 @@ def copy_logs(request, dtest_config, directory=None, name=None, cores=None):
                             DTEST_CORE_COMPRESS_TOOL, src, dst, DTEST_CORE_COMPRESS_EXT, src)
                         subprocess.check_call(cmd, shell=True)
                 except Exception as e:
-                    print("`{}` failed: {}. Keeping directory.".format(cmd, e))
+                    logger.warning("`{}` failed: {}. Keeping directory.".format(cmd, e))
 
     if os.path.exists(logdir):
         if os.path.exists(name):
@@ -182,6 +183,7 @@ class DTestSetup:
         self.cluster_name = cluster_name
         self.ignore_log_patterns = []
         self.ignore_cores_log_patterns = []
+        self.ignore_cores = []
         self.cluster = None
         self.cluster_options = []
         self.replacement_node = None
@@ -280,6 +282,7 @@ class DTestSetup:
 
     def find_cores(self):
         cores = []
+        ignored_cores = []
         nodes = []
         for node in self.cluster.nodelist():
             try:
@@ -288,17 +291,23 @@ class DTestSetup:
                     pids = [node.pid]
             except AttributeError:
                 pids = [node.pid]
-            nodes += [(node.name, pids)]
+            nodes += [(node, pids)]
         for f in os.listdir('.'):
             if not f.endswith('.core'):
                 continue
-            for n, pids in nodes:
+            for node, pids in nodes:
                 """Look for this cluster's coredumps"""
                 for p in pids:
                     if f.find(".{}.".format(p)) >= 0:
-                        cores += [(n, os.path.join(os.getcwd(), f))]
+                        path = os.path.join(os.getcwd(), f)
+                        if not node in self.ignore_cores:
+                            cores += [(node.name, path)]
+                        else:
+                            logger.debug(
+                                "Ignoring core file {} belonging to {} due to ignore_cores_log_patterns".format(path, node.name))
+                            ignored_cores += [(node.name, path)]
         # returns empty list if no core files found
-        return cores
+        return cores, ignored_cores
 
     def cql_connection(self, node, keyspace=None, user=None,
                        password=None, compression=True, protocol_version=None, port=None, ssl_opts=None, **kwargs):
@@ -486,7 +495,7 @@ class DTestSetup:
             **kwargs
         )
 
-    def check_errors(self, node, exclude_errors=None, search_str=None, from_mark=None, regex=False):
+    def check_errors(self, node, exclude_errors=None, search_str=None, from_mark=None, regex=False, return_errors=False):
         if from_mark != None:
             node.error_mark = from_mark
         errors = node.grep_log_for_errors(distinct_errors=True, search_str=search_str)
@@ -499,7 +508,11 @@ class DTestSetup:
         errors = list(self.__filter_errors(errors, exclude_errors))
 
         if errors:
-            assert False, '\n'.join(list(errors))
+            if not return_errors:
+                assert False, '\n'.join(list(errors))
+
+        if return_errors:
+            return list(errors)
 
         if exclude_errors:
             self.ignore_log_patterns += exclude_errors
@@ -507,8 +520,39 @@ class DTestSetup:
     def check_errors_all_nodes(self, nodes=None, exclude_errors=None, search_str=None, regex=False):
         if nodes is None:
             nodes = self.cluster.nodelist()
+
+        critical_errors = []
+        found_errors = []
         for node in nodes:
-            self.check_errors(node=node, exclude_errors=exclude_errors, search_str=search_str, regex=regex)
+            try:
+                critical_errors_pattern = r'Assertion.*failed|AddressSanitizer'
+                if self.ignore_cores_log_patterns:
+                    expr = '|'.join(["({})".format(p) for p in set(self.ignore_cores_log_patterns)])
+                    matches = node.grep_log(expr)
+                    if matches:
+                        logger.debug("Will ignore cores on {}. Found the following log messages: {}".format(
+                            node.name, matches))
+                        self.ignore_cores.append(node)
+                if node not in self.ignore_cores:
+                    critical_errors_pattern += "|Aborting"
+                matches = node.grep_log(critical_errors_pattern)
+                if matches:
+                    critical_errors.append((node.name, [m[0].strip() for m in matches]))
+            except FileNotFoundError:
+                pass
+            errors = self.check_errors(node=node, exclude_errors=exclude_errors, search_str=search_str, regex=regex,
+                                       return_errors=True)
+            if len(errors):
+                found_errors.append((node.name, errors))
+
+        if critical_errors:
+            raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(
+                critical_errors, found_errors))
+        if found_errors:
+            raise AssertionError('Unexpected errors found: {}'.format(found_errors))
+        found_cores, ignored_cores = self.find_cores()
+        if found_cores:
+            raise AssertionError("Core file(s) found. Marking test as failed.")
 
     def __filter_errors(self, errors, patterns=None):
         """Filter errors, removing those that match patterns"""
