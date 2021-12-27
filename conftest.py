@@ -471,7 +471,8 @@ def pytest_collection_modifyitems(items, config):
 
     for item in items:
         deselect_test = False
-
+        if re.search(r'''[$!#&"()|<>`\;'\s+"']''', item.nodeid):
+            pytest.fail(f"'{item.nodeid}' has illegal characters in it's name, it's gonna break our CI")
         if item.get_closest_marker("resource_intensive") and not collect_only:
             force_resource_intensive = config.getoption("--force-resource-intensive-tests")
             skip_resource_intensive = config.getoption("--skip-resource-intensive-tests")

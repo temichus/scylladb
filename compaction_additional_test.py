@@ -568,18 +568,18 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
 
-    @pytest.mark.parametrize("cf_sizes", [(100, 10_000, 100_000),
-                                          (10_000, 100, 100_000),
-                                          (10_000, 100_000, 100),
-                                          (100, 100_000, 10_000),
-                                          (100_000, 10_000, 100),
-                                          (100_000, 100, 10_00)],
-                             ids=["cf_3 > cf_2 > cf_1",
-                                  "cf_3 > cf_1 > cf_2",
-                                  "cf_2 > cf 1 > cf_3",
-                                  "cf_2 > cf_3 > cf_1",
-                                  "cf_1 > cf_2 > cf_3",
-                                  "cf_1 > cf_3 > cf_2"])
+    @pytest.mark.parametrize("cf_sizes", [(100, 10_000, 100_000),  # cf_3 > cf_2 > cf_1
+                                          (10_000, 100, 100_000),  # cf_2 > cf 1 > cf_3
+                                          (10_000, 100_000, 100),  # cf_3 > cf_1 > cf_2
+                                          (100, 100_000, 10_000),  # cf_2 > cf_3 > cf_1
+                                          (100_000, 10_000, 100),  # cf_1 > cf_2 > cf_3
+                                          (100_000, 100, 10_00)],  # cf_1 > cf_3 > cf_2
+                             ids=["100-10_000-100_000",
+                                  "10_000-100-100_000",
+                                  "10_000-100_000-100",
+                                  "100-100_000-10_000",
+                                  "100_000-10_000-100",
+                                  "100_000-100-10_00"])
     @pytest.mark.single_node
     @pytest.mark.dtest_full
     def test_major_compaction_processes_tables_in_order_by_size(self, cf_sizes: tuple):
