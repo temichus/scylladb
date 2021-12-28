@@ -1047,7 +1047,7 @@ class TestNodetool(Tester):
     @staticmethod
     def describecluster(node):
         out = node.nodetool('describecluster', True)[0]
-        return yaml.safe_load(out.replace(r'\t', "  "))
+        return yaml.safe_load(out.replace('\t', "  "))
 
     def verify_decribecluster(self, node=None):
         node = self.get_node(node)
