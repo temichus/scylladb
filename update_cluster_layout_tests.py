@@ -1211,7 +1211,7 @@ class TestUpdateClusterLayout(Tester):
                              ('api', False),
                              ('api', True),
                              ('nodetool', False),
-                             pytest.param('nodetool', True, marks=pytest.mark.require("scylla-tools-java:#225"))
+                             ('nodetool', True),
                              ])
     def test_simple_removenode_3(self, removenode_method: str, ignore_two_nodes: bool):
         """
