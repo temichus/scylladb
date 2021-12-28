@@ -32,7 +32,7 @@ String setDtestParams (Map args) {
 	String dtestRepeats = args.dtestRepeats ?: "1"
     String dtestType = args.dtestType ?: "full"
 
-	String dtestParameters = "--home=$WORKSPACE/scylla"
+	String dtestParameters = "--home=${WORKSPACE}/${params.PRODUCT_NAME}"
 	dtestParameters += " --mode=$args.dtestMode"
 	dtestParameters += " --smp=$generalProperties.smpNumber"
 	dtestParameters += " --exclude=\"$excludeTests\""
@@ -87,16 +87,13 @@ def artifactScyllaVersion() {
 def setupTestEnv(String buildMode, String architecture="", boolean dryRun=false) {
 	// This override of HOME as an empty dir is needed by ccm
 	echo "Setting test environment, mode: |$buildMode|"
-	def homeDir="$WORKSPACE/cluster_home"
-	createEmptyDir(homeDir)
-	env.HOME = homeDir
 	// First look for local built package
 	String scyllaPackageName = artifact.relocPackageName (
 		dryRun: dryRun,
 		checkLocal: true,
 		mustExist: false,
 		urlOrPath: "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar",
-		packagePrefix: branchProperties.productName,
+		packagePrefix: params.PRODUCT_NAME,
 		buildMode: buildMode,
 		architecture: architecture,
 	)
@@ -107,7 +104,7 @@ def setupTestEnv(String buildMode, String architecture="", boolean dryRun=false)
 			checkLocal: true,
 			mustExist: true,
 			urlOrPath: WORKSPACE,
-			packagePrefix: branchProperties.productName,
+			packagePrefix: params.PRODUCT_NAME,
 			buildMode: buildMode,
 			architecture: architecture,
 		)
@@ -122,6 +119,7 @@ def setupTestEnv(String buildMode, String architecture="", boolean dryRun=false)
 		env.SCYLLA_CORE_PACKAGE = scyllaRelocPkgFile
 		env.SCYLLA_JAVA_TOOLS_PACKAGE = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${params.PRODUCT_NAME}-tools-package.tar.gz"
 		env.SCYLLA_JMX_PACKAGE = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${params.PRODUCT_NAME}-jmx-package.tar.gz"
+		env.CASSANDRA_DIR = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode"
 	} else {
 		echo "Reloc pkg file does not exist. Skipping set testing env vars."
 	}
@@ -165,9 +163,6 @@ def prepareDtestLocalTree (Map args) {
                 branch: ccmBranch)
         }
     }
-
-    http://downloads.scylladb.com/unstable/scylla/master/relocatable/latest/
-
 	artifact.getRelocArtifacts(relocWebUrl, buildMode)
 
 	echo "dtest will run based on relocatable package. Info: ============="

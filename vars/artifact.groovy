@@ -59,11 +59,11 @@ def getRelocArtifacts (String cloudUrl, String buildMode) {
 		architecture: architecture,
 	)
     artifactsTargets.scyllaReloc = [artifact: packageName,
-                                    target: "$WORKSPACE/scylla/build/${buildMode}/dist/tar"]
+                                    target: "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"]
     artifactsTargets.jmxReloc = [artifact: "${params.PRODUCT_NAME}-jmx-package.tar.gz",
-                                 target: "$WORKSPACE/scylla/build/${buildMode}/dist/tar"]
+                                 target: "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"]
     artifactsTargets.toolsJavaReloc = [artifact: "${params.PRODUCT_NAME}-tools-package.tar.gz",
-                                       target: "$WORKSPACE/scylla/build/${buildMode}/dist/tar"]
+                                       target: "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"]
 	artifactsTargets.metadataFile = [artifact: generalProperties.buildMetadataFile, target: WORKSPACE]
 
 	artifactsTargets.each { key, val ->
@@ -113,7 +113,7 @@ String relocPackageName (Map args) {
 	String packageNameNoArch = "${args.packagePrefix}-package.tar.gz"
 	String packageNameX86 = "${args.packagePrefix}-${generalProperties.x86ArchName}-package.tar.gz"
 	String lsOutput = ""
-	if (buildMode.contains("debug") && args.packagePrefix == branchProperties.productName) {
+	if (buildMode.contains("debug") && args.packagePrefix == params.PRODUCT_NAME) {
 		packageName = "${args.packagePrefix}-${buildMode}-${architecture}package.tar.gz"
 		packageNameNoArch = "${args.packagePrefix}-${buildMode}-package.tar.gz"
 		packageNameX86 = "${args.packagePrefix}-${buildMode}-${generalProperties.x86ArchName}-package.tar.gz"
