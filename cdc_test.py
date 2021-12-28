@@ -9,6 +9,7 @@ from threading import Event
 import multiprocessing
 from dataclasses import dataclass
 from uuid import UUID
+from itertools import product
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest
@@ -17,6 +18,9 @@ from cassandra.metadata import Murmur3Token
 from cassandra.query import SimpleStatement
 from cassandra.util import datetime_from_uuid1
 from cassandra.policies import FallthroughRetryPolicy
+from cassandra.cluster import Session
+from ccmlib.scylla_cluster import ScyllaCluster
+from ccmlib.scylla_node import ScyllaNode
 
 from dtest_class import Tester, wait_for
 from dtest_setup import DTestSetup
@@ -657,3 +661,147 @@ class TestCdc(Tester, CDCInitializeHelper):
 
     def log_table_name(self, base_table_name):
         return base_table_name + "_scylla_cdc_log"
+
+
+def generate_test_params():
+    preimage = ["'full'", 'true', 'false']
+    others = [False, True]
+
+    test_configs = []
+    for v1 in preimage:
+        for v2, v3 in product(others, repeat=2):
+            test_config = {"preimage": v1,
+                           "postimage": v2,
+                           "use_regular_column": v3}
+            test_configs.append(test_config)
+
+    return test_configs
+
+
+def generate_test_id(param):
+    return "-".join([f"{key}:{value}".lower() for key, value in param.items()])
+
+
+@pytest.mark.scylla_cdc
+@pytest.mark.dtest_full
+class TestCdcWithCompactStorage(Tester, CDCInitializeHelper):
+
+    expected_fields = ["cdc_stream_id", "cdc_time", "cdc_batch_seq_no",
+                       "cdc_end_of_batch", "cdc_operation", "cdc_ttl",
+                       "pk", "ck", "reg_column", "cdc_deleted_reg_column"]
+    use_reg_column = False
+    preimage = False
+    postimage = False
+
+    @property
+    def create_table_query(self):
+        create_table = "CREATE TABLE ks1.cf1 (pk int, ck int, "
+        if self.use_reg_column:
+            create_table += "reg_column text, "
+            self.use_reg_column = True
+        create_table += "PRIMARY KEY (pk, ck)) with COMPACT STORAGE and cdc = {'enabled': true"
+        if self.preimage:
+            create_table += f", 'preimage': {self.preimage}"
+        if self.postimage:
+            create_table += f", 'postimage': {self.postimage}"
+        create_table += " };"
+
+        return create_table
+
+    @property
+    def insert_query(self):
+        statement = "INSERT INTO ks1.cf1 (pk, ck) VALUES (1, 1);"
+        statement_with_reg_column = "INSERT INTO ks1.cf1 (pk, ck, reg_column) VALUES (1, 1, '1');"
+
+        return [statement_with_reg_column] if self.use_reg_column else [statement]
+
+    @property
+    def delete_query(self):
+        detete = ["DELETE FROM ks1.cf1 WHERE ck = 1 AND pk = 1"]
+        delete_with_reg_column = ["DELETE reg_column FROM ks1.cf1 WHERE ck = 1 AND pk = 1",
+                                  "DELETE FROM ks1.cf1 WHERE ck = 1 AND pk = 1"]
+
+        return delete_with_reg_column if self.use_reg_column else detete
+
+    @property
+    def batch_insert_query(self):
+        queries = []
+        for i in range(5):
+            for j in range(10):
+                if self.use_reg_column:
+                    queries.append(f"INSERT INTO ks1.cf1 (pk, ck, reg_column) VALUES ({i}, {j}, '{j+i}');")
+                else:
+                    queries.append(f"INSERT INTO ks1.cf1 (pk, ck) VALUES ({i}, {j});")
+
+        return [f"BEGIN BATCH {''.join(queries)} APPLY BATCH;"]
+
+    @property
+    def delete_range_query(self):
+        delete_range = ["DELETE FROM ks1.cf1 WHERE pk = 1 AND ck > 3 and ck < 6"]
+        delete_range_with_reg_column = ["DELETE FROM ks1.cf1 WHERE pk = 1 AND ck > 3 and ck < 6",
+                                        "DELETE reg_column FROM ks1.cf1 WHERE pk = 1 AND ck > 6 and ck < 9"]
+
+        return delete_range_with_reg_column if self.use_reg_column else delete_range
+
+    def check_cdc_log_rows_with_compact_storage(self, preimage=False, postimage=False, use_regular_column=None):
+        self.preimage = preimage
+        self.postimage = postimage
+        self.use_reg_column = use_regular_column
+        create_ks_query = "CREATE KEYSPACE ks1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : 2};"
+
+        self.populate_sequentially(n=2, wait_other_notice=True)
+        cluster: ScyllaCluster = self.cluster
+        node: ScyllaNode = cluster.nodelist()[0]
+        session: Session = self.patient_cql_connection(node)
+
+        session.execute(create_ks_query)
+        session.execute(self.create_table_query)
+
+        for query in self.insert_query:
+            logger.debug(query)
+            session.execute(query)
+
+        cdc_logs = self.get_cdc_log_rows(session)
+        self.assert_columns(cdc_logs)
+
+        for query in self.delete_query:
+            logger.debug(query)
+            session.execute(query)
+        cdc_logs = self.get_cdc_log_rows(session)
+        self.assert_columns(cdc_logs)
+
+        for query in self.batch_insert_query:
+            logger.debug(query)
+            session.execute(query)
+        cdc_logs = self.get_cdc_log_rows(session)
+        self.assert_columns(cdc_logs)
+
+        with pytest.raises(InvalidRequest,
+                           match='Range deletions on "compact storage" schemas are not supported'):
+            for query in self.delete_range_query:
+                logger.debug(query)
+                session.execute(query)
+            cdc_logs = self.get_cdc_log_rows(session)
+            self.assert_columns(cdc_logs)
+
+    def get_cdc_log_rows(self, session):
+        query_statement = SimpleStatement("SELECT * FROM ks1.cf1_scylla_cdc_log")
+        query_statement.consistency_level = ConsistencyLevel.ALL
+        return list(session.execute(query_statement))
+
+    def assert_columns(self, rows):
+        if not self.use_reg_column:
+            expected_fields = [field for field in self.expected_fields if field != "v"]
+        else:
+            expected_fields = self.expected_fields
+        for row in rows:
+            for column in row._fields:
+                assert column in expected_fields, f"CDC log row doesn't have column {column}"
+
+    @pytest.mark.parametrize("test_config",
+                             generate_test_params(),
+                             ids=generate_test_id)
+    def test_artificial_column_with_type_empty_is_missing(self, test_config):
+        self.check_cdc_log_rows_with_compact_storage(preimage=test_config["preimage"],
+                                                     postimage=test_config["postimage"],
+                                                     use_regular_column=test_config["use_regular_column"])
