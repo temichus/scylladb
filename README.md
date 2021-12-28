@@ -136,6 +136,18 @@ Also `SCYLLA_JAVA_TOOLS_PACKAGE` or `SCYLLA_JMX_PACKAGE` can be used for replaci
 
 All the `*_PACKAGE` environment variables can also point to public available files on http
 
+### Running different architecture
+
+Use `SCYLLA_ARCH` environment variable, so ccm and run_test.sh could know which architecture to use.
+You should first install https://github.com/multiarch/qemu-user-static for it to work on x64 machine.
+
+The following command would pull the arm64 docker image, and run with it.
+
+```commandline
+export INSTALL_CASSANDRA='ccm create scylla-tmp --scylla -n 1 --version=unstable/master:2021-12-28T04:03:46Z'
+SCYLLA_ARCH=aarch64 ./scripts/run_test.sh cql_additional_tests.py::TestCQL::test_mc_sstables_case_sensitive_insert --scylla-version=unstable/master:2021-12-28T04:03:46Z
+```
+
 ### Running from the compiled source
 
 The only thing needed is the location of the (compiled) sources for Scylla. This is done by pointing
@@ -336,11 +348,16 @@ Uploading docker images
 
 when doing changes to requirements.txt, or any other change to docker image, it can be uploaded like this:
 
+**Via a jenkins job:**
+
+https://jenkins.scylladb.com/job/scylla-staging/job/dtest-build-docker-image/
+
+when it ends, copy the docker image pushed to dockerhub, into `scripts/image`
+
+**Manually:**
 ```bash
-export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-29-pytest-$(date +'%Y%m%d')
-docker build . -t ${DTEST_DOCKER_IMAGE}
-docker push ${DTEST_DOCKER_IMAGE}
+export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-34-pytest-$(date +'%Y%m%d')
+docker buildx build --platform linux/arm64,linux/amd64 -t  ${DTEST_DOCKER_IMAGE} . --push
 echo "${DTEST_DOCKER_IMAGE}" > scripts/image
 ```
-
 **Note:** you'll need permissions on the scylladb dockerhub organization for uploading images

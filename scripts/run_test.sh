@@ -100,6 +100,8 @@ if [[ "$mode" == debug ]]; then
 fi
 export SCYLLA_EXT_ENV=${SCYLLA_EXT_ENV:-"$DEF_SCYLLA_EXT_ENV"}
 
+export SCYLLA_ARCH=${SCYLLA_ARCH:-"$(uname -m)"}
+
 mkdir -p ${HOME}/.dtest
 mkdir -p ${HOME}/.ccm
 mkdir -p ${HOME}/.certs
@@ -161,6 +163,11 @@ elif [[ "$*" == *'--scylla-version'*  ]]; then
     -e SCYLLA_JAVA_TOOLS_PACKAGE \
     -e SCYLLA_JMX_PACKAGE
     "
+fi
+
+if [[ ! "${SCYLLA_ARCH}" == "$(uname -m)" ]]; then
+    echo "using $SCYLLA_ARCH"
+    DOCKER_COMMAND_PARAMS="${DOCKER_COMMAND_PARAMS} --platform linux/${SCYLLA_ARCH}"
 fi
 
 # A link between the dtest docker to the minio docker
@@ -235,6 +242,7 @@ docker_cmd="docker run --init --detach=true \
     -e PYTHONUNBUFFERED=1 \
     -e GITHUB_TOKEN \
     -e DTEST_REQUIRE \
+    -e SCYLLA_ARCH \
     -w ${DTEST_DIR} \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
