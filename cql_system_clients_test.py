@@ -160,6 +160,7 @@ class TestSystemClients(Tester):
 
     def node_session(self, node, user=None, password=None, port=None, ssl_opts=None, session_store=None,
                      row_factory=None):
+        logger.debug(f"node_session: node={node} user={user} port={port} ssl_opts={ssl_opts}")
         session = self.patient_cql_connection(
             self.cluster.nodelist()[node],
             user=user,
@@ -434,18 +435,18 @@ class TestSystemClients(Tester):
         if not fields_with_none_value:
             fields_with_none_value = []
         self.prepare(
-            nodes=2,
+            nodes=1,
             ssl_optional=ssl_optional,
             require_ssl_auth=False,
-            system_auth_rf=2,
+            system_auth_rf=1,
             superuser=True,
-            ssl_enabled=True,
+            ssl_enabled=ssl_enabled,
         )
         empty_value_fields_map = {}
         not_none_fields_map = {}
         session_store = SessionStore()
         with self.node_session(
-                1,
+                0,
                 **self._test_users[0],
                 row_factory=dict_factory,
                 port=port,
@@ -454,6 +455,7 @@ class TestSystemClients(Tester):
             session = session_container._session
             query = 'select * from system.clients'
             current_rows = session.execute(query).current_rows
+            logger.debug(f"system.clients: {current_rows}")
             row = current_rows[0]
             for field in fields_with_none_value:
                 field_value = row.get(field, None)
@@ -467,31 +469,37 @@ class TestSystemClients(Tester):
         assert not empty_value_fields_map, f"expect fields Value with content, got {empty_value_fields_map}"
         assert not not_none_fields_map, f"expect fields value without content, got {not_none_fields_map}"
 
+    @pytest.mark.single_node
     def test_system_client_not_none(self):
         fields = ['address', 'port', 'client_type', 'connection_stage',
                   'protocol_version', 'shard_id', 'username', 'driver_name', 'driver_version']
         self._system_client_content(fields)
 
     @pytest.mark.require("#9216")
+    @pytest.mark.single_node
     def test_system_client_hostname(self):
         fields = ['hostname']
         self._system_client_content(fields)
 
     @pytest.mark.require("#9216")
+    @pytest.mark.single_node
     def test_system_client_ssl(self):
         fields = ['ssl_cipher_suite', 'ssl_enabled', 'ssl_protocol']
         self._system_client_content(fields)
 
+    @pytest.mark.single_node
     def test_system_client_not_none_non_ssl(self):
         fields = ['address', 'port', 'client_type', 'connection_stage',
                   'protocol_version', 'shard_id', 'username', 'driver_name', 'driver_version']
         self._system_client_content(fields, ssl_optional=False, ssl_enabled=False)
 
     @pytest.mark.require("#9216")
+    @pytest.mark.single_node
     def test_system_client_hostname_non_ssl(self):
         fields = ['hostname']
         self._system_client_content(fields, ssl_optional=False, ssl_enabled=False)
 
+    @pytest.mark.single_node
     def test_system_client_ssl_non_ssl(self):
         fields = []
         fields_with_none_value = ['ssl_cipher_suite', 'ssl_enabled', 'ssl_protocol']
