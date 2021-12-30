@@ -472,12 +472,12 @@ class TestSystemClients(Tester):
                   'protocol_version', 'shard_id', 'username', 'driver_name', 'driver_version']
         self._system_client_content(fields)
 
-    @pytest.mark.require("#6946")
+    @pytest.mark.require("#9216")
     def test_system_client_hostname(self):
         fields = ['hostname']
         self._system_client_content(fields)
 
-    @pytest.mark.require("#6946")
+    @pytest.mark.require("#9216")
     def test_system_client_ssl(self):
         fields = ['ssl_cipher_suite', 'ssl_enabled', 'ssl_protocol']
         self._system_client_content(fields)
@@ -487,7 +487,7 @@ class TestSystemClients(Tester):
                   'protocol_version', 'shard_id', 'username', 'driver_name', 'driver_version']
         self._system_client_content(fields, ssl_optional=False, ssl_enabled=False)
 
-    @pytest.mark.require("#6946")
+    @pytest.mark.require("#9216")
     def test_system_client_hostname_non_ssl(self):
         fields = ['hostname']
         self._system_client_content(fields, ssl_optional=False, ssl_enabled=False)
