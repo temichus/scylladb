@@ -57,7 +57,7 @@ class TestPullRequestPipeline extends DeclarativePipelineTest {
         binding.setVariable('NODE_INDEX', '001')
         binding.setVariable('BUILD_USER_ID', 'fruch')
         binding.setVariable('BUILD_USER_EMAIL', 'fruch@scylladb.com')
-
+        binding.setVariable('CHANGE_TARGET', 'next')
         binding.setVariable('scm', 'string')
         helper.registerAllowedMethod('legacySCM', [String])
         helper.registerAllowedMethod('library', [Map], {Map m ->

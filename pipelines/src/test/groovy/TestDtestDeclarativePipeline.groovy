@@ -42,6 +42,8 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
         binding.setVariable('NODE_INDEX', '001')
         binding.setVariable('BUILD_USER_ID', 'fruch')
         binding.setVariable('BUILD_USER_EMAIL', 'fruch@scylladb.com')
+        binding.setVariable('GIT_BRANCH', 'origin/master')
+        binding.setVariable('GIT_URL', 'some_url')
 
         helper.registerAllowedMethod('legacySCM', [String])
         helper.registerAllowedMethod('library', [Map], {Map m ->

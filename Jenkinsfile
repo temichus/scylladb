@@ -2,20 +2,20 @@
 def lib = library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
 
 def pullRequestSetResult(String status, String context, String description){
-	if (env.CHANGE_ID) {
-		pullRequest.createStatus(status: status,
-			context: context,
-			description: description,
-			targetUrl: "${env.JOB_URL}/workflow-stage")
-	}
-	if (status == 'failure') {
-		currentBuild.result = 'FAILURE'
-	}
+    if (env.CHANGE_ID) {
+        pullRequest.createStatus(status: status,
+            context: context,
+            description: description,
+            targetUrl: "${env.JOB_URL}/workflow-stage")
+    }
+    if (status == 'failure') {
+        currentBuild.result = 'FAILURE'
+    }
 }
 
 def pullRequestContainsLabels(String labels){
-	result = false
-	if (env.CHANGE_ID){
+    result = false
+    if (env.CHANGE_ID){
         def labels_to_look_for = labels.split(',')
 
         pullRequest.labels.each {
@@ -23,8 +23,8 @@ def pullRequestContainsLabels(String labels){
                 result = true
             }
         }
-	}
-	return result
+    }
+    return result
 }
 
 pipeline {
@@ -64,6 +64,31 @@ pipeline {
                         pullRequestSetResult('success', 'jenkins/precommit', 'Precommit passed')
                     } catch(Exception ex) {
                         pullRequestSetResult('failure', 'jenkins/precommit', 'Precommit failed')
+                    }
+                }
+            }
+        }
+        stage("test-pipelines") {
+            options {
+                timeout(time: 30, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    lastStage = env.STAGE_NAME
+
+                    def changedFiles = jenkins.getChangedFilesList()
+                    def groovyFiles = changedFiles.findAll({it =~ /.*\.groovy/})
+                    def jenkinsFiles = changedFiles.findAll({it =~ /.*\.jenkinsfile/})
+                    if ((!groovyFiles.isEmpty() | !jenkinsFiles.isEmpty()) | (env.CHANGE_ID && pullRequestContainsLabels("test/pipelines"))) {
+                        try {
+                            sh '''
+                            chmod 777 -R pipelines
+                            docker run -u gradle -v `pwd`:/dtest -w /dtest/pipelines gradle:7.3.3-jdk11-alpine gradle clean test -i
+                            '''
+                            pullRequestSetResult('success', 'jenkins/test-pipelines', 'Test pipelines passed')
+                        } catch(Exception ex) {
+                            pullRequestSetResult('failure', 'jenkins/test-pipelines', 'Test pipelines failed')
+                        }
                     }
                 }
             }
@@ -127,42 +152,42 @@ pipeline {
 }
 
 def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtestType) {
-	echo "runParallelDtest"
-	dtest.prepareDtestLocalTree (
-		preserveWorkspace: false,
-		dtestBranch: SCYLLA_DTEST_BRANCH,
-		dtestRepo: SCYLLA_DTEST_REPO,
-		ccmBranch: params.SCYLLA_CCM_BRANCH,
-		ccmRepo: params.SCYLLA_CCM_REPO,
-		relocWebUrl: params.RELOC_WEB_URL,
-		baseRelocJob: RELOC_JOB_NAME,
-		relocBuildID: params.RELOC_BUILD_ID,
-		buildMode: BUILD_MODE,
-		dtestType: dtestType,
-	)
-	numOfSplitFiles = dtest.splitAndCopyDtestJobs (
-		splitTimeTarget: params.SPLIT_TIME_TARGET,
-		splitMaxNodes: splitMaxNodes,
-		buildMode: BUILD_MODE,
-		includeTests: includeDtestsTag,
-		excludeTests: ''
-	)
-	dtest.doParallelDtest(
-		dryRun: params.DRY_RUN,
-		dtestMode: BUILD_MODE,
-		downloadfromCloud: true,
-		cloudUrl: params.RELOC_WEB_URL,
-		dtestDebugInfoFlag: false,
-		dtestKeepLogsFlag: false,
-		extOpts: params.SCYLLA_EXT_OPTS_EXTRA_SETTINGS,
-		extEnv: params.SCYLLA_EXT_ENV_EXTRA_SETTINGS,
-		numOfSplitFiles: numOfSplitFiles,
-		runningUserID: jenkins.getRunningUserInfo().userId,
-		dtestRepo: SCYLLA_DTEST_REPO,
-		dtestBranch: SCYLLA_DTEST_BRANCH,
-		ccmBranch: params.SCYLLA_CCM_BRANCH,
-		ccmRepo: params.SCYLLA_CCM_REPO,
-		splitFleetLabal: params.SPLIT_FLEET_LABEL,
-		dtestType: dtestType,
-	)
+    echo "runParallelDtest"
+    dtest.prepareDtestLocalTree (
+        preserveWorkspace: false,
+        dtestBranch: SCYLLA_DTEST_BRANCH,
+        dtestRepo: SCYLLA_DTEST_REPO,
+        ccmBranch: params.SCYLLA_CCM_BRANCH,
+        ccmRepo: params.SCYLLA_CCM_REPO,
+        relocWebUrl: params.RELOC_WEB_URL,
+        baseRelocJob: RELOC_JOB_NAME,
+        relocBuildID: params.RELOC_BUILD_ID,
+        buildMode: BUILD_MODE,
+        dtestType: dtestType,
+    )
+    numOfSplitFiles = dtest.splitAndCopyDtestJobs (
+        splitTimeTarget: params.SPLIT_TIME_TARGET,
+        splitMaxNodes: splitMaxNodes,
+        buildMode: BUILD_MODE,
+        includeTests: includeDtestsTag,
+        excludeTests: ''
+    )
+    dtest.doParallelDtest(
+        dryRun: params.DRY_RUN,
+        dtestMode: BUILD_MODE,
+        downloadfromCloud: true,
+        cloudUrl: params.RELOC_WEB_URL,
+        dtestDebugInfoFlag: false,
+        dtestKeepLogsFlag: false,
+        extOpts: params.SCYLLA_EXT_OPTS_EXTRA_SETTINGS,
+        extEnv: params.SCYLLA_EXT_ENV_EXTRA_SETTINGS,
+        numOfSplitFiles: numOfSplitFiles,
+        runningUserID: jenkins.getRunningUserInfo().userId,
+        dtestRepo: SCYLLA_DTEST_REPO,
+        dtestBranch: SCYLLA_DTEST_BRANCH,
+        ccmBranch: params.SCYLLA_CCM_BRANCH,
+        ccmRepo: params.SCYLLA_CCM_REPO,
+        splitFleetLabal: params.SPLIT_FLEET_LABEL,
+        dtestType: dtestType,
+    )
 }

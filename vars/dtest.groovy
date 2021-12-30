@@ -141,8 +141,8 @@ def prepareDtestLocalTree (Map args) {
 	jenkins.traceFunctionParams ("dtest.prepareDtestLocalTree", args)
 
 	boolean preserveWorkspace = args.preserveWorkspace ?: false
-	String dtestBranch = args.dtestBranch ?: env.GIT_BRANCH.split('/')[1]
-	String dtestRepo = args.dtestRepo ?: env.GIT_URL
+	String dtestBranch = args.dtestBranch ?: "${GIT_BRANCH}".split('/')[1]
+	String dtestRepo = args.dtestRepo ?: "${GIT_URL}"
 	String ccmBranch = args.ccmBranch ?: branchProperties.ccmStableBranchName
 	String ccmRepo = args.ccmRepo ?: branchProperties.ccmDefaultRepo
 	String relocWebUrl = args.relocWebUrl ?: "latest"
