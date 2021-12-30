@@ -474,7 +474,7 @@ class TestCommitLog(Tester):
             [2, 2]
         )
 
-    @pytest.mark.require('scylladb/scylla-dtest#2190')
+    @pytest.mark.skip('scylladb/scylla-dtest#2190')
     # Scylla reports the failed commitlog entries, but they will be ignored, it won't break
     # the startup like Cassandra. And Scylla doesn't have `commit_failure_policy` option.
     def test_bad_crc(self):
