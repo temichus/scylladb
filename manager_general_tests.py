@@ -68,32 +68,6 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
             sleep(step)
         return False
 
-    @pytest.mark.require("#2155")
-    def test_removing_managed_driver_during_repair(self):
-        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
-        node1, node2, node3 = self.cluster.nodelist()
-        self.cluster.stress(['write', 'n=1000K', '-rate', 'threads=50', '-pop', 'seq=10000001..20000000',
-                             '-schema', 'replication(replication_factor=3)'])
-
-        logger.debug("Create Manager Tool instance to run scylla-manager operations")
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        cluster_name = "cluster1"
-        mgr_cluster = manager_tool.add_cluster(node=node1, name=cluster_name)
-        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id)
-        is_status_reached = repair_task.wait_for_status([TaskStatus.RUNNING])
-        assert is_status_reached, "Timeout: The task {} did not start".format(repair_task.id)
-
-        repaired_node = self._node_inwhich_repair_started([node1, node2, node3])
-        logger.debug(f"Chosen node: {repaired_node.name}")
-        assert repaired_node, \
-            "The manager started the repair task, yet could not find evidence of that in the cluster nodes"
-        repair_task.stop()
-        sleep(10)  # The manager waits 5 seconds for lingering repair threads before aborting the repair
-        # Making sure that the repair that started in the cluster has stopped
-        repair_ending_message_results = repaired_node.grep_log(expr="Aborted [0-9] repair job")
-        assert repair_ending_message_results, "Stopping the repair through the manager did not stop the repair " \
-                                              "in the cluster"
-
     def test_removing_node_from_managed_cluster(self):
         def has_removed_node_reached_dn(removed_node_address):
             all_nodes_details = mgr_cluster.get_hosts_health()
