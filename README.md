@@ -235,6 +235,21 @@ To pass environment variables for running scylla:
 
     SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0:abort_on_error=1:detect_stack_use_after_return=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
 
+To tune the behavior of the @pytest.mark.require marker:
+
+    The @pytest.mark.require skips tests based on the github status of the respective issue it refers to.
+    The test is skipped while the issue is open. Once the issue is closed on github, the test will start running again.
+    However for that to work, the test environemnt needs to be set up properly to be able to use the github REST API.
+    To disable the @pytest.mark.require marker and allow running test marked with `require` locally (e.g. for working on provisional fixes for them),
+    the DTEST_REQUIRE environment variable may be set to `disabled`, as follows:
+
+    export DTEST_REQUIRE=disabled
+
+    Here are the supported values for `DTEST_REQUIRE`:
+    - auto : default value, check issue state in @pytest.mark.require marker and run(state=closed) or skip(state=open) test
+    - enabled : skip tests marked with @pytest.mark.require
+    - disabled : disable @pytest.mark.require decorator and run test (mostly for manual tests)
+
 Test Directories
 ----------------
 Each test directory is given a temporary name, e.g. `dtest-IouAlot`,

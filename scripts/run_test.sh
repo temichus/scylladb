@@ -45,10 +45,9 @@ Script to run dtest from within docker
         LOG_SAVED_DIR
         KEEP_CORES
         GITHUB_TOKEN - github api token to get issue states
-        DTEST_REQUIRE - auto : check issue state in require decorator and run(state=closed) or skip(state=open) test
-                      - enabled : default value, skip test marked with decorator
-                      - disabled : disable require decorator and run test (mostly for manual tests)
-
+        DTEST_REQUIRE - auto : default value, check issue state in @pytest.mark.require marker and run(state=closed) or skip(state=open) test
+                      - enabled : skip tests marked with @pytest.mark.require
+                      - disabled : disable @pytest.mark.require decorator and run test (mostly for manual tests)
 
     Examples:
     cd ~/scylla-dtest/
