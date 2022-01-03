@@ -383,12 +383,20 @@ def fixture_skip_version(request, fixture_dtest_setup):
 
 @pytest.fixture(autouse=True)
 def fixture_require_version(request, fixture_dtest_setup):
+    """
+        DTEST_REQUIRE - auto : default value, check issue state in @pytest.mark.require marker and run(state=closed) or skip(state=open) test
+                      - enabled : skip tests marked with @pytest.mark.require
+                      - disabled : disable @pytest.mark.require decorator and run test (mostly for manual tests)
+    """
     marker = request.node.get_closest_marker('require')
     if marker is not None:
         issue = marker.kwargs.get('require_pattern', next(iter(marker.args), None))
-        if check_issue_closed(issue) and DTEST_REQUIRE != "disabled":
+        if DTEST_REQUIRE == "disabled":
+            print(f"DTEST_REQUIRE is disabled. Test will be run")
+        elif DTEST_REQUIRE != "enabled" and check_issue_closed(issue):
+            # DTEST_REQUIRE == "auto"
             print(f"Issue {issue} closed. Test will be run")
-        else:
+        else:   # DTEST_REQUIRE == "enabled"
             pytest.skip(f"require: {issue}")
 
 
