@@ -12,6 +12,7 @@ import errno
 import pprint
 import random
 from collections import OrderedDict
+from functools import partial, partialmethod
 
 import requests
 from cassandra.cluster import Cluster as PyCluster, default_lbp_factory
@@ -30,8 +31,15 @@ from dtest_config import DTestConfig
 from tools.context import log_filter
 from tools.funcutils import merge_dicts
 from tools.log_utils import remove_control_chars
+from tools.log_utils import DisableLogger
 
 logger = logging.getLogger(__name__)
+
+# Add custom TRACE level, for development print we don't want on debug level
+logging.TRACE = 5
+logging.addLevelName(logging.TRACE, 'TRACE')
+logging.Logger.trace = partialmethod(logging.Logger.log, logging.TRACE)
+logging.trace = partial(logging.log, logging.TRACE)
 
 
 class RandomClusterIdAllocator(object):
@@ -853,6 +861,21 @@ class DTestSetup:
                 factor = 2
         return seconds * factor
 
+    def disable_error(self, name, node):
+        """Disable error injection
+        Args:
+            name (str): name of error injection to be disabled.
+            node (ScyllaNode|int): either instance of scylla node or node number.
+        """
+        with DisableLogger("urllib3.connectionpool"):
+            if isinstance(node, int):
+                node = self.cluster.nodelist()[node]
+            node_ip = get_ip_from_node(node)
+            logger.trace(f'Disabling error injection "{name}" on node {node_ip}')
+
+            response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
+            response.raise_for_status()
+
     def check_error(self, name, node):
         """Get status of error injection
 
@@ -861,11 +884,12 @@ class DTestSetup:
             node (ScyllaNode|int): either instance of scylla node or node number.
 
         """
-        if isinstance(node, int):
-            node = self.cluster.nodelist()[node]
-        node_ip = get_ip_from_node(node)
-        response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
-        response.raise_for_status()
+        with DisableLogger("urllib3.connectionpool"):
+            if isinstance(node, int):
+                node = self.cluster.nodelist()[node]
+            node_ip = get_ip_from_node(node)
+            response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection/{name}")
+            response.raise_for_status()
 
     def list_errors(self, node):
         """List enabled error injections
@@ -874,12 +898,13 @@ class DTestSetup:
             node (ScyllaNode|int): either instance of scylla node or node number.
 
         """
-        if isinstance(node, int):
-            node = self.cluster.nodelist()[node]
-        node_ip = get_ip_from_node(node)
-        response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection")
-        response.raise_for_status()
-        return response.json()
+        with DisableLogger("urllib3.connectionpool"):
+            if isinstance(node, int):
+                node = self.cluster.nodelist()[node]
+            node_ip = get_ip_from_node(node)
+            response = requests.get(f"http://{node_ip}:10000/v2/error_injection/injection")
+            response.raise_for_status()
+            return response.json()
 
     def disable_errors(self, node):
         """Disable all error injections
@@ -888,11 +913,13 @@ class DTestSetup:
             node (ScyllaNode|int): either instance of scylla node or node number.
 
         """
-        if isinstance(node, int):
-            node = self.cluster.nodelist()[node]
-        node_ip = get_ip_from_node(node)
-        response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection")
-        response.raise_for_status()
+        with DisableLogger("urllib3.connectionpool"):
+            if isinstance(node, int):
+                node = self.cluster.nodelist()[node]
+            node_ip = get_ip_from_node(node)
+            logger.trace(f'Disable all error injections on node {node_ip}')
+            response = requests.delete(f"http://{node_ip}:10000/v2/error_injection/injection")
+            response.raise_for_status()
 
     def enable_error(self, name, node, one_shot=False):
         """Enable error injection
@@ -904,10 +931,11 @@ class DTestSetup:
                              (resets enabled state after triggering the injection).
 
         """
-        if isinstance(node, int):
-            node = self.cluster.nodelist()[node]
-        node_ip = get_ip_from_node(node)
-        logger.debug(f'Enabling error injection "{name}" on node {node_ip}')
-        response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
-                                 params={"one_shot": one_shot})
-        response.raise_for_status()
+        with DisableLogger("urllib3.connectionpool"):
+            if isinstance(node, int):
+                node = self.cluster.nodelist()[node]
+            node_ip = get_ip_from_node(node)
+            logger.trace(f'Enabling error injection "{name}" on node {node_ip}')
+            response = requests.post(f"http://{node_ip}:10000/v2/error_injection/injection/{name}",
+                                     params={"one_shot": one_shot})
+            response.raise_for_status()
