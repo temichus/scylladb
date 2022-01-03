@@ -27,18 +27,21 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         """
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
-        ttl = 60
+        ttl = 30
         test_max_duration_minutes = 4
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
 
         self._prepare_twcs_table(ttl=ttl, session=session)
-        sstables = self.create_expired_sstables(session)
+        sstables = self.create_expired_sstables(session, ttl=30)
         p = self._start_high_load_on_cluster(duration_minutes=test_max_duration_minutes)
-
-        sstable_exists = self.wait_until_expired_sstables_are_evicted(sstables, test_max_duration_minutes * 60)
+        sleep(ttl)  # wait for sstables to be expired
+        mark = self.cluster.nodelist()[0].mark_log()
+        timeout = test_max_duration_minutes * 60 - ttl
+        sstable_exists = self.wait_until_expired_sstables_are_evicted(sstables, timeout)
         self.stop_high_load_on_cluster(p)
 
         assert not sstable_exists, "Expired sstables should be removed soon after expiration time (upon compaction)"
+        self.expired_sstables_should_not_be_compacted_along_with_unexpired(sstables, mark)
 
     @staticmethod
     def _prepare_twcs_table(ttl, session):
@@ -73,7 +76,7 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         logger.info("started stress")
         return proc
 
-    def create_expired_sstables(self, session, duration_minutes=3, flush_period_seconds=30,):
+    def create_expired_sstables(self, session, duration_minutes=3, flush_period_seconds=30, ttl=30):
         """Simulate a write process across duration minutes.
         Returns created sstables
 
@@ -94,7 +97,7 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         cf = "standard1"
         insert_statement = session.prepare(
             f'INSERT INTO {ks}.{cf} (key, "C0", "C1", "C2", "C3", "C4") VALUES (?, ?, ?, ?, ?, ?)'
-            f' USING TIMESTAMP ? AND TTL 60')
+            f' USING TIMESTAMP ? AND TTL {ttl}')
         rand_pks = set()
 
         logger.info("creating expired sstables")
@@ -113,7 +116,9 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         node.flush()
         logger.info("expired sstables created")
         cf_dir = get_node_cf_dir(node, ks, cf)
-        return get_sstables_files(cf_dir, f_type='Data')
+        expired_sstables = get_sstables_files(cf_dir, f_type='Data')
+        logger.debug(f"Expired sstables: {expired_sstables}")
+        return expired_sstables
 
     def wait_until_expired_sstables_are_evicted(self, expired_sstables, timeout):
         """Waits until sstables are removed from disk. Returns list of not removed sstables."""
@@ -128,7 +133,32 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
                 sleep(2)
                 continue
             break
+        logger.info("Expired sstables has been removed")
         return expired_sstables
+
+    def expired_sstables_should_not_be_compacted_along_with_unexpired(self, expired_sstables, from_mark):
+        node = self.cluster.nodelist()[0]
+        log_file = os.path.join(node.get_path(), 'logs', 'system.log')
+        with open(log_file, "r") as system_log:
+            system_log.seek(from_mark)
+            ks_compaction_lines = [line for line in system_log.readlines() if
+                                   "compaction - [Compact keyspace1.standard1" in line]
+            start_compaction_lines = [line for line in ks_compaction_lines if "Compacting [" in line]
+            end_compaction_lines = [line for line in ks_compaction_lines if "] Compacted" in line]
+
+            compaction_ids = set()
+            for line in start_compaction_lines:
+                for file in expired_sstables:
+                    if file in line:
+                        compaction_id = line.split("compaction - [Compact keyspace1.standard1 ")[1].split("]")[0]
+                        compaction_ids.add(compaction_id)
+                        break
+            assert compaction_ids, "no compaction of keyspace1.standard1 found in logs"
+            for compaction_id in compaction_ids:
+                for line in end_compaction_lines:
+                    if compaction_id in line:
+                        assert "sstables to []" in line, \
+                            f"expired sstable was compacted along with unexpired ones. id: {compaction_id}. Issue #9533"
 
     @staticmethod
     def stop_high_load_on_cluster(proc):

@@ -90,3 +90,4 @@ upgrade_test.py
 scylla_help_command_test.py
 cdc_batch_test.py
 multidc_additional_tests.py
+twcs_additional_test.py
