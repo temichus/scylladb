@@ -23,6 +23,7 @@ from cassandra.protocol import SyntaxException
 from cassandra.query import dict_factory, SimpleStatement, UNSET_VALUE
 from cassandra.util import sortedset
 from cassandra.cluster import ResultSet, NoHostAvailable
+from dtest_class import get_ip_from_node
 
 from tools.assertions import assert_all, assert_invalid, assert_none, assert_one, \
     assert_row_count
@@ -35,6 +36,7 @@ from thrift_bindings.thrift010.ttypes import CfDef
 from thrift_tests import get_thrift_client
 
 from tools.data import rows_to_list, create_index, create_local_index
+from tools.metrics import get_node_metrics
 from tools.misc import require
 from tools.metrics import get_node_metrics
 
@@ -52,7 +54,7 @@ class TestCQL(Tester):
         return random.choice(
             ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy'])
 
-    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, options={}, **kwargs):
+    def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None, options={}, jvm_args=[], **kwargs):
         cluster = self.cluster
 
         if use_cache:
@@ -66,7 +68,7 @@ class TestCQL(Tester):
             cluster.set_configuration_options(values=options)
 
         if not cluster.nodelist():
-            cluster.populate(nodes).start()
+            cluster.populate(nodes).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         time.sleep(0.2)
 
@@ -127,6 +129,218 @@ class TestCQL(Tester):
             [UUID('f47ac10b-58cc-4372-a567-0e02b2c3d479'), 37, None, None],
             [UUID('550e8400-e29b-41d4-a716-446655440000'), 36, None, None],
         ], list(res)
+
+    @pytest.mark.single_node
+    def test_prepared_statement_cache_unprivileged_eviction(self):
+        """
+        Test that prepared statements cache is evicting unprivileged entries and updates the corresponding metrics.
+
+        """
+        session = self.prepare(jvm_args=['--smp', '1'])
+        session.execute("CREATE TABLE test (k int PRIMARY KEY, a int)")
+        node = self.cluster.nodelist()[0]
+
+        i = 0
+        # Let's simulate a pollution: query is prepared and executed exactly once
+        while True:
+            explicit_prepared = session.prepare("SELECT k, a FROM test where k = {}".format(i))
+            result = session.execute(explicit_prepared)
+            i = i + 1
+            res = get_node_metrics(get_ip_from_node(node), metrics=[
+                                   "prepared_cache_evictions", "unprivileged_entries_evictions_on_size"])
+            assert res["prepared_cache_evictions"] == res["unprivileged_entries_evictions_on_size"]
+
+            if res["prepared_cache_evictions"] > 100:
+                logger.debug("number of prepared: {} prepared_cache_evictions: {} unprivileged_entries_evictions_on_size: {}".format(
+                    i, res["prepared_cache_evictions"], res["unprivileged_entries_evictions_on_size"]))
+                break
+
+    @pytest.mark.single_node
+    def test_prepared_statement_cache_privileged_eviction(self):
+        """
+        Test that prepared statements cache is evicting privileged entries when appropriate and that the unprivileged
+        section eviction metrics remains 0.
+
+        """
+        session = self.prepare(jvm_args=['--smp', '1'])
+        session.execute("CREATE TABLE test (k int PRIMARY KEY, a int)")
+        node = self.cluster.nodelist()[0]
+
+        i = 0
+        # Let's verify that if query is executed more than once it moves to a privileged cache section.
+        # In such a case eviction is NOT going to be from unprivileged cache section.
+        while True:
+            explicit_prepared = session.prepare("SELECT k, a FROM test where k = {}".format(i))
+            session.execute(explicit_prepared)
+            session.execute(explicit_prepared)
+
+            i = i + 1
+            res = get_node_metrics(get_ip_from_node(node),
+                                   metrics=["prepared_cache_evictions", "unprivileged_entries_evictions_on_size"])
+
+            logger.debug("number of prepared: {} prepared_cache_evictions: {} unprivileged_entries_evictions_on_size: {}".format(
+                i, res["prepared_cache_evictions"], res["unprivileged_entries_evictions_on_size"]))
+
+            assert res["unprivileged_entries_evictions_on_size"] == 0
+
+            if res["prepared_cache_evictions"] > 100:
+                logger.debug("number of prepared: {} prepared_cache_evictions: {} unprivileged_entries_evictions_on_size: {}".format(
+                    i, res["prepared_cache_evictions"], res["unprivileged_entries_evictions_on_size"]))
+                break
+
+    def get_prep_id(self, node, pattern, mark):
+        """
+        Prepared statement IDs are printed in the log when prepared_statements_cache logger is set to a 'trace' verbosity.
+        This function fetches those IDs.
+
+        IDs are printed when they are inserted into the cache and when they are evicted.
+        """
+        node.watch_log_for([pattern], from_mark=mark)
+        lines = node.grep_log(pattern, from_mark=mark)
+        ids = []
+
+        for match in lines:
+            m = re.search(r'cql_id: (.+),', match[0])
+            assert m, "Bad format in a prepared_statements_cache log line"
+            ids.append(m.group(1))
+        return ids
+
+    @pytest.mark.single_node
+    def test_prepared_statement_cache_lru_eviction_privileged(self):
+        """
+        Test that prepared statements cache evicts LRU entry first from the privileged section:
+        Let's create a workload where a single statement is always going to be MRU while we keep on pushing new
+        distinct prepared statements and use them twice to force them into the privileged cache section.
+
+        We expect the MRU statement to never be evicted and the LRU entry to be evicted first.
+
+        """
+
+        session = self.prepare(jvm_args=['--logger-log-level', 'prepared_statements_cache=trace', '--smp', '1'])
+        session.execute("CREATE TABLE test (k int PRIMARY KEY, a int)")
+        node = self.cluster.nodelist()[0]
+
+        mark = node.mark_log()
+
+        # This is going to be our "MRU entry" - execute it twice to push it into the privileged cache section.
+        explicit_prepared0 = session.prepare("SELECT k, a FROM test where k = 0")
+        session.execute(explicit_prepared0)
+        session.execute(explicit_prepared0)
+        first_statement_id = self.get_prep_id(node, "storing the value for the first time", mark)[0]
+        logger.debug("first_id: {}".format(first_statement_id))
+
+        i = 1
+        # Let's populate the prepared cache till it starts evicting: let's execute each statement twice to push them
+        # into the privileged section.
+        # We will also remember their IDs. We will use them to verify that entries are evicted in an LRU order.
+        prep_statements_ids = []
+        while True:
+            mark = node.mark_log()
+            prep = session.prepare("SELECT k, a FROM test where k = {}".format(i))
+            prep_id = self.get_prep_id(node, "storing the value for the first time", mark)[0]
+            session.execute(prep)
+            session.execute(prep)
+            session.execute(explicit_prepared0)
+            session.execute(explicit_prepared0)
+            i = i + 1
+
+            prep_statements_ids.append(prep_id)
+
+            res = get_node_metrics(get_ip_from_node(node), metrics=["prepared_cache_evictions"])
+            if res["prepared_cache_evictions"] > 0:
+                break
+
+        # Now let's populate it again with new entries while the cache is full and let's check that the MRU is not evicted
+        # and LRU entries are evicted first.
+        # No need to execute explicit_prepared0 twice - it's already in a privileged section.
+        last_evicted = res["prepared_cache_evictions"]
+        lru_id_idx = 0
+        for j in range(i, 2*i-1):
+            statement_ids = self.get_prep_id(node, r"prepared_statements_cache - shrink()", mark)
+
+            for statement_id in statement_ids:
+                logger.debug("{}-{}: evicted_id: {}".format(i, j, statement_id))
+                assert statement_id != first_statement_id, "MRU entry got evicted!"
+                assert statement_id == prep_statements_ids[lru_id_idx], "LRU entry haven't got evicted!"
+                lru_id_idx = lru_id_idx + 1
+
+            mark = node.mark_log()
+            prep = session.prepare("SELECT k, a FROM test where k = {}".format(j))
+            session.execute(prep)
+            session.execute(prep)
+            session.execute(explicit_prepared0)
+            res = get_node_metrics(get_ip_from_node(node), metrics=["prepared_cache_evictions"])
+            logger.debug("{}-{}: last_evicted {}-{}".format(i, j, last_evicted, res["prepared_cache_evictions"]))
+            assert last_evicted + 1 == res["prepared_cache_evictions"], "No eviction! Must have been!"
+            last_evicted = res["prepared_cache_evictions"]
+
+    @pytest.mark.single_node
+    def test_prepared_statement_cache_lru_eviction_unprivileged(self):
+        """
+        Test that prepared statements cache is evicted LRU entry first from the unprivileged section:
+        Let's create a workload where a single statement is always going to be MRU and therefore will be in the privileged section
+        while we keep on pushing new distinct prepared statements which will only be used once.
+
+        We expect the MRU statement to never be evicted and the LRU entry to be evicted first.
+
+        """
+
+        # Start nodes with a single shard to keep the filtering simple
+        session = self.prepare(jvm_args=['--logger-log-level', 'prepared_statements_cache=trace', '--smp', '1'])
+        session.execute("CREATE TABLE test (k int PRIMARY KEY, a int)")
+        node = self.cluster.nodelist()[0]
+
+        mark = node.mark_log()
+
+        # This is going to be our MRU entry
+        explicit_prepared0 = session.prepare("SELECT k, a FROM test where k = 0")
+        session.execute(explicit_prepared0)
+        first_statement_id = self.get_prep_id(node, "storing the value for the first time", mark)[0]
+        logger.debug("first_id: {}".format(first_statement_id))
+
+        i = 1
+        # Let's populate the prepared cache till it starts evicting while executing the explicit_prepared0 on each iteration.
+        # We will also remember their IDs. We will use them to verify that entries are evicted in an LRU order.
+        prep_statements_ids = []
+        while True:
+            mark = node.mark_log()
+            prep = session.prepare("SELECT k, a FROM test where k = {}".format(i))
+            prep_id = self.get_prep_id(node, "storing the value for the first time", mark)[0]
+            session.execute(prep)
+            session.execute(explicit_prepared0)
+            i = i + 1
+
+            prep_statements_ids.append(prep_id)
+
+            res = get_node_metrics(get_ip_from_node(node), metrics=[
+                                   "prepared_cache_evictions", "unprivileged_entries_evictions_on_size"])
+            if res["prepared_cache_evictions"] > 0:
+                assert res["prepared_cache_evictions"] == res["unprivileged_entries_evictions_on_size"], "Privileged entry got evicted!"
+                break
+
+        # Now let's populate it again with new entries while the cache is full and let's check that the MRU is not evicted
+        # and LRU entries are evicted first.
+        last_evicted = res["prepared_cache_evictions"]
+        lru_id_idx = 0
+        for j in range(i, 2 * i - 1):
+            statement_ids = self.get_prep_id(node, r"prepared_statements_cache - shrink()", mark)
+
+            for statement_id in statement_ids:
+                logger.debug("{}-{}: evicted_id: {}".format(i, j, statement_id))
+                assert statement_id != first_statement_id, "MRU entry got evicted!"
+                assert statement_id == prep_statements_ids[lru_id_idx], "LRU entry haven't got evicted!"
+                lru_id_idx = lru_id_idx + 1
+
+            mark = node.mark_log()
+            prep = session.prepare("SELECT k, a FROM test where k = {}".format(j))
+            session.execute(prep)
+            session.execute(explicit_prepared0)
+            res = get_node_metrics(get_ip_from_node(node), metrics=[
+                                   "prepared_cache_evictions", "unprivileged_entries_evictions_on_size"])
+            logger.debug("{}-{}: last_evicted {}-{}".format(i, j, last_evicted, res["prepared_cache_evictions"]))
+            assert last_evicted + 1 == res["prepared_cache_evictions"], "No eviction! Must have been!"
+            assert res["prepared_cache_evictions"] == res["unprivileged_entries_evictions_on_size"], "Privileged entry got evicted!"
+            last_evicted = res["prepared_cache_evictions"]
 
     @pytest.mark.single_node
     @pytest.mark.skip(reason="scylla doesn't have this print")
