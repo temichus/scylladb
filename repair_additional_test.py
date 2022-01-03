@@ -2794,6 +2794,7 @@ class TestRepairAdditional(RepairAdditionalBase):
         return self._repair_abort_test()
 
     @pytest.mark.next_gating
+    @pytest.mark.require('scylladb/scylla#9785')
     def test_repair_one_missing_row(self):
         return self._repair_one_missing_row_test()
 
@@ -2811,6 +2812,7 @@ class TestRepairAdditional(RepairAdditionalBase):
         return self._repair_joint_row_3nodes_same_key_same_value_test()
 
     @pytest.mark.next_gating
+    @pytest.mark.require('scylladb/scylla#9785')
     def test_repair_joint_row_3nodes_2(self):
         return self._repair_joint_row_3nodes_same_key_diff_value_test()
 
