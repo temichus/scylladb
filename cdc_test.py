@@ -679,7 +679,7 @@ def generate_test_params():
 
 
 def generate_test_id(param):
-    return "-".join([f"{key}:{value}".lower() for key, value in param.items()])
+    return "-".join([f"{key}:{value}".lower() for key, value in param.items()]).replace("'", "")
 
 
 @pytest.mark.scylla_cdc
