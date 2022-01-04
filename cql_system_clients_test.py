@@ -6,7 +6,7 @@ import time
 
 from cassandra.query import dict_factory
 
-from dtest_class import Tester
+from dtest_class import Tester, wait_for
 from dtest_setup import DTestSetup
 from tools.misc import generate_ssl_stores
 from typing import List, Dict
@@ -40,12 +40,11 @@ def get_system_clients_records(session, protocol_version=None, user=None, ssl_op
         filters.append(f"protocol_version='{protocol_version}'")
 
     if filters:
-        filters = 'WHERE' + ' AND '.join(filters)
+        filters = 'WHERE ' + ' AND '.join(filters)
     else:
         filters = ''
-
-    return list(session.execute(
-        f'SELECT client_type, protocol_version, ssl_enabled, username FROM system.clients {filters} ALLOW FILTERING'))
+    query = f'SELECT client_type, protocol_version, ssl_enabled, username FROM system.clients {filters} ALLOW FILTERING'
+    return list(session.execute(query))
 
 
 class SessionStore:
@@ -199,6 +198,13 @@ class TestSystemClients(Tester):
                     f"to get to {expected}, last value was {last_value}")
             time.sleep(0.2)
 
+    @staticmethod
+    def wait_anonymous_connections_purged(session):
+        wait_for(lambda: not get_system_clients_records(session,
+                                                        user=None,
+                                                        ssl_opts='*',
+                                                        protocol_version='*'), step=0.2, timeout=30)
+
     def prepare(self, ssl_optional=False, require_ssl_auth=False, nodes=1, system_auth_rf=1, superuser=False,
                 ssl_enabled=True):
         cluster = self.cluster
@@ -305,6 +311,7 @@ class TestSystemClients(Tester):
 
         # Failed SSL connection test to non-SSL port
         with self.patient_cql_connection(self.cluster.nodelist()[0], user='cassandra', password='cassandra') as session:
+            self.wait_anonymous_connections_purged(session)
             original_sessions_count = self.get_total_records_in_system_clients(session)
             with pytest.raises(Exception):
                 self.node_session(
@@ -317,6 +324,7 @@ class TestSystemClients(Tester):
 
         # Failed non-SSL connection test to SSL port
         with self.patient_cql_connection(self.cluster.nodelist()[0], user='cassandra', password='cassandra') as session:
+            self.wait_anonymous_connections_purged(session)
             original_sessions_count = self.get_total_records_in_system_clients(session)
             with pytest.raises(Exception):
                 self.node_session(
@@ -328,6 +336,7 @@ class TestSystemClients(Tester):
 
         # Failed authentication
         with self.patient_cql_connection(self.cluster.nodelist()[0], user='cassandra', password='cassandra') as session:
+            self.wait_anonymous_connections_purged(session)
             original_sessions_count = self.get_total_records_in_system_clients(session)
             with pytest.raises(Exception):
                 self.node_session(
@@ -414,6 +423,7 @@ class TestSystemClients(Tester):
 
         # Failed SSL authentication test
         with self.patient_cql_connection(self.cluster.nodelist()[0], user='cassandra', password='cassandra') as session:
+            self.wait_anonymous_connections_purged(session)
             original_sessions_count = self.get_total_records_in_system_clients(session)
             with pytest.raises(Exception):
                 self.node_session(
