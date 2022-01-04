@@ -941,7 +941,7 @@ class TestAuth(Tester):
 
         @jira_ticket CASSANDRA-10655
         """
-        self.prepare(permissions_validity=2000)
+        self.prepare(permissions_validity=2000, smp=1)
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
@@ -977,7 +977,7 @@ class TestAuth(Tester):
                     # this should still fail, but if the cache has expired while we paused, try again
                     delta = datetime.now() - grant_time
                     if delta < timedelta(seconds=2):
-                        pytest.fail("Expecting query to raise an exception, but nothing was raised.")
+                        pytest.fail(f"Expecting query to raise an exception, but nothing was raised. delta={delta}")
                     cassandra.execute("REVOKE SELECT ON ks.cf FROM cathy")
                     time.sleep(2.5)
                     check_caching(attempt)
@@ -1989,7 +1989,7 @@ class TestAuth(Tester):
         assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
         logger.info("can't get session of node2 with normal user/password")
 
-    def prepare(self, nodes=1, permissions_validity=0, enable_auth=True, wait_for_superuser=False):
+    def prepare(self, nodes=1, permissions_validity=0, enable_auth=True, wait_for_superuser=False, smp=None):
         config = {'permissions_validity_in_ms': permissions_validity,
                   'permissions_update_interval_in_ms': int(permissions_validity / 2)}
         auth_conf = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
@@ -1997,7 +1997,11 @@ class TestAuth(Tester):
         if enable_auth:
             config.update(auth_conf)
         self.cluster.set_configuration_options(values=config)
-        self.cluster.populate(nodes).start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.populate(nodes)
+        if smp:
+            for node in self.cluster.nodelist():
+                node.set_smp(smp)
+        self.cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         if enable_auth or wait_for_superuser:
             expected_entries = ['Created default superuser role']
