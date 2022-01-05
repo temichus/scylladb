@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime as dt
 from pathlib import Path
+from os.path import getsize
 from threading import Thread
 from typing import Optional, List
 
@@ -1061,9 +1062,9 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         assert len(sstables) >= time_windows, f"Missing sstables on {node.name}." \
                                               f" There should be at least one sstable per time window."
 
-    def _sstable_count_is_lower_than(self, node, count):
-        sstables = self._get_list_of_sstables(node)
-        assert len(sstables) < count, "Too many sstables. Possibly compaction was not run."
+    def _get_sstables_size(self, node):
+        sstables = node.get_sstables(self.keyspace_name, self.table_name)
+        return sum([getsize(sstable) for sstable in sstables])
 
     def _create_ks_cl_with_twcs(self, session, rf=1):
 
@@ -1125,10 +1126,11 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
     @pytest.mark.single_node
     def test_streaming_during_adding_node_with_boostrap(self):
+        time_windows = 20
         [node1], session = self.prepare(1)
         self._create_ks_cl_with_twcs(session, rf=1)
 
-        self._simulate_write_process_in_minutes(session, duration_minutes=20)
+        self._simulate_write_process_in_minutes(session, duration_minutes=time_windows)
 
         # Not really relevant to the test, just for sanity.
         self._check_sstable_timestamps(node1)
@@ -1139,8 +1141,12 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         # After streaming the new node should also have at max one
         # window per sstable.
         self._check_sstable_timestamps(node2)
-        self._sstable_count_is_equal_or_greater_than_time_windows(node2, 20)
-        self._sstable_count_is_lower_than(node2, 20*1.5)  # verify data is compacted, reducing write amplification
+        self._sstable_count_is_equal_or_greater_than_time_windows(node2, time_windows)
+
+        # verify write amplification is low
+        node1_sstable_size = self._get_sstables_size(node1)
+        node2_sstable_size = self._get_sstables_size(node2)
+        assert node2_sstable_size <= node1_sstable_size, "write amplification on new node detected"
 
     def test_streaming_decommission(self):
         [node1, node2], session = self.prepare(2)
