@@ -620,8 +620,8 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         @dataclass
         class CfSizeTime:
             name: str
-            size: Optional[int]
-            compaction_time: Optional[datetime.datetime]
+            size: Optional[int]  # pylint: disable=unsubscriptable-object
+            compaction_time: Optional[datetime.datetime]  # pylint: disable=unsubscriptable-object
 
         def _prepare_tables_with_data(cf_sizes: tuple):
             cf_size_time = []
@@ -1056,6 +1056,15 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                                    seconds margin: sstable={sf} \
                                    min_timestamp={stats['min_timestamp']} max_timestamp={stats['max_timestamp']}"
 
+    def _sstable_count_is_equal_or_greater_than_time_windows(self, node, time_windows):
+        sstables = self._get_list_of_sstables(node)
+        assert len(sstables) >= time_windows, f"Missing sstables on {node.name}." \
+                                              f" There should be at least one sstable per time window."
+
+    def _sstable_count_is_lower_than(self, node, count):
+        sstables = self._get_list_of_sstables(node)
+        assert len(sstables) < count, "Too many sstables. Possibly compaction was not run."
+
     def _create_ks_cl_with_twcs(self, session, rf=1):
 
         session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': {}}}".format(
@@ -1130,6 +1139,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         # After streaming the new node should also have at max one
         # window per sstable.
         self._check_sstable_timestamps(node2)
+        self._sstable_count_is_equal_or_greater_than_time_windows(node2, 20)
+        self._sstable_count_is_lower_than(node2, 20*1.5)  # verify data is compacted, reducing write amplification
 
     def test_streaming_decommission(self):
         [node1, node2], session = self.prepare(2)
@@ -1187,14 +1198,11 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         node3.start(wait_for_binary_proto=False)
 
         self.run_prepared_statement(node1, session, insert_statement, rand_pks, 0, synthetic_minutes)
-        num_of_sstables = len(self._get_list_of_sstables(node1))
-        assert num_of_sstables >= synthetic_minutes, f"Expected {synthetic_minutes} sstables but got " \
-                                                     f"{num_of_sstables} on {node1.name}"
+        self._sstable_count_is_equal_or_greater_than_time_windows(node1, synthetic_minutes)
+
         node3.watch_log_for("init - Scylla.*initialization completed")
 
-        num_of_sstables = len(self._get_list_of_sstables(node3))
-        assert num_of_sstables >= synthetic_minutes, f"Expected {synthetic_minutes} sstables" \
-                                                     f" but got {num_of_sstables} on {node3.name}"
+        self._sstable_count_is_equal_or_greater_than_time_windows(node3, synthetic_minutes)
 
     def test_twcs_multiple_sstables_during_compaction(self):
         synthetic_minutes = 20
@@ -1217,8 +1225,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         thread1 = executor.submit(do_run_compaction)
 
         self.run_prepared_statement(node1, session, insert_statement, rand_pks, 0, synthetic_minutes)
-        num_of_sstables = len(self._get_list_of_sstables(node1))
-        assert num_of_sstables >= synthetic_minutes, f"Expected {synthetic_minutes} sstables but got {num_of_sstables}"
+        self._sstable_count_is_equal_or_greater_than_time_windows(node1, synthetic_minutes)
 
         while not thread1.done():
             time.sleep(1)
@@ -1236,8 +1243,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             rand_pks.add(random.randint(-2147483647, 2147483647))
 
         self.run_prepared_statement(node1, session, insert_statement, rand_pks, 0, synthetic_minutes)
-        num_of_sstables = len(self._get_list_of_sstables(node1))
-        assert num_of_sstables >= synthetic_minutes, f"Expected {synthetic_minutes} sstables but got {num_of_sstables}"
+        self._sstable_count_is_equal_or_greater_than_time_windows(node1, synthetic_minutes)
 
         min_compile = re.compile('Minimum timestamp: (.*)')
         max_compile = re.compile('Maximum timestamp: (.*)')
