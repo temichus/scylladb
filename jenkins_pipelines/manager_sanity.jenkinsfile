@@ -35,7 +35,7 @@ pipeline {
     environment {
         AWS_ACCESS_KEY_ID     = credentials('qa-aws-secret-key-id')
         AWS_SECRET_ACCESS_KEY = credentials('qa-aws-secret-access-key')
-        NOSE_PROCESSES = "2"
+        GITHUB_TOKEN = credentials('github-api-access-token')
     }
     stages {
         stage('Checkout') {

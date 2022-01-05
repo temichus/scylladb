@@ -69,6 +69,7 @@ def call(Map pipelineParams) {
                 environment {
                     AWS_ACCESS_KEY_ID     = credentials('jenkins2-aws-secret-key-id')
                     AWS_SECRET_ACCESS_KEY = credentials('jenkins2-aws-secret-access-key')
+                    GITHUB_TOKEN = credentials('github-api-access-token')
                 }
                 parallel {
                     stage('FullDtest') {
