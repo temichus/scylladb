@@ -1,0 +1,61 @@
+pipeline {
+    agent {
+        label {
+            label "ec2-fleet-arm"
+        }
+    }
+     parameters {
+
+        string(defaultValue: '720',
+               description: 'timeout for jenkins job in minutes',
+               name: 'timeout')
+    }
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout([time: params.timeout, unit: "MINUTES"])
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+    environment {
+        AWS_ACCESS_KEY_ID     = credentials('qa-aws-secret-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('qa-aws-secret-access-key')
+        DOCKER_USERNAME       = credentials('docker-hub-jenkins-user')
+        DOCKER_PASSWORD       = credentials('docker-hub-api-key')
+    }
+    stages {
+        stage('Checkout') {
+           steps {
+              dir('scylla-dtest') {
+                  checkout scm
+              }
+           }
+        }
+        stage('Build Docker image') {
+            steps {
+                script {
+                    wrap([$class: 'BuildUser']) {
+                        dir('scylla-dtest') {
+
+                            sh """
+                            #!/bin/bash
+                            set -xe
+                            env
+                            docker login docker.io -u=\$DOCKER_USERNAME -p=\$DOCKER_PASSWORD
+
+                            docker run --privileged --rm tonistiigi/binfmt --install all
+
+                            export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-34-pytest-\$(date +'%Y%m%d')
+
+                            docker buildx create --use
+                            docker buildx build --platform linux/arm64,linux/amd64 -t  \${DTEST_DOCKER_IMAGE} . --push
+                            echo "\${DTEST_DOCKER_IMAGE}" > scripts/image
+
+                            echo "\${DTEST_DOCKER_IMAGE}"
+                            """
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
