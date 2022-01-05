@@ -649,7 +649,7 @@ class TestMaterializedViews(CommonUtils):
         self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=prefill, mv_expected_rows=prefill,
                                    consistency_level=ConsistencyLevel.ALL)
         self.fixture_dtest_setup.ignore_log_patterns += [
-            r'Error applying view update to .*: std::_Nested_exception<no_such_column_family>']
+            r'Error applying view update to .*: data_dictionary::no_such_column_family']
 
     def test_mv_populating_from_existing_data_with_restriction(self):
         session = self.prepare(rf=3, nodes=4)
@@ -2269,7 +2269,7 @@ class TestMaterializedViews(CommonUtils):
             r'view - Error applying view update to .*: exceptions::unavailable_exception',
             r'view - Error applying view update to .*: exceptions::mutation_write_timeout_exception',
             r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception',
-            r'view - Error applying view update to .*: std::_Nested_exception<no_such_column_family>',
+            r'view - Error applying view update to .*: data_dictionary::no_such_column_family',
         ]
         if interrupt_resharding:
             self.fixture_dtest_setup.ignore_log_patterns += [
@@ -2346,7 +2346,7 @@ class TestMaterializedViews(CommonUtils):
     def test_drop_while_building(self):
         """Test that a MV build is interrupted when the view is removed"""
         # Expected error due MV dropping during the building
-        self.fixture_dtest_setup.ignore_log_patterns += [r'std::_Nested_exception<no_such_column_family>']
+        self.fixture_dtest_setup.ignore_log_patterns += [r'data_dictionary::no_such_column_family']
 
         session = self.prepare(options={'hinted_handoff_enabled': False})
 
@@ -4198,7 +4198,7 @@ class TestInterruptBuildProcess(CommonUtils):
             r'view - Error applying view update to .*: exceptions::unavailable_exception',
             r'view - Error applying view update to .*: exceptions::mutation_write_timeout_exception',
             r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception',
-            r'view - Error applying view update to .*: std::_Nested_exception<no_such_column_family>',
+            r'view - Error applying view update to .*: data_dictionary::no_such_column_family',
         ]
         if interrupt_resharding:
             self.ignore_log_patterns += [
