@@ -63,8 +63,8 @@ class TestSchemaReplicationEverywhereStrategy(Tester):
         node2.start(wait_for_binary_proto=True)
         node1.stop(wait_other_notice=True)
         self.verify_data_in_user_table(node2)
-        node3 = cluster.new_node(3, auto_bootstrap=True)
-        node3.start(wait_other_notice=True)
+        node3 = cluster.new_node(3, auto_bootstrap=True, initial_token=None, is_seed=False)
+        node3.start(wait_for_binary_proto=True, replace_address=node1.address())
         node2.stop()
         self.verify_data_in_user_table(node3)
 
