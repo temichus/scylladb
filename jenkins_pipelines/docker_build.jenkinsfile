@@ -1,11 +1,10 @@
 pipeline {
     agent {
         label {
-            label "ec2-fleet-arm"
+            label "ec2-fleet-x86"
         }
     }
-     parameters {
-
+    parameters {
         string(defaultValue: '720',
                description: 'timeout for jenkins job in minutes',
                name: 'timeout')
@@ -21,6 +20,10 @@ pipeline {
         AWS_SECRET_ACCESS_KEY = credentials('qa-aws-secret-access-key')
         DOCKER_USERNAME       = credentials('docker-hub-jenkins-user')
         DOCKER_PASSWORD       = credentials('docker-hub-api-key')
+
+        DTEST_IMAGE_NAME = "scylladb/scylla-dtest"
+        DTEST_DOCKER_TAG = sh(script:"echo \"fedora-34-pytest-\$(date +'%Y%m%d')\"", returnStdout: true)
+
     }
     stages {
         stage('Checkout') {
@@ -32,23 +35,46 @@ pipeline {
         }
         stage('Build Docker image') {
             steps {
+                parallel (
+                        Amd64Build: {
+                            script {
+                                buildDocker("amd64")
+                            }
+                        },
+                        Arm64Build: {
+                            script {
+                                node('ec2-fleet-arm') {
+                                    dir('scylla-dtest') {
+                                        checkout scm
+                                    }
+                                    buildDocker("arm64")
+                                }
+                            }
+                        }
+                )
+
+            }
+        }
+        stage('Build Docker manifest') {
+            steps {
                 script {
                     wrap([$class: 'BuildUser']) {
                         dir('scylla-dtest') {
-
                             sh """
                             #!/bin/bash
                             set -xe
-                            env
+
+                            export ARM_TAG="$DTEST_IMAGE_NAME-arm64:$DTEST_DOCKER_TAG"
+                            export X86_TAG="$DTEST_IMAGE_NAME-amd64:$DTEST_DOCKER_TAG"
+                            export DTEST_MANIFEST="$DTEST_IMAGE_NAME:$DTEST_DOCKER_TAG"
+
                             docker login docker.io -u=\$DOCKER_USERNAME -p=\$DOCKER_PASSWORD
 
-                            docker run --privileged --rm tonistiigi/binfmt --install all
+                            docker pull \$ARM_TAG
+                            docker pull \$X86_TAG
 
-                            export DTEST_DOCKER_IMAGE=scylladb/scylla-dtest:fedora-34-pytest-\$(date +'%Y%m%d')
-
-                            docker buildx create --use
-                            docker buildx build --platform linux/arm64,linux/amd64 -t  \${DTEST_DOCKER_IMAGE} . --push
-                            echo "\${DTEST_DOCKER_IMAGE}" > scripts/image
+                            docker manifest create \$DTEST_MANIFEST \$X86_TAG \$ARM_TAG
+                            docker manifest push \$DTEST_MANIFEST
 
                             echo "\${DTEST_DOCKER_IMAGE}"
                             """
@@ -56,6 +82,28 @@ pipeline {
                     }
                 }
             }
+        }
+    }
+}
+
+def buildDocker(String Architecture) {
+    wrap([$class: 'BuildUser']) {
+        dir('scylla-dtest') {
+
+            sh """
+            #!/bin/bash
+            set -xe
+
+            docker login docker.io -u=\$DOCKER_USERNAME -p=\$DOCKER_PASSWORD
+
+            # docker run --privileged --rm tonistiigi/binfmt --install all
+
+            export DTEST_DOCKER_IMAGE=$DTEST_IMAGE_NAME-$Architecture:$DTEST_DOCKER_TAG
+
+            docker buildx build --platform linux/$Architecture -t \${DTEST_DOCKER_IMAGE} . --push
+
+            echo "\${DTEST_DOCKER_IMAGE}"
+            """
         }
     }
 }
