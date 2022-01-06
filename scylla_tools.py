@@ -1247,9 +1247,6 @@ class CassandraCluster(object):
         logger.debug('Remove temporary folder with Scylla data')
         if self.scylla_data_tmp_folder and os.path.exists(self.scylla_data_tmp_folder):
             shutil.rmtree(self.scylla_data_tmp_folder)
-        logger.debug('Stopping Cassandra cluster')
-        if self.cluster:
-            self.cluster.stop(wait_other_notice=True)
 
         dtest_setup = self.dtest_setup
         for con in dtest_setup.connections:

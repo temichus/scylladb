@@ -213,7 +213,7 @@ else
     CMD="bash -c $'sudo rsyslogd; pip3 install --user ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m pytest -v -s ${subcommand}'"
 fi
 
-docker_cmd="docker run --detach=true \
+docker_cmd="docker run --init --detach=true \
     ${WORKSPACE_MNT} \
     ${DOCKER_COMMAND_PARAMS} \
     ${MINIO_DOCKER_LINK_PARAM} \
