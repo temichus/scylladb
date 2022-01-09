@@ -2273,9 +2273,7 @@ class TestMaterializedViews(CommonUtils):
         ]
         if interrupt_resharding:
             self.fixture_dtest_setup.ignore_log_patterns += [
-                # for now, until the reader is properly aborted and closed
-                r'resharding failed: seastar::broken_promise',
-                r"Exception while populating keyspace 'ks' with column family 't\w*' .*: sstables::compaction_stopped_exception",
+                r"Exception while populating .*: sstables::compaction_stopped_exception",
                 r'Startup failed: seastar::sleep_aborted',
             ]
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0,
@@ -4202,10 +4200,7 @@ class TestInterruptBuildProcess(CommonUtils):
         ]
         if interrupt_resharding:
             self.ignore_log_patterns += [
-                # for now, until the reader is properly aborted and closed
-                r'resharding failed: seastar::broken_promise',
-                r'resharding failed: std::runtime_error \(Dangling queue_reader_handle\)',
-                r"Exception while populating keyspace 'ks' with column family 't\w*' .*: sstables::compaction_stopped_exception",
+                r"Exception while populating .*: sstables::compaction_stopped_exception",
                 r'Startup failed: seastar::sleep_aborted',
             ]
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000, 'prometheus_port': 0, 'read_request_timeout_in_ms': 100000, 'range_request_timeout_in_ms': 100000},
