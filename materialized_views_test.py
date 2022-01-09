@@ -4252,7 +4252,8 @@ class TestInterruptBuildProcess(CommonUtils):
                 node.start(jvm_args=jvm_args, no_wait=True)
                 node.watch_log_for(r"Reshard ks", from_mark=mark)
                 logger.debug(f"Stopping node {node.name} during resharding")
-                node.stop(wait_other_notice=True)
+                node.stop(gently=False, wait_other_notice=False)
+                time.sleep(5)
                 logger.debug(f"Restarting node {node.name}")
             node.start(jvm_args=jvm_args)
 
