@@ -71,7 +71,7 @@ def assert_exception(session, query, matching=None, expected=None):
     _assert_exception(session.execute, query, matching=matching, expected=expected)
 
 
-def assert_unavailable(fun, *args):
+def assert_unavailable(fun, *args, additional=None):
     """
     Attempt to execute a function, and assert Unavailable, WriteTimeout, WriteFailure,
     ReadTimeout, or ReadFailure exception is raised.
@@ -82,7 +82,13 @@ def assert_unavailable(fun, *args):
     assert_unavailable(session2.execute, "SELECT * FROM ttl_table;")
     assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
     """
-    _assert_exception(fun, *args, expected=(Unavailable, WriteTimeout, WriteFailure, ReadTimeout, ReadFailure))
+    expected_list = [Unavailable, WriteTimeout, WriteFailure, ReadTimeout, ReadFailure]
+    if additional:
+        if isinstance(additional, list):
+            expected_list.extend(additional)
+        else:
+            expected_list.extend(list(additional))
+    _assert_exception(fun, *args, expected=tuple(expected_list))
 
 
 def assert_invalid(session, query, matching=None, expected=InvalidRequest):

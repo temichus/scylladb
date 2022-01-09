@@ -10,6 +10,8 @@ from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.protocol import ConfigurationException
 from cassandra.policies import FallthroughRetryPolicy
 from cassandra.query import SimpleStatement
+from cassandra.connection import ConnectionShutdown
+from cassandra.cluster import NoHostAvailable
 from ccmlib.scylla_cluster import ScyllaCluster
 
 from thrift_bindings.thrift010.ttypes import \
@@ -920,7 +922,8 @@ class TestAbortedQueries(CQLTester):
         mark = node.mark_log()
         statement = SimpleStatement("SELECT * from test1", consistency_level=ConsistencyLevel.ONE,
                                     retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session,
+                           additional=(NoHostAvailable, ConnectionShutdown))
         if not isinstance(cluster, ScyllaCluster):
             node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
@@ -1024,7 +1027,8 @@ class TestAbortedQueries(CQLTester):
             node.start(wait_for_binary_proto=True, jvm_args=[
                        '--read-request-timeout-in-ms=0', '--range-request-timeout-in-ms=0'])
 
-        assert_unavailable(lambda c: logger.debug(c.execute(statement, [50])), session)
+        assert_unavailable(lambda c: logger.debug(
+            c.execute(statement, [50])), session, additional=(NoHostAvailable, ConnectionShutdown))
         if not isinstance(cluster, ScyllaCluster):
             node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
@@ -1069,6 +1073,7 @@ class TestAbortedQueries(CQLTester):
         mark = node2.mark_log()
         statement = SimpleStatement("SELECT * FROM mv WHERE col = 50",
                                     consistency_level=ConsistencyLevel.ONE, retry_policy=FallthroughRetryPolicy())
-        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session)
+        assert_unavailable(lambda c: logger.debug(c.execute(statement)), session,
+                           additional=(NoHostAvailable, ConnectionShutdown))
         if not isinstance(cluster, ScyllaCluster):
             node2.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
