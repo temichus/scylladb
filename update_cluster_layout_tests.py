@@ -2097,6 +2097,66 @@ class TestUpdateClusterLayout(Tester):
 
 
 @pytest.mark.dtest_full
+class TestStopNodeEarly(Tester):
+
+    def _test_stop_node_while_restarting(self, gently, wait_other_notice, num_nodes=2):
+        """
+        Test that other nodes handle node stopping early during initialization
+        """
+        cluster = self.cluster
+        cluster.populate(num_nodes).start()
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(cluster.nodelist()[1])
+        create_ks(session, 'ks', rf=min(num_nodes, 3))
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
+
+        logger.debug(f"Restarting node1")
+        node1.stop(wait_other_notice=True)
+        mark1 = node1.mark_log()
+        other_marks = []
+        for node in cluster.nodelist()[1:]:
+            other_marks.append((node, node.mark_log()))
+        node1.start(no_wait=True)
+        if wait_other_notice:
+            # we need other nodes to first notice the stopping node to be UP
+            # before we actually stop the node, if we want other nodes to notice
+            # the node to be DOWN during stop procedure.
+            msg = f"InetAddress {node1.address()} is now UP"
+            logger.debug(f"Waiting for '{msg}'")
+            for node, mark in other_marks:
+                node.watch_log_for(msg, from_mark=mark)
+        else:
+            # view update starting is an arbitrary point
+            # in the startup sequence known to be early enough,
+            # before gossipping starts and others notice the
+            # starting node as UP.
+            msg = "starting view update generator"
+            logger.debug(f"Waiting for '{msg}'")
+            node1.watch_log_for(msg, from_mark=mark1)
+        logger.debug(f"Stopping node1 early: gently={gently} wait_other_notice={wait_other_notice}")
+        node1.stop(gently=gently, wait_other_notice=wait_other_notice)
+
+        logger.debug(f"Verifying data")
+        result = list(session.execute("SELECT * FROM cf"))
+        assert len(result) == 1000
+
+    def test_stop_node_while_restarting(self):
+        self._test_stop_node_while_restarting(gently=True, wait_other_notice=False)
+
+    def test_stop_node_while_restarting_wait_other_notice(self):
+        self._test_stop_node_while_restarting(gently=True, wait_other_notice=True)
+
+    def test_kill_node_while_restarting(self):
+        self._test_stop_node_while_restarting(gently=False, wait_other_notice=False)
+
+    def test_kill_node_while_restarting_wait_other_notice(self):
+        self._test_stop_node_while_restarting(gently=False, wait_other_notice=True)
+
+
+@pytest.mark.dtest_full
 @pytest.mark.dtest_long
 @pytest.mark.dtest_heavy
 class TestLargeScaleCluster(Tester):
