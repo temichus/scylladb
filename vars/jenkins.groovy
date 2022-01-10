@@ -73,7 +73,15 @@ def raiseErrorOnFailureStatus (boolean status, String description) {
 }
 
 def getChangedFilesList() {
-    String files = sh(script:"git diff --name-only origin/$CHANGE_TARGET", returnStdout: true)
+    // Get list of files changed,
+    // if in PR the diff is against the target branch, if not in PR the diff is only the last commit
+    String diffScript = ""
+    if (env.CHANGE_TARGET) {
+        diffScript = "git diff --name-only origin/$CHANGE_TARGET"
+    } else {
+        diffScript = "git diff --name-only HEAD^"
+    }
+    String files = sh(script: diffScript, returnStdout: true)
     return files.split()
 }
 
