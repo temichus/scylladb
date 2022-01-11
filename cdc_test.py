@@ -339,6 +339,71 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.cluster_reduction_with_cdc_template(request=request, cluster_size=cluster_config.size,
                                                  replication=cluster_config.replication, with_preimage=True)
 
+    def test_check_and_repair_after_cluster_reduction(self):
+        # After a decommission, streams no longer match the new token ring structure.
+        # In such a case `nodetool checkAndRepairCdcStreams` should trigger regeneration.
+        logger.debug('Setup a cluster')
+        cluster = self.cluster
+        self.populate_sequentially(n=3)
+        node1 = cluster.nodes['node1']
+        node3 = cluster.nodes['node3']
+        session = self.patient_cql_connection(node1)
+
+        gen_timestamp = self.get_last_generation_timestamp(session)
+        self.wait_for_metadata_update(session, cluster_size=3)
+        ring = self.get_vnode_ring(session)
+
+        logger.debug('Check that the initial generation is OK')
+        self.generation_quality_check(session, gen_timestamp, ring)
+
+        logger.debug('Downsize the cluster by one node')
+        node3.decommission()
+
+        self.wait_for_metadata_update(session, cluster_size=2)
+
+        def check_and_repair():
+            node1.nodetool('checkAndRepairCdcStreams')
+        logger.debug('Running checkAndRepairCdcStreams...')
+        p = multiprocessing.Process(target=check_and_repair)
+        p.start()
+        p.join(60)
+
+        if p.is_alive():
+            # Still running -- we have a liveness problem.
+            p.terminate()
+            p.join()
+            pytest.fail("checkAndRepairCdcStreams did not terminate in time")
+
+        old_gen_timestamp = gen_timestamp
+
+        def new_gen_appeared():
+            gen_timestamp = self.get_last_generation_timestamp(session)
+            return gen_timestamp > old_gen_timestamp
+        wait_for(new_gen_appeared, 1, "Waiting for new generation to appear", 60)
+        gen_timestamp = self.get_last_generation_timestamp(session)
+
+        ring = self.get_vnode_ring(session)
+        ring_tokens = set(token.value for token in ring)
+        gen_description = list(self.get_single_cdc_description_rows(session, gen_timestamp))
+        gen_tokens = set(entry.range_end for entry in gen_description)
+        assert gen_tokens == ring_tokens, 'New generation should match the token ring'
+
+        logger.debug('Run checkAndRepairCdcStreams again')
+        p = multiprocessing.Process(target=check_and_repair)
+        p.start()
+        p.join(60)
+
+        if p.is_alive():
+            # Still running -- we have a liveness problem.
+            p.terminate()
+            p.join()
+            pytest.fail("2nd run of checkAndRepairCdcStreams did not terminate in time")
+
+        gen_timestamp2 = self.get_last_generation_timestamp(session)
+        assert gen_timestamp2 == gen_timestamp, "2nd run of checkAndRepairCdcStreams should not regenerate"
+
+        logger.debug('Test finished')
+
     def schema_change_template(self, request, alter_query, cluster_size, replication, with_preimage=False, additional_fields=[]):
         logger.debug('Setup a cluster')
         cluster = self.cluster
