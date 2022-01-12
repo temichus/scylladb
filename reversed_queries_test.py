@@ -1,10 +1,13 @@
 from threading import Event
 from concurrent.futures import ThreadPoolExecutor
 import logging
+import signal
+import random
 
 import pytest
 from cassandra import ConsistencyLevel as CL
 from cassandra.query import SimpleStatement, dict_factory
+from cassandra import ReadFailure
 
 from datahelp import create_rows
 from dtest_class import Tester, create_ks
@@ -548,3 +551,122 @@ class TestReversedQueriesSelectorsDuringUpgrade(UpgradeTester, BaseReversedQuery
 
                 logger.debug('Testing selects')
                 self.run_selects(session)
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestOptimizedReversedQueriesFlag(Tester):
+
+    @staticmethod
+    def set_config_and_reload(node, config):
+        mark = node.mark_log()
+        node.set_configuration_options(values=config)
+        node.kill(signal.SIGHUP)
+        node.watch_log_for('completed re-reading configuration file', from_mark=mark)
+
+    def test_optimized_reversed_queries_flag(self):
+        """
+        Test that:
+        - `enable_optimized_reversed_reads` option can be dynamically changed as new pages
+          are fetched during a reversed query, and the pages return consistent results
+        - the option actually has an effect, which we verify by checking if a reversed query
+          is considered 'unlimited' when the option is false and not 'unlimited' when it's true
+
+          Ref: https://github.com/scylladb/scylla/pull/9908
+        """
+
+        self.ignore_log_patterns += ['Memory usage of reversed read exceeds hard limit of 1']
+
+        logger.info('Setup cluster')
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+
+        create_ks(session, 'ks', 1)
+        session.execute('create table ks.t (pk int, ck int, v int, primary key (pk, ck))')
+
+        query = session.prepare("insert into ks.t (pk, ck, v) values (0, ?, 0)")
+
+        expected_keys = []
+        rt_strs = []
+
+        def insert_random_range_tombstone():
+            rt_start = random.randint(0, 200)
+            rt_start_inclusive = random.choice([True, False])
+            rt_end = rt_start + random.randint(0, 10)
+            rt_end_inclusive = random.choice([True, False])
+
+            rt_left_cmp = '>=' if rt_start_inclusive else '>'
+            rt_right_cmp = '<=' if rt_end_inclusive else '<'
+            session.execute(f'delete from ks.t where pk = 0 and ck {rt_left_cmp} {rt_start}'
+                            f' and ck {rt_right_cmp} {rt_end}')
+
+            rt_left_str = '[' if rt_start_inclusive else '('
+            rt_right_str = ']' if rt_end_inclusive else ')'
+            rt_strs.append(f'{rt_left_str}{rt_start}, {rt_end}{rt_right_str}')
+
+            def filter_key(k):
+                return not ((k > rt_start or (rt_start_inclusive and k == rt_start))
+                            and (k < rt_end or (rt_end_inclusive and k == rt_end)))
+
+            return filter_key
+
+        # Put some data in memtable and some in sstable
+        logger.info('Insert data')
+        for key in range(100):
+            session.execute(query, (key,))
+            expected_keys.append(key)
+        for _ in range(10):
+            filter_key = insert_random_range_tombstone()
+            expected_keys = [k for k in expected_keys if filter_key(k)]
+        logger.info('Flush')
+        node.flush()
+        logger.info('Insert more data')
+        for key in range(100, 200):
+            session.execute(query, (key,))
+            expected_keys.append(key)
+        for _ in range(10):
+            filter_key = insert_random_range_tombstone()
+            expected_keys = [k for k in expected_keys if filter_key(k)]
+
+        expected_keys = list(reversed(expected_keys))
+        logger.debug(f'Expected keys: {expected_keys}')
+        logger.debug(f'Inserted range tombstones: {rt_strs}')
+
+        query = session.prepare("select * from ks.t where pk = 0 order by ck desc bypass cache")
+        query.fetch_size = 10
+
+        use_optimized = True
+        self.set_config_and_reload(node, {'enable_optimized_reversed_reads': use_optimized})
+
+        fetched_keys = []
+        result = session.execute(query)
+        while result.has_more_pages:
+            page = [r.ck for r in result.current_rows]
+            fetched_keys.extend(page)
+            logger.debug(f'Page keys: {page}')
+            use_optimized = not use_optimized
+            logger.debug(f'Set enable_optimized_reversed_reads to {use_optimized}, fetching next page')
+            self.set_config_and_reload(node, {'enable_optimized_reversed_reads': use_optimized})
+            result = session.execute(query, paging_state=result.paging_state)
+        page = [r.ck for r in result.current_rows]
+        fetched_keys.extend(page)
+        logger.debug(f'Page keys: {page}')
+        logger.debug(f'All fetched keys: {fetched_keys}')
+
+        assert expected_keys == fetched_keys
+
+        logger.info('Set enable_optimized_reversed_reads to False'
+                    ' and max_memory_for_unlimited_query to 1B')
+        self.set_config_and_reload(node, {'enable_optimized_reversed_reads': False,
+                                          'max_memory_for_unlimited_query': 1})
+
+        with pytest.raises(ReadFailure):
+            logger.info('Query using old reversed read algorithm, should fail')
+            session.execute(query).one()
+
+        logger.info('Set enable_optimized_reversed_reads to True')
+        self.set_config_and_reload(node, {'enable_optimized_reversed_reads': True})
+        logger.info('Query using new reversed read algorithm, should succeed')
+        assert session.execute(query).one()
