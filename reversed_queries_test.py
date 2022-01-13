@@ -1,29 +1,32 @@
-import time
-
-from cassandra import ConsistencyLevel as CL
-from cassandra import InvalidRequest, ReadTimeout, ReadFailure
-from cassandra.query import SimpleStatement, BatchStatement, dict_factory, tuple_factory
-
-import os.path
-from assertions import assert_invalid
-from datahelp import create_rows, flatten_into_set, parse_data_into_dicts
-from dtest import Tester, run_scenarios, debug
-from tools import require, since, rows_to_list
-from concurrent.futures import ThreadPoolExecutor
 from threading import Event
+from concurrent.futures import ThreadPoolExecutor
+import logging
 
-from nose.plugins.attrib import attr
+import pytest
+from cassandra import ConsistencyLevel as CL
+from cassandra.query import SimpleStatement, dict_factory
 
+from datahelp import create_rows
+from dtest_class import Tester, create_ks
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
+
 import upgrade_test
 from upgrade_test import UpgradeTester
 
+logger = logging.getLogger(__name__)
+
 
 class ConcurrentExecutor(object):
+    request: pytest.FixtureRequest = None
+
+    @pytest.fixture(scope='function', autouse=True)
+    def attach_request(self, request):
+        self.request = request
+
     def run_concurrently(self, worker_count, f, stop_event=None):
         if stop_event is None:
             stop_event = Event()
-            self.addCleanup(lambda: stop_event.set())
+            self.request.addfinalizer(lambda: stop_event.set())
         worker_executor = ThreadPoolExecutor(max_workers=worker_count)
 
         def work(worker_id):
@@ -39,11 +42,11 @@ class ConcurrentExecutor(object):
             f.result()
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestReversedQueriesPaging(BasePagingTester, PageAssertionMixin):
     def reversed_query_template(self, data, fetch_size, expected_page_count, expected_rows):
         session = self.prepare()
-        self.create_ks(session, 'test_reversed_queries', 2)
+        create_ks(session, 'test_reversed_queries', 2)
         session.execute("CREATE TABLE paging_test (bucket int, id int, value text, PRIMARY KEY (bucket, id))")
 
         expected_data = create_rows(data, session, 'paging_test', cl=CL.ALL,
@@ -56,11 +59,11 @@ class TestReversedQueriesPaging(BasePagingTester, PageAssertionMixin):
         pf = PageFetcher(future)
         pf.request_all()
 
-        self.assertFalse(pf.has_more_pages)
+        assert not pf.has_more_pages
         data = pf.all_data()
-        self.assertEqual(pf.pagecount(), expected_page_count)
-        self.assertEqual(len(expected_data), len(data))
-        self.assertSequenceEqual(data, expected_rows)
+        assert pf.pagecount() == expected_page_count
+        assert len(expected_data) == len(data)
+        assert data == expected_rows
 
     def test_with_less_results_than_page_size(self):
         data = """
@@ -107,7 +110,7 @@ class BaseReversedQuerySelector(object):
         return session
 
     def prepare_schema(self, session, rf=1):
-        self.create_ks(session, 'test_reversed_queries', rf)
+        create_ks(session, 'test_reversed_queries', rf)
         session.execute("CREATE TABLE paging_test (bucket int, id int, id2 int, value text, PRIMARY KEY (bucket, id, id2))")
 
     def execute(self, session, statement):
@@ -152,92 +155,94 @@ class BaseReversedQuerySelector(object):
 
         bypass_cache_str = " BYPASS CACHE" if bypass_cache else ""
 
-        debug('Test: No restrictions')
+        logger.debug('Test: No restrictions')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected(
-            [(7, 1), (6, 3), (4, 5), (4, 2), (3, 3), (2, 9), (2, 5), (1, 4)]))
+        assert data == format_expected(
+            [(7, 1), (6, 3), (4, 5), (4, 2), (3, 3), (2, 9), (2, 5), (1, 4)])
 
         # Single column restrictions
 
-        debug('Test: Single column equality restriction')
+        logger.debug('Test: Single column equality restriction')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id = 2 ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(2, 9), (2, 5)]))
+        assert data == format_expected([(2, 9), (2, 5)])
 
-        debug('Test: Single column IN restriction')
+        logger.debug('Test: Single column IN restriction')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id IN (4, 2, 20) ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(4, 5), (4, 2), (2, 9), (2, 5)]))
+        assert data == format_expected([(4, 5), (4, 2), (2, 9), (2, 5)])
 
-        debug('Test: Single column range restriction (less than)')
+        logger.debug('Test: Single column range restriction (less than)')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id < 3 ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(2, 9), (2, 5), (1, 4)]))
+        assert data == format_expected([(2, 9), (2, 5), (1, 4)])
 
-        debug('Test: Single column range restriction (greater than)')
+        logger.debug('Test: Single column range restriction (greater than)')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id > 4 ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(7, 1), (6, 3)]))
+        assert data == format_expected([(7, 1), (6, 3)])
 
-        debug('Test: Single column range restriction (lt + gt)')
+        logger.debug('Test: Single column range restriction (lt + gt)')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id > 3 AND id < 7 ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(6, 3), (4, 5), (4, 2)]))
+        assert data == format_expected([(6, 3), (4, 5), (4, 2)])
 
         # Multi column restrictions
 
-        debug('Test: Multi-column IN restriction')
+        logger.debug('Test: Multi-column IN restriction')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) IN ((2, 9), (7, 1)) ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(7, 1), (2, 9)]))
+        assert data == format_expected([(7, 1), (2, 9)])
 
-        debug('Test: Multi-column range restriction (less than)')
+        logger.debug('Test: Multi-column range restriction (less than)')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) < (2, 8) ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(2, 5), (1, 4)]))
+        assert data == format_expected([(2, 5), (1, 4)])
 
-        debug('Test: Multi-column range restriction (greater than)')
+        logger.debug('Test: Multi-column range restriction (greater than)')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) > (3, 3) ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(7, 1), (6, 3), (4, 5), (4, 2)]))
+        assert data == format_expected([(7, 1), (6, 3), (4, 5), (4, 2)])
 
-        debug('Test: Multi-column range restriction (lt + gt)')
+        logger.debug('Test: Multi-column range restriction (lt + gt)')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND (id, id2) < (3, 5) AND (id, id2) > (1, 10) ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(3, 3), (2, 9), (2, 5)]))
+        assert data == format_expected([(3, 3), (2, 9), (2, 5)])
 
         # Multiple independent column restrictions
 
-        debug('Test: Independent IN restrictions for both clustering columns')
+        logger.debug('Test: Independent IN restrictions for both clustering columns')
         data = self.execute(
             session, "SELECT id, id2 FROM paging_test WHERE bucket = 1 AND id IN (3, 6) AND id2 IN (3, 4) ORDER BY id DESC" + bypass_cache_str)
-        self.assertSequenceEqual(data, format_expected([(6, 3), (3, 3)]))
+        assert data == format_expected([(6, 3), (3, 3)])
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestReversedQueriesSelectors(Tester, BaseReversedQuerySelector):
     def test_reverse_selectors(self):
-        debug('Set up a cluster')
+        logger.debug('Set up a cluster')
         session = self.prepare_cluster()
-        debug('Set up schema')
+        logger.debug('Set up schema')
         BaseReversedQuerySelector.prepare_schema(self, session, rf=1)
 
-        debug('Populate the table')
+        logger.debug('Populate the table')
         self.populate(session)
 
-        debug('Testing selects from memtable')
+        logger.debug('Testing selects from memtable')
         self.run_selects(session)
 
-        debug('Testing selects from cache')
+        logger.debug('Testing selects from cache')
         self.node.flush()
         self.run_selects(session)
 
-        debug('Testing selects from sstable')
+        logger.debug('Testing selects from sstable')
         self.run_selects(session, bypass_cache=True)
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestReversedQueriesMemoryUsage(Tester, ConcurrentExecutor):
     def prepare(self, row_factory=dict_factory):
         cluster = self.cluster
@@ -251,13 +256,13 @@ class TestReversedQueriesMemoryUsage(Tester, ConcurrentExecutor):
         session = self.patient_cql_connection(node1, row_factory=row_factory)
         return session
 
-    @require('scylladb/scylla#9134')
+    @pytest.mark.require('scylladb/scylla#9134')
     def test_memory(self):
-        debug('Set up a cluster')
+        logger.debug('Set up a cluster')
         session = self.prepare()
 
-        debug('Set up schema')
-        self.create_ks(session, 'test_reversed_queries', 2)
+        logger.debug('Set up schema')
+        create_ks(session, 'test_reversed_queries', 2)
         session.execute("CREATE TABLE memtest (bucket int, id int, value text, PRIMARY KEY (bucket, id))")
 
         worker_count = 10
@@ -265,7 +270,7 @@ class TestReversedQueriesMemoryUsage(Tester, ConcurrentExecutor):
         row_count = 100 * 1000
 
         # The size of the partition should exceed the amount of memory available for the shard
-        debug(f'Writing a huge partition (1GB) using {worker_count} parallel workers')
+        logger.debug(f'Writing a huge partition (1GB) using {worker_count} parallel workers')
 
         def run_writes(stop_event, worker_id):
             stmt = session.prepare(f"INSERT INTO memtest (bucket, id, value) VALUES(?, ?, ?)")
@@ -277,44 +282,44 @@ class TestReversedQueriesMemoryUsage(Tester, ConcurrentExecutor):
         self.run_concurrently(worker_count, run_writes)
 
         # Select a small portion of rows (1MB here) which should easily fit in memory
-        debug('Selecting a small amount of rows from the end of the partition')
+        logger.debug('Selecting a small amount of rows from the end of the partition')
         result = session.execute(f"SELECT * FROM memtest WHERE bucket = 0 ORDER BY id DESC LIMIT 100")
         rows = list(result)
-        self.assertEqual(len(rows), 100)
+        assert len(rows) == 100
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestReversedQueriesReadRepair(Tester):
-    def queries_with_read_repair_test(self):
+    def test_queries_with_read_repair(self):
         ROW_COUNT = 100
 
-        debug('Set up a cluster')
+        logger.debug('Set up a cluster')
         # Explicitly disable hinted handoff because we want to test read repair
         cluster = self.cluster
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         [node1, node2] = self.cluster.nodelist()
 
-        debug('Set up schema with read repair')
+        logger.debug('Set up schema with read repair')
         session = self.patient_cql_connection(node1, row_factory=dict_factory)
-        self.create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 2)
         query = "CREATE TABLE ks.t (pk int, ck int, v int, PRIMARY KEY (pk, ck)) " \
             "WITH read_repair_chance = 100.0"
         session.execute(query)
 
-        debug('Shut down node2')
+        logger.debug('Shut down node2')
         node2.stop(wait_other_notice=True)
 
-        debug('Load some data to node1')
+        logger.debug('Load some data to node1')
         stmt = session.prepare("INSERT INTO ks.t (pk, ck, v) VALUES (?, ?, ?)")
         stmt.consistency_level = CL.ONE
         for i in range(0, ROW_COUNT):
             session.execute(stmt, (0, i, 2*i))
 
-        debug('Start node2')
+        logger.debug('Start node2')
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
 
-        debug('Perform a reversed query with CL=ALL')
+        logger.debug('Perform a reversed query with CL=ALL')
         query = SimpleStatement("SELECT ck, v FROM ks.t WHERE pk = 0 ORDER BY ck DESC",
                                 consistency_level=CL.ALL)
         response = session.execute(query)
@@ -322,24 +327,24 @@ class TestReversedQueriesReadRepair(Tester):
         expected_rows = [{'ck': i, 'v': 2*i} for i in list(range(0, ROW_COUNT))]
         expected_rows_reversed = expected_rows[::-1]
 
-        debug('Validate the response')
-        self.assertSequenceEqual(list(response), expected_rows_reversed)
+        logger.debug('Validate the response')
+        assert list(response) == expected_rows_reversed
 
-        debug('Shut down node1')
+        logger.debug('Shut down node1')
         node1.stop(wait_other_notice=True)
 
-        debug('Check that all of the data was repaired on node2')
+        logger.debug('Check that all of the data was repaired on node2')
         session = self.patient_cql_connection(node2, row_factory=dict_factory)
         query = SimpleStatement("SELECT ck, v FROM ks.t WHERE pk = 0 BYPASS CACHE",
                                 consistency_level=CL.ONE)
         response = session.execute(query, trace=True)
-        # debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
-        self.assertSequenceEqual(list(response), expected_rows)
+        # logger.debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
+        assert list(response) == expected_rows
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestReversedQueriesMerging(Tester):
-    def read_from_memtables_and_multiple_sstables_test(self):
+    def test_read_from_memtables_and_multiple_sstables(self):
         # In order to test combining reader behavior, memtable/sstable rows
         # will interleave and some will be merged
         RANGE = 1000
@@ -351,16 +356,16 @@ class TestReversedQueriesMerging(Tester):
         SSTABLE_6_CKS = list(range(1, RANGE, 5))
         MEMTABLE_CKS = list(range(0, RANGE, 7))
 
-        debug('Set up a cluster')
+        logger.debug('Set up a cluster')
         # Explicitly disable hinted handoff because we want data to be inconsistent
         cluster = self.cluster
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         [node1, node2] = self.cluster.nodelist()
 
-        debug('Set up schema with a table with compactions disabled')
+        logger.debug('Set up schema with a table with compactions disabled')
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 2)
         query = "CREATE TABLE ks.t (pk int, ck int, v int, PRIMARY KEY (pk, ck)) " \
             "WITH COMPACTION = {'class': 'NullCompactionStrategy'} " \
             "AND read_repair_chance = 0.0"
@@ -368,7 +373,7 @@ class TestReversedQueriesMerging(Tester):
 
         expected_dict = {}
 
-        debug('Shut down node2')
+        logger.debug('Shut down node2')
         node2.stop(wait_other_notice=True)
 
         def load_cks(session, cks, v_offset):
@@ -380,42 +385,42 @@ class TestReversedQueriesMerging(Tester):
                     session.execute(stmt, (pk, ck, v))
                     expected_dict[ck] = v
 
-        debug('Load data for the first sstable')
+        logger.debug('Load data for the first sstable')
         load_cks(session, SSTABLE_1_CKS, 1)
         node1.flush()
 
-        debug('Load data for the second sstable')
+        logger.debug('Load data for the second sstable')
         load_cks(session, SSTABLE_2_CKS, 2)
         node1.flush()
 
-        debug('Load data for the third sstable')
+        logger.debug('Load data for the third sstable')
         load_cks(session, SSTABLE_3_CKS, 3)
         node1.flush()
 
-        debug('Start node2')
+        logger.debug('Start node2')
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
 
-        debug('Shut down node1')
+        logger.debug('Shut down node1')
         node1.stop(wait_other_notice=True)
 
         session = self.patient_cql_connection(node2, row_factory=dict_factory)
 
-        debug('Load data for the fourth sstable')
+        logger.debug('Load data for the fourth sstable')
         load_cks(session, SSTABLE_4_CKS, 4)
         node2.flush()
 
-        debug('Load data for the fifth sstable')
+        logger.debug('Load data for the fifth sstable')
         load_cks(session, SSTABLE_5_CKS, 5)
         node2.flush()
 
-        debug('Load data for the sixth sstable')
+        logger.debug('Load data for the sixth sstable')
         load_cks(session, SSTABLE_6_CKS, 6)
         node2.flush()
 
-        debug('Start node1')
+        logger.debug('Start node1')
         node1.start(wait_for_binary_proto=True, wait_other_notice=True)
 
-        debug('Load data for the memtable')
+        logger.debug('Load data for the memtable')
         load_cks(session, MEMTABLE_CKS, 7)
         # No flush, keep in memory
         # Hopefully the amount of rows isn't big enough to trigger a flush
@@ -427,32 +432,32 @@ class TestReversedQueriesMerging(Tester):
         def query(pk):
             return f"SELECT ck, v FROM ks.t WHERE pk = {pk} ORDER BY ck DESC"
 
-        debug('Perform a reversed query with cache and check results')
+        logger.debug('Perform a reversed query with cache and check results')
         response = session.execute(SimpleStatement(query(pk=0),
                                                    consistency_level=CL.ALL), trace=True)
-        # debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
-        self.assertSequenceEqual(list(response), expected_rows)
+        # logger.debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
+        assert list(response) == expected_rows
 
-        debug('Perform a reversed query without cache and check results')
+        logger.debug('Perform a reversed query without cache and check results')
         response = session.execute(SimpleStatement(query(pk=1) + " BYPASS CACHE",
                                                    consistency_level=CL.ALL), trace=True)
-        # debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
-        self.assertSequenceEqual(list(response), expected_rows)
+        # logger.debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
+        assert list(response) == expected_rows
 
 
-@attr('dtest-full')
+@pytest.mark.dtest_full
 class TestReversedQueriesOnTableWithReversedOrder(Tester):
     def test_reversed_query_on_table_with_reversed_order(self):
         ROW_COUNT = 100
 
-        debug('Set up a cluster')
+        logger.debug('Set up a cluster')
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
         [node1] = self.cluster.nodelist()
 
-        debug('Set up schema with a table with reversed ordering of clustering keys')
+        logger.debug('Set up schema with a table with reversed ordering of clustering keys')
         session = self.patient_cql_connection(node1, row_factory=dict_factory)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         query = "CREATE TABLE ks.t (pk int, ck int, v int, PRIMARY KEY (pk, ck)) " \
             "WITH CLUSTERING ORDER BY (ck DESC)"
         session.execute(query)
@@ -464,26 +469,27 @@ class TestReversedQueriesOnTableWithReversedOrder(Tester):
         response = session.execute("SELECT ck, v FROM ks.t WHERE pk = 0 ORDER BY ck ASC")
 
         expected_rows = [{'ck': i, 'v': -i} for i in range(ROW_COUNT)]
-        self.assertSequenceEqual(list(response), expected_rows)
+        assert list(response) == expected_rows
 
 
-@attr('dtest-full', 'single_node')
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestReversedQueriesWithOverlappingRangeTombstones(Tester, ConcurrentExecutor):
     def test_reversed_query_with_overlapping_range_tombstones(self):
         TOMBSTONE_COUNT = 100 * 1000
 
-        debug('Set up a cluster')
+        logger.debug('Set up a cluster')
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
         [node1] = self.cluster.nodelist()
 
-        debug('Set up schema')
+        logger.debug('Set up schema')
         session = self.patient_cql_connection(node1, row_factory=dict_factory)
-        self.create_ks(session, 'ks', 1)
+        create_ks(session, 'ks', 1)
         query = "CREATE TABLE ks.t (pk int, ck int, v int, PRIMARY KEY (pk, ck))"
         session.execute(query)
 
-        debug('Generate range tombstones')
+        logger.debug('Generate range tombstones')
         worker_count = 10
 
         def run_deletes(stop_event, worker_id):
@@ -495,24 +501,23 @@ class TestReversedQueriesWithOverlappingRangeTombstones(Tester, ConcurrentExecut
 
         self.run_concurrently(10, run_deletes)
 
-        debug('Insert a row near the end of the range tombstones')
+        logger.debug('Insert a row near the end of the range tombstones')
         ck = 2 * TOMBSTONE_COUNT - 10
         session.execute("INSERT INTO ks.t (pk, ck, v) VALUES (0, {}, 42)".format(ck))
 
-        debug('Select the row and check result')
+        logger.debug('Select the row and check result')
         response = session.execute(
             "SELECT ck, v FROM ks.t WHERE pk = 0 ORDER BY ck DESC LIMIT 1 BYPASS CACHE", trace=True)
-        # debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
-        self.assertSequenceEqual(list(response), [{'ck': ck, 'v': 42}])
+        # logger.debug(" ||| ".join(str(e) for e in response.get_query_trace().events))
+        assert list(response) == [{'ck': ck, 'v': 42}]
 
 
 class TestReversedQueriesSelectorsDuringUpgrade(UpgradeTester, BaseReversedQuerySelector):
-    _multiprocess_can_split_ = False
-
+    __test__ = True
     upgrade_path = upgrade_test.upgrade_matrix_from_last_release_version
     init_version = upgrade_path[0]
 
-    def test_queries_during_upgrade(self):
+    def test_queries_during_upgrade(self, dtest_config):
         """
         Test that reverse queries work on a mixed cluster
         1. Prepare data for selects
@@ -521,28 +526,25 @@ class TestReversedQueriesSelectorsDuringUpgrade(UpgradeTester, BaseReversedQuery
                 2.1.1. Upgrade the node
                 2.1.2. Check that selects work
         """
+        self.clone_upgrade_path(dtest_config)
 
-        self.set_ignore_log_patterns()
-        # Remove first version from the path as it is already used
-        self.current_upgrade_path.pop(0)
-
-        debug('Creating a 2-node cluster')
+        logger.debug('Creating a 2-node cluster')
         self.init_cluster(nodes=2)
         session = self.patient_cql_connection(self.cluster.nodelist()[0], row_factory=dict_factory)
 
-        debug('Set up schema')
+        logger.debug('Set up schema')
         BaseReversedQuerySelector.prepare_schema(self, session, rf=2)
 
-        debug('Populate the table')
+        logger.debug('Populate the table')
         self.populate(session)
 
-        debug('Testing selects')
+        logger.debug('Testing selects')
         self.run_selects(session)
 
         for version in self.current_upgrade_path:
             for node in self.cluster.nodelist():
-                debug(f"Upgrading node {node.name} from version {node.node_scylla_version} to {version}")
+                logger.debug(f"Upgrading node {node.name} from version {node.node_scylla_version} to {version}")
                 node.upgrade(upgrade_to_version=version)
 
-                debug('Testing selects')
+                logger.debug('Testing selects')
                 self.run_selects(session)
