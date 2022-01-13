@@ -1,25 +1,35 @@
 import re
 import logging
-
 from itertools import groupby
 from operator import attrgetter
 
-from nose.plugins.attrib import attr
-from dtest import debug
+import pytest
 from cassandra.cluster import Session, SimpleStatement
 from cassandra import ConsistencyLevel
-from dtest import Tester
 
-from cdc_tests import CdcLogOperations, CDCInitializeHelper
+from dtest_class import Tester, create_ks
+from cdc_test import CdcLogOperations, CDCInitializeHelper
 from cdc_batch_test import DataGenerator, Row, Column, get_next_timestamp
 
 
 logging.basicConfig(level=logging.DEBUG)
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
-@attr("dtest-full", "single_node")
-class CDCStaticRowTester(Tester, CDCInitializeHelper):
+def mkident(s):
+    s = re.sub('\s+', '', s)
+    s = re.sub('[<>,]', '_', s)
+    return re.sub('_+$', '', s)
+
+
+checking_types = ["int", "bigint", "text", "map<int,int>", "varchar",
+                  "frozen<set<int>>", "frozen<set<text>>", "frozen<list<int>>",
+                  "set<int>", "list<int>"]
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestCDCStaticRow(Tester, CDCInitializeHelper):
 
     keyspace = "ks"
     table = "cf"
@@ -29,7 +39,11 @@ class CDCStaticRowTester(Tester, CDCInitializeHelper):
     num_of_partitions = 1
     columns_type = "int"
     data_generator_class = None
-    __test__ = False
+
+    @pytest.fixture(scope="function", params=[pytest.param(t, id=mkident(t)) for t in checking_types], autouse=True)
+    def select_data_type(self, request):
+        self.columns_type = request.param
+        self.data_generator_class = get_generator(request.param)
 
     def test_single_static_row(self):
         self.check_single_row_static()
@@ -135,7 +149,7 @@ class CDCStaticRowTester(Tester, CDCInitializeHelper):
         if postimage_enable:
             statement += f", 'postimage': '{postimage_enable}'"
         statement += "}"
-        self.create_ks(session, self.keyspace, rf=rf)
+        create_ks(session, self.keyspace, rf=rf)
         session.execute(statement)
 
     def execute_insert_static(self, session, dataset):
@@ -281,17 +295,17 @@ class CDCStaticRowTester(Tester, CDCInitializeHelper):
             delta_rows = [row for row in rows if row.cdc_operation not in [
                 CdcLogOperations.PREIMAGE, CdcLogOperations.POSTIMAGE]]
             if preimage:
-                debug("Expected preimage: %s", expected_data[pk][i]["preimage"])
-                debug("Actual preimage row: %s", preimage_rows)
+                logger.debug("Expected preimage: %s", expected_data[pk][i]["preimage"])
+                logger.debug("Actual preimage row: %s", preimage_rows)
                 assert len(preimage_rows) == len(expected_data[pk][i]
                                                  ["preimage"]), "Actual preimage differs from expected"
 
-            debug("Expected delta: %s", expected_data[pk][i]["delta"])
-            debug("Actual delta: %s", delta_rows)
+            logger.debug("Expected delta: %s", expected_data[pk][i]["delta"])
+            logger.debug("Actual delta: %s", delta_rows)
             assert len(delta_rows) == len(expected_data[pk][i]["delta"]), f"Actual delta differs from expected"
             if postimage:
-                debug("Expected postimage: %s", expected_data[pk][i]["postimage"])
-                debug("Actual postimage row: %s", postimage_rows)
+                logger.debug("Expected postimage: %s", expected_data[pk][i]["postimage"])
+                logger.debug("Actual postimage row: %s", postimage_rows)
                 assert len(postimage_rows) == len(expected_data[pk][i]
                                                   ["postimage"]), "Actual postimage differs from expected"
 
@@ -337,9 +351,9 @@ class CDCStaticRowTester(Tester, CDCInitializeHelper):
             actual_column_value = getattr(actual, expected_column.name)
             if self.columns_type.startswith("list") and actual_column_value:
                 actual_column_value = list(actual_column_value.values())
-            self.assertEqual(actual_column_value, expected_column.value,
-                             f"Column {expected_column.name} has different value in cdc_row: {actual_column_value} \
-                             vs expected {expected_column.value}\n {actual} \n {expected}")
+            assert actual_column_value == expected_column.value, \
+                f"Column {expected_column.name} has different value in cdc_row: {actual_column_value} \
+                             vs expected {expected_column.value}\n {actual} \n {expected}"
 
     @staticmethod
     def generate_expected_cdc_rows(dataset, prev_dataset=None, preimage=False, postimage=False, only_static=False):
@@ -491,17 +505,6 @@ class ListintDataGenerator(DataGeneratorWithStaticColumn):
         return [[i + self.seed, i + self.seed + 10] for i in range(self.cols_num + self.static_col_num)]
 
 
-checking_types = ["int", "bigint", "text", "map<int,int>", "varchar",
-                  "frozen<set<int>>", "frozen<set<text>>", "frozen<list<int>>",
-                  "set<int>", "list<int>"]
-
-
-def mkident(s):
-    s = re.sub('\s+', '', s)
-    s = re.sub('[<>,]', '_', s)
-    return re.sub('_+$', '', s)
-
-
 def get_generator(data_type):
     for subclass in DataGeneratorWithStaticColumn.__subclasses__():
         name = re.sub("[<>,]", '', data_type)
@@ -511,11 +514,3 @@ def get_generator(data_type):
 
 def get_row_by_pk_and_ck(dataset, pk, ck):
     return next(filter(lambda x: x.pk == pk and x.ck == ck, dataset))
-
-
-for data_type in checking_types:
-    cls_name = ('CDCStaticRowTester_with_{}'.format(mkident(data_type)))
-    vars()[cls_name] = type(cls_name, (CDCStaticRowTester,),
-                            {'__test__': True,
-                             'columns_type': data_type,
-                             'data_generator_class': get_generator(data_type)})
