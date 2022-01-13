@@ -94,18 +94,37 @@ class TestCommitLog(Tester):
         path = self._get_commitlog_path()
         return [os.path.join(path, p) for p in os.listdir(path)]
 
-    def _get_commitlog_size(self):
+    def _get_commitlog_size(self, all=False):
         """ Returns the commitlog directory size in MB """
 
         path = self._get_commitlog_path()
-        cmd_args = ['du', '-sm', path]
+        cmd_args = ['du', '-sm']
+        if not all:
+            cmd_args.append(path)
+        else:
+            paths = glob.glob(os.path.join(path, '*'), recursive=True)
+            for p in paths:
+                cmd_args.append(p)
         p = subprocess.Popen(cmd_args, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         exit_status = p.returncode
-        assert exit_status == 0, "du exited with a non-zero status: %d" % exit_status
-        size = int(stdout.decode().split()[0])
-        return size
+        assert exit_status == 0, "du exited with a non-zero status: %d" % exit_status \
+            + "\n%s" % stderr.decode()
+        if not all:
+            size = int(stdout.decode().split()[0])
+            return size
+        else:
+            size = 0
+            for l in stdout.decode().split('\n'):
+                if not l:
+                    continue
+                a = l.split()
+                if len(a) == 2:
+                    size += int(a[0])
+                else:
+                    logger.warn(f"Unrecognized du output line: {l}")
+            return size, stdout.decode()
 
     def _segment_size_test(self, segment_size_in_mb, compressed=False):
         """ Execute a basic commitlog test and validate the commitlog files """
@@ -869,14 +888,21 @@ class TestCommitLog(Tester):
         total_size = 0
         unit_size = commitlog_segment_size_in_mb
         reach_threshold_cases = []
+        # Scylla allows to create one more commitlog file out of the space limit
+        actual_space_limit = (total_space_limit // commitlog_segment_size_in_mb + 1) * commitlog_segment_size_in_mb
+
+        def check_commitlog_size():
+            dir_size, stdout = self._get_commitlog_size(all=True)
+            if dir_size > actual_space_limit:
+                logger.debug(f"Commitlog file sizes in MB:\n{stdout}")
+                assert dir_size <= actual_space_limit, f"Out of total space limit\n"
+            return dir_size
+
         while not cs_task.done():
             # Insert a few data
             insert_c1c2(session, keys=range(total_size, total_size + unit_size))
             total_size += unit_size
-            dir_size = self._get_commitlog_size()
-            # Scylla allows to create one more commitlog file out of the space limit
-            actual_space_limit = (total_space_limit // commitlog_segment_size_in_mb + 1) * commitlog_segment_size_in_mb
-            assert self._get_commitlog_size() <= actual_space_limit + 1, 'Out of total space limit'
+            dir_size = check_commitlog_size()
             if dir_size > commitlog_disk_usage_threshold:
                 reach_threshold_cases.append(dir_size)
             if len(reach_threshold_cases) > 0:
