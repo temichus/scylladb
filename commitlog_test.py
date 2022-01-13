@@ -919,6 +919,8 @@ class TestCommitLog(Tester):
         logger.debug(cs_task.result())
         assert len(reach_threshold_cases) > 0, "Commitlog space doesn't reach `commitlog_disk_usage_threshold'," \
             " need to fill more data by cs workload"
+        dir_size = check_commitlog_size()
+        logger.debug(f'Final commitlog size: [{self._get_commitlog_path()}] {dir_size}M')
 
         # set commitlog config back to default
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': 32,
