@@ -890,7 +890,8 @@ class TestCommitLog(Tester):
         reach_threshold_cases = []
         # Scylla allows to create one more commitlog file out of the space limit
         # and commitlog segments may be go over commitlog_segment_size_in_mb in 1MB as well.
-        actual_space_limit = (total_space_limit // commitlog_segment_size_in_mb + 1) * (commitlog_segment_size_in_mb + 1)
+        actual_space_limit = (total_space_limit // commitlog_segment_size_in_mb + 1) * \
+            (commitlog_segment_size_in_mb + 1)
 
         def check_commitlog_size():
             dir_size, stdout = self._get_commitlog_size(all=True)
