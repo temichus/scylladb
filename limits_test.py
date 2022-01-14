@@ -1,6 +1,18 @@
+import logging
+import os
+import pathlib
+import resource
+import sys
+from subprocess import Popen, PIPE, check_output
+
+import requests
+from cassandra.cluster import Cluster
+
 from dtest_class import Tester, create_ks
 import math
 import pytest
+
+logger = logging.getLogger(__name__)
 # Those are ideal values according to c* specifications
 # they should pass
 
@@ -307,3 +319,78 @@ class TestLimits(Tester):
         for i in range(int(math.log(MAX_CELLS, 2))):
             cells <<= 1
             self._do_test_max_cell_count(session, node, cells - 1)
+
+
+class TestMaxCQLConnections(Tester):
+
+    def test_max_cql_connections(self):
+        """
+        Verifies fix https://github.com/scylladb/scylla/pull/9052 which aimed issue for crashing scylla when
+        there was more than 10000 connections per shard. Fix adds possibility to set max no of connections and
+        increased default value. But still db crashes when reaching this limit (tracked by #9056).
+
+        Test verifies also if connection pool is properly released after connection shutdown.
+        """
+        workers = 5  # opening many connections in python gets slower and slower. Spreading to workers helps.
+        connections_per_worker = 3000
+        total_connections = workers * connections_per_worker
+        self._tune_max_open_files_limit(total_connections)
+        self.cluster.populate(1).start(jvm_args=['--smp', '1', "--max-networking-io-control-blocks",
+                                                 str(total_connections)])
+        address = self.cluster.nodelist()[0].address()
+        processes = self._create_cql_connections(address, connections_per_worker=connections_per_worker,
+                                                 workers=workers)
+
+        connections_created = self._get_cql_connections_from_metrics(address)
+        assert connections_created >= total_connections, \
+            f"only {connections_created} connections created from {total_connections} required"
+        self._close_connections(processes)
+
+        # repeat to verify scylla closed connections correctly and can create new ones
+        processes = self._create_cql_connections(address, connections_per_worker=connections_per_worker,
+                                                 workers=workers)
+        self._close_connections(processes)
+        connections_created = self._get_cql_connections_from_metrics(address)
+        assert connections_created >= total_connections, \
+            f"only {connections_created} connections created from {total_connections} required"
+
+    def _create_cql_connections(self, address, connections_per_worker, workers):
+        logger.info("starting creating connections in parallel")
+        script_path = pathlib.Path(__file__).parent.absolute() / "scripts" / "create_dummy_cql_connections.py"
+        processes = []
+        for _ in range(workers):
+            processes.append(Popen([sys.executable, script_path, address, str(connections_per_worker)],
+                                   stdin=PIPE, stdout=PIPE, universal_newlines=True))
+        # wait for finish connection creation
+        for process in processes:
+            line = process.stdout.readline()
+            assert line.startswith(f"{connections_per_worker} cql connections created."), \
+                "Dummy connections creation script failed."
+        logger.info("All connections created successfully")
+        return processes
+
+    def _close_connections(self, processes):
+        """dummy cql connections scripts end after pressing any key."""
+        for process in processes:
+            process.communicate("a", timeout=10)
+
+    def _get_cql_connections_from_metrics(self, address):
+        resp = requests.get(f"http://{address}:9180/metrics")
+        for line in resp.text.splitlines():
+            if line.startswith("scylla_transport_cql_connections"):
+                return int(line.split('scylla_transport_cql_connections{shard="0"}')[1])
+
+    def _tune_max_open_files_limit(self, total_connections):
+        """each connection creates 1 open file per shard.
+        Creating many connections requires tuning max open files in system."""
+        pid = os.getpid()
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        soft_new_limit = max(soft, 2 * total_connections)
+        hard_new_limit = max(hard, 2 * total_connections)
+        logger.debug(f"current limits: {soft}, {hard}")
+        if soft < soft_new_limit:
+            check_output(f"sudo prlimit --pid {pid} --nofile={soft_new_limit}:{hard_new_limit}", shell=True,
+                         universal_newlines=True)
+        ulimit = int(check_output("ulimit -n", shell=True, universal_newlines=True))
+        assert ulimit == soft_new_limit
+        logger.info(f"Updated max open files limit to: {ulimit}")
