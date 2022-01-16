@@ -69,6 +69,24 @@ pipeline {
                 }
             }
         }
+        stage("test-collection") {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    lastStage = env.STAGE_NAME
+                    try {
+                        sh '''
+                         ./scripts/run_test.sh --collect-only -qqq
+                        '''
+                        pullRequestSetResult('success', 'jenkins/collection', 'test collection passed')
+                    } catch(Exception ex) {
+                        pullRequestSetResult('failure', 'jenkins/collection', 'test collection failed')
+                    }
+                }
+            }
+        }
         stage("test-pipelines") {
             options {
                 timeout(time: 30, unit: 'MINUTES')
