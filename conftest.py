@@ -569,7 +569,7 @@ def configure_es(request: pytest.FixtureRequest, dtest_config):
     elk_reporter = None
     try:
         elk_reporter = request.getfixturevalue("elk_reporter")
-    except:
+    except Exception:
         pass
 
     if elk_reporter:
@@ -578,6 +578,11 @@ def configure_es(request: pytest.FixtureRequest, dtest_config):
             "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
         }
         elk_reporter.session_data.update(**extra_data)
+
+        jenkins_build_data = {
+            k.lower(): v for k, v in os.environ.items() if k.startswith("BUILD_")
+        }
+        elk_reporter.session_data.update(**jenkins_build_data)
 
 
 def check_issue_closed(pattern):
