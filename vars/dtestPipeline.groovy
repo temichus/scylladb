@@ -38,7 +38,7 @@ def call(Map pipelineParams) {
         }
 
         agent {
-            label "aws-sct-builders-us-east-1"
+            label generalProperties.targetDtestBuilder
         }
 
         options {
@@ -55,9 +55,8 @@ def call(Map pipelineParams) {
                         baseRelocJob = params.RELOC_JOB_NAME ?: "next"
                         buildMode = params.BUILD_MODE
                         excludeTests = params.EXCLUDE_DTESTS ?: ""
-                        includeDtests = params.INCLUDE_DTESTS ?: ""
+                        includeDtests = params.INCLUDE_DTESTS ?: """-m '"dtest_full and not dtest_heavy and not dtest_long"'"""
 
-                        nodeParam = "aws-sct-builders-us-east-1"
                         splitMaxNodesForHeavyAndLong = "10"
 
                         echo "Build mode upon parameter |${params.BUILD_MODE}| or upon job name |${JOB_NAME}|: |${buildMode}|"
@@ -78,7 +77,8 @@ def call(Map pipelineParams) {
                         }
                         steps {
                             script {
-                                runDtest (params.SPLIT_MAX_NODES, includeDtests, "full")
+                                runDtest (params.SPLIT_MAX_NODES, includeDtests, "full", params.SPLIT_FLEET_LABEL,
+                                    params.SPLIT_TIME_TARGET)
                             }
                         }
                     }
@@ -88,8 +88,9 @@ def call(Map pipelineParams) {
                         }
                         steps {
                             script {
-                                node(generalProperties.targetDtestStrongBuilder) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, """-m '"dtest_heavy and not dtest_long"'""", "heavy")
+                                node(generalProperties.targetDtestBuilder) {
+                                    runDtest (splitMaxNodesForHeavyAndLong, """-m '"dtest_heavy and not dtest_long"'""",
+                                        "heavy", generalProperties.targetDtestStrongBuilder, "240")
                                 }
                             }
                         }
@@ -100,8 +101,9 @@ def call(Map pipelineParams) {
                         }
                         steps {
                             script {
-                                node(generalProperties.targetDtestStrongBuilder) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, "-m dtest_long", "long")
+                                node(generalProperties.targetDtestBuilder) {
+                                    runDtest (splitMaxNodesForHeavyAndLong, "-m dtest_long",
+                                        "long", generalProperties.targetDtestStrongBuilder, "240")
                                 }
                             }
                         }
@@ -122,7 +124,7 @@ def call(Map pipelineParams) {
     }
 }
 
-def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType) {
+def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, String splitFleetLabal, String splitTimeTarget) {
     echo "runDtest"
     lastStage = env.STAGE_NAME
     dtest.prepareDtestLocalTree (
@@ -137,7 +139,7 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType) {
         buildMode: buildMode,
     )
     numOfSplitFiles = dtest.splitAndCopyDtestJobs (
-        splitTimeTarget: params.SPLIT_TIME_TARGET,
+        splitTimeTarget: splitTimeTarget,
         splitMaxNodes: splitMaxNodes,
         buildMode: buildMode,
         includeTests: includeDtestsTag,
@@ -159,7 +161,7 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType) {
         dtestBranch: params.SCYLLA_DTEST_BRANCH,
         ccmBranch: params.SCYLLA_CCM_BRANCH,
         ccmRepo: params.SCYLLA_CCM_REPO,
-        splitFleetLabal: params.SPLIT_FLEET_LABEL,
+        splitFleetLabal: splitFleetLabal,
         dtestType: dtestType,
     )
 }

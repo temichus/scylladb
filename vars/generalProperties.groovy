@@ -2,7 +2,7 @@
 import groovy.transform.Field
 
 @Field String buildMetadataFile = '00-Build.txt'
-@Field String targetDtestBuilder = 'ec2-fleet-strong-dtest'
+@Field String targetDtestBuilder = 'ec2-fleet-4cpu-dtest'
 @Field String targetDtestStrongBuilder = 'ec2-fleet-strong-dtest'
 
 @Field String smpNumber = "2"

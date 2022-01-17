@@ -252,7 +252,7 @@ def doParallelDtest (Map args) {
     String dtestType = args.dtestType ?: "full"
 
 	def branches = [:]
-	def runnersLabel =  args.splitFleetLabal ?: generalProperties.targetDtestBuilder
+	def runnersLabel =  args.splitFleetLabal ?: generalProperties.targetDtestStrongBuilder
 	boolean dtestFailed = false
 	boolean publishFailed = false
 	int numOfSplitFiles = args.numOfSplitFiles
