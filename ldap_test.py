@@ -1,9 +1,11 @@
+import time
 import uuid
 import os
 import random
 import shutil
 import subprocess
 import logging
+import tempfile
 
 import pytest
 from cassandra import Unauthorized
@@ -25,18 +27,34 @@ class TestLdap(Tester):
     @pytest.fixture(scope='function', autouse=True)
     def setup(self, fixture_dtest_setup):
         self.create_ldap_container()
-        self.saslauthd_dir = os.path.join(self.test_path, 'saslauthd')
+        self.saslauthd_dir = os.path.join(tempfile.mkdtemp(), 'saslauthd')
         os.mkdir(self.saslauthd_dir)
         self.saslauthd_proc = None
 
         yield
 
         if self.saslauthd_proc is not None:
-            self.saslauthd_proc.kill()  # Using terminate() here somehow terminates nosetests itself. o_O
+            self.saslauthd_proc.kill()
             self.saslauthd_proc.wait()
+            stdout, stderr = self.saslauthd_proc.communicate()
+            for line in stdout.splitlines():
+                logger.debug(f"{line.strip()}")
+            for line in stderr.splitlines():
+                logger.debug(f"{line.strip()}")
         # Next line requires self.test_path directory to be empty.
         shutil.rmtree(self.saslauthd_dir, ignore_errors=True)
         self.test_ldap_docker.remove_container(force=True)
+
+    @staticmethod
+    def wait_for_text(proc, text):
+        for i in range(20):
+            for stderr_line in iter(proc.stderr.readline, ""):
+                logger.debug(f"{stderr_line.strip()}")
+                if text in stderr_line:
+                    return
+            time.sleep(0.1)
+        else:
+            raise TimeoutError(f"failed to get '{text}' in proc stdout/stderr")
 
     def get_default_scylla_yaml_ldap_config(self):
         return {'role_manager': 'com.scylladb.auth.LDAPRoleManager',
@@ -81,8 +99,12 @@ class TestLdap(Tester):
                             f'ldap_bind_dn: cn=admin,{self.test_ldap_docker.ldap_base_object}\n'
                             f'ldap_bind_pw: scylla\n')
                 self.saslauthd_proc = subprocess.Popen(
-                    ['saslauthd', '-d', '-n', '1', '-a', 'ldap', '-O', saslauthd_conf_path, '-m', self.saslauthd_dir],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                    ['saslauthd', '-d', '-n', '1', '-a', 'ldap',
+                        '-O', saslauthd_conf_path, '-m', self.saslauthd_dir],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                # make sure saslauthd has start and listening
+                self.wait_for_text(self.saslauthd_proc, "listening on socket")
+
                 self.test_ldap_docker.add_ldap_object(
                     f'ou=Person,{self.test_ldap_docker.ldap_base_object}',
                     ['organizationalUnit', 'top'],
