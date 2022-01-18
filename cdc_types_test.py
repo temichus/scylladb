@@ -212,11 +212,12 @@ class CdcTools(Tester, CDCInitializeHelper):
                     (pkey {key_type}, \
                      ckey {key_type}, \
                      value {self.columns_data['cl_type']}, \
+                     always_null {self.columns_data['cl_type']}, \
                      PRIMARY KEY (pkey, ckey)\
                     )"
         statement += " WITH cdc={'enabled': true"
         if preimage_enable:
-            statement += ", 'preimage': true"
+            statement += f", 'preimage': '{str(preimage_enable).lower()}'"
         if postimage_enable:
             statement += ", 'postimage': true"
         statement += "}"
@@ -304,25 +305,42 @@ class CdcTools(Tester, CDCInitializeHelper):
     def check_cdc_log_num_row(self, cdc_log_results, expected_num_rows):
         assert expected_num_rows == len(cdc_log_results)
 
-    def check_cdc_log_row(self, row, operation, batch_seq, expected_data, deleted_col=None):
+    @staticmethod
+    def check_cdc_deleted_always_null_column_in_preimage_row(row, preimage_enabled=None):
+        if row.cdc_operation != CdcLogOperations.PREIMAGE:
+            return
+        if preimage_enabled == 'full':
+            assert getattr(row, f"cdc_deleted_always_null") is True
+        if preimage_enabled is True:
+            assert getattr(row, f"cdc_deleted_always_null") is None
+
+    def check_cdc_log_row(self, row, operation, batch_seq, expected_data, deleted_col=None, preimage_enabled=None):
         assert operation == row.cdc_operation
         assert batch_seq == row.cdc_batch_seq_no
+
+        self.check_cdc_deleted_always_null_column_in_preimage_row(row, preimage_enabled)
         if deleted_col:
             self.check_cdc_deleted_columns(row, deleted_col)
         self.check_cdc_base_field_values(row, expected_data)
 
-    def check_cdc_log_row_collection(self, row, operation, batch_seq, expected_data, deleted_col=None, deleted_keys=None):
+    def check_cdc_log_row_collection(self, row, operation, batch_seq, expected_data,
+                                     deleted_col=None, deleted_keys=None,
+                                     preimage_enabled=None):
         assert operation == row.cdc_operation
         assert batch_seq == row.cdc_batch_seq_no
+
+        self.check_cdc_deleted_always_null_column_in_preimage_row(row, preimage_enabled)
         if deleted_col:
             self.check_cdc_deleted_columns(row, deleted_col)
         if deleted_keys:
             self.check_cdc_deleted_elements(row, deleted_keys)
         self.check_cdc_base_collection_values(row, expected_data)
 
-    def check_cdc_log_row_udt(self, row, operation, batch_seq, expected_data):
+    def check_cdc_log_row_udt(self, row, operation, batch_seq, expected_data, preimage_enabled=None):
         assert operation == row.cdc_operation
         assert batch_seq == row.cdc_batch_seq_no
+
+        self.check_cdc_deleted_always_null_column_in_preimage_row(row, preimage_enabled)
         self.verify_udt_fields(row.value, expected_data)
 
     def verify_udt_fields(self, actual_udt, expected_udt):
@@ -383,13 +401,17 @@ class TestCDCNativeType(CdcTools):
     def null_value_dataset(self):
         return {"pkey": self.columns_data["ins_dataset"],
                 "ckey": self.columns_data["ins_dataset"],
-                "value": None}
+                "value": None,
+                "always_null": None}
 
     def test_native_type_insert(self):
         self.insert_operation_tmpl()
 
     def test_native_type_insert_with_preimage(self):
         self.insert_operation_tmpl(preimage_enable=True)
+
+    def test_native_type_insert_with_preimage_full(self):
+        self.insert_operation_tmpl(preimage_enable='full')
 
     def test_native_type_insert_with_postimage(self):
         self.insert_operation_tmpl(postimage_enable=True)
@@ -403,6 +425,9 @@ class TestCDCNativeType(CdcTools):
     def test_natitve_type_update_with_preimage(self):
         self.update_operation_tmpl(preimage_enable=True)
 
+    def test_natitve_type_update_with_preimage_full(self):
+        self.update_operation_tmpl(preimage_enable='full')
+
     def test_natitve_type_update_with_postimage(self):
         self.update_operation_tmpl(postimage_enable=True)
 
@@ -414,6 +439,9 @@ class TestCDCNativeType(CdcTools):
 
     def test_update_with_null_with_preimage(self):
         self.update_with_null(preimage_enable=True)
+
+    def test_update_with_null_with_preimage_full(self):
+        self.update_with_null(preimage_enable='full')
 
     def test_update_with_null_with_postimage(self):
         self.update_with_null(postimage_enable=True)
@@ -427,6 +455,9 @@ class TestCDCNativeType(CdcTools):
     def test_native_type_delete_with_preimage(self):
         self.delete_operation_tmpl(preimage_enable=True)
 
+    def test_native_type_delete_with_preimage_full(self):
+        self.delete_operation_tmpl(preimage_enable='full')
+
     def test_native_type_delete_with_postimage(self):
         self.delete_operation_tmpl(postimage_enable=True)
 
@@ -439,8 +470,10 @@ class TestCDCNativeType(CdcTools):
     def test_all_operation_with_preimage(self):
         self.all_operation_tmpl(preimage_enable=True)
 
-    def test_all_operation_with_postimage(self):
+    def test_all_operation_with_preimage_full(self):
+        self.all_operation_tmpl(preimage_enable='full')
 
+    def test_all_operation_with_postimage(self):
         self.all_operation_tmpl(postimage_enable=True)
 
     def test_all_operation_with_preimage_postimage(self):
@@ -561,8 +594,8 @@ class TestCDCNativeType(CdcTools):
             delta_index += 1
             postimage_index += 1
             self.check_cdc_log_row(cdc_log_data[0], operation=CdcLogOperations.PREIMAGE,
-                                   batch_seq=0, expected_data=preimage_expected_dataset)
-
+                                   batch_seq=0, expected_data=preimage_expected_dataset,
+                                   preimage_enabled=preimage_enable)
         self.check_cdc_log_row(cdc_log_data[delta_index], operation=operation,
                                batch_seq=delta_index, expected_data=delta_expected_dataset)
 
@@ -638,7 +671,8 @@ class TestCDCCollectionsType(CdcTools):
     def null_value_dataset(self):
         return {"pkey": self.timeuuid,
                 "ckey": self.timeuuid,
-                "value": None}
+                "value": None,
+                "always_null": None}
 
     @property
     def updated_dataset(self):
@@ -681,6 +715,9 @@ class TestCDCCollectionsType(CdcTools):
     def test_collection_insert_with_preimage(self):
         self.insert_operation_tmpl(preimage_enable=True)
 
+    def test_collection_insert_with_preimage_full(self):
+        self.insert_operation_tmpl(preimage_enable='full')
+
     def test_collection_insert_with_postimage(self):
         self.insert_operation_tmpl(postimage_enable=True)
 
@@ -692,6 +729,9 @@ class TestCDCCollectionsType(CdcTools):
 
     def test_update_collection_with_add_element_with_preimage(self):
         self.collection_update_tmpl(add_element=True, preimage_enable=True)
+
+    def test_update_collection_with_add_element_with_preimage_full(self):
+        self.collection_update_tmpl(add_element=True, preimage_enable='full')
 
     def test_update_collection_with_add_element_with_postimage(self):
         self.collection_update_tmpl(add_element=True, postimage_enable=True)
@@ -705,6 +745,9 @@ class TestCDCCollectionsType(CdcTools):
     def test_update_collection_with_delete_element_with_preimage(self):
         self.collection_update_tmpl(remove_element=True, preimage_enable=True)
 
+    def test_update_collection_with_delete_element_with_preimage_full(self):
+        self.collection_update_tmpl(remove_element=True, preimage_enable='full')
+
     def test_update_collection_with_delete_element_with_postimage(self):
         self.collection_update_tmpl(remove_element=True, postimage_enable=True)
 
@@ -717,6 +760,9 @@ class TestCDCCollectionsType(CdcTools):
     def test_update_collection_with_preimage(self):
         self.collection_update_tmpl(preimage_enable=True)
 
+    def test_update_collection_with_preimage_full(self):
+        self.collection_update_tmpl(preimage_enable='full')
+
     def test_update_collection_with_postimage(self):
         self.collection_update_tmpl(postimage_enable=True)
 
@@ -728,6 +774,9 @@ class TestCDCCollectionsType(CdcTools):
 
     def test_collection_delete_with_preimage(self):
         self.collection_delete_tmpl(preimage_enable=True)
+
+    def test_collection_delete_with_preimage_full(self):
+        self.collection_delete_tmpl(preimage_enable='full')
 
     def test_collection_delete_with_postimage(self):
         self.collection_delete_tmpl(postimage_enable=True)
@@ -842,12 +891,15 @@ class TestCDCCollectionsType(CdcTools):
             delta_index += 1
             postimage_index += 1
             self.check_cdc_log_row_collection(cdc_log_rows[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                              expected_data=preimage_expected_data)
+                                              expected_data=preimage_expected_data, deleted_col=deleted_col,
+                                              preimage_enabled=preimage_enable)
+
         self.check_cdc_log_row_collection(cdc_log_rows[delta_index], operation=base_operation, batch_seq=delta_index,
                                           expected_data=delta_expected_data, deleted_col=deleted_col)
 
         if postimage_enable:
-            self.check_cdc_log_row_collection(cdc_log_rows[postimage_index], operation=CdcLogOperations.POSTIMAGE, batch_seq=postimage_index,
+            self.check_cdc_log_row_collection(cdc_log_rows[postimage_index], operation=CdcLogOperations.POSTIMAGE,
+                                              batch_seq=postimage_index,
                                               expected_data=postimage_expected_data)
 
 
@@ -902,11 +954,12 @@ class TestCdcUDT(CdcTools):
                     (pkey {primary_key_type}, \
                      ckey {primary_key_type}, \
                      value {self.udt_type}, \
+                     always_null {self.udt_type}, \
                      PRIMARY KEY (pkey, ckey)\
                     )"
         statement += " WITH cdc={'enabled': true"
         if preimage_enable:
-            statement += ", 'preimage': true"
+            statement += f", 'preimage': '{str(preimage_enable).lower()}'"
         if postimage_enable:
             statement += ", 'postimage': true"
         statement += "}"
@@ -923,6 +976,9 @@ class TestCdcUDT(CdcTools):
     def test_insert_udt_preimage(self):
         self.insert_udt_tpl(preimage_enable=True)
 
+    def test_insert_udt_preimage_full(self):
+        self.insert_udt_tpl(preimage_enable='full')
+
     def test_insert_udt_postimage(self):
         self.insert_udt_tpl(postimage_enable=True)
 
@@ -934,6 +990,9 @@ class TestCdcUDT(CdcTools):
 
     def test_update_udt_preimage(self):
         self.update_udt_tpl(preimage_enable=True)
+
+    def test_update_udt_preimage_full(self):
+        self.update_udt_tpl(preimage_enable='full')
 
     def test_update_udt_postimage(self):
         self.update_udt_tpl(postimage_enable=True)
@@ -948,6 +1007,9 @@ class TestCdcUDT(CdcTools):
     def test_update_field_non_frozen_udt_preimage(self):
         self.udt_update_field_on_non_frozen(preimage_enable=True)
 
+    def test_update_field_non_frozen_udt_preimage_full(self):
+        self.udt_update_field_on_non_frozen(preimage_enable='full')
+
     def test_update_field_non_frozen_udt_postimage(self):
         self.udt_update_field_on_non_frozen(postimage_enable=True)
 
@@ -959,6 +1021,9 @@ class TestCdcUDT(CdcTools):
 
     def test_delete_field_value_in_non_frozen_udt_preimage(self):
         self.udt_update_field_on_non_frozen(preimage_enable=True, remove_field_value=True)
+
+    def test_delete_field_value_in_non_frozen_udt_preimage_full(self):
+        self.udt_update_field_on_non_frozen(preimage_enable='full', remove_field_value=True)
 
     def test_delete_field_value_in_non_frozen_udt_postimage(self):
         self.udt_update_field_on_non_frozen(postimage_enable=True, remove_field_value=True)
@@ -1077,7 +1142,9 @@ class TestCdcUDT(CdcTools):
             self.check_cdc_log_row_udt(log_rows[0],
                                        operation=CdcLogOperations.PREIMAGE,
                                        batch_seq=0,
-                                       expected_data=expected_udt_result['preimage'])
+                                       expected_data=expected_udt_result['preimage'],
+                                       preimage_enabled=preimage_enable)
+
         self.check_cdc_log_row_udt(log_rows[delta_index],
                                    operation=expected_operation,
                                    batch_seq=delta_index,
