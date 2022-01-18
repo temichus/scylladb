@@ -9,17 +9,12 @@ from cassandra import ConsistencyLevel
 
 from dtest_class import Tester, create_ks
 from cdc_test import CdcLogOperations, CDCInitializeHelper
-from cdc_batch_test import DataGenerator, Row, Column, get_next_timestamp
+from cdc_batch_test import DataGenerator, Row, Column
+from tools.cdc_utils import mkident, get_next_timestamp
 
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-
-def mkident(s):
-    s = re.sub(r'\s+', '', s)
-    s = re.sub(r'[<>,]', '_', s)
-    return re.sub(r'_+$', '', s)
 
 
 checking_types = ["int", "bigint", "text", "map<int,int>", "varchar",

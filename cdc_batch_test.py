@@ -14,13 +14,10 @@ from cassandra import ConsistencyLevel
 
 from dtest_class import Tester, create_ks
 from cdc_test import CdcLogOperations, CDCInitializeHelper
+from tools.cdc_utils import mkident, get_next_timestamp
 
 
 logger = logging.getLogger(__name__)
-
-
-def get_next_timestamp():
-    return int(time.time() * 1000000) + 1000
 
 
 class Column:
@@ -199,12 +196,6 @@ class MapIntIntDataGenerator(DataGenerator):
 class MaptextblobDataGenerator(DataGenerator):
     def _generate_data(self):
         return [{f"file{i + self.seed}": b"\x00" * (i + self.seed)} for i in range(self.cols_num)]
-
-
-def mkident(s):
-    s = re.sub(r'\s+', '', s)
-    s = re.sub('[<>,]', '_', s)
-    return re.sub('_+$', '', s)
 
 
 def get_generator(data_type):

@@ -1,6 +1,5 @@
 import pytest
 import time
-import re
 from datetime import datetime, date
 from decimal import Decimal
 from uuid import UUID, uuid1
@@ -8,15 +7,10 @@ from uuid import UUID, uuid1
 from cassandra.cluster import Session, SimpleStatement
 from cassandra.util import uuid_from_time, Time, OrderedMapSerializedKey
 from cdc_test import CdcLogOperations, CDCInitializeHelper
+from tools.cdc_utils import mkident
 from dtest_class import Tester, create_ks
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
-
-
-def mkident(s):
-    s = re.sub(r'\s+', '', s)
-    s = re.sub('[<>,]', '_', s)
-    return re.sub('_+$', '', s)
 
 
 native_types_values = [

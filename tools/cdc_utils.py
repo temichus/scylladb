@@ -153,3 +153,13 @@ class CDCTraceInfoMatcher:
             # assert cdc line order and correctnes
             assert re.match(pattern.format(token_id=token),
                             line), f"{pattern.format(token_id=token)} not matched {line}"
+
+
+def mkident(s):
+    s = re.sub(r'\s+', '', s)
+    s = re.sub('[<>,]', '_', s)
+    return re.sub('_+$', '', s)
+
+
+def get_next_timestamp():
+    return int(time.time() * 1000000) + 1000
