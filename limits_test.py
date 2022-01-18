@@ -321,6 +321,8 @@ class TestLimits(Tester):
             self._do_test_max_cell_count(session, node, cells - 1)
 
 
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestMaxCQLConnections(Tester):
 
     def test_max_cql_connections(self):
@@ -331,8 +333,8 @@ class TestMaxCQLConnections(Tester):
 
         Test verifies also if connection pool is properly released after connection shutdown.
         """
-        workers = 5  # opening many connections in python gets slower and slower. Spreading to workers helps.
-        connections_per_worker = 3000
+        workers = 6  # opening many connections in python gets slower and slower. Spreading to workers helps.
+        connections_per_worker = 2500
         total_connections = workers * connections_per_worker
         self._tune_max_open_files_limit(total_connections)
         self.cluster.populate(1).start(jvm_args=['--smp', '1', "--max-networking-io-control-blocks",
@@ -372,7 +374,8 @@ class TestMaxCQLConnections(Tester):
     def _close_connections(self, processes):
         """dummy cql connections scripts end after pressing any key."""
         for process in processes:
-            process.communicate("a", timeout=10)
+            stdout, stderr = process.communicate("a", timeout=10)
+            assert process.returncode == 0, f"Error in create dummy connections script: {stderr}"
 
     def _get_cql_connections_from_metrics(self, address):
         resp = requests.get(f"http://{address}:9180/metrics")
