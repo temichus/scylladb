@@ -12,6 +12,13 @@ from dtest_class import Tester, create_ks
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
 
+
+def mkident(s):
+    s = re.sub(r'\s+', '', s)
+    s = re.sub('[<>,]', '_', s)
+    return re.sub('_+$', '', s)
+
+
 native_types_values = [
     {"cl_type": "bigint", "ins_dataset": 1, "upd_dataset": 2},
     {"cl_type": "int", "ins_dataset": 3, "upd_dataset": 4},
@@ -349,7 +356,9 @@ class CdcTools(Tester, CDCInitializeHelper):
 class TestCDCNativeType(CdcTools):
     columns_data = None
 
-    @pytest.fixture(params=native_types_values + frozen_collections, autouse=True)
+    @pytest.fixture(params=native_types_values + frozen_collections,
+                    ids=[mkident(column["cl_type"]) for column in native_types_values + frozen_collections],
+                    autouse=True)
     def fixture_columns_data(self, request):
         self.columns_data = request.param
 
@@ -615,11 +624,13 @@ class TestCDCNativeType(CdcTools):
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class CDCCollectionsTmpl(CdcTools):
+class TestCDCCollectionsType(CdcTools):
     columns_data = None
     timeuuid = uuid_from_time(time.time())
 
-    @pytest.fixture(params=collections_types, autouse=True)
+    @pytest.fixture(params=collections_types,
+                    ids=[mkident(column["cl_type"]) for column in collections_types],
+                    autouse=True)
     def fixture_columns_data(self, request):
         self.columns_data = request.param
 
@@ -849,10 +860,12 @@ class CDCCollectionsTmpl(CdcTools):
 @pytest.mark.dtest_full
 @pytest.mark.single_node
 @pytest.mark.scylla_cdc
-class CdcUDTTmpl(CdcTools):
+class TestCdcUDT(CdcTools):
     columns_data = None
 
-    @pytest.fixture(params=udt_types, autouse=True)
+    @pytest.fixture(params=udt_types,
+                    ids=[mkident(column["cl_type"]["udt_name"]) for column in udt_types],
+                    autouse=True)
     def fixture_columns_data(self, request):
         self.columns_data = request.param
 
@@ -1081,9 +1094,3 @@ class CdcUDTTmpl(CdcTools):
                                        operation=CdcLogOperations.POSTIMAGE,
                                        batch_seq=postimage_index,
                                        expected_data=expected_udt_result['postimage'])
-
-
-def mkident(s):
-    s = re.sub(r'\s+', '', s)
-    s = re.sub('[<>,]', '_', s)
-    return re.sub('_+$', '', s)
