@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 def mkident(s):
-    s = re.sub('\s+', '', s)
-    s = re.sub('[<>,]', '_', s)
-    return re.sub('_+$', '', s)
+    s = re.sub(r'\s+', '', s)
+    s = re.sub(r'[<>,]', '_', s)
+    return re.sub(r'_+$', '', s)
 
 
 checking_types = ["int", "bigint", "text", "map<int,int>", "varchar",

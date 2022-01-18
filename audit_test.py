@@ -301,7 +301,7 @@ class TestCQLAudit(AuditTester):
         except NodeError:
             pass
 
-        expected_error = "Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit': invalid\)"
+        expected_error = r"Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit': invalid\)"
         self.ignore_log_patterns.append(expected_error)
         self.cluster.nodes['node1'].watch_log_for(expected_error)
 
@@ -342,7 +342,7 @@ class TestCQLAudit(AuditTester):
             cluster.populate(1).start(no_wait=True)
         except NodeError:
             pass
-        expected_error = "Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit_categories': INVALID\)"
+        expected_error = r"Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit_categories': INVALID\)"
         self.ignore_log_patterns.append(expected_error)
         self.cluster.nodes['node1'].watch_log_for(expected_error)
 
