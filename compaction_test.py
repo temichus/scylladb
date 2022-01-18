@@ -131,6 +131,112 @@ class TestCompaction(Tester):
 
         assert numfound == 0, "Error: expected {} deleted partitions but found {}:\n{}".format(0, numfound, jsoninfo)
 
+    def verify_deleted(self, session, node, n):
+        session.execute('insert into ks.cf (key, val) values (99,1);')
+        node.flush()
+        node.compact()
+
+        json_path = tempfile.mkstemp(suffix='.json')
+        jname = json_path[1]
+        with open(jname, 'w') as f:
+            node.run_sstable2json(f)
+
+        with open(jname, 'r') as g:
+            jsoninfo = g.read()
+
+        numfound = jsoninfo.count("marked_deleted")
+
+        assert numfound == n, "Error: expected {} deleted partitions but found {}:\n{}".format(
+            0, numfound, len(jsoninfo))
+
+    def _test_compaction_delete_tombstone_gc(self, tombstone_gc_mode='repair'):
+        """
+        Start 2 nodes
+        Create table with RF 2 and tombstone_gc_mode option
+        Insert 100 rows
+        Delete 10 rows
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True)
+        node1, node2 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        create_ks(session, 'ks', 2)
+
+        if tombstone_gc_mode == 'timeout':
+            gc_grace_seconds = 60
+        else:
+            gc_grace_seconds = 5
+
+        logger.debug(f'Create table with tombstone_gc = mode ={tombstone_gc_mode}')
+        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
+                        "with tombstone_gc = {{'mode':'{}', 'propagation_delay_in_seconds':'5'}} "
+                        "and compaction = {{'class':'{}'}} and gc_grace_seconds = {};".format(tombstone_gc_mode, self.strategy, gc_grace_seconds))
+
+        for x in range(0, 100):
+            session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
+
+        node1.flush()
+        node2.flush()
+        self.tombstone_expiry_time = time.time() + gc_grace_seconds
+        for x in range(0, 10):
+            session.execute('delete from cf where key = ' + str(x))
+
+        node1.flush()
+        node2.flush()
+        for x in range(0, 10):
+            assert_none(session, 'select * from cf where key = ' + str(x))
+
+    @pytest.mark.parametrize("tombstone_gc_mode", ['repair', 'timeout', 'disabled', 'immediate'])
+    def test_compaction_delete_tombstone_gc(self, tombstone_gc_mode):
+        """
+        Test compaction drop tombstones correctly in different tombstone_gc_mode mode
+        """
+        assert tombstone_gc_mode in ['repair', 'timeout', 'disabled',
+                                     'immediate'], f"tombstone_gc_mode {tombstone_gc_mode} is not supported"
+
+        self._test_compaction_delete_tombstone_gc(tombstone_gc_mode)
+
+        node1, node2 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+
+        if tombstone_gc_mode == 'immediate':
+            logger.debug(f"Check with tombstone_gc_mode = {tombstone_gc_mode}, before timeout there are no tombstones")
+            self.verify_deleted(session, node1, 0)
+            self.verify_deleted(session, node2, 0)
+        else:
+            logger.debug(f"Check with tombstone_gc_mode = {tombstone_gc_mode}, before timeout there are 10 tombstones")
+            self.verify_deleted(session, node1, 10)
+            self.verify_deleted(session, node2, 10)
+
+        time_to_expire = max(0, self.tombstone_expiry_time - time.time())
+        logger.debug("Time left to expire: {}".format(time_to_expire))
+
+        logger.debug("Sleep time_to_expire")
+        time.sleep(time_to_expire + 1)
+
+        if tombstone_gc_mode in ('immediate', 'timeout'):
+            logger.debug(f"Check with tombstone_gc_mode = {tombstone_gc_mode}, before repair there are no tombstones")
+            self.verify_deleted(session, node1, 0)
+            self.verify_deleted(session, node2, 0)
+        elif tombstone_gc_mode in ('repair', 'disabled'):
+            logger.debug(f"Check with tombstone_gc_mode = {tombstone_gc_mode}, before repair there are 10 tombstones")
+            self.verify_deleted(session, node1, 10)
+            self.verify_deleted(session, node2, 10)
+
+        logger.debug("Run repair on node1")
+        node1.repair(['ks cf'])
+
+        if tombstone_gc_mode in ('repair', 'immediate', 'timeout'):
+            logger.debug(f"Check with tombstone_gc_mode = {tombstone_gc_mode}, after repair there are no tombstones")
+            self.verify_deleted(session, node1, 0)
+            self.verify_deleted(session, node2, 0)
+        elif tombstone_gc_mode == 'disabled':
+            logger.debug(
+                f"Check with tombstone_gc_mode = {tombstone_gc_mode}, after repair there are still 10 tombstones")
+            self.verify_deleted(session, node1, 10)
+            self.verify_deleted(session, node2, 10)
+
     def test_data_size(self):
         """
         Ensure that data size does not have unwarranted increases after compaction.
