@@ -298,7 +298,7 @@ class TestCQLAudit(AuditTester):
 
         try:
             cluster.populate(1).start(no_wait=True)
-        except NodeError:
+        except (NodeError, RuntimeError):
             pass
 
         expected_error = r"Startup failed: audit::audit_exception \(Bad configuration: invalid 'audit': invalid\)"
