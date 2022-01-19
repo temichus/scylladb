@@ -105,18 +105,26 @@ class TestNodetoolListSnapshots(Tester):
                 if '/snapshots/' not in path:
                     continue
 
+                def get_sizes(filename):
+                    st = os.lstat(filename)
+                    return (st.st_size, st.st_blocks * 512)
+
                 p = path.split('/')
                 snapshot_id = p[-1]
                 cf_name = p[-3].split('-')
-                disk_size = sum(
-                    [os.path.getsize(os.path.join(path, f))
-                        for f in files
-                        if 'manifest.json' not in f and 'schema.cql' not in f]
-                )
-                logger.debug('Snapshot ks:{} cf:{} name:{} size is {}, human size is {}'.format(
+                snapshot_files = [f for f in files
+                                  if 'manifest.json' not in f and 'schema.cql' not in f]
+                logical_size = 0
+                disk_size = 0
+                for f in snapshot_files:
+                    st = os.lstat(os.path.join(path, f))
+                    logical_size += st.st_size
+                    disk_size += st.st_blocks * 512
+                logger.debug('Snapshot ks:{} cf:{} name:{} logical size is {}, allocated size is {}, human size is {}'.format(
                     ks,
                     cf_name[0],
                     snapshot_id,
+                    logical_size,
                     disk_size,
                     human_size(disk_size)))
 
@@ -126,6 +134,7 @@ class TestNodetoolListSnapshots(Tester):
                         'uuid': cf_name[1],
                         snapshot_id: {
                             'path': path,
+                            'logical_size': human_size(logical_size),
                             'size': human_size(disk_size)
                         }
                     }
@@ -174,8 +183,10 @@ class TestNodetoolListSnapshots(Tester):
         """
         listsnaps = self.parse_output_listsnapshots(output)
         snapshots = self.count_snapshot_disk_size(node)
-        return all([snapshots[ks][(cf, snsh_id)][snsh_id]['size'] == ondisk
-                    for snsh_id, ks, cf, _, ondisk in listsnaps])
+        return all([snapshots[ks][(cf, snsh_id)][snsh_id]['size'] >= ondisk
+                    for snsh_id, ks, cf, _, ondisk in listsnaps]) and \
+            all([snapshots[ks][(cf, snsh_id)][snsh_id]['logical_size'] <= ondisk
+                 for snsh_id, ks, cf, _, ondisk in listsnaps])
 
     def populate_keyspaces(self, session, kses, cfes):
         """Fill provided keyspaces with tables and
