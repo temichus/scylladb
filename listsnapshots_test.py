@@ -10,7 +10,8 @@ from dtest_class import Tester, create_ks
 
 logger = logging.getLogger(__name__)
 
-known_units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']
+known_units = ['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']
+
 
 def human_size(size, units=known_units):
     """ Returns a human readable string reprentation of bytes"""
@@ -19,6 +20,7 @@ def human_size(size, units=known_units):
         return "{:g} {}".format(size, units[0])
     else:
         return human_size(size / 1024.0, units[1:])
+
 
 def normalize_size(size, units):
     size = float(size)
@@ -181,7 +183,8 @@ class TestNodetoolListSnapshots(Tester):
         parsed = output_regexp.findall(output)
         ret = []
         for snsh_name, ks, cf, true_size, true_size_units, size_on_disk, size_on_disk_units in parsed:
-            ret.append((snsh_name, ks, cf, normalize_size(true_size, true_size_units), normalize_size(size_on_disk, size_on_disk_units)))
+            ret.append((snsh_name, ks, cf, normalize_size(true_size, true_size_units),
+                       normalize_size(size_on_disk, size_on_disk_units)))
         logger.debug('Parsed and normalized:\n{}'.format(ret))
         return ret
 
