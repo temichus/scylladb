@@ -184,7 +184,7 @@ class TestNodetoolListSnapshots(Tester):
         ret = []
         for snsh_name, ks, cf, true_size, true_size_units, size_on_disk, size_on_disk_units in parsed:
             ret.append((snsh_name, ks, cf, normalize_size(true_size, true_size_units),
-                       normalize_size(size_on_disk, size_on_disk_units)))
+                        normalize_size(size_on_disk, size_on_disk_units)))
         logger.debug('Parsed and normalized:\n{}'.format(ret))
         return ret
 

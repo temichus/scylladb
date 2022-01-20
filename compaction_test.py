@@ -224,7 +224,7 @@ class TestCompaction(Tester):
         if not hasattr(self, 'strategy'):
             self.strategy = 'DateTieredCompactionStrategy'
         elif self.strategy != 'DateTieredCompactionStrategy':
-            self.skipTest('Not implemented unless DateTieredCompactionStrategy is used')
+            pytest.skip('Not implemented unless DateTieredCompactionStrategy is used')
 
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
@@ -600,7 +600,7 @@ class TestCompaction(Tester):
 
     def skip_if_no_major_compaction(self):
         if parse_version(self.cluster.version()) < parse_version('2.2') and self.strategy == 'LeveledCompactionStrategy':
-            self.skipTest('major compaction not implemented for LCS in this version of Cassandra')
+            pytest.skip('major compaction not implemented for LCS in this version of Cassandra')
 
 
 def get_random_word(word_len):

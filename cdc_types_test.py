@@ -1041,7 +1041,7 @@ class TestCdcUDT(CdcTools):
 
     def _skip_test_if_frozen_is_used(self):
         if self.columns_data['cl_type']['frozen']:
-            self.skip("Update UDT field for frozen UDT is not supported")
+            pytest.skip("Update UDT field for frozen UDT is not supported")
 
     def parse_udt_type_name(self):
         self.udt_name = self.columns_data['cl_type']["udt_name"]

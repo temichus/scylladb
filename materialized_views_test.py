@@ -3933,7 +3933,7 @@ class TestInterruptBuildProcess(CommonUtils):
 
     def _max_shards(self):
         if cpu_count() < 2:
-            self.skip("This test requires a minimum of 2 cpus")
+            pytest.skip("This test requires a minimum of 2 cpus")
         elif cpu_count() <= 4:
             return cpu_count()
         else:
@@ -3942,7 +3942,7 @@ class TestInterruptBuildProcess(CommonUtils):
 
     def _half_shards(self):
         if cpu_count() < 2:
-            self.skip("This test requires a minimum of 2 cpus")
+            pytest.skip("This test requires a minimum of 2 cpus")
         elif cpu_count() <= 4:
             return cpu_count() - 1
         else:
@@ -3952,7 +3952,7 @@ class TestInterruptBuildProcess(CommonUtils):
 
     def _low_shards(self):
         if cpu_count() < 3:
-            self.skip("This test requires a minimum of 3 cpus")
+            pytest.skip("This test requires a minimum of 3 cpus")
         elif cpu_count() < 4:
             return 1
         else:
@@ -4054,7 +4054,7 @@ class TestInterruptBuildProcess(CommonUtils):
         # no resharding takes place as all sstables will naturally belong to
         # that single shard.
         if self._low_shards() == 1:
-            self.skip("This test requires a minimum of 4 cpus")
+            pytest.skip("This test requires a minimum of 4 cpus")
         self._do_resharding_test(self._half_shards(), self._low_shards(),
                                  interrupt_resharding=True)
 

@@ -206,8 +206,8 @@ class UpgradeTester(Tester):
             # this is a bandaid; after refactoring, upgrades should account for protocol version
             new_version_from_build = get_version_from_build(node1.get_install_dir())
             if new_version_from_build >= '3' and self.protocol_version is not None and self.protocol_version < 3:
-                self.skip('Protocol version {} incompatible '
-                          'with Cassandra version {}'.format(self.protocol_version, new_version_from_build))
+                pytest.skip('Protocol version {} incompatible '
+                            'with Cassandra version {}'.format(self.protocol_version, new_version_from_build))
             node1.set_log_level("DEBUG")
             node1.set_configuration_options(values={'internode_compression': 'none'})
             node1.start(wait_for_binary_proto=True)
@@ -217,8 +217,8 @@ class UpgradeTester(Tester):
             # this is a bandaid; after refactoring, upgrades should account for protocol version
             new_version_from_build = get_version_from_build(node1.get_install_dir())
             if new_version_from_build >= '3' and self.protocol_version is not None and self.protocol_version < 3:
-                self.skip('Protocol version {} incompatible '
-                          'with Cassandra version {}'.format(self.protocol_version, new_version_from_build))
+                pytest.skip('Protocol version {} incompatible '
+                            'with Cassandra version {}'.format(self.protocol_version, new_version_from_build))
             node2.set_log_level("DEBUG")
             node2.set_configuration_options(values={'internode_compression': 'none'})
             node2.start(wait_for_binary_proto=True)
