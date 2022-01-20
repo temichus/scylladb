@@ -10,14 +10,29 @@ from dtest_class import Tester, create_ks
 
 logger = logging.getLogger(__name__)
 
+known_units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']
 
-def human_size(size, units=['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
+def human_size(size, units=known_units):
     """ Returns a human readable string reprentation of bytes"""
     if size < 1024.0:
         size = float("{:.2f}".format(size))
         return "{:g} {}".format(size, units[0])
     else:
         return human_size(size / 1024.0, units[1:])
+
+def normalize_size(size, units):
+    size = float(size)
+    if not units or units.lower() == 'bytes':
+        return size
+    if units.lower() not in known_units and units.upper() not in known_units:
+        raise RuntimeError(f"Unknown {units} units")
+    i = 1
+    while i < len(known_units):
+        size *= 1024
+        if units == known_units[i]:
+            return size
+        i += 1
+    assert False, f"units={units} should have been found in known_units={known_units}"
 
 
 @pytest.mark.dtest_full
@@ -134,8 +149,9 @@ class TestNodetoolListSnapshots(Tester):
                         'uuid': cf_name[1],
                         snapshot_id: {
                             'path': path,
-                            'logical_size': human_size(logical_size),
-                            'size': human_size(disk_size)
+                            'logical_size': float(logical_size),
+                            'size': float(disk_size),
+                            'human_size': human_size(disk_size)
                         }
                     }
                 })
@@ -160,9 +176,14 @@ class TestNodetoolListSnapshots(Tester):
         """
 
         output_regexp = re.compile(
-            r'^(?P<snsh_name>[\w]+)\s+(?P<ks>[\w]+)\s+(?P<cf>[\w]+)\s+(?P<true_size>[0-9.]+)\s\w+\s+(?P<size_on_disk>[0-9.]+\s+\w+)\s+$', re.MULTILINE)
+            r'^(?P<snsh_name>[\w]+)\s+(?P<ks>[\w]+)\s+(?P<cf>[\w]+)\s+(?P<true_size>[0-9.]+)\s(?P<true_size_units>\w+)\s+(?P<size_on_disk>[0-9.]+)\s+(?P<size_on_disk_units>\w+)\s+$', re.MULTILINE)
         logger.debug('Output of nodetool listsnapshots:\n{}'.format(output))
-        return output_regexp.findall(output)
+        parsed = output_regexp.findall(output)
+        ret = []
+        for snsh_name, ks, cf, true_size, true_size_units, size_on_disk, size_on_disk_units in parsed:
+            ret.append((snsh_name, ks, cf, normalize_size(true_size, true_size_units), normalize_size(size_on_disk, size_on_disk_units)))
+        logger.debug('Parsed and normalized:\n{}'.format(ret))
+        return ret
 
     def compare_filesize_and_output(self, node, output):
         """Compare results of counted snapshot size and listsnapshots output
