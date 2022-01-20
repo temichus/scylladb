@@ -93,7 +93,8 @@ class DTestConfig:
 
     @property
     def is_enterprise(self):
-        return parse_version(self.get_version_from_build()) > parse_version("2018.1")
+        version = self.get_version_from_build()
+        return parse_version(version) > parse_version("2018.1") if version else False
 
 # Determine the location of the libjemalloc jar so that we can specify it
 # through environment variables when start Cassandra.  This reduces startup

@@ -25,7 +25,7 @@ from dtest_setup_overrides import DTestSetupOverrides
 from tools.keystore import KeyStore
 from tools.log_utils import log_per_process_data, TestNameFilter
 from tools.env import GITHUB_TOKEN, DTEST_REQUIRE
-from tools.marks import get_version
+from tools.marks import get_version, is_enterprise
 
 logger = logging.getLogger(__name__)
 
@@ -454,6 +454,7 @@ def pytest_collection_modifyitems(items, config):
     scylla_version = config.getoption('--scylla-version')
     manager_package = config.getoption('--scylla-manager-package')
     collect_require = config.getoption("--collect-required")
+    _is_enterprise = is_enterprise(cassandra_dir, scylla_version)
 
     if collect_require:
         print()
@@ -538,6 +539,9 @@ def pytest_collection_modifyitems(items, config):
                 print(f"* {item.nodeid} - {issue}")
             else:
                 print(f"* {item.nodeid} - marked with closed issue {issue}")
+
+        if item.get_closest_marker("dtest_enterprise") and not _is_enterprise:
+            deselect_test = True
 
         if deselect_test:
             deselected_items.append(item)
