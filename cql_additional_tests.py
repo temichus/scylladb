@@ -6959,6 +6959,51 @@ class TestsCQLAdditional(Tester):
         # this would return no row.
         assert_one(session, "select * from ks.t where pk = 1 and ck = 0", [1, 0])
 
+    def test_indexed_statement_concurrency_limit(self):
+        """
+            Verify that in case of indexed paged query the first page returned would contain
+            around 1MiB of data, as dictated by internal scylla concurrency limit when fetching data from
+            indexed SELECT statements
+            Pre 4.6.rc1: Test fails, the current_rows would be equal to page_size
+            4.6.rc1: Test passes, current rows will be less than page_size, at 511 rows as of 4.6.rc1
+        """
+        cluster = self.cluster
+        cluster.populate(3).start()
+        node = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+
+        logger.debug("Preparing keyspace and table")
+        session.execute("CREATE KEYSPACE IF NOT EXISTS ks WITH "
+                        "REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 3}")
+        table_stmt = SimpleStatement(
+            "CREATE TABLE IF NOT EXISTS ks.tab (pk int, ck text, v int, v2 int, v3 text, PRIMARY KEY (pk, ck))",
+            consistency_level=ConsistencyLevel.ALL
+        )
+        session.execute(table_stmt)
+        session.execute("CREATE INDEX ON ks.tab (v)")
+
+        blob = "d" * 4096
+        logger.debug("Inserting data...")
+        total_rows = 3 * 1024
+        """
+          This page size should trigger internal scylla limit and
+          the query using this page size should return less rows than requested
+        """
+        page_size = 1024
+        for i in range(total_rows):
+            session.execute(f"INSERT INTO ks.tab (pk, ck, v, v2, v3) VALUES ({i % 3}, 'hello{i}', 1, {i}, '{blob}')")
+            if i % 1024 == 0:
+                logger.debug(f"Inserted {i}/{total_rows} rows.")
+
+        logger.debug("Rows inserted.")
+        indexed_select_paged = SimpleStatement("SELECT * FROM ks.tab WHERE v = 1", fetch_size=page_size,
+                                               consistency_level=ConsistencyLevel.LOCAL_ONE)
+        res = session.execute(indexed_select_paged)
+        rows_received = len(res.current_rows)
+        logger.debug(f"Indexed select fetched {rows_received} rows out of {page_size}")
+        assert rows_received < page_size, "Expected to get less rows than requested, "\
+                                          f"got {rows_received} with page size of {page_size}."
+
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
