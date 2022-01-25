@@ -900,7 +900,7 @@ class TestCommitLog(Tester):
 
         def check_commitlog_size(allow_errors: bool):
             dir_size, stdout = self._get_commitlog_size(all=True, allow_errors=allow_errors)
-            if dir_size > actual_space_limit:
+            if dir_size > actual_space_limit and not allow_errors:
                 logger.debug(f"Commitlog file sizes in MB:\n{stdout}")
                 assert dir_size <= actual_space_limit, f"Out of total space limit\n"
             return dir_size
