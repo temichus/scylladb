@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class StorageServiceClient:
     def __init__(self, node: Node):
         self._node = node
-        self._endpoint_url = f"{self._node.address()}:10000/storage_service/"
+        self._endpoint_url = f"http://{self._node.address()}:10000/storage_service/"
 
     def scrub_ks_cf(self, keyspace: str, cf: Optional[str], scrub_mode: Optional[str] = None, **kwargs) -> Response:
         params = {"cf": cf} if cf else {}

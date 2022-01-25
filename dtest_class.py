@@ -356,11 +356,12 @@ def get_eager_protocol_version(cassandra_version):
 
 
 # We default to UTF8Type because it's simpler to use in tests
-def create_cf(session, name, key_type="varchar", speculative_retry=None, read_repair=None, compression=None,
-              gc_grace=None, columns=None, validation="UTF8Type", compact_storage=False,
-              compaction_strategy='SizeTieredCompactionStrategy', primary_key=None, clustering=None, default_ttl=None,
-              compaction=None, debug_query=False, caching=True, paxos_grace_seconds=None,
-              dclocal_read_repair_chance=None, in_memory=None, scylla_encryption_options=None):
+def create_cf(session, name, key_type="varchar", speculative_retry=None,
+              read_repair=None, compression=None, gc_grace=None, columns=None, validation="UTF8Type",
+              compact_storage=False, compaction_strategy='SizeTieredCompactionStrategy', primary_key=None,
+              clustering=None, default_ttl=None, compaction=None, debug_query=False, caching=True,
+              paxos_grace_seconds=None, dclocal_read_repair_chance=None,
+              in_memory=None, scylla_encryption_options=None, key_name: str = "key"):
 
     compaction_fragment = "compaction = {'class': '%s', 'enabled': 'true'}"
     if compaction_strategy == '':
@@ -374,15 +375,15 @@ def create_cf(session, name, key_type="varchar", speculative_retry=None, read_re
             additional_columns = "{}, {} {}".format(additional_columns, k, v)
 
     if additional_columns == "":
-        query = 'CREATE COLUMNFAMILY %s (key %s, c varchar, v varchar, PRIMARY KEY(key, c)) WITH comment=\'test cf\'' % (
-            name, key_type)
+        query = 'CREATE COLUMNFAMILY %s (%s %s, c varchar, v varchar, PRIMARY KEY(key, c)) WITH comment=\'test cf\'' % (
+            name, key_name, key_type)
     else:
         if primary_key:
-            query = 'CREATE COLUMNFAMILY %s (key %s%s, PRIMARY KEY(%s)) WITH comment=\'test cf\'' % (
-                name, key_type, additional_columns, primary_key)
+            query = 'CREATE COLUMNFAMILY %s (%s %s%s, PRIMARY KEY(%s)) WITH comment=\'test cf\'' % (
+                name, key_name, key_type, additional_columns, primary_key)
         else:
-            query = 'CREATE COLUMNFAMILY %s (key %s PRIMARY KEY%s) WITH comment=\'test cf\'' % (
-                name, key_type, additional_columns)
+            query = 'CREATE COLUMNFAMILY %s (%s %s PRIMARY KEY%s) WITH comment=\'test cf\'' % (
+                name, key_name, key_type, additional_columns)
 
     if compaction is not None:
         query = '%s AND compaction=%s' % (query, compaction)
@@ -426,7 +427,7 @@ def create_cf(session, name, key_type="varchar", speculative_retry=None, read_re
     try:
         retry_till_success(session.execute, query=query, timeout=120, bypassed_exception=cassandra.OperationTimedOut)
     except cassandra.AlreadyExists:
-        logger.warn('AlreadyExists executing create cf query \'%s\'' % query)
+        logger.warning('AlreadyExists executing create cf query \'%s\'' % query)
     session.cluster.control_connection.wait_for_schema_agreement(wait_time=120)
     # Going to ignore OperationTimedOut from create CF, so need to validate it was indeed created
     session.execute('SELECT * FROM %s LIMIT 1' % name)

@@ -12,20 +12,22 @@ from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime as dt
+from pathlib import Path
 from threading import Thread
-from typing import Optional
+from typing import Optional, List, Tuple
 
 import pytest
 import sstable_tools.statistics
 from cassandra import ConsistencyLevel, concurrent
-from ccmlib.node import NodetoolError, TimeoutError
+from ccmlib.node import NodetoolError, TimeoutError, Node
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
+from tools.rest_clients import StorageServiceClient
 from tools.assertions import assert_none, assert_all, assert_row_count
 from tools.cluster import new_node
 from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_table
-from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables
+from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables, get_cf_dir
 from tools.misc import ImmutableMapping
 from tools.stress import fill_data_by_cs
 from tools.marks import enterprise_only_param
@@ -1435,3 +1437,139 @@ class TestGarabageCollected(CompactionAdditionalTester):
                 res = None
 
             assert not res, "Don't expect the 'Unable to delete' error"
+
+
+@pytest.mark.dtest_full
+class TestValidationCompaction(CompactionAdditionalTester):
+    KS = "ks"
+    CF = "cf"
+    CF_2 = "cf2"
+    RF = 3
+    CORRUPT_DATA_FILE_NAME = "mc-1-big-Data.db"
+    CORRUPT_DATA_FILE_DIR = Path("test-sstables/sstable_with_invalid_fragment/ks/cf-test")
+    CORRUPT_DATA_FILE_PATH = CORRUPT_DATA_FILE_DIR / CORRUPT_DATA_FILE_NAME
+    DATA_FILE_NAME = "md-1-big-Data.db"
+    REGEX_PATTERNS = {
+        "validation_start": r"compaction - Scrubbing in validate mode",
+        "invalid_partition": r"Invalid partition \x19\x00\x00\x00 \(\{key: pk\{000419000000}, "
+                             r"token:-5674409923619649499}\), partition is out-of-order compared to previous "
+                             r"partition \x06\x00\x00\x00 \(\{key: pk\{000406000000}, "
+                             r"token:-5566252076597558760}\)",
+        "invalid_clustering_row": r"Invalid clustering row fragment with key 3 \(\{position: clustered,"
+                                  r"ckp\{000400000003},0}\) in partition .* \(\{key: pk\{000406000000}, "
+                                  r"token:-5566252076597558760}\), fragment is out-of-order compared to "
+                                  r"previous clustered fragment with key 5 \(\{position: clustered,"
+                                  r"ckp\{000400000005},0}\)",
+        "validation_finish_invalid": r"Finished scrubbing in validate mode.*sstable\(s\) are invalid",
+        "validation_finish_valid": r"Finished scrubbing in validate mode.*sstable\(s\) are valid"
+    }
+
+    def test_validation_compaction_detects_sstable_corruption(self):
+        """
+        The test checks whether running a validation compaction identifies
+        corrupted fragments in a corrupted sstable, without modifying the
+        sstable.
+
+        Test steps:
+        1. Create test keyspace and column families.
+        2. Load a corrupted sstable for a column family ("cf").
+        3. Trigger the validation compaction using the API.
+        4. Assert that following the compaction the loaded
+        sstable is the same as the source one, i.e.:
+        - there is only one sstable in the data dir
+        - the name of the sstable was not changed
+        5. Assert that the corrupted fragments were reported
+        in the logs.
+        """
+        self.ignore_log_patterns += [
+            '[Ii]nvalid clustering row fragment',
+            '[Ii]nvalid partition',
+            '(Sscrub) compaction ks.cf.*'
+        ]
+
+        node, session, storage_service_client = self._prepare()
+        create_ks(session=session, name=self.KS, rf=self.RF)
+        create_cf(session=session, name=self.CF,
+                  columns={"ck": "int", "s": "int", "v": "int"},
+                  key_name="pk",
+                  key_type="text",
+                  primary_key="pk, ck",
+                  debug_query=True)
+        create_cf(session=session, name=self.CF_2,
+                  columns={"ck": "int", "s": "int", "v": "int"},
+                  key_name="pk",
+                  key_type="text",
+                  primary_key="pk, ck",
+                  debug_query=True)
+        node.flush()
+        cf_dir = Path(get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', self.KS), cf_name=self.CF))
+        upload_dir = cf_dir / "upload"
+
+        logger.debug("Copying the sstables with invalid fragment from source directory:"
+                     " %s to upload directory: %s...", self.CORRUPT_DATA_FILE_DIR, upload_dir)
+        copy_files_to(self.CORRUPT_DATA_FILE_DIR, upload_dir)
+        node.nodetool(f"refresh -- {self.KS} {self.CF}")
+        storage_service_client.scrub_ks_cf(keyspace=self.KS, cf=self.CF, scrub_mode="VALIDATE")
+
+        sstables_count, name_check = self._assert_file_count(node=node, filename_to_check="mc-1-big-Data.db")
+
+        assert sstables_count == 1, f"Found {sstables_count} sstables, expected 1."
+        assert name_check, f"Did not find {self.DATA_FILE_NAME} in the list of sstable names."
+        assert all(self._grep_log_patterns(
+            node=node,
+            patterns=[
+                self.REGEX_PATTERNS["validation_start"],
+                self.REGEX_PATTERNS["invalid_partition"],
+                self.REGEX_PATTERNS["invalid_clustering_row"],
+                self.REGEX_PATTERNS["validation_finish_invalid"]
+            ])), "Some regex patterns were not found in the logs."
+
+    def test_validation_compaction_with_valid_sstable(self):
+        """
+        The test verifies whether running a validation compaction on
+        a valid sstable does correctly informs of the sstable's validity
+        and avoids modifying the sstable.
+
+        Test steps:
+        1. Create test keyspace and column families.
+        2. Populate a column family with test data.
+        3. Trigger the validation compaction using the API.
+        4. Assert that following the compaction the sstable
+        for the populated column family was not modified, i.e.
+        - there is only one sstable in the data dir
+        - the name of the sstable was not changed
+        5. Assert that no corrupted fragments were reported
+        in the logs and the sstable was marked as valid.
+        """
+        node, session, storage_service_client = self._prepare()
+        create_ks(session=session, name=self.KS, rf=self.RF)
+        create_c1c2_table(session)
+        insert_c1c2(session, n=10_000)
+        node.flush()
+
+        storage_service_client.scrub_ks_cf(keyspace=self.KS, cf=self.CF, scrub_mode="VALIDATE")
+
+        sstables_count, name_check = self._assert_file_count(node=node, filename_to_check=self.DATA_FILE_NAME)
+
+        assert sstables_count == 1, f"Found {sstables_count} sstables, expected 1."
+        assert name_check, f"Did not find {self.DATA_FILE_NAME} in the list of sstable names."
+        assert all(self._grep_log_patterns(
+            node=node,
+            patterns=[
+                self.REGEX_PATTERNS["validation_start"],
+                self.REGEX_PATTERNS["validation_finish_valid"]
+            ])), "Some regex patterns were not found in the logs."
+
+    def _prepare(self):
+        [node, _, _], session = self.prepare(3)
+        storage_service_client = StorageServiceClient(node=node)
+        return node, session, storage_service_client
+
+    @staticmethod
+    def _grep_log_patterns(node: Node, patterns: List[str]):
+        return [node.grep_log(pattern) for pattern in patterns]
+
+    def _assert_file_count(self, node: Node, filename_to_check: str) -> Tuple[int, bool]:
+        sstable_list = get_list_of_sstables(node=node, keyspace_name=self.KS, table_name=self.CF, suffix="big-Data.db")
+        name_check = filename_to_check in sstable_list[0]
+        return len(sstable_list), name_check
