@@ -94,34 +94,39 @@ class TestCommitLog(Tester):
         path = self._get_commitlog_path()
         return [os.path.join(path, p) for p in os.listdir(path)]
 
-    def _get_commitlog_size(self, all=False):
+    def _get_commitlog_size(self, all=False, allow_errors=False):
         """ Returns the commitlog directory size in MB """
 
         path = self._get_commitlog_path()
-        cmd_args = ['du', '-sm']
-        if not all:
-            cmd_args.append(path)
-        else:
-            paths = glob.glob(os.path.join(path, '*'), recursive=True)
-            for p in paths:
-                cmd_args.append(p)
+        cmd_args = ['du', '-m', f"-{'a' if all else 's'}"]
+        cmd_args.append(path)
         p = subprocess.Popen(cmd_args, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         exit_status = p.returncode
-        assert exit_status == 0, "du exited with a non-zero status: %d" % exit_status \
-            + "\n%s" % stderr.decode()
+
+        # allow_error is needed for running du
+        # while the node is up and running
+        # and commitlog files may be created and deleted
+        # while du runs.
+        if exit_status:
+            if allow_errors:
+                return -1, stderr.decode()
+            pytest.fail("du exited with a non-zero status: %d" % exit_status
+                        + "\n%s" % stderr.decode())
         if not all:
             size = int(stdout.decode().split()[0])
             return size
         else:
+            # du will print a line for file
+            # the last line contains the summary
             size = 0
             for l in stdout.decode().split('\n'):
                 if not l:
                     continue
                 a = l.split()
                 if len(a) == 2:
-                    size += int(a[0])
+                    size = int(a[0])
                 else:
                     logger.warn(f"Unrecognized du output line: {l}")
             return size, stdout.decode()
@@ -893,8 +898,8 @@ class TestCommitLog(Tester):
         actual_space_limit = (total_space_limit // commitlog_segment_size_in_mb + 1) * \
             (commitlog_segment_size_in_mb + 1)
 
-        def check_commitlog_size():
-            dir_size, stdout = self._get_commitlog_size(all=True)
+        def check_commitlog_size(allow_errors: bool):
+            dir_size, stdout = self._get_commitlog_size(all=True, allow_errors=allow_errors)
             if dir_size > actual_space_limit:
                 logger.debug(f"Commitlog file sizes in MB:\n{stdout}")
                 assert dir_size <= actual_space_limit, f"Out of total space limit\n"
@@ -904,7 +909,7 @@ class TestCommitLog(Tester):
             # Insert a few data
             insert_c1c2(session, keys=range(total_size, total_size + unit_size))
             total_size += unit_size
-            dir_size = check_commitlog_size()
+            dir_size = check_commitlog_size(allow_errors=True)
             if dir_size > commitlog_disk_usage_threshold:
                 reach_threshold_cases.append(dir_size)
             if len(reach_threshold_cases) > 0:
@@ -921,7 +926,8 @@ class TestCommitLog(Tester):
         logger.debug(cs_task.result())
         assert len(reach_threshold_cases) > 0, "Commitlog space doesn't reach `commitlog_disk_usage_threshold'," \
             " need to fill more data by cs workload"
-        dir_size = check_commitlog_size()
+        node1.stop(gently=False)
+        dir_size = check_commitlog_size(allow_errors=False)
         logger.debug(f'Final commitlog size: [{self._get_commitlog_path()}] {dir_size}M')
 
         # set commitlog config back to default
@@ -930,7 +936,6 @@ class TestCommitLog(Tester):
                                                 'commitlog_reuse_segments': True,
                                                 'commitlog_use_hard_size_limit': True})
         logger.debug('Restart node1 to enable default commitlog configure')
-        node1.stop(gently=False)
         node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
         assert_row_count_in_select_less(session=session, query='select * from ks.cf', max_rows_expected=total_size + 1)
@@ -1024,12 +1029,12 @@ class TestCommitLog(Tester):
             create_ks(session, 'ks', 1)
             create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
             while True:
-                logger.debug(f'Current commitlog size: {self._get_commitlog_size()}')
+                logger.debug(f'Current commitlog size: {self._get_commitlog_size(allow_errors=True)}')
                 logger.debug(f'Insert {unit_size} rows ....')
                 insert_c1c2(session, keys=range(total_size, total_size + unit_size))
                 total_size += unit_size
         except Exception as ex:
-            logger.debug(f'Commitlog size after exception raised: {self._get_commitlog_size()}')
+            logger.debug(f'Commitlog size after exception raised: {self._get_commitlog_size(allow_errors=True)}')
             logger.debug(str(ex))
 
         # Recover from ENOSPC
