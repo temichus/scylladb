@@ -905,7 +905,7 @@ class TestCommitLog(Tester):
                 assert dir_size <= actual_space_limit, f"Out of total space limit\n"
             return dir_size
 
-        while not cs_task.done():
+        while not cs_task.done() and not reach_threshold_cases:
             # Insert a few data
             insert_c1c2(session, keys=range(total_size, total_size + unit_size))
             total_size += unit_size
@@ -924,8 +924,6 @@ class TestCommitLog(Tester):
                 logger.debug(cs_task.result())
                 break
         logger.debug(cs_task.result())
-        assert len(reach_threshold_cases) > 0, "Commitlog space doesn't reach `commitlog_disk_usage_threshold'," \
-            " need to fill more data by cs workload"
         node1.stop(gently=False)
         dir_size = check_commitlog_size(allow_errors=False)
         logger.debug(f'Final commitlog size: [{self._get_commitlog_path()}] {dir_size}M')
