@@ -287,11 +287,13 @@ class TestPushedNotifications(Tester):
 
         # check that node1 did not send UP or DOWN notification for node2
         logger.debug("Waiting for notifications from {}".format(waiter.address,))
-        notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=2)
+        expected_notifications = 2 if wait_and_restart else 3
+        notifications = waiter.wait_for_notifications(timeout=30.0, num_notifications=expected_notifications)
+        logger.debug("Received {} notifications: {}".format(len(notifications), notifications))
         if wait_and_restart:
-            assert len(notifications) == 2
+            assert len(notifications) == expected_notifications
         else:
-            assert len(notifications) >= 2
+            assert len(notifications) >= expected_notifications
         for notification in notifications:
             assert node2.address() == notification["address"][0]
         assert "DOWN" == notifications[0]["change_type"]
