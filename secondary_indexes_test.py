@@ -97,8 +97,8 @@ class SecondaryIndexesHelpers:
         if consistency_level is None:
             consistency_level = ConsistencyLevel.QUORUM if nodes > 1 else ConsistencyLevel.ONE
 
-        self.cs = self.patient_cql_cluster_session(node1, consistency_level=consistency_level, **kwargs)
-        session = self.cs.session
+        session = self.patient_cql_connection(node1, consistency_level=consistency_level, **kwargs)
+
         if fetch_size:
             session.default_fetch_size = fetch_size
         create_ks(session, keyspace_name, rf)
