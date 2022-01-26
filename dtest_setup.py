@@ -114,7 +114,10 @@ def copy_logs(request, dtest_config, directory=None, name=None, cores=None):
         os.mkdir(directory)
 
     basedir = str(int(time.time() * 1000)) + '_' + request.node.nodeid
-    logdir = os.path.join(directory, basedir)
+    # figure out the system max filename length (since test full name might be bigger than it)
+    # if it's bigger we just truncate to the system max
+    name_max = os.pathconf(directory, "PC_NAME_MAX")
+    logdir = os.path.join(directory, basedir[:name_max])
     os.mkdir(logdir)
 
     cluster_path = dtest_config.cluster.get_path()
