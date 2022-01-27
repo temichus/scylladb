@@ -46,7 +46,7 @@ class NotificationWaiter(object):
 
         # get a single, new connection
         session = tester.patient_cql_connection(node)
-        connection = session.cluster.connection_factory(self.address, is_control_connection=True)
+        self.connection = session.cluster.connection_factory(self.address, is_control_connection=True)
 
         # coordinate with an Event
         self.event = Event()
@@ -56,7 +56,7 @@ class NotificationWaiter(object):
 
         # register a callback for the notification type
         for notification_type in notification_types:
-            connection.register_watcher(notification_type, self.handle_notification, register_timeout=5.0)
+            self.connection.register_watcher(notification_type, self.handle_notification, register_timeout=5.0)
 
     def handle_notification(self, notification):
         """
@@ -90,6 +90,9 @@ class NotificationWaiter(object):
         self.notifications = []
         self.event.clear()
 
+    def close(self):
+        self.connection.close()
+
 
 @pytest.mark.dtest_full
 class TestPushedNotifications(Tester):
@@ -98,7 +101,7 @@ class TestPushedNotifications(Tester):
     """
 
     @pytest.mark.no_vnodes
-    def test_move_single_node(self):
+    def test_move_single_node(self, request: pytest.FixtureRequest):
         """
         @jira_ticket CASSANDRA-8516
         Moving a token should result in NODE_MOVED notifications.
@@ -112,7 +115,7 @@ class TestPushedNotifications(Tester):
 
         waiters = [NotificationWaiter(self, node, ["TOPOLOGY_CHANGE"])
                    for node in self.cluster.nodes.values()]
-
+        request.addfinalizer(lambda: [_waiter.close() for _waiter in waiters])
         node1 = self.cluster.nodes.values()[0]
         node1.move("123")
 
@@ -128,7 +131,7 @@ class TestPushedNotifications(Tester):
 
     @pytest.mark.no_vnodes
     @pytest.mark.usefixtures('using_localhost')
-    def test_move_single_node_localhost(self):
+    def test_move_single_node_localhost(self, request: pytest.FixtureRequest):
         """
         @jira_ticket  CASSANDRA-10052
         Test that we don't get NODE_MOVED notifications from nodes other than the local one,
@@ -159,7 +162,7 @@ class TestPushedNotifications(Tester):
 
         waiters = [NotificationWaiter(self, node, ["TOPOLOGY_CHANGE"])
                    for node in self.cluster.nodes.values()]
-
+        request.addfinalizer(lambda: [_waiter.close() for _waiter in waiters])
         node1 = self.cluster.nodes.values()[0]
         node1.move("123")
 
@@ -168,7 +171,7 @@ class TestPushedNotifications(Tester):
             notifications = waiter.wait_for_notifications(30.0)
             assert (1 if waiter.node is node1 else 0) == len(notifications)
 
-    def test_restart_node(self):
+    def test_restart_node(self, request: pytest.FixtureRequest):
         """
         @jira_ticket CASSANDRA-7816
         Restarting a node should generate exactly one DOWN and one UP notification
@@ -177,7 +180,7 @@ class TestPushedNotifications(Tester):
         node1, node2 = self.cluster.nodelist()
 
         waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
-
+        request.addfinalizer(lambda: waiter.close())
         # need to block for up to 2 notifications (NEW_NODE and UP) so that these notifications
         # don't confuse the state below.
         logger.debug("Waiting for unwanted notifications...")
@@ -208,7 +211,7 @@ class TestPushedNotifications(Tester):
 
             waiter.clear_notifications()
 
-    def test_sleep_and_restart_node(self):
+    def test_sleep_and_restart_node(self, request: pytest.FixtureRequest):
         """
         Sleep 120 seconds after cluster is ready, then restart the second node,
         check we get correct client notifications during restart
@@ -223,7 +226,7 @@ class TestPushedNotifications(Tester):
 
         # register for notification with node1
         waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
-
+        request.addfinalizer(lambda: waiter.close())
         # restart node 2
         logger.debug("Restarting second node...")
         node2.stop(wait_other_notice=True)
@@ -240,7 +243,7 @@ class TestPushedNotifications(Tester):
 
     @pytest.mark.usefixtures('using_localhost')
     @pytest.mark.parametrize("wait_and_restart", [True, False], ids=["wait_and_restart=True", "wait_and_restart=False"])
-    def test_restart_node_localhost(self, wait_and_restart):
+    def test_restart_node_localhost(self, wait_and_restart, request: pytest.FixtureRequest):
         """
         Test that we don't get client notifications when rpc_address is set to localhost Pre 4.0.
         Test that we get correct client notifications when rpc_address is set to localhost Post 4.0.
@@ -279,7 +282,7 @@ class TestPushedNotifications(Tester):
 
         # register for notification with node1
         waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
-
+        request.addfinalizer(lambda: waiter.close())
         # restart node 2
         logger.debug("Restarting second node...")
         node2.stop(wait_other_notice=True)
@@ -301,7 +304,7 @@ class TestPushedNotifications(Tester):
             assert "NEW_NODE" == notifications[1]["change_type"]
         assert "UP" == notifications[-1]["change_type"]
 
-    def test_schema_changes(self):
+    def test_schema_changes(self, request: pytest.FixtureRequest):
         """
         @jira_ticket CASSANDRA-10328
         Creating, updating and dropping a keyspace, a table and a materialized view
@@ -313,6 +316,7 @@ class TestPushedNotifications(Tester):
 
         session = self.patient_cql_connection(node1)
         waiter = NotificationWaiter(self, node2, ["SCHEMA_CHANGE"], keyspace='ks')
+        request.addfinalizer(lambda: waiter.close())
 
         create_ks(session, 'ks', 3)
         session.execute("create TABLE t (k int PRIMARY KEY , v int)")
@@ -349,7 +353,7 @@ class TestPushedNotifications(Tester):
                                   u'table': u't'}, notifications[8])
         assertDictContainsSubset({'change_type': u'DROPPED', 'target_type': u'KEYSPACE'}, notifications[9])
 
-    def test_new_node_event_delay(self):
+    def test_new_node_event_delay(self, request: pytest.FixtureRequest):
         """
         NEW_NODE event is delayed, otherwise cql client will connect Scylla server
         even the new node isn't ready.
@@ -362,6 +366,7 @@ class TestPushedNotifications(Tester):
 
         # Register for notifications with node1
         waiter = NotificationWaiter(self, node1, ["STATUS_CHANGE", "TOPOLOGY_CHANGE"])
+        request.addfinalizer(lambda: waiter.close())
 
         logger.debug("Start the second node, expect the NEW_NODE event is delayed until the cql server is ready")
         node2.start()
