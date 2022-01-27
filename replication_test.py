@@ -2,13 +2,15 @@ import os
 import re
 import time
 import logging
+from collections import defaultdict, OrderedDict
+from typing import Tuple
 import pytest
 from pkg_resources import parse_version
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
-from collections import defaultdict, OrderedDict
 
+from ccmlib.node import Node
 from dtest_class import Tester, create_ks
 from tools.data import rows_to_list
 
@@ -816,3 +818,123 @@ def mk_replication(dcs):
     return OrderedDict(
         [(u'class', u'org.apache.cassandra.locator.NetworkTopologyStrategy')] +
         [(str(k), str(v)) for k, v in dcs.items()])
+
+
+@pytest.mark.dtest_full
+class TestRestrictionReplicationSimpleStrategy(Tester):
+    test_keyspace_ss = "test_ks_ss"
+    test_keyspace_nts = "test_ks_nts"
+    simple_strategy = "SimpleStrategy"
+    network_topology_strategy = "NetworkTopologyStrategy"
+
+    def prepare_one_node_cluster(self, option_value: str) -> Node:
+        logger.debug("Preparing the cluster...")
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'restrict_replication_simplestrategy': option_value})
+        cluster.populate(1).start()
+        logger.debug("Cluster has been prepared...")
+        return cluster.nodelist()[0]
+
+    @staticmethod
+    def run_cqlsh_on_node(node_to_run_query: Node, query: str) -> Tuple[str, str]:
+        logger.debug("Running query \"%s\" on the node %s...",
+                     query, node_to_run_query.address())
+        return node_to_run_query.run_cqlsh(query, return_output=True)
+
+    def create_test_keyspace(self, node: Node, keyspace: str, replication_strategy: str) -> Tuple[str, str]:
+        logger.debug("Creating a new keyspace '%s' with replication strategy '%s'...",
+                     keyspace, replication_strategy)
+        query = f"create keyspace {keyspace} with replication = " \
+                f"{{'class': '{replication_strategy}', 'replication_factor' : 1}};"
+        return self.run_cqlsh_on_node(node_to_run_query=node, query=query)
+
+    def alter_test_keyspace(self, node: Node, keyspace: str, replication_strategy: str) -> Tuple[str, str]:
+        logger.debug("Altering the new keyspace '%s' to use replication strategy '%s'...",
+                     keyspace, replication_strategy)
+        query = f"alter keyspace {keyspace} with replication = " \
+                f"{{'class': '{replication_strategy}', 'replication_factor' : 1}};"
+        return self.run_cqlsh_on_node(node_to_run_query=node, query=query)
+
+    def describe_keyspace(self, node: Node, keyspace: str) -> Tuple[str, str]:
+        query = f"describe keyspace {keyspace};"
+        return self.run_cqlsh_on_node(node_to_run_query=node, query=query)
+
+    def run_parametrized_test(self, mode: str):
+        """
+        This function runs the following generic test scenario
+        1. Create one node with 'restrict_replication_simplestrategy' is equal to one of the values:
+            'true', 'false' or 'warn'.
+        2. Try to create KS with SimpleStrategy.
+        3. Check the messages that were returned during this operation
+        4. Check if the KS was really created or not
+        5. Create KS with NetworkTopologyStrategy and try alter it to use SimpleStrategy
+        6. Check the messages that were returned during this operation
+        7. Check if the KS was really altered or not
+        """
+        node = self.prepare_one_node_cluster(option_value=mode)
+
+        out, err = self.create_test_keyspace(node=node, keyspace=self.test_keyspace_ss,
+                                             replication_strategy=self.simple_strategy)
+        logger.info("Looking for the error/warning messages after the creation of keyspace '%s'...",
+                    self.test_keyspace_ss)
+        if mode == "true":
+            assert "ConfigurationException" in err, "Expected to get 'ConfigurationException', but did not get it!"
+        if mode == "false":
+            assert not out and not err, "Expected not to get any errors/warnings, but got something!"
+        if mode == "warn":
+            assert "Warnings" in out, "Expected to get the warning message in the output, did not get it!"
+
+        logger.info("Checking if the new keyspace %s with replication strategy %s was actually created...",
+                    self.test_keyspace_ss, self.simple_strategy)
+        out, err = self.describe_keyspace(node=node, keyspace=self.test_keyspace_ss)
+        if mode == "true":
+            assert "not found" in err, "Expected to get 'not found' error, but did not get it!"
+        if mode in ["false", "warn"]:
+            assert f"CREATE KEYSPACE {self.test_keyspace_ss}" in out, f"Expected to get the DDL for keyspace " \
+                                                                      f"'{self.test_keyspace_ss}', but didn't find it!"
+
+        self.create_test_keyspace(node=node, keyspace=self.test_keyspace_nts,
+                                  replication_strategy=self.network_topology_strategy)
+
+        out, err = self.alter_test_keyspace(node=node, keyspace=self.test_keyspace_nts,
+                                            replication_strategy=self.simple_strategy)
+
+        logger.info("Looking for the error/warning messages after the altering of keyspace '%s'...",
+                    self.test_keyspace_nts)
+        if mode == "true":
+            assert "ConfigurationException" in err, "Expected to get 'ConfigurationException', but did not get it!"
+        if mode == "false":
+            assert not out and not err, "Expected not to get any errors/warnings, but got something!"
+        if mode == "warn":
+            assert "Warnings" in out, "Expected to get the warning message in the output, did not get it!"
+
+        logger.info("Checking if the new keyspace %s was actually altered to use replication strategy %s...",
+                    self.test_keyspace_nts, self.simple_strategy)
+        out, err = self.describe_keyspace(node=node, keyspace=self.test_keyspace_nts)
+        if mode == "true":
+            assert self.network_topology_strategy in out, f"Expected to get '{self.network_topology_strategy}' "\
+                                                          f"in the command output, but did not get it!"
+        if mode in ["false", "warn"]:
+            assert self.simple_strategy in out, f"Expected to get '{self.simple_strategy}' in the command output, " \
+                                                f"but did not get it!"
+
+    @pytest.mark.single_node
+    def test_create_and_alter_keyspace_when_value_true(self):
+        """
+        Run the generic test scenario for 'restrict_replication_simplestrategy' = 'true'
+        """
+        self.run_parametrized_test(mode="true")
+
+    @pytest.mark.single_node
+    def test_create_and_alter_keyspace_when_value_false(self):
+        """
+        Run the generic test scenario for 'restrict_replication_simplestrategy' = 'false'
+        """
+        self.run_parametrized_test(mode="false")
+
+    @pytest.mark.single_node
+    def test_create_and_alter_keyspace_when_value_warn(self):
+        """
+        Run the generic test scenario for 'restrict_replication_simplestrategy' = 'warn'
+        """
+        self.run_parametrized_test(mode="warn")
