@@ -200,11 +200,17 @@ for gid in $(id -G); do
     group_args+=(--group-add "$gid")
 done
 
-subcommand="$*"
+subcommand=""
+
+for i in "$@"
+do
+subcommand+=$(printf "%q " "$i")
+done
+
 if [[ ${subcommand} == *'bash'* ]] || [[ ${subcommand} == *'python'* ]]; then
     CMD=${subcommand}
 else
-    CMD="bash -c 'sudo rsyslogd; pip3 install --user ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m pytest -v -s $*'"
+    CMD="bash -c $'sudo rsyslogd; pip3 install --user ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m pytest -v -s ${subcommand}'"
 fi
 
 docker_cmd="docker run --detach=true \
