@@ -60,7 +60,7 @@ pipeline {
                         mkdir -p ./temp_home
                         export HOME=`pwd`/temp_home
                         export SCYLLA_VERSION=dummy
-                        ./scripts/run_test.sh 'bash -c "pip3 install --user https://github.com/scylladb/scylla-ccm/archive/next.zip; pre-commit run -a --show-diff-on-failure"'
+                        ./scripts/run_test.sh bash -c "pip3 install --user https://github.com/scylladb/scylla-ccm/archive/next.zip; pre-commit run -a --show-diff-on-failure"
                         '''
                         pullRequestSetResult('success', 'jenkins/precommit', 'Precommit passed')
                     } catch(Exception ex) {
