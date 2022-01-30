@@ -3,14 +3,18 @@ import os
 import pathlib
 import resource
 import sys
+import ssl
+import math
 from subprocess import Popen, PIPE, check_output
 
 import requests
-from cassandra.cluster import Cluster
-
-from dtest_class import Tester, create_ks
-import math
+from cassandra.cluster import NoHostAvailable, Session
 import pytest
+
+from ccmlib.cluster import Cluster
+from ccmlib.node import Node
+from tools.misc import generate_ssl_stores
+from dtest_class import Tester, create_ks, get_ip_from_node
 
 logger = logging.getLogger(__name__)
 # Those are ideal values according to c* specifications
@@ -319,6 +323,80 @@ class TestLimits(Tester):
         for i in range(int(math.log(MAX_CELLS, 2))):
             cells <<= 1
             self._do_test_max_cell_count(session, node, cells - 1)
+
+    @pytest.mark.parametrize("mode", ["SSL", "non-SSL"])
+    def test_request_too_large(self, mode):
+        """
+        The request is considered as "too large" if it takes more than 10% of shard's memory.
+        The test scenario is following:
+        1. Create node with 2 shards and 1GB of memory (512MB per shard). In this case ~50MB will be reserved for CQL
+        requests.
+        2. Create a new keyspace and a new table.
+        3. Generate a too large request: try to insert a 30MB string into the table. The memory size for the request
+        is equal to 2 * (raw size) + 8KB. So the 30MB request will require about 60MB memory.
+        4. Check the exception was raised.
+        5. Create a new session and check the table is still empty.
+        6. Try to send a regular size request (insert a small string).
+        7. Check the string was inserted into the table
+        """
+        if mode == "SSL":
+            cluster_populate = self.populate_cluster_with_ssl_enabled
+            create_session = self.create_cql_session_with_ssl
+        else:
+            cluster_populate = self.prepare().populate
+            create_session = self.patient_cql_connection
+
+        logger.debug("Preparing the cluster...")
+        cluster = cluster_populate(1)
+        cluster.start(jvm_args=['--smp', '2', '--memory', '1G'])
+        logger.debug("Cluster has been prepared...")
+        node = cluster.nodelist()[0]
+
+        session = create_session(node)
+
+        logger.debug("Creating a keyspace...")
+        create_ks(session=session, name="test_keyspace", rf=1)
+
+        logger.debug("Creating a table...")
+        session.execute("create table test_keyspace.test_table("
+                        "id int primary key, "
+                        "test_string text);")
+
+        logger.info("Trying to send a large request to database (insert a large string into table)...")
+        long_string = "scylla" * 5 * 1024 * 1024
+        id_value = 17
+        with pytest.raises(NoHostAvailable):
+            session.execute(query=f"insert into test_keyspace.test_table (id, test_string) "
+                                  f"values ({id_value}, '{long_string}');")
+
+        session = create_session(node)
+        output = session.execute(f"select test_string from test_keyspace.test_table where id = {id_value};")
+        assert not output.current_rows, "Expected the table was empty, but id had rows inserted!"
+
+        logger.info("Trying to send a regular request to database (insert a string of regular size into table)...")
+        short_string = "scylla" * 1024 * 1024
+        session.execute(query=f"insert into test_keyspace.test_table (id, test_string) "
+                              f"values ({id_value}, '{short_string}');")
+        output = session.execute(f"select test_string from test_keyspace.test_table where id = {id_value};")
+        assert short_string == output.current_rows[0].test_string, "Expected to get the regular string inserted, " \
+                                                                   "but did not find it in the table!"
+
+    def populate_cluster_with_ssl_enabled(self, nodes_num: int) -> Cluster:
+        cluster = self.cluster
+        generate_ssl_stores(self.test_path)
+        options = {"enabled": True,
+                   "certificate": os.path.join(self.test_path, 'ccm_node.pem'),
+                   "keyfile": os.path.join(self.test_path, 'ccm_node.key')}
+        cluster.set_configuration_options({'client_encryption_options': options})
+        cluster.populate(nodes_num)
+        return cluster
+
+    def create_cql_session_with_ssl(self, node_to_connect: Node) -> Session:
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        ssl_context.load_cert_chain(certfile=os.path.join(self.test_path, 'ccm_node.pem'),
+                                    keyfile=os.path.join(self.test_path, 'ccm_node.key'))
+        return self.patient_cql_connection(node=node_to_connect, ssl_context=ssl_context,
+                                           ssl_opts={"server_hostname": get_ip_from_node(node_to_connect)})
 
 
 @pytest.mark.dtest_full

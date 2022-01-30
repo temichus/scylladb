@@ -408,7 +408,7 @@ class DTestSetup:
 
     def _create_session(self, node, keyspace, user, password, compression, protocol_version,
                         port=None, ssl_opts=None, execution_profiles=None, topology_event_refresh_window=10,
-                        request_timeout=None, keep_session=True, **kwargs):
+                        request_timeout=None, keep_session=True, ssl_context=None, **kwargs):
         node_ip = get_ip_from_node(node)
         if not port:
             port = get_port_from_node(node)
@@ -438,7 +438,8 @@ class DTestSetup:
                             control_connection_timeout=6.0,
                             allow_beta_protocol_version=True,
                             topology_event_refresh_window=topology_event_refresh_window,
-                            execution_profiles=profiles)
+                            execution_profiles=profiles,
+                            ssl_context=ssl_context)
         session = cluster.connect(wait_for_all_pools=True)
 
         if keyspace is not None:
