@@ -136,7 +136,7 @@ class RepairBasedNodeOperationsScenarios:
         else:
             assert not found_expr, f"Repair based node ops was started on the node {node_name} unexpectedly"
 
-    def run_scenarios(self, rbno_enabled: bool, scenarios: list = None):
+    def run_scenarios(self, rbno_enabled: bool, lcs: bool = False, scenarios: list = None, ):
         scenarios = scenarios or self.operations_flow
 
         for scenario in scenarios:
@@ -159,8 +159,13 @@ class RepairBasedNodeOperationsScenarios:
                     mark_log = [mark["mark"] for mark in mark_all_logs if mark["name"] == node.name][0]
                     self.validate_repair_by_scenario(node=node, repair_expected=repair_expected,
                                                      search_string=search_string, mark_log=mark_log)
+            if lcs and scenario.operation_name in ["bootstrap", "replace"]:
+                logger.debug("Validate LCS reshaping efficiency")
+                assert tested_node.grep_log(
+                    r"LeveledManifest - Reshaping \d+ disjoint sstables in level 0 into level \d+"
+                ), "Reshaping was ran in inefficient way"
 
-            if scenario.operation_name in ["decommission", "replaced"]:
+            if scenario.operation_name in ["decommission", "replace"]:
                 self.tester.cluster.remove(node=tested_node, wait_other_notice=True)
 
 
@@ -183,10 +188,16 @@ class TestRepairBasedNodeOperations(Tester):
 
         self.cluster.populate(nodes).start(wait_for_binary_proto=True, wait_other_notice=True, jvm_args=jvm_args)
 
-    def prepare_schema(self, node: ScyllaNode, rows: int = 1000):
+    def prepare_schema(self, node: ScyllaNode, rows: int = 1000, compaction_strategy='SizeTieredCompactionStrategy'):
         with self.patient_cql_connection(node) as session:
             create_ks(session, 'ks', 3)
-            create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+            create_cf(
+                session=session,
+                name='cf',
+                read_repair=0.0,
+                columns={'c1': 'text', 'c2': 'text'},
+                compaction_strategy=compaction_strategy,
+            )
 
         logger.debug(f"Insert {rows} rows ...")
         with self.patient_exclusive_cql_connection(node, 'ks') as session1:
@@ -260,3 +271,24 @@ class TestRepairBasedNodeOperations(Tester):
 
         rbnos = RepairBasedNodeOperationsScenarios(tester=self)
         rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops)
+
+    def test_lcs_reshape_efficiency(self):
+        """
+        For repair-based bootstrap/replace, the input disjoint run is now efficiently reshaped into an ideal level L,
+        so there's no compaction backlog once reshape completes.
+
+        This behavior will manifest in the log as this:
+
+            LeveledManifest - Reshaping 256 disjoint sstables in level 0 into level 2
+
+        """
+        enable_repair_based_node_ops = True
+        self.prepare_cluster(nodes=3,
+                             enable_repair_based_node_ops=enable_repair_based_node_ops,
+                             allowed_repair_based_node_ops="bootstrap,replace")
+        self.prepare_schema(node=self.cluster.nodelist()[0], compaction_strategy='LeveledCompactionStrategy')
+
+        rbnos = RepairBasedNodeOperationsScenarios(tester=self)
+        rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops,
+                            lcs=True,
+                            scenarios=[rbnos.bootstrap_scenario, rbnos.replace_scenario])
