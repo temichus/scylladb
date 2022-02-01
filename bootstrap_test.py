@@ -13,7 +13,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib.node import NodeError
 from psutil import Process
 
-from dtest_class import create_cf, create_ks, Tester
+from dtest_class import create_cf, create_ks, Tester, get_ip_from_node
 from dtest_setup import DTestSetup
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.assertions import (assert_almost_equal,
@@ -26,6 +26,7 @@ from tools.misc import ImmutableMapping, require
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.dtest_full
 class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
@@ -102,7 +103,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    def add_detached_node_test(self):
+    def test_add_detached_node(self, request: pytest.FixtureRequest):
         logger.info("populating cluster with three nodes")
         cluster = self.cluster
         cluster.populate(2)
@@ -115,7 +116,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             logger.info("stopping node3")
             node3.stop()
 
-        self.addCleanup(stop_node3)
+        request.addfinalizer(stop_node3)
 
         logger.info("starting node3")
         node3.start(wait_other_notice=True)
@@ -137,8 +138,8 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         cluster.start()
 
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'ks', 1)
-        self.create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
 
         insert_statement = session.prepare("INSERT INTO ks.cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
         execute_concurrent_with_args(session, insert_statement, [['k%d' % k] for k in range(keys)])
@@ -165,7 +166,6 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         session = self.patient_cql_connection(node2)
         assert_one(session, "SELECT count(*) from ks.cf", [keys], cl=ConsistencyLevel.ONE)
 
-    @pytest.mark.dtest_full
     def test_simple_bootstrap(self):
         cluster = self.cluster
         tokens = cluster.balanced_tokens(2)
@@ -247,7 +247,6 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             log_line = match[0]
             assert re.search(msg_re, log_line) is not None
 
-    @pytest.mark.dtest_full
     def test_read_from_bootstrapped_node(self):
         """Test bootstrapped node sees existing data, eg. CASSANDRA-6648"""
         cluster = self.cluster
@@ -367,7 +366,6 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    @pytest.mark.dtest_full
     def test_manual_bootstrap(self):
         """Test adding a new node and bootstrappig it manually. No auto_bootstrap.
            This test also verify that all data are OK after the addition of the new node.
@@ -394,8 +392,6 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         current_rows = list(session.execute("SELECT * FROM %s" % stress_table))
         assert original_rows == current_rows
 
-    # @scylla_mode('release')
-    @pytest.mark.dtest_full
     @pytest.mark.scylla_mode('!debug')
     def test_local_quorum_bootstrap(self):
         """Test that CL local_quorum works while a node is bootstrapping. CASSANDRA-8058"""
@@ -453,11 +449,9 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         failure = regex.search(str(output))
         assert failure is None, "Error during stress while bootstrapping"
 
-    @pytest.mark.dtest_full
     def test_shutdown_wiped_node_cannot_join(self):
         self._wiped_node_cannot_join_test(gently=True)
 
-    @pytest.mark.dtest_full
     def test_killed_wiped_node_cannot_join(self):
         self._wiped_node_cannot_join_test(gently=False)
 
@@ -543,7 +537,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         node4.rmtree(commitlog_dir)
 
         # Now start it, it should be allowed to join
-        ip4 = self.get_ip_from_node(node=node4)
+        ip4 = get_ip_from_node(node=node4)
         node1.watch_log_for(f"{ip4} gossip quarantine over")
         logger.debug("Restarting node4")
         mark = node4.mark_log()
@@ -590,7 +584,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         self._cleanup(node2)
 
         # Now start it again, it should be allowed to join
-        ip2 = self.get_ip_from_node(node=node2)
+        ip2 = get_ip_from_node(node=node2)
         node1.watch_log_for(f"{ip2} gossip quarantine over")
         mark = node2.mark_log()
         logger.debug("Restarting node2")
@@ -755,7 +749,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         logger.info("%s killing node'%s' (PID is '%s')", {'Gracefully' if is_gracefully else 'Force'}, node3.name,
                     node3.pid)
         node3.stop(wait=True, gently=is_gracefully)
-        removing_from_gossip_msg = removing_from_gossip_msg.format(self.get_ip_from_node(node=node3))
+        removing_from_gossip_msg = removing_from_gossip_msg.format(get_ip_from_node(node=node3))
         for node, mark_log in zip(nodes, mark_log_list):
             logger.info("Checking the following message '%s' exits in node '%s'", removing_from_gossip_msg, node.name)
             node.watch_log_for(exprs=removing_from_gossip_msg, from_mark=mark_log)
@@ -778,7 +772,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
     def test_cluster_become_unavailable_when_gracefully_kill_node_during_bootstrap(self):
         self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=True)
 
-    def ignore_auto_bootstrap_option_test(self):
+    def test_ignore_auto_bootstrap_option(self):
         """
         After get rid of seed concept by Asias, auto_bootstrap option will be ignored.
         Bootstrap of first node which had smallest ip will be skipped, and bootstrap
@@ -822,8 +816,8 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             query_c1c2(session, k)
 
     # Issue: the cluster can't start if the first (smallest) node isn't up #7726
-    # @pytest.mark.skip("require scylladb/scylla#7726")
-    def smallest_ip_join_late_test(self):
+    @pytest.mark.require("scylladb/scylla#7726")
+    def test_smallest_ip_join_late(self):
         """
         The first node has smallest ip in seeds list, it always skips the bootstrap.
         In this test, we other nodes firstly, and start the first node later.
@@ -863,7 +857,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         for k in range(1000):
             query_c1c2(session, k)
 
-    def seeds_on_duty_test(self):
+    def test_seeds_on_duty(self):
         """
         This test try to stop original seeds after added new node, then try to add more node.
         Expect the seeds duty will be transferred to other nodes.
@@ -895,7 +889,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         logger.info("starting node1 again")
         node1.start(wait_other_notice=True)
 
-        ip3 = self.get_ip_from_node(node=node3)
+        ip3 = get_ip_from_node(node=node3)
         node2.watch_log_for(f"{ip3} gossip quarantine over")
 
         logger.debug("starting node3")
