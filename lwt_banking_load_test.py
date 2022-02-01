@@ -518,6 +518,7 @@ class TestLWTBankingLoad(Tester):
             "injected_error",
             "Failed to remove mutations from batchlog",
             "mutation_write_timeout_exception",
+            "mutation_write_failure_exception",
         ])
         return session
 
