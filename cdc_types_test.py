@@ -891,7 +891,7 @@ class TestCDCCollectionsType(CdcTools):
             delta_index += 1
             postimage_index += 1
             self.check_cdc_log_row_collection(cdc_log_rows[0], operation=CdcLogOperations.PREIMAGE, batch_seq=0,
-                                              expected_data=preimage_expected_data, deleted_col=deleted_col,
+                                              expected_data=preimage_expected_data, deleted_col=None,
                                               preimage_enabled=preimage_enable)
 
         self.check_cdc_log_row_collection(cdc_log_rows[delta_index], operation=base_operation, batch_seq=delta_index,
