@@ -1008,7 +1008,7 @@ class TestSLA(SLATester):
         with pytest.raises(InvalidRequest, match=expected_error):
             sl.drop(if_exists=False)
 
-    @pytest.mark.require('scylladb/scylla-enterprise#776')
+    @pytest.mark.require('#776')
     def test_update_not_existing_sla(self):
         """
         Update not-created service level
