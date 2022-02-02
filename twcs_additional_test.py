@@ -32,12 +32,12 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
 
         self._prepare_twcs_table(ttl=ttl, session=session)
-        sstables = self.create_expired_sstables(session, ttl=30)
+        sstables = self.create_sstables_with_short_ttl(session, ttl=30)
         p = self._start_high_load_on_cluster(duration_minutes=test_max_duration_minutes)
         sleep(ttl)  # wait for sstables to be expired
         mark = self.cluster.nodelist()[0].mark_log()
         timeout = test_max_duration_minutes * 60 - ttl
-        sstable_exists = self.wait_until_expired_sstables_are_evicted(sstables, timeout)
+        sstable_exists = self.wait_until_sstables_are_evicted(sstables, timeout)
         self.stop_high_load_on_cluster(p)
 
         assert not sstable_exists, "Expired sstables should be removed soon after expiration time (upon compaction)"
@@ -76,9 +76,10 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         logger.info("started stress")
         return proc
 
-    def create_expired_sstables(self, session, duration_minutes=3, flush_period_seconds=30, ttl=30):
-        """Simulate a write process across duration minutes.
-        Returns created sstables
+    def create_sstables_with_short_ttl(self, session, duration_minutes=3, flush_period_seconds=30, ttl=30):
+        """Simulate a write process across duration minutes. When using TWCS, should create ~duration_minutes number of
+        sstables (when time window is 1 minute).
+        Returns created sstables names.
 
         We use `USING TIMESTAMP` to distribute the writes evenly
         across the entire range, simulating a write every second (to
@@ -89,7 +90,7 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
 
         Keyword Arguments:
             duration_minutes {number} -- how many minutes to simulate (default: {20})
-            flush_period_seconds {number} -- in how many seconds flush memtable (default: {30})
+            flush_period_seconds {number} -- simulates period when data is flushed in seconds (default: {30})
 
         """
         node = self.cluster.nodelist()[0]
@@ -100,7 +101,7 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
             f' USING TIMESTAMP ? AND TTL {ttl}')
         rand_pks = set()
 
-        logger.info("creating expired sstables")
+        logger.info(f"creating sstables with ttl={ttl}")
         while len(rand_pks) < 10:
             rand_pks.add(random.randbytes(10))
 
@@ -114,27 +115,27 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
             if t % flush_period_seconds == 0:
                 node.flush()
         node.flush()
-        logger.info("expired sstables created")
+        logger.info("sstables created")
         cf_dir = get_node_cf_dir(node, ks, cf)
-        expired_sstables = get_sstables_files(cf_dir, f_type='Data')
-        logger.debug(f"Expired sstables: {expired_sstables}")
-        return expired_sstables
+        sstables_file_names = get_sstables_files(cf_dir, f_type='Data')
+        logger.debug(f"created sstables: {sstables_file_names}")
+        return sstables_file_names
 
-    def wait_until_expired_sstables_are_evicted(self, expired_sstables, timeout):
+    def wait_until_sstables_are_evicted(self, sstables, timeout):
         """Waits until sstables are removed from disk. Returns list of not removed sstables."""
-        logger.info("Waiting for expired sstables to be removed")
+        logger.info("Waiting for sstables to be removed (due to expiration)")
         node = self.cluster.nodelist()[0]
         cf_dir = get_node_cf_dir(node, "keyspace1", 'standard1')
         start_time = time()
         while time() - start_time < timeout:
-            expired_sstables = [table for table in expired_sstables if os.path.exists(cf_dir + '/' + table)]
-            if expired_sstables:
-                logger.debug(f"still not removed: {expired_sstables}")
+            sstables = [table for table in sstables if os.path.exists(cf_dir + '/' + table)]
+            if sstables:
+                logger.debug(f"still not removed: {sstables}")
                 sleep(2)
                 continue
             break
-        logger.info("Expired sstables has been removed")
-        return expired_sstables
+        logger.info("sstables has been removed")
+        return sstables
 
     def expired_sstables_should_not_be_compacted_along_with_unexpired(self, expired_sstables, from_mark):
         node = self.cluster.nodelist()[0]
