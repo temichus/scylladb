@@ -1,37 +1,74 @@
 #!/usr/bin/env python
 import logging
 
-from cassandra.protocol import SyntaxException, ServerError, InvalidRequest
 import pytest
+from cassandra.cluster import Session
+from cassandra.protocol import SyntaxException, InvalidRequest
 
-from dtest_class import Tester
+from dtest_class import Tester, create_ks
+from tools.data import create_c1c2_table, insert_c1c2
 from tools.sla import ServiceLevel, Role, User, DEFAULT_SERVICE_LEVEL_SHARES
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.dtest_enterprise
-class TestSLA(Tester):
+class SLATester(Tester):
+    RF = 1
+    NODES = 1
+    ROLES_EXPIRY = 0
+    PERMISSION_VALIDITY_IN_MS = 0
 
-    DEFAULT_SHARES = 1000
-
-    def prepare(self, rf=1, options_dict=None, nodes=1, jvm_args_list=None, roles_expiry=0):
+    def prepare(self, nodes: int = NODES) -> Session:
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
                   'role_manager': 'org.apache.cassandra.auth.CassandraRoleManager',
-                  'permissions_validity_in_ms': 0,
-                  'roles_validity_in_ms': roles_expiry}
+                  'permissions_validity_in_ms': self.PERMISSION_VALIDITY_IN_MS,
+                  'roles_validity_in_ms': self.ROLES_EXPIRY}
 
-        if options_dict:
-            config.update(options_dict)
-
-        self.rf = rf
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes)
-        self.cluster.start(jvm_args=jvm_args_list, wait_other_notice=True, wait_for_binary_proto=True)
+        self.cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
         session = self.patient_cql_connection(self.cluster.nodelist()[0], user='cassandra', password='cassandra')
 
         return session
+
+    def populate_data(self, session: Session, number_of_keys: int):
+        create_ks(session=session, name="ks", rf=self.RF)
+        create_c1c2_table(session=session)
+        insert_c1c2(session=session, n=number_of_keys)
+
+    @staticmethod
+    def create_service_level(session: Session, name: str, service_shares: int = None) -> ServiceLevel:
+        sl = ServiceLevel(session=session, name=name, service_shares=service_shares)
+        sl.create()
+        return sl
+
+    @staticmethod
+    def create_role(session: Session, name: str, password: str = None, login: str = None,
+                    superuser: bool = None, options_dict: dict = None) -> Role:
+        role = Role(session=session, name=name, password=password, login=login, superuser=superuser,
+                    options_dict=options_dict)
+        role.create()
+        return role
+
+    @staticmethod
+    def create_entity_with_service_level(entity, service_level: ServiceLevel):
+        service_level.create()
+        entity.create()
+        entity.attach_service_level(service_level=service_level)
+        return entity
+
+    @staticmethod
+    def create_user(session: Session, name: str, password: str = None, superuser: bool = None) -> User:
+        user = User(session=session, name=name, password=password, superuser=superuser)
+        user.create()
+        return user
+
+
+@pytest.mark.dtest_enterprise
+class TestSLA(SLATester):
+
+    DEFAULT_SHARES = 1000
 
     def validate_sla(self, service_level=None, expected_slas_list=None, expected_attached_slas_list=None,
                      expected_attached_all_slas_list=None, expected_effective_slas_list=None, entity=None,
@@ -87,27 +124,6 @@ class TestSLA(Tester):
         #   sla = self.list_effective_service_levels(session=session, role_name=role_name)
         #   assert expected_effective_sla_list == sla, \
         #                 'Expected effective SLA: {expected_effective_sla_list}, actual: {sla}'.format(**locals()))
-
-    def create_service_level(self, session, name, service_shares=None):
-        sl = ServiceLevel(session=session, name=name, service_shares=service_shares)
-        sl.create()
-        return sl
-
-    def create_role(self, session, name, password=None, login=None, superuser=None, options_dict=None):
-        role = Role(session=session, name=name, password=password, login=login, superuser=superuser,
-                    options_dict=options_dict)
-        role.create()
-        return role
-
-    def create_entity_with_service_level(self, entity, service_level):
-        service_level.create()
-        entity.create()
-        entity.attach_service_level(service_level=service_level)
-
-    def create_user(self, session, name, password=None, superuser=None):
-        user = User(session=session, name=name, password=password, superuser=superuser)
-        user.create()
-        return user
 
     def test_sla(self):
         """
