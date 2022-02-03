@@ -175,7 +175,7 @@ def assert_some(session, query, cl=None, execution_profile=None):
 def assert_one_prepared(session, stmt, expected, parameters, cl=ConsistencyLevel.ONE, timeout=60, num_attempts=1):
     res = session.execute(stmt, parameters=parameters, timeout=timeout)
     list_res = _rows_to_list(res)
-    assert list_res == [expected], f'Expected {[expected]} from "{stmt.query_string}", but got {list_res}'
+    assert list_res == [expected], f'Expected {[expected]} from "{stmt._query_string}", but got {list_res}'
 
 
 @retrying(num_attempts=1, sleep_time=10)

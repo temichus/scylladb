@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass, field, fields
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +23,62 @@ def role_to_dict(sla_result):
     return sla_list
 
 
+@dataclass
+class ServiceLevelAttributes:
+    shares: int = None
+    timeout: str = None
+    workload_type: str = None
+    query_string: str = field(init=False, repr=False)
+
+    def __setattr__(self, key, value):
+        super().__setattr__(key, value)
+        if key != "query_string":
+            self._generate_query_string()
+
+    def __post_init__(self):
+        self._generate_query_string()
+
+    def _generate_query_string(self):
+        attr_strings = []
+
+        for item in fields(self):
+            value = getattr(self, item.name) if item.repr else None
+            if value is not None:
+                if item.type is str:
+                    attr_strings.append(f" AND {item.name} = '{value}'")
+                else:
+                    attr_strings.append(f" AND {item.name} = {value}")
+        if attr_strings:
+            attr_strings[0] = attr_strings[0].replace(" AND", " WITH")
+        else:
+            self.query_string = ""
+            return
+
+        if len(attr_strings) > 1:
+            self.query_string = "".join(attr_strings)
+        else:
+            self.query_string = attr_strings[0]
+
+
 class ServiceLevel(object):
     # The class provide interface to manage SERVICE LEVEL
-    def __init__(self, session, name, service_shares=None, verbose=True):
+    def __init__(self, session,
+                 name: str,
+                 service_shares: int = 1000,
+                 timeout: str = None,
+                 workload_type: str = None, verbose=True):
         self.session = session
         self._name = name
-        self._service_shares = service_shares
         self.verbose = verbose
-        self._if_created = False
+        self._created = False
+        self._sl_attributes = ServiceLevelAttributes(
+            shares=service_shares,
+            timeout=timeout,
+            workload_type=workload_type
+        )
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
 
     @name.setter
@@ -40,36 +86,53 @@ class ServiceLevel(object):
         self._name = name
 
     @property
-    def service_shares(self):
-        return self._service_shares
+    def service_shares(self) -> int:
+        return self._sl_attributes.shares
 
     @service_shares.setter
     def service_shares(self, service_level_shares):
-        self._service_shares = service_level_shares
+        self._sl_attributes.shares = service_level_shares
 
     @property
-    def if_created(self):
-        return self._if_created
+    def created(self) -> bool:
+        return self.created
 
-    @if_created.setter
-    def if_created(self, if_created):
-        self._if_created = if_created
+    @created.setter
+    def created(self, created: bool):
+        self._created = created
+
+    @property
+    def timeout(self) -> str:
+        return self._sl_attributes.timeout
+
+    @timeout.setter
+    def timeout(self, timeout: int):
+        self._sl_attributes.timeout = timeout
+
+    @property
+    def workload_type(self) -> str:
+        return self._sl_attributes.workload_type
+
+    @workload_type.setter
+    def workload_type(self, workload_type: str):
+        self._sl_attributes.workload_type = workload_type
 
     def create(self, if_not_exists=True):
-        query = 'CREATE SERVICE_LEVEL{if_not_exists} {service_level_name}{shares}'\
+        query = 'CREATE SERVICE_LEVEL{if_not_exists} {service_level_name}{query_attributes}'\
                 .format(if_not_exists=' IF NOT EXISTS' if if_not_exists else '',
                         service_level_name=self.name,
-                        shares=' WITH SHARES = %d' % self.service_shares if self.service_shares is not None else '')
+                        query_attributes=self._sl_attributes.query_string)
         if self.verbose:
             logger.debug('Create service level query: {}'.format(query))
         self.session.execute(query)
         logger.debug('Service level "{}" has been created'.format(self.name))
-        self.if_created = True
+        self.created = True
 
-    def alter(self, new_shares):
-        query = 'ALTER SERVICE_LEVEL {service_level_name} WITH SHARES = {shares}'\
+    def alter(self, new_shares: int = None, new_timeout: str = None, new_workload_type: str = None):
+        sla = ServiceLevelAttributes(shares=new_shares, timeout=new_timeout, workload_type=new_workload_type)
+        query = 'ALTER SERVICE_LEVEL {service_level_name} {query_string}'\
                 .format(service_level_name=self.name,
-                        shares=new_shares)
+                        query_string=sla.query_string)
         if self.verbose:
             logger.debug('Change service level query: {}'.format(query))
         self.session.execute(query)
@@ -84,7 +147,7 @@ class ServiceLevel(object):
             logger.debug('Drop service level query: {}'.format(query))
         self.session.execute(query)
         logger.debug('Service level "{}" has been dropped'.format(self.name))
-        self.if_created = False
+        self.created = False
 
     def list_service_level(self):
         query = 'LIST SERVICE_LEVEL {}'.format(self.name)
