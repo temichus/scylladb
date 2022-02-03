@@ -176,7 +176,7 @@ else
 fi
 
 echo
-env | grep -E '^((DTEST|CCM|SCYLLA_ROOT|CASSANDRA|TOOLS_JAVA|JMX|SCYLLA_DBUILD_SO|LOG_SAVED)_DIR|HOME|SCYLLA_*|CLUSTER_*|DRY_*|NODE_*|AWS_*)='
+env | grep -E '^((DTEST|CCM|SCYLLA_ROOT|CASSANDRA|TOOLS_JAVA|JMX|SCYLLA_DBUILD_SO|LOG_SAVED)_DIR|HOME|SCYLLA_.*|CLUSTER_.*|DRY_.*|NODE_.*|AWS_.*)='
 echo
 
 # if in jenkins also mount the workspace into docker
