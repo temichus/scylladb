@@ -1,6 +1,5 @@
 import logging
 import os.path
-import random
 import subprocess
 from time import sleep, time
 
@@ -10,8 +9,8 @@ from cassandra import concurrent
 from ccmlib import common
 
 from dtest_class import Tester, create_ks
-from scylla_tools import get_sstables_files, get_node_cf_dir
-
+from tools.files import get_sstables_files, get_node_cf_dir
+from tools.misc import generate_random_text
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
 
         logger.info(f"creating sstables with ttl={ttl}")
         while len(rand_pks) < 10:
-            rand_pks.add(random.randbytes(10))
+            rand_pks.add(generate_random_text(10).encode())
 
         for t in range(duration_minutes * 60, 0, -1):
             timestamp = int(time() - t)
