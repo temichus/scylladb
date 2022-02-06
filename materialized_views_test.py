@@ -151,7 +151,7 @@ class TestMaterializedViews(CommonUtils):
     @jira_ticket CASSANDRA-6477
     """
 
-    def stop_node_during_mv_insert_4_nodes_test(self):
+    def test_stop_node_during_mv_insert_4_nodes(self):
         """ Test stopping node during MV inserts
             Test starts with a starting size 4 and stops one node during inserts into base table that cause to update materialized view as well
             (using cs_mv_profile.yaml profile).
