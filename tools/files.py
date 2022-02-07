@@ -6,9 +6,9 @@ import sys
 import tempfile
 import logging
 import glob
+from pathlib import Path
 
-from typing import Optional
-
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -145,3 +145,13 @@ def get_list_of_sstables(node, keyspace_name, table_name, suffix='-Statistics.db
                 dirnames.remove(dirname)
 
     return statistics_files
+
+
+def check_file_lists_are_equal(file_list_a: List[Path], file_list_b: List[Path]) -> bool:
+    """
+    Checks for equality for filenames in 2 lists of files (e.g. from a glob of a directory).
+    """
+    files_a = sorted([item.stem for item in file_list_a if item.is_file()])
+    files_b = sorted([item.stem for item in file_list_b if item.is_file()])
+
+    return files_a == files_b

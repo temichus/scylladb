@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime as dt
 from pathlib import Path
 from threading import Thread
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 import pytest
 import sstable_tools.statistics
@@ -23,14 +23,15 @@ from ccmlib.node import NodetoolError, TimeoutError, Node
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
-from tools.rest_clients import StorageServiceClient
 from tools.assertions import assert_none, assert_all, assert_row_count
 from tools.cluster import new_node
 from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_table
-from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables, get_cf_dir
-from tools.misc import ImmutableMapping
-from tools.stress import fill_data_by_cs
+from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables, \
+    check_file_lists_are_equal
 from tools.marks import enterprise_only_param
+from tools.misc import ImmutableMapping
+from tools.rest_clients import StorageServiceClient
+from tools.stress import fill_data_by_cs
 
 logger = logging.getLogger(__name__)
 
@@ -1440,11 +1441,12 @@ class TestGarabageCollected(CompactionAdditionalTester):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestValidationCompaction(CompactionAdditionalTester):
     KS = "ks"
     CF = "cf"
     CF_2 = "cf2"
-    RF = 3
+    RF = 1
     CORRUPT_DATA_FILE_NAME = "mc-1-big-Data.db"
     CORRUPT_DATA_FILE_DIR = Path("test-sstables/sstable_with_invalid_fragment/ks/cf-test")
     CORRUPT_DATA_FILE_PATH = CORRUPT_DATA_FILE_DIR / CORRUPT_DATA_FILE_NAME
@@ -1474,10 +1476,10 @@ class TestValidationCompaction(CompactionAdditionalTester):
         1. Create test keyspace and column families.
         2. Load a corrupted sstable for a column family ("cf").
         3. Trigger the validation compaction using the API.
-        4. Assert that following the compaction the loaded
-        sstable is the same as the source one, i.e.:
-        - there is only one sstable in the data dir
-        - the name of the sstable was not changed
+        4. Assert that following the compaction:
+        - the corrupted sstable files were moved to the quarantine dir
+        - the number of sstable files before and after the compaction is the
+        same
         5. Assert that the corrupted fragments were reported
         in the logs.
         """
@@ -1502,19 +1504,19 @@ class TestValidationCompaction(CompactionAdditionalTester):
                   primary_key="pk, ck",
                   debug_query=True)
         node.flush()
-        cf_dir = Path(get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', self.KS), cf_name=self.CF))
+        cf_dir = Path(get_node_cf_dir(node=node, ks_name=self.KS, cf_name=self.CF))
         upload_dir = cf_dir / "upload"
-
+        quarantined_sstables_dir = cf_dir / "quarantine"
         logger.debug("Copying the sstables with invalid fragment from source directory:"
                      " %s to upload directory: %s...", self.CORRUPT_DATA_FILE_DIR, upload_dir)
+        pre_scrub_file_list = list(self.CORRUPT_DATA_FILE_DIR.glob("*"))
         copy_files_to(self.CORRUPT_DATA_FILE_DIR, upload_dir)
         node.nodetool(f"refresh -- {self.KS} {self.CF}")
         storage_service_client.scrub_ks_cf(keyspace=self.KS, cf=self.CF, scrub_mode="VALIDATE")
+        quarantined_file_list = list(quarantined_sstables_dir.glob("*"))
 
-        sstables_count, name_check = self._assert_file_count(node=node, filename_to_check="mc-1-big-Data.db")
-
-        assert sstables_count == 1, f"Found {sstables_count} sstables, expected 1."
-        assert name_check, f"Did not find {self.DATA_FILE_NAME} in the list of sstable names."
+        assert check_file_lists_are_equal(file_list_a=pre_scrub_file_list, file_list_b=quarantined_file_list), \
+            "Pre scrub file list was expected to be the same as quarantined file list, but was not"
         assert all(self._grep_log_patterns(
             node=node,
             patterns=[
@@ -1536,8 +1538,7 @@ class TestValidationCompaction(CompactionAdditionalTester):
         3. Trigger the validation compaction using the API.
         4. Assert that following the compaction the sstable
         for the populated column family was not modified, i.e.
-        - there is only one sstable in the data dir
-        - the name of the sstable was not changed
+        the same sstable files are present in the table dir.
         5. Assert that no corrupted fragments were reported
         in the logs and the sstable was marked as valid.
         """
@@ -1546,13 +1547,14 @@ class TestValidationCompaction(CompactionAdditionalTester):
         create_c1c2_table(session)
         insert_c1c2(session, n=10_000)
         node.flush()
-
+        cf_dir = Path(get_node_cf_dir(node=node, ks_name=self.KS, cf_name=self.CF))
+        pre_compaction_sstable_file_list = list(cf_dir.glob("*"))
         storage_service_client.scrub_ks_cf(keyspace=self.KS, cf=self.CF, scrub_mode="VALIDATE")
+        post_compaction_sstable_file_list = list(cf_dir.glob("*"))
 
-        sstables_count, name_check = self._assert_file_count(node=node, filename_to_check=self.DATA_FILE_NAME)
-
-        assert sstables_count == 1, f"Found {sstables_count} sstables, expected 1."
-        assert name_check, f"Did not find {self.DATA_FILE_NAME} in the list of sstable names."
+        assert check_file_lists_are_equal(file_list_a=pre_compaction_sstable_file_list,
+                                          file_list_b=post_compaction_sstable_file_list), \
+            "Pre-scrub file list was expected to be the same as post-scrub file list, but was not"
         assert all(self._grep_log_patterns(
             node=node,
             patterns=[
@@ -1561,15 +1563,10 @@ class TestValidationCompaction(CompactionAdditionalTester):
             ])), "Some regex patterns were not found in the logs."
 
     def _prepare(self):
-        [node, _, _], session = self.prepare(3)
+        [node], session = self.prepare(1)
         storage_service_client = StorageServiceClient(node=node)
         return node, session, storage_service_client
 
     @staticmethod
     def _grep_log_patterns(node: Node, patterns: List[str]):
         return [node.grep_log(pattern) for pattern in patterns]
-
-    def _assert_file_count(self, node: Node, filename_to_check: str) -> Tuple[int, bool]:
-        sstable_list = get_list_of_sstables(node=node, keyspace_name=self.KS, table_name=self.CF, suffix="big-Data.db")
-        name_check = filename_to_check in sstable_list[0]
-        return len(sstable_list), name_check
