@@ -6,7 +6,8 @@ import pytest
 from cassandra import ConsistencyLevel
 
 from dtest_class import Tester, create_ks, create_cf
-from tools.data import insert_c1c2, get_list_of_sstables
+from tools.data import insert_c1c2
+from tools.files import get_list_of_sstables
 from ccmlib.scylla_cluster import ScyllaCluster
 
 
