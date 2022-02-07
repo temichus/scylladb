@@ -211,7 +211,6 @@ class DTestSetup:
         self.test_path = self.get_test_path(prefix=prefix)
         self.enable_for_jolokia = False
         self.subprocs = []
-        self.log_watch_thread = None
         self.last_test_dir = "last_test_dir"
         self.jvm_args = []
         self.create_cluster_func = None
@@ -243,49 +242,6 @@ class DTestSetup:
                 ks_dir = os.path.join(data_dir, ks, path)
                 result.extend(glob.glob(ks_dir))
         return result
-
-    def begin_active_log_watch(self):
-        """
-        Calls into ccm to start actively watching logs.
-
-        In the event that errors are seen in logs, ccm will call back to _log_error_handler.
-
-        When the cluster is no longer in use, stop_active_log_watch should be called to end log watching.
-        (otherwise a 'daemon' thread will (needlessly) run until the process exits).
-        """
-        self.log_watch_thread = self.cluster.actively_watch_logs_for_error(self._log_error_handler, interval=0.25)
-
-    def _log_error_handler(self, errordata):
-        """
-        Callback handler used in conjunction with begin_active_log_watch.
-        When called, prepares exception instance, we will use pytest.fail
-        to kill the current test being executed and mark it as failed
-
-        @param errordata is a dictonary mapping node name to failure list.
-        """
-        # in some cases self.allow_log_errors may get set after proactive log checking has been enabled
-        # so we need to double-check first thing before proceeding
-        if self.allow_log_errors:
-            return
-
-        reportable_errordata = OrderedDict()
-
-        for nodename, errors in list(errordata.items()):
-            filtered_errors = list(self.__filter_errors(['\n'.join(msg) for msg in errors]))
-            if len(filtered_errors) != 0:
-                reportable_errordata[nodename] = filtered_errors
-
-        # no errors worthy of halting the test
-        if not reportable_errordata:
-            return
-
-        message = "Errors seen in logs for: {nodes}".format(nodes=", ".join(list(reportable_errordata.keys())))
-        for nodename, errors in list(reportable_errordata.items()):
-            for error in errors:
-                message += "\n{nodename}: {error}".format(nodename=nodename, error=error)
-
-        logger.debug('Errors were just seen in logs, ending test (if not ending already)!')
-        pytest.fail("Error details: \n{message}".format(message=message))
 
     def copy_logs(self, request, directory=None, name=None, cores=None):
         """Copy the current cluster's log files somewhere, by default to LOG_SAVED_DIR with a name of 'last'"""
@@ -634,22 +590,10 @@ class DTestSetup:
         if os.path.exists(self.last_test_dir):
             os.remove(self.last_test_dir)
 
-    def stop_active_log_watch(self):
-        """
-        Joins the log watching thread, which will then exit.
-        Should be called after each test, ideally after nodes are stopped but before cluster files are removed.
-
-        Can be called multiple times without error.
-        If not called, log watching thread will remain running until the parent process exits.
-        """
-        self.log_watch_thread.join(timeout=60)
-
     def cleanup_cluster(self):
         with log_filter('cassandra'):  # quiet noise from driver when nodes start going down
             if self.dtest_config.keep_test_dir:
                 self.cluster.stop(gently=self.dtest_config.enable_jacoco_code_coverage)
-                if self.log_watch_thread:
-                    self.stop_active_log_watch()
             else:
                 # when recording coverage the jvm has to exit normally
                 # or the coverage information is not written by the jacoco agent
@@ -658,27 +602,23 @@ class DTestSetup:
                     self.cluster.stop(gently=True)
 
                 # Cleanup everything:
-                try:
-                    if self.log_watch_thread:
-                        self.stop_active_log_watch()
-                finally:
-                    logger.debug("removing ccm cluster {name} at: {path}".format(name=self.cluster.name,
-                                                                                 path=self.test_path))
-                    self.cluster.remove()
+                logger.debug("removing ccm cluster {name} at: {path}".format(name=self.cluster.name,
+                                                                             path=self.test_path))
+                self.cluster.remove()
 
-                    logger.debug("clearing ssl stores from [{0}] directory".format(self.test_path))
-                    for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer'):
-                        try:
-                            os.remove(os.path.join(self.test_path, filename))
-                        except OSError as e:
-                            # ENOENT = no such file or directory
-                            assert e.errno == errno.ENOENT
+                logger.debug("clearing ssl stores from [{0}] directory".format(self.test_path))
+                for filename in ('keystore.jks', 'truststore.jks', 'ccm_node.cer'):
+                    try:
+                        os.remove(os.path.join(self.test_path, filename))
+                    except OSError as e:
+                        # ENOENT = no such file or directory
+                        assert e.errno == errno.ENOENT
 
-                    # since some leftovers, like ssl keys, etc. can stay in the directory, it's safer to use
-                    # shutil.rmtree over os.rmdir (or OSError: [Errno 39] Directory not empty might occur)
-                    shutil.rmtree(self.test_path)
-                    self.cleanup_last_test_dir()
-                    cluster_id_allocator.free(self.cluster.id)
+                # since some leftovers, like ssl keys, etc. can stay in the directory, it's safer to use
+                # shutil.rmtree over os.rmdir (or OSError: [Errno 39] Directory not empty might occur)
+                shutil.rmtree(self.test_path)
+                self.cleanup_last_test_dir()
+                cluster_id_allocator.free(self.cluster.id)
 
     def cleanup_and_replace_cluster(self):
         for con in self.connections:

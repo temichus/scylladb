@@ -1620,8 +1620,6 @@ class ScyllaManagerMixin:
                                  prefix="dtest-secondary-")
         dtest_setup.initialize_cluster(DTestSetup.create_ccm_cluster, skip_manager_server=True)
         dtest_setup.cluster.set_configuration_options(values={'ring_delay_ms': 10000})
-        if not dtest_config.disable_active_log_watching:
-            dtest_setup.begin_active_log_watch()
 
         yield dtest_setup.cluster
 

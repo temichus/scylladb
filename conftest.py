@@ -269,10 +269,6 @@ def fixture_dtest_setup(request,
     # (Default value for the option is 30s)
     dtest_setup.cluster.set_configuration_options(values={'ring_delay_ms': 10000})
 
-    # scylla-ccm doesn't support this
-    if not dtest_config.disable_active_log_watching:
-        dtest_setup.begin_active_log_watch()
-
     # at this point we're done with our setup operations in this fixture
     # yield to allow the actual test to run
     yield dtest_setup

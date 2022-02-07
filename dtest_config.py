@@ -25,7 +25,6 @@ class DTestConfig:
         self.scylla_full_version = None
         self.delete_logs = 'all'
         self.execute_upgrade_tests = False
-        self.disable_active_log_watching = False
         self.keep_test_dir = False
         self.enable_jacoco_code_coverage = False
         self.jemalloc_path = find_libjemalloc()
@@ -48,7 +47,6 @@ class DTestConfig:
 
         self.delete_logs = request.config.getoption("--delete-logs")
         self.execute_upgrade_tests = request.config.getoption("--execute-upgrade-tests")
-        self.disable_active_log_watching = request.config.getoption("--disable-active-log-watching")
         self.keep_test_dir = request.config.getoption("--keep-test-dir")
         self.enable_jacoco_code_coverage = request.config.getoption("--enable-jacoco-code-coverage")
 
