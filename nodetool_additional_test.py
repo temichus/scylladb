@@ -30,7 +30,7 @@ from scylla_tools import insert_c1c2_no_prepared
 from tools.data import rows_to_list, insert_c1c2
 from tools.assertions import PytestRegex
 from tools.misc import ImmutableMapping
-from tools.files import copy_files_to, get_cf_dir
+from tools.files import copy_files_to, get_node_cf_dir
 
 logger = logging.getLogger(__name__)
 
@@ -2245,7 +2245,7 @@ class TestNodetool(Tester):
         node.nodetool('flush')
 
         logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', ks), cf_name=cf)
+        cf_dir = get_node_cf_dir(node, ks_name=ks, cf_name=cf)
         copy_files_to(f"test-sstables/sstable_with_invalid_fragment/ks/cf-test/", os.path.join(cf_dir, 'upload'))
         node.nodetool(f"refresh -- {ks} {cf}")
 

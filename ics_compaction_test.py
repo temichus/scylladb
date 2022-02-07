@@ -9,7 +9,7 @@ import pytest
 from tools.assertions import assert_row_count
 from dtest_class import Tester, create_ks, create_cf, wait_for
 from tools.scylla_defines import TABLE_NAME, KEYSPACE_NAME, CompactionStrategy, FULL_TABLE_NAME, KB, MB
-from tools.files import get_sstables_files, get_cf_dir
+from tools.files import get_sstables_files, get_node_cf_dir
 from tools.snapshots import make_snapshot, restore_snapshot_with_refresh, restore_snapshot_with_sstableloader
 
 NUM_OF_NODES = 2
@@ -150,7 +150,7 @@ class TestIcsCompaction(Tester):
     def _check_sstable_file_size_limit(self, list_sstable_files, sstable_size_in_mb):
         logger.debug("Validating maximum sstable file size of {} for: {}".format(
             sstable_size_in_mb, list_sstable_files))
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', KEYSPACE_NAME), TABLE_NAME)
+        cf_dir = get_node_cf_dir(self.cluster.nodelist()[0], ks_name=KEYSPACE_NAME, cf_name=TABLE_NAME)
         for file in list_sstable_files:
             file_size_in_mb = os.path.getsize(os.path.join(cf_dir, file)) >> 20
             assert file_size_in_mb <= sstable_size_in_mb + 1, "File size is bigger than: {}".format(sstable_size_in_mb)
@@ -180,7 +180,7 @@ class TestIcsCompaction(Tester):
         Returns sstable files and their sizes for a table.
         :return: sstables_files, files_size
         """
-        cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', KEYSPACE_NAME), TABLE_NAME)
+        cf_dir = get_node_cf_dir(self.cluster.nodelist()[0], ks_name=KEYSPACE_NAME, cf_name=TABLE_NAME)
         sstables_files = get_sstables_files(cf_dir, f_type='Data')
         files_size = self._get_sstables_file_size_in_mb(list_sstable_files=sstables_files, cf_dir=cf_dir)
         logger.debug("Files sizes are: {}".format(files_size))

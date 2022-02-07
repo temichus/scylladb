@@ -12,7 +12,7 @@ from cassandra.cluster import Session
 from dtest_class import Tester, create_ks
 from tools.data import rows_to_list
 from tools.tables_view_manager import TableManager, MaterializedViewManager
-from scylla_tools import get_sstables_files, get_node_cf_dir
+from tools.files import get_sstables_files, get_node_cf_dir
 from tools.assertions import assert_one, assert_two_queries_equal, assert_none
 from cassandra import ConsistencyLevel
 from tools.marks import enterprise_only_param

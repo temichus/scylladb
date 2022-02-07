@@ -11,9 +11,8 @@ from ccmlib.scylla_node import ScyllaNode
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
 from migration_test import MigrationTestBase
-from scylla_tools import get_cf_dir
 from tools.assertions import assert_one, assert_all, assert_none
-from tools.files import copy_files_to
+from tools.files import copy_files_to, get_node_cf_dir
 from tools.misc import ImmutableMapping, safe_mkdtemp
 
 logger = logging.getLogger(__name__)
@@ -220,7 +219,7 @@ class TestAdditionalTestSSTableLoader(Tester):
         return session, node1
 
     def create_cf_sstable_copy(self, ks: str, cf: str) -> (str, str):
-        orig_cf_dir = get_cf_dir(os.path.join(self.test_path, 'test', 'node1', 'data', ks), cf_name=cf)
+        orig_cf_dir = get_node_cf_dir(self.cluster.nodelist()[0], ks_name=ks, cf_name=cf)
         assert orig_cf_dir is not None, 'table folder is not found'
 
         tmpdir = safe_mkdtemp()

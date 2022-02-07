@@ -14,7 +14,7 @@ import pytest
 from tools.cluster import new_node
 from dtest_class import Tester, create_ks, create_cf, get_ip_from_node
 from tools.data import insert_c1c2, query_c1c2_concurrent
-from tools.files import get_cf_dir
+from tools.files import get_node_cf_dir
 from tools.metrics import get_node_metrics
 
 
@@ -216,8 +216,7 @@ class TestInMemory(Tester):
         node1.flush()
         logger.debug("Stopping node")
         node1.stop()
-        keyspace_dir = os.path.join(node1.get_path(), 'data', key_space_name)
-        cf_dir = get_cf_dir(keyspace_dir, self.table_name)
+        cf_dir = get_node_cf_dir(node1, ks_name=key_space_name, cf_name=self.table_name)
         temp_dir = os.path.join(tempfile.mkdtemp(), key_space_name)
         logger.debug("Copying sstable files from '%s' to temporary dir '%s'" % (cf_dir, temp_dir))
         shutil.copytree(cf_dir, temp_dir)
@@ -237,8 +236,7 @@ class TestInMemory(Tester):
                   compaction=self.in_memory_compaction_strategy, in_memory=True)
         logger.debug("Inserting data: keys 1 - %s" % (keys_range[0] - 1))
         insert_c1c2(session, n=keys_range[0], ks=key_space_name)
-        keyspace_dir = os.path.join(node1.get_path(), 'data', key_space_name)
-        cf_dir = get_cf_dir(keyspace_dir, self.table_name)
+        cf_dir = get_node_cf_dir(node1, ks_name=key_space_name, cf_name=self.table_name)
         upload_dir = os.path.join(cf_dir, "upload")
         shutil.rmtree(upload_dir)  # clean upload dir
         logger.debug("Copying sstable files from '%s' to upload dir '%s'" % (temp_dir, upload_dir))

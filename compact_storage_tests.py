@@ -4,7 +4,7 @@ import distutils.dir_util
 import pytest
 
 from dtest_class import Tester
-from scylla_tools import get_node_cf_dir
+from tools.files import get_node_cf_dir
 
 
 @pytest.mark.dtest_full

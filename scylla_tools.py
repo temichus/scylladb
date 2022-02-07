@@ -26,6 +26,8 @@ from uuid import UUID
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import glob
+from tools.files import get_cf_dir
+
 
 logger = logging.getLogger(__name__)
 
@@ -274,28 +276,6 @@ def get_latest_dir(srcdir: str, pattern: Optional[str] = '') -> Optional[str]:
         item_path = os.path.join(srcdir, item)
         if os.path.isdir(item_path) and re.compile(pattern).match(item):
             return item_path
-
-
-def get_cf_dir(ks_dir, cf_name, latest=False):
-    """
-    Return the first CF directory for a CF with a given name
-    """
-    if latest:
-        return get_latest_dir(ks_dir, cf_name + '-')
-
-    cf_pattern = re.compile("{}-".format(cf_name))
-    for root, dirs, files in os.walk(ks_dir):
-        for d in dirs:
-            if cf_pattern.match(d):
-                return os.path.join(root, d)
-
-
-def get_node_cf_dir(node, ks_name='ks', cf_name='cf', latest=False):
-    """
-    Return the first CF directory for a CF with a given name
-    in the given keyspace and node
-    """
-    return get_cf_dir(os.path.join(node.get_path(), 'data', ks_name), cf_name, latest)
 
 
 def flush_by_node(cluster):

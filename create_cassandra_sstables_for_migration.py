@@ -28,7 +28,7 @@ import time
 import yaml
 
 from scylla_tools import CassandraCluster
-from scylla_tools import copy_files_to, get_cf_dir
+from tools.files import copy_files_to, get_cf_dir
 
 
 def create_folder_if_not_exists(folder_name):

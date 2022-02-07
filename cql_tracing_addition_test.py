@@ -9,9 +9,10 @@ from cassandra.cluster import Session
 from cassandra.concurrent import execute_concurrent_with_args
 
 from dtest_class import Tester, create_ks, create_cf
-from scylla_tools import set_trace_probability, get_sstables_files, get_node_cf_dir
+from tools.files import get_sstables_files, get_node_cf_dir
 from tools.data import rows_to_list
 from tools.assertions import PytestRegex
+from tools.misc import set_trace_probability
 
 from ccmlib.scylla_node import ScyllaNode
 

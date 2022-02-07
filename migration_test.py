@@ -19,9 +19,9 @@ from ccmlib.node import NodetoolError
 from ccmlib.scylla_node import ScyllaNode
 
 from dtest_class import Tester, create_ks, create_cf
-from scylla_tools import CassandraCluster, get_sstables_files, get_node_cf_dir
+from scylla_tools import CassandraCluster
 from tools.tables_view_manager import wait_for_view
-from tools.files import safe_mkdtemp
+from tools.files import safe_mkdtemp, get_sstables_files, get_node_cf_dir
 from tools.data import drop_table, rows_to_list, check_c1c2_result_one, create_c1c2_table, query_c1c2, create_index
 from tools.misc import ImmutableMapping
 from tools.assertions import assert_one
