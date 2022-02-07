@@ -183,14 +183,14 @@ def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtest
         baseRelocJob: RELOC_JOB_NAME,
         relocBuildID: params.RELOC_BUILD_ID,
         buildMode: BUILD_MODE,
-        dtestType: dtestType,
     )
     numOfSplitFiles = dtest.splitAndCopyDtestJobs (
         splitTimeTarget: params.SPLIT_TIME_TARGET,
         splitMaxNodes: splitMaxNodes,
         buildMode: BUILD_MODE,
         includeTests: includeDtestsTag,
-        excludeTests: ''
+        excludeTests: '',
+        dtestType: dtestType,
     )
     dtest.doParallelDtest(
         dryRun: params.DRY_RUN,
