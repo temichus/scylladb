@@ -116,7 +116,7 @@ pipeline {
         stage("test") {
             when {
                 expression {
-                    return env.CHANGE_ID && pullRequestContainsLabels("test/PR")
+                    return env.CHANGE_ID && ! pullRequestContainsLabels("skip/test/PR")
                 }
             }
             options {
