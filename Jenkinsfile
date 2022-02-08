@@ -45,6 +45,7 @@ pipeline {
         string(name: 'BRANCH', defaultValue: "master", description: 'Choose: master|branch-4.4')
         booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Check this to check pipeline syntax. will not perform anything.')
         booleanParam(name: 'PRESERVE_WORKSPACE', defaultValue: false, description: 'Check this if you need the workspace to remain (for debug)')
+        string(name: 'SPLIT_TIME_TARGET', defaultValue: '240', description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
     }
     stages {
         stage("precommit") {
