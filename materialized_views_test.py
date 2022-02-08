@@ -9,7 +9,6 @@ from functools import partial
 from multiprocessing import Process, Queue, cpu_count, Lock
 
 import pytest
-from flaky import flaky
 from pkg_resources import parse_version
 
 from concurrent.futures import ThreadPoolExecutor
@@ -418,11 +417,6 @@ class TestMaterializedViews(CommonUtils):
         assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
         assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
 
-    # TODO: flaky_with_tear_down - this decorator was attempt for MV tests. It performed tearDown and new setUp for each
-    # TODO: re-run. With moving to pytest and useing flacky decorator of pytest we need to check if it's still relevant
-    #  or not.
-    # @flaky_with_tear_down
-    @flaky(max_runs=5, min_passes=1)
     def test_add_dc_during_mv_update(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during update
@@ -1567,11 +1561,6 @@ class TestMaterializedViews(CommonUtils):
 
         self._add_dc_after_mv_test({'dc1': 1})
 
-    # TODO: flaky_with_tear_down - this decorator was attempt for MV tests. It performed tearDown and new setUp for each
-    # TODO: re-run. With moving to pytest and useing flacky decorator of pytest we need to check if it's still relevant
-    #  or not.
-    # @flaky_with_tear_down
-    @flaky(max_runs=5, min_passes=1)
     def test_add_node_after_mv(self):
         """
         @jira_ticket CASSANDRA-10978
@@ -1601,12 +1590,6 @@ class TestMaterializedViews(CommonUtils):
         for i in range(1000, 1100):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(-i), [-i, i])
 
-    # @pytest.mark.skip('unrecognised option \'-Dcassandra.migration_task_wait_in_seconds\'')
-    # TODO: flaky_with_tear_down - this decorator was attempt for MV tests. It performed tearDown and new setUp for each
-    # TODO: re-run. With moving to pytest and useing flacky decorator of pytest we need to check if it's still relevant
-    #  or not.
-    # @flaky_with_tear_down
-    @flaky(max_runs=5, min_passes=1)
     @pytest.mark.resource_intensive
     def test_add_node_after_wide_mv_with_range_deletions(self):
         """

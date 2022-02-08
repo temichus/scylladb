@@ -1,21 +1,18 @@
 import os
 import re
 import time
-import glob
 import logging
 import threading
-import subprocess
 import requests
 
 import pytest
 import cassandra
-from flaky import flaky
-from cassandra import ConsistencyLevel, OperationTimedOut
+from cassandra import ConsistencyLevel
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.policies import RetryPolicy
 from cassandra.cluster import ExecutionProfile
 
-from ccmlib.node import NodetoolError, TimeoutError
+from ccmlib.node import TimeoutError
 
 
 logger = logging.getLogger(__name__)
@@ -273,29 +270,6 @@ def is_autocompaction_enabled(node, ks_name, table_name):
     return response.json()
 
 
-def test_failure_due_to_timeout(err, *args):
-    """
-    check if we should rerun a test with the flaky plugin or not.
-    for now, only run if we failed the test for one of the following
-    three exceptions: cassandra.OperationTimedOut, ccm.node.ToolError,
-    and ccm.node.TimeoutError.
-
-    - cassandra.OperationTimedOut will be thrown when a cql query made thru
-    the python-driver times out.
-    - ccm.node.ToolError will be thrown when an invocation of a "tool"
-    (in the case of dtests this will almost always invoking stress).
-    - ccm.node.TimeoutError will be thrown when a blocking ccm operation
-    on a individual node times out. In most cases this tends to be something
-    like watch_log_for hitting the timeout before the desired pattern is seen
-    in the node's logs.
-    """
-    if issubclass(err[0], OperationTimedOut) or issubclass(err[0], NodetoolError) or issubclass(err[0], TimeoutError):
-        return True
-    else:
-        return False
-
-
-@flaky(rerun_filter=test_failure_due_to_timeout)
 class Tester:
     def __getattribute__(self, name):
         try:

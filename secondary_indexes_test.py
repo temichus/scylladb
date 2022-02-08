@@ -8,7 +8,6 @@ from collections import defaultdict
 from typing import Callable
 
 import pytest
-from flaky import flaky
 from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester, create_ks, create_cf
@@ -521,11 +520,6 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         session.shutdown()
 
-    # TODO: flaky_with_tear_down - this decorator was attempt for MV tests. It performed tearDown and new setUp for each
-    # TODO: re-run. With moving to pytest and useing flacky decorator of pytest we need to check if it's still relevant
-    #  or not.
-    # @flaky_with_tear_down
-    @flaky(max_runs=5, min_passes=1)
     def test_query_data_created_before_index(self):
         """
         Create the index on the populated table and read the data that was inserted before index
@@ -906,11 +900,6 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_one(session, """SELECT * FROM system."IndexInfo" WHERE table_name='k'""", ['k', 'idx'])
         assert_one(session, "SELECT * FROM k.t WHERE v = 1", [0, 1])
 
-    # TODO: flaky_with_tear_down - this decorator was attempt for MV tests. It performed tearDown and new setUp for each
-    # TODO: re-run. With moving to pytest and useing flacky decorator of pytest we need to check if it's still relevant
-    #  or not.
-    # @flaky_with_tear_down
-    @flaky(max_runs=5, min_passes=1)
     def test_drop_index_while_building(self):
         """
         Asserts that indexes deleted before they have been completely build are invalidated and not built after restart

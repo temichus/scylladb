@@ -5,7 +5,6 @@ import tempfile
 import logging
 
 import pytest
-from flaky import flaky
 
 from ccmlib.scylla_node import ScyllaNode
 from cassandra.cluster import Session
@@ -356,7 +355,6 @@ class TestReshardingVariants(ReshardingBase):
         """
         self._resharding_basic(self.smp, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_DECREASE)
 
-    @flaky
     def test_resharding_by_smp_increase(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with 10M objects after increasing the SMP parameter
@@ -364,7 +362,6 @@ class TestReshardingVariants(ReshardingBase):
         """
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=10000, murmur3=self.murmur3)
 
-    @flaky
     def test_resharding_by_smp_decrease(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with 10M objects after decreasing the SMP parameter
@@ -386,7 +383,6 @@ class TestReshardingVariants(ReshardingBase):
         """
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
-    @flaky
     def test_resharding_counter(self, node_count, compaction_strategy, murmur3):
         """
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
