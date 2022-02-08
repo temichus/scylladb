@@ -286,6 +286,12 @@ def fixture_dtest_setup(request,
     rep_setup = getattr(request.node, "rep_setup", None)
     rep_call = getattr(request.node, "rep_call", None)
     failed = getattr(rep_setup, 'failed', False) or getattr(rep_call, 'failed', False)
+
+    try:
+        dtest_setup.cluster.stop(gently=True)
+    except Exception as e:
+        logger.error("Error stopping cluster: %s", str(e))
+
     try:
         if not dtest_setup.allow_log_errors:
             try:
