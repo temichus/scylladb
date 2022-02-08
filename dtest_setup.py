@@ -547,6 +547,9 @@ class DTestSetup:
                      r'Timer callback failed: seastar::gate_closed_exception',
                      ]
         patterns += ["rpc - client .*({})".format('|'.join(expected_rpc_errors))]
+        # We see benign rpc errors when nodes start/stop.
+        # If they cause system malfunction, it should be detected using higher-level tests.
+        patterns += [r'rpc::unknown_verb_error']
         pattern = re.compile('|'.join(["({})".format(p) for p in set(patterns)]))
         for e in errors:
             if not pattern.search(e):
