@@ -6,9 +6,10 @@ import random
 import pytest
 import logging
 from pkg_resources import parse_version
+import datetime
 
 from tools.assertions import assert_none, assert_one
-from dtest_class import Tester, create_ks, is_autocompaction_enabled
+from dtest_class import Tester, create_ks, is_autocompaction_enabled, retry_till_success
 from tools.data import create_c1c2_table, insert_c1c2, chunks_list
 from tools.misc import ImmutableMapping
 from dtest_setup_overrides import DTestSetupOverrides
@@ -386,20 +387,19 @@ class TestCompaction(Tester):
         Make sure we can enable/disable compaction using nodetool
         """
         node = self.prepate_testbed()
-        disable_mark = self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+        session = self.patient_cql_connection(node)
+
+        self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
-        enable_mark = self.enable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+        self.assert_table_did_not_compact(session, self.primary_table)
+        timestamp = self.assert_table_compacted(session, self.secondary_table)
+
+        self.enable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=enable_mark)) > 0, \
-            f'Found no log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=enable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_compacted(session, self.primary_table, since_timestamp=timestamp)
+        self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
 
     def test_disable_autocompaction_schema(self):
         """
@@ -407,22 +407,19 @@ class TestCompaction(Tester):
         """
         node = self.prepate_testbed(with_compaction=f'{{\'class\':\'{self.strategy}\', '
                                     f'\'enabled\':\'false\'}}')
-        disable_mark = self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+        session = self.patient_cql_connection(node)
+        self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_did_not_compact(session, self.primary_table)
+        timestamp = self.assert_table_compacted(session, self.secondary_table)
         # should still be disabled after restart:
         node.stop()
         node.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node)
         session.execute('use ks')
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_did_not_compact(session, self.primary_table)
+        timestamp = self.assert_table_compacted(session, self.secondary_table)
         # TODO: in Scylla it doesn't work, so i shall run here alter table and update with the `enabled: true`
         # in Scylla 'nodetool enableautocompaction' doesn't work if compaction disabled in schema,
         # so here alter table and update with the `enabled: true`
@@ -430,13 +427,11 @@ class TestCompaction(Tester):
                         f"with compaction = {{'class': '{self.strategy}', 'enabled': 'true'}}")
         self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
 
-        enable_mark = self.enable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+        self.enable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=enable_mark)) > 0, \
-            f'Found no log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=enable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_compacted(session, self.primary_table, since_timestamp=timestamp)
+        self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
 
     def test_disable_autocompaction_alter(self):
         """
@@ -447,24 +442,18 @@ class TestCompaction(Tester):
         session.execute('use ks')
         session.execute('ALTER TABLE to_disable '
                         f'WITH compaction = {{\'class\':\'{self.strategy}\', \'enabled\':\'false\'}}')
-        disable_mark = node.mark_log()
         # the API used on is_autocompaction_enabled doesn't return correct values if they are set in the table schema
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
-        enable_mark = node.mark_log()
-        session.execute('ALTER TABLE to_disable '
+        self.assert_table_did_not_compact(session, self.primary_table)
+        timestamp = self.assert_table_compacted(session, self.secondary_table)
+        session.execute(f'ALTER TABLE {self.primary_table} '
                         f'WITH compaction = {{\'class\':\'{self.strategy}\', \'enabled\':\'true\'}}')
         # the API used on is_autocompaction_enabled doesn't return correct values if they are set in the table schema
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=enable_mark)) > 0, \
-            f'Found no log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=enable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_compacted(session, self.primary_table, since_timestamp=timestamp)
+        self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
 
     def test_disable_autocompaction_alter_and_nodetool(self):
         """
@@ -473,36 +462,33 @@ class TestCompaction(Tester):
         node = self.prepate_testbed()
         session = self.patient_cql_connection(node)
         session.execute('use ks')
-        disable_mark = self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+
+        self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
-        session.execute('ALTER TABLE to_disable '
+        self.assert_table_did_not_compact(session, self.primary_table)
+        timestamp = self.assert_table_compacted(session, self.secondary_table)
+
+        session.execute(f'ALTER TABLE {self.primary_table} '
                         f'WITH compaction = {{\'class\':\'{self.strategy}\', \'tombstone_threshold\':0.9}}')
-        session.execute('insert into to_disable (key, c1, c2) values (\'99\', \'hello\', \'hello\')')
-        new_disable_mark = node.mark_log()
+        session.execute(f'insert into {self.primary_table} (key, c1, c2) values (\'99\', \'hello\', \'hello\')')
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=new_disable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
-        enable_mark = self.enable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+        self.assert_table_did_not_compact(session, self.primary_table, since_timestamp=timestamp)
+        timestamp = self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
+
+        self.enable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=enable_mark)) > 0, \
-            f'Found no log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=enable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_compacted(session, self.primary_table, since_timestamp=timestamp)
+        self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
 
     def test_disable_autocompaction_without_params(self):
         """
         Make sure compaction is disabled even if no ks and table name params are passed to the nodetool command
         """
         node = self.prepate_testbed()
+        session = self.patient_cql_connection(node)
         node.nodetool('disableautocompaction')
         disable_mark = node.mark_log()
         assert not is_autocompaction_enabled(node, self.primary_ks, self.primary_table), \
@@ -511,48 +497,42 @@ class TestCompaction(Tester):
             'All keyspaces and tables are expected to be affected by disableautocompaction'
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) == 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should not have stopped with regular compactions'
+        self.assert_table_did_not_compact(session, self.primary_table)
+        timestamp = self.assert_table_did_not_compact(session, self.secondary_table)
+
         node.nodetool('enableautocompaction')
-        enable_mark = node.mark_log()
         assert is_autocompaction_enabled(node, self.primary_ks, self.primary_table), \
             'Expected to have autocompaction enabled but got it is disabled'
         assert is_autocompaction_enabled(node, self.secondary_ks, self.secondary_table), \
             'All keyspaces and tables are expected to be affected by enableautocompaction'
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=enable_mark)) > 0, \
-            f'Found no log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=enable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_compacted(session, self.primary_table, since_timestamp=timestamp)
+        self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
 
     def test_disable_autocompaction_twice(self):
         """
         Make sure disabling compaction command executed twice in a row doesn't fail
         """
         node = self.prepate_testbed()
-        disable_mark = self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+        session = self.patient_cql_connection(node)
+        self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_did_not_compact(session, self.primary_table)
+        timestamp = self.assert_table_compacted(session, self.secondary_table)
         self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
         self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
         self.fill_table_with_data(node=node, ks=self.secondary_ks, table=self.secondary_table, keys=1000)
-        assert len(node.grep_log(f'Compacting.+{self.primary_table}', from_mark=disable_mark)) == 0, \
-            f'Found compaction log items for {self.strategy}'
-        assert len(node.grep_log(f'Compacting.+{self.secondary_table}', from_mark=disable_mark)) > 0, \
-            f'{self.secondary_ks}.{self.secondary_table} should have continued with regular compactions'
+        self.assert_table_did_not_compact(session, self.primary_table, since_timestamp=timestamp)
+        self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
 
     primary_ks = 'ks'
     primary_table = 'to_disable'
     secondary_ks = 'ks2'
     secondary_table = 'std1'
+    empty_error_message = "Query didn't return any rows"
 
     def disable_autocompaction(self, node, ks, table, verify=True):
         node.nodetool(f'disableautocompaction {ks} {table}')
@@ -601,6 +581,25 @@ class TestCompaction(Tester):
     def skip_if_no_major_compaction(self):
         if parse_version(self.cluster.version()) < parse_version('2.2') and self.strategy == 'LeveledCompactionStrategy':
             pytest.skip('major compaction not implemented for LCS in this version of Cassandra')
+
+    def last_compaction_timestamp(self, session, cf_name, since_timestamp=None):
+        timestamp_filter = f"AND compacted_at > {since_timestamp} " if since_timestamp else ""
+        query = f"SELECT MAX(compacted_at) FROM system.compaction_history WHERE columnfamily_name = '{cf_name}' {timestamp_filter}ALLOW FILTERING"
+        result = list(session.execute(query))[0][0]
+        # Python converts datetime to timestamp by returning float number of seconds
+        # The value in the table is an int representing milliseconds, so multiply
+        # by 1000 and convert from float to int to match types.
+        timestamp = int(1000 * datetime.datetime.timestamp(result)) if result else None
+        if not timestamp:
+            raise RuntimeError(self.empty_error_message)
+        return timestamp
+
+    def assert_table_did_not_compact(self, session, cf_name, timeout=2, since_timestamp=None):
+        with pytest.raises(RuntimeError, match=self.empty_error_message) as ex_info:
+            return retry_till_success(self.last_compaction_timestamp, session, cf_name, timeout=timeout, since_timestamp=since_timestamp)
+
+    def assert_table_compacted(self, session, cf_name, timeout=2, since_timestamp=None):
+        return retry_till_success(self.last_compaction_timestamp, session, cf_name, timeout=timeout, since_timestamp=since_timestamp)
 
 
 def get_random_word(word_len):
