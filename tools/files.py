@@ -151,7 +151,7 @@ def check_file_lists_are_equal(file_list_a: List[Path], file_list_b: List[Path])
     """
     Checks for equality for filenames in 2 lists of files (e.g. from a glob of a directory).
     """
-    files_a = sorted([item.stem for item in file_list_a if item.is_file()])
-    files_b = sorted([item.stem for item in file_list_b if item.is_file()])
+    files_a = sorted([item.stem for item in file_list_a])
+    files_b = sorted([item.stem for item in file_list_b])
 
     return files_a == files_b

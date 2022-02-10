@@ -1503,11 +1503,11 @@ class TestValidationCompaction(CompactionAdditionalTester):
         quarantined_sstables_dir = cf_dir / "quarantine"
         logger.debug("Copying the sstables with invalid fragment from source directory:"
                      " %s to upload directory: %s...", self.CORRUPT_DATA_FILE_DIR, upload_dir)
-        pre_scrub_file_list = list(self.CORRUPT_DATA_FILE_DIR.glob("*"))
+        pre_scrub_file_list = [item for item in self.CORRUPT_DATA_FILE_DIR.glob("*") if item.is_file()]
         copy_files_to(self.CORRUPT_DATA_FILE_DIR, upload_dir)
         node.nodetool(f"refresh -- {self.KS} {self.CF}")
         storage_service_client.scrub_ks_cf(keyspace=self.KS, cf=self.CF, scrub_mode="VALIDATE")
-        quarantined_file_list = list(quarantined_sstables_dir.glob("*"))
+        quarantined_file_list = [item for item in quarantined_sstables_dir.glob("*") if item.is_file()]
 
         assert check_file_lists_are_equal(file_list_a=pre_scrub_file_list, file_list_b=quarantined_file_list), \
             "Pre scrub file list was expected to be the same as quarantined file list, but was not"
@@ -1542,9 +1542,9 @@ class TestValidationCompaction(CompactionAdditionalTester):
         insert_c1c2(session, n=10_000)
         node.flush()
         cf_dir = Path(get_node_cf_dir(node=node, ks_name=self.KS, cf_name=self.CF))
-        pre_compaction_sstable_file_list = list(cf_dir.glob("*"))
+        pre_compaction_sstable_file_list = [item for item in cf_dir.glob("*") if item.is_file()]
         storage_service_client.scrub_ks_cf(keyspace=self.KS, cf=self.CF, scrub_mode="VALIDATE")
-        post_compaction_sstable_file_list = list(cf_dir.glob("*"))
+        post_compaction_sstable_file_list = [item for item in cf_dir.glob("*") if item.is_file()]
 
         assert check_file_lists_are_equal(file_list_a=pre_compaction_sstable_file_list,
                                           file_list_b=post_compaction_sstable_file_list), \
