@@ -1497,12 +1497,6 @@ class TestValidationCompaction(CompactionAdditionalTester):
                   key_type="text",
                   primary_key="pk, ck",
                   debug_query=True)
-        create_cf(session=session, name=self.CF_2,
-                  columns={"ck": "int", "s": "int", "v": "int"},
-                  key_name="pk",
-                  key_type="text",
-                  primary_key="pk, ck",
-                  debug_query=True)
         node.flush()
         cf_dir = Path(get_node_cf_dir(node=node, ks_name=self.KS, cf_name=self.CF))
         upload_dir = cf_dir / "upload"
