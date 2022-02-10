@@ -1503,9 +1503,10 @@ class TestValidationCompaction(CompactionAdditionalTester):
         quarantined_sstables_dir = cf_dir / "quarantine"
         logger.debug("Copying the sstables with invalid fragment from source directory:"
                      " %s to upload directory: %s...", self.CORRUPT_DATA_FILE_DIR, upload_dir)
-        pre_scrub_file_list = [item for item in self.CORRUPT_DATA_FILE_DIR.glob("*") if item.is_file()]
+        node.nodetool(f"disableautocompaction -- {self.KS} {self.CF}")
         copy_files_to(self.CORRUPT_DATA_FILE_DIR, upload_dir)
         node.nodetool(f"refresh -- {self.KS} {self.CF}")
+        pre_scrub_file_list = [item for item in cf_dir.glob("*") if item.is_file()]
         storage_service_client.scrub_ks_cf(keyspace=self.KS, cf=self.CF, scrub_mode="VALIDATE")
         quarantined_file_list = [item for item in quarantined_sstables_dir.glob("*") if item.is_file()]
 
