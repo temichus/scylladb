@@ -636,8 +636,10 @@ class DTestSetup:
         # the failure detector can be quite slow in such tests with quick start/stop
         phi_values = {'phi_convict_threshold': 5}
 
+        cassandra_v4_cluster = not isinstance(self.cluster, ScyllaCluster) and self.cluster.version() >= '4'
+
         # enable read time tracking of repaired data between replicas by default
-        if self.cluster.version() >= '4':
+        if cassandra_v4_cluster:
             repaired_data_tracking_values = {'repaired_data_tracking_for_partition_reads_enabled': 'true',
                                              'repaired_data_tracking_for_range_reads_enabled': 'true',
                                              'report_unconfirmed_repaired_data_mismatches': 'true'}
@@ -669,9 +671,9 @@ class DTestSetup:
             values = merge_dicts(values, self.setup_overrides.cluster_options)
 
         # No more thrift in 4.0, and start_rpc doesn't exists anymore
-        if self.cluster.version() >= '4' and 'start_rpc' in values:
-            del values['start_rpc']
-        if self.cluster.version() >= '4':
+        if cassandra_v4_cluster:
+            if 'start_rpc' in values:
+                del values['start_rpc']
             values['corrupted_tombstone_strategy'] = 'exception'
 
         if self.dtest_config.use_vnodes:
