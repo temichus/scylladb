@@ -3,6 +3,7 @@ import logging
 import time
 import random
 from collections import defaultdict
+from pathlib import Path
 
 import pytest
 
@@ -213,14 +214,14 @@ class TestWideRows(Tester):
                         key_appearance[key] += 1
                     entities.add(key)
                     entity_info[key] += row[-1]
-                    sstables_set.add(row[0])
+                    sstables_set.add(Path(row[0]).name)
 
                 # Get DB files for the keyspace_name and table_nam
                 files = node.get_sstables(keyspace_name, table_name)
                 assert files is not None, "Data file has not found"
 
                 for file in files:
-                    sstables_on_disk.add(file)
+                    sstables_on_disk.add(Path(file).name)
 
             cluster_state[node.name] = {'info_from_system_table': {'partition_keys': entities,
                                                                    'partition_size': entity_info,
