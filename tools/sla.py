@@ -5,6 +5,9 @@ from typing import List, Optional, Union
 from cassandra.cluster import Session
 
 from tools.units import ScyllaDuration
+from typing import List, Optional
+
+from cassandra.cluster import Session
 
 logger = logging.getLogger(__name__)
 

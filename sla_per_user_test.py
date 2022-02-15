@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import logging
+from typing import List
 
 import pytest
 from cassandra import InvalidRequest, ReadTimeout
@@ -8,8 +9,7 @@ from cassandra.protocol import SyntaxException
 
 from dtest_class import Tester, create_ks
 from tools.data import create_c1c2_table, insert_c1c2
-from tools.sla import ServiceLevel, Role, User
-from tools.units import ScyllaDuration
+from tools.sla import ServiceLevel, Role, User, DEFAULT_SERVICE_LEVEL_SHARES, UserRoleBase
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,20 @@ class SLATester(Tester):
         insert_c1c2(session=session, n=number_of_keys)
 
     @staticmethod
+    def create_service_level(session: Session, name: str, service_shares: int = None) -> ServiceLevel:
+        sl = ServiceLevel(session=session, name=name, shares=service_shares)
+        sl.create()
+        return sl
+
+    @staticmethod
+    def create_role(session: Session, name: str, password: str = None, login: str = None,
+                    superuser: bool = None, options_dict: dict = None) -> Role:
+        role = Role(session=session, name=name, password=password, login=login, superuser=superuser,
+                    options_dict=options_dict)
+        role.create()
+        return role
+
+    @staticmethod
     def create_entity_with_service_level(entity, service_level: ServiceLevel):
         service_level.create()
         entity.create()
@@ -48,45 +62,55 @@ class SLATester(Tester):
 
 @pytest.mark.dtest_enterprise
 class TestSLA(SLATester):
-
-    DEFAULT_SHARES = 1000
-
     def validate_sla(self, service_level=None, expected_slas_list=None, expected_attached_slas_list=None,
                      expected_attached_all_slas_list=None, expected_effective_slas_list=None, entity=None,
-                     session=None):
+                     session: Session = None):
         # Validate per SLA
         def validate_sla_list(sl_list, expected_sla_list, msg):
             if sl_list:
-                sl_list = sorted(sl_list, key=lambda x: x[1])
-                expected_sla_list = sorted(expected_sla_list, key=lambda x: x[1])
-            assert expected_sla_list == sl_list, msg.format(**locals())
+                sl_list = sorted(sl_list, key=lambda x: x.shares)
+                expected_sla_list = sorted(expected_sla_list, key=lambda x: x.shares)
 
-        def case_sensitive(name):
-            if name:
-                return name.replace('"', '')
-            return name
+            for s in sl_list:
+                logger.info(s.name)
 
-        def default_shares(shares):
-            if not shares:
-                return self.DEFAULT_SHARES
-            return shares
+            for e in expected_sla_list:
+                logger.info(e.name)
+
+            assert expected_sla_list == sl_list, f"Assertion comparison: left: {len(expected_slas_list)} " \
+                                                 f":: right: {len(sl_list)}"
 
         if expected_slas_list is not None:
-            expected_slas = [[case_sensitive(sl.name), default_shares(sl.service_shares)] for sl in expected_slas_list]
+            expected_slas = expected_slas_list
             if service_level:
-                sl_list = service_level.list_service_level()
-            else:
-                if not expected_slas_list:
-                    sl_list = ServiceLevel(session=session, name='dummy').list_all_service_levels()
+                if isinstance(service_level, list):
+                    sl_list = [sl.list_service_level() for sl in service_level]
                 else:
-                    sl_list = expected_slas_list[0].list_all_service_levels()
+                    listed_sl = service_level.list_service_level()
+                    sl_list = [listed_sl] if listed_sl else listed_sl
+                # sl_list = [ServiceLevel.from_row(session=session, row=row) for row in rows]
+            else:
+                dummy_sl = ServiceLevel(session=session, name='dummy').create()
+                all_service_levels_listed = dummy_sl.list_all_service_levels()
+                sl_list = [sl for sl in all_service_levels_listed if sl.name != '"dummy"']
+
+            for item in sl_list:
+                logger.info(f"SL list item: {item.name}:{item._sl_attributes}")
+
+            for item in expected_slas:
+                logger.info(f"Expected slas item: {item.name}:{item._sl_attributes}")
+
             validate_sla_list(sl_list, expected_slas, 'Expected SLA list: {expected_sla_list}, actual: {sl_list}')
 
         # Validate attached services of role
         if expected_attached_slas_list is not None and entity:
-            expected_attached_slas = [[entity.name, case_sensitive(entity.attached_service_level_name)]
-                                      for entity in expected_attached_slas_list]
-            sl_list = entity.list_user_role_attached_service_levels()
+            expected_attached_slas = [role.attached_service_level for role in expected_attached_slas_list]
+            rows = entity.list_user_role_attached_service_levels()  # Row(role='role50', service_level='sla50')
+            sl_list = []
+
+            for row in rows:
+                sl_list.append(ServiceLevel(session=session, name=row.service_level).list_service_level())
+
             validate_sla_list(sl_list, expected_attached_slas,
                               'Expected attached SLA list: {expected_sla_list}, actual: {sl_list}')
 
@@ -115,7 +139,7 @@ class TestSLA(SLATester):
         sl = self.create_service_level(session=session, name='sla1', service_shares=100)
 
         self.validate_sla(service_level=sl, expected_slas_list=[sl], expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[], expected_effective_slas_list=[])
+                          expected_attached_all_slas_list=[], expected_effective_slas_list=[], session=session)
 
     def test_sla_role(self):
         """
@@ -132,7 +156,8 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[role],
                           expected_attached_all_slas_list=[[role, sl]],
                           expected_effective_slas_list=[],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
     def test_sla_named_empty(self):
         """
@@ -143,7 +168,7 @@ class TestSLA(SLATester):
         sl = self.create_service_level(session=session, name='empty', service_shares=100)
 
         self.validate_sla(service_level=sl, expected_slas_list=[sl], expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[], expected_effective_slas_list=[])
+                          expected_attached_all_slas_list=[], expected_effective_slas_list=[], session=session)
 
     def test_user_named_empty(self):
         """
@@ -166,7 +191,8 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[role],
                           expected_attached_all_slas_list=[[role, sl]],
                           expected_effective_slas_list=[],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
     def test_sla_no_shares(self):
         """
@@ -186,14 +212,16 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[role],
                           expected_attached_all_slas_list=[[role, sl]],
                           expected_effective_slas_list=[],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_attached_all_slas_list=[[role, sl]],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_user_and_role_with_sla(self):
         """
@@ -215,14 +243,16 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[role],
                           expected_attached_all_slas_list=[[role, service_levels[0]], [user, service_levels[1]]],
                           expected_effective_slas_list=[[role, service_levels[0]]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         self.validate_sla(service_level=service_levels[1],
                           expected_slas_list=[service_levels[1]],
                           expected_attached_slas_list=[user],
                           expected_attached_all_slas_list=[[role, service_levels[0]], [user, service_levels[1]]],
                           expected_effective_slas_list=[[user, service_levels[1]]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_user_with_2_roles_and_slas(self):
         """
@@ -250,7 +280,8 @@ class TestSLA(SLATester):
                               expected_attached_slas_list=[entity],
                               expected_attached_all_slas_list=expected_attached_all_slas_list,
                               expected_effective_slas_list=[],
-                              entity=entity)
+                              entity=entity,
+                              session=session)
 
     def test_role_with_authentication(self):
         """
@@ -271,13 +302,15 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[role],
                           expected_attached_all_slas_list=[[role, sl]],
                           expected_effective_slas_list=[],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_all_slas_list=[[role, sl]],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_case_sensitive_sla(self):
         """
@@ -285,7 +318,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='"Sla1"', shares=100)
+        sl = ServiceLevel(session=session, name="Sla1", shares=100)
         role = Role(session=session, name='role1')
         self.create_entity_with_service_level(entity=role, service_level=sl)
 
@@ -297,14 +330,16 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[role],
                           expected_attached_all_slas_list=[role, sl],
                           expected_effective_slas_list=[],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_attached_all_slas_list=[role, sl],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_user_with_same_slas(self):
         """
@@ -327,7 +362,8 @@ class TestSLA(SLATester):
                               expected_attached_slas_list=[role],
                               expected_attached_all_slas_list=role_sl,
                               expected_effective_slas_list=[[role, sl]],
-                              entity=role)
+                              entity=role,
+                              session=session)
 
         # Validate user
         # TODO: not clear, what is the effective SLA here, because of both SLAs have same SHARES amount?
@@ -335,7 +371,8 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[],
                           expected_attached_all_slas_list=role_sl,
                           expected_effective_slas_list=[[user, service_levels[0]]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_user_without_role(self):
         """
@@ -343,7 +380,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='', shares=self.DEFAULT_SHARES)
+        sl = ServiceLevel(session=session, name='', shares=DEFAULT_SERVICE_LEVEL_SHARES)
         user = self.create_user(session=session, name='user1')
 
         self.validate_sla(expected_slas_list=[],
@@ -359,7 +396,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='"DEFAULT"', shares=50)
+        sl = ServiceLevel(session=session, name="DEFAULT", shares=50)
         user = User(session=session, name='user1')
         self.create_entity_with_service_level(entity=user, service_level=sl)
 
@@ -368,7 +405,8 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[user],
                           expected_attached_all_slas_list=[user, sl],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_change_default_sla_and_attach_role(self):
         """
@@ -376,7 +414,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='"DEFAULT"', shares=50)
+        sl = ServiceLevel(session=session, name="DEFAULT", shares=50)
         role = Role(session=session, name='role1')
         self.create_entity_with_service_level(entity=role, service_level=sl)
 
@@ -385,7 +423,8 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[role],
                           expected_attached_all_slas_list=[role, sl],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
     def test_detach_one_of_two_slas(self):
         """
@@ -408,25 +447,27 @@ class TestSLA(SLATester):
                               expected_attached_slas_list=[role],
                               expected_attached_all_slas_list=role_sl,
                               expected_effective_slas_list=[[role, sl]],
-                              entity=role)
+                              entity=role,
+                              session=session)
 
         # Validate user
         self.validate_sla(expected_slas_list=service_levels,
                           expected_attached_slas_list=[],
                           expected_attached_all_slas_list=role_sl,
                           expected_effective_slas_list=[[role_sl[1], service_levels[1]]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
         # Detach SERVICE_LEVEL 300 and validate
         for i, r_s in enumerate(role_sl):
-            if r_s[1].service_shares == 300:
+            if r_s[1].shares == 300:
                 r_s[0].detach_service_level()
                 detached_sl = r_s[1]
-                role_sl[i][1] = ServiceLevel(session=session, name='', shares=self.DEFAULT_SHARES)
+                role_sl[i][1] = ServiceLevel(session=session, name='', shares=DEFAULT_SERVICE_LEVEL_SHARES)
 
         # Validate role1
         for role, sl in role_sl:
-            if sl.service_shares == self.DEFAULT_SHARES:
+            if sl.shares == DEFAULT_SERVICE_LEVEL_SHARES:
                 service_level = detached_sl
                 expected_slas_list = [detached_sl]
                 expected_attached_slas_list = []
@@ -440,13 +481,15 @@ class TestSLA(SLATester):
                               expected_attached_slas_list=expected_attached_slas_list,
                               expected_attached_all_slas_list=role_sl,
                               expected_effective_slas_list=[[role, sl]],
-                              entity=role)
+                              entity=role,
+                              session=session)
         # Validate user
         # TODO: what is expected_effective_slas_list
         self.validate_sla(expected_slas_list=service_levels,
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, role_sl[1][0]]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_detach_sla(self):
         """
@@ -466,7 +509,8 @@ class TestSLA(SLATester):
         self.validate_sla(expected_slas_list=[sl],
                           expected_attached_slas_list=[user],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
         # Detach SERVICE_LEVEL and validate
         user.detach_service_level()
@@ -476,10 +520,11 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, ServiceLevel(session=session,
                                                                             name='',
-                                                                            shares=self.DEFAULT_SHARES)
+                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
                                                          ]
                                                         ],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_two_roles_one_slas_to_user(self):
         """
@@ -502,7 +547,8 @@ class TestSLA(SLATester):
                               expected_slas_list=[sl],
                               expected_attached_slas_list=[role],
                               expected_effective_slas_list=[[role, sl]],
-                              entity=role)
+                              entity=role,
+                              session=session)
 
         for user, sl, roles in user_sla_roles:
             self.create_entity_with_service_level(entity=user, service_level=sl)
@@ -512,7 +558,8 @@ class TestSLA(SLATester):
             self.validate_sla(expected_slas_list=slas,
                               expected_attached_slas_list=[user],
                               expected_effective_slas_list=[[user, sl]],
-                              entity=user)
+                              entity=user,
+                              session=session)
 
     def test_inherit_2_slas(self):
         """
@@ -530,6 +577,7 @@ class TestSLA(SLATester):
 
         for role, sl in roles_slas:
             self.create_entity_with_service_level(entity=role, service_level=sl)
+            # TODO: this makes no sense
             if sl.shares == 50:
                 role50 = role
             else:
@@ -540,13 +588,15 @@ class TestSLA(SLATester):
                               expected_attached_slas_list=[role],
                               expected_attached_all_slas_list=[],
                               expected_effective_slas_list=[roles_slas],
-                              entity=role)
+                              entity=role,
+                              session=session)
 
         # Validate user
         self.validate_sla(expected_slas_list=slas,
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[user, slas[1]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def find_role_by_attached_share(self, roles_slas_list, find_shares):
         for role, _ in roles_slas_list:
@@ -568,7 +618,7 @@ class TestSLA(SLATester):
         sla_shares = [200, 600, 50]
         slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
         roles_slas = {s.shares: {'role': Role(name="role%d" % s.shares, session=session),
-                                 'service_level': s} for s in slas[:2]}
+                                         'service_level': s} for s in slas[:2]}
         user = User(session=session, name='user1')
 
         for _, role_sl in roles_slas.items():
@@ -587,14 +637,16 @@ class TestSLA(SLATester):
                               expected_attached_slas_list=[role_sl['role']],
                               expected_attached_all_slas_list=expected_attached_all_sla_list,
                               expected_effective_slas_list=[role_sl['role'], slas[1]],
-                              entity=role_sl['role'])
+                              entity=role_sl['role'],
+                              session=session)
 
         # Validate user
         self.validate_sla(expected_slas_list=slas,
                           expected_attached_slas_list=[user],
                           expected_attached_all_slas_list=expected_attached_all_sla_list,
                           expected_effective_slas_list=[user, slas[1]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_inherit_4_slas(self):
         """
@@ -610,7 +662,7 @@ class TestSLA(SLATester):
         sla_shares = [50, 200, 500, 1000]
         slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
         roles_slas = {s.shares: {'role': Role(name="role%d" % s.shares, session=session),
-                                 'service_level': s} for s in slas}
+                                         'service_level': s} for s in slas}
         user = self.create_user(session=session, name='user1')
         for _, role_sl in roles_slas.items():
             self.create_entity_with_service_level(entity=role_sl['role'], service_level=role_sl['service_level'])
@@ -628,14 +680,16 @@ class TestSLA(SLATester):
                               expected_attached_slas_list=[role_sl['role']],
                               expected_attached_all_slas_list=expected_attached_all_sla_list,
                               expected_effective_slas_list=[role_sl['role'], slas[1]],
-                              entity=role_sl['role'])
+                              entity=role_sl['role'],
+                              session=session)
 
         # Validate user
         self.validate_sla(expected_slas_list=slas,
                           expected_attached_slas_list=[],
                           expected_attached_all_slas_list=expected_attached_all_sla_list,
                           expected_effective_slas_list=[user, slas[3]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_drop_not_assigned_sla(self):
         """
@@ -648,12 +702,14 @@ class TestSLA(SLATester):
 
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
-                          expected_attached_slas_list=[])
+                          expected_attached_slas_list=[],
+                          session=session)
 
         sl.drop()
         self.validate_sla(service_level=sl,
                           expected_slas_list=[],
-                          expected_attached_slas_list=[])
+                          expected_attached_slas_list=[],
+                          session=session)
 
     def test_drop_default_not_assigned_sla(self):
         """
@@ -665,19 +721,21 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = self.create_service_level(session=session, name='"DEFAULT"', service_shares=100)
+        sl = self.create_service_level(session=session, name="DEFAULT", service_shares=100)
         role = self.create_role(session=session, name='role1')
 
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
-                          expected_attached_slas_list=[])
+                          expected_attached_slas_list=[],
+                          session=session)
 
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_attached_all_slas_list=[],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         sl.drop()
 
@@ -687,10 +745,11 @@ class TestSLA(SLATester):
                           expected_attached_all_slas_list=[],
                           expected_effective_slas_list=[[role, ServiceLevel(session=session,
                                                                             name='',
-                                                                            shares=self.DEFAULT_SHARES)
+                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
                                                          ]
                                                         ],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
     def test_drop_sla_assigned_to_role(self):
         """
@@ -709,7 +768,8 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         sl.drop()
         self.validate_sla(service_level=sl,
@@ -717,10 +777,11 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[role, ServiceLevel(session=session,
                                                                             name='',
-                                                                            shares=self.DEFAULT_SHARES)
+                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
                                                          ]
                                                         ],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
     def test_drop_granted_sla(self):
         """
@@ -743,15 +804,17 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         self.validate_sla(expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
         sl.drop()
-        dummy_sl = ServiceLevel(session=session, name='', shares=self.DEFAULT_SHARES)
+        dummy_sl = ServiceLevel(session=session, name='', shares=DEFAULT_SERVICE_LEVEL_SHARES)
         self.validate_sla(expected_slas_list=[],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[role, dummy_sl]],
@@ -779,17 +842,19 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[user],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
         sl.drop()
         self.validate_sla(service_level=sl, expected_slas_list=[],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, ServiceLevel(session=session,
                                                                             name='',
-                                                                            shares=self.DEFAULT_SHARES)
+                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
                                                          ]
                                                         ],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_drop_role_with_sla(self):
         """
@@ -807,14 +872,16 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         role.drop()
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
     def test_drop_user_with_role_sla(self):
         """
@@ -836,19 +903,22 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         self.validate_sla(expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
         user.drop()
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
     def update_not_assigned_sla(self):
         """
@@ -860,12 +930,14 @@ class TestSLA(SLATester):
 
         sl = self.create_service_level(session=session, name='sla1', service_shares=100)
         self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl])
+                          expected_slas_list=[sl],
+                          session=session)
 
         new_shares = 500
         sl.alter(new_shares=new_shares)
         self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl])
+                          expected_slas_list=[sl],
+                          session=session)
 
     def update_default_assigned_sla(self):
         """
@@ -881,17 +953,19 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, ServiceLevel(session=session,
                                                                             name='',
-                                                                            shares=self.DEFAULT_SHARES)
+                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
                                                          ]
                                                         ],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
         sl = self.create_service_level(session=session, name='"DEFAULT"', service_shares=100)
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
         new_shares = 500
         sl.alter(new_shares=new_shares)
@@ -899,7 +973,8 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def update_assigned_sla(self):
         """
@@ -918,7 +993,8 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         user = self.create_user(session=session, name='user1')
         role.grant_me_to(grant_to=user)
@@ -926,7 +1002,8 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
         new_shares = 500
         sl.alter(new_shares=new_shares)
@@ -934,13 +1011,15 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         self.validate_sla(service_level=sl,
                           expected_slas_list=[sl],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, sl]],
-                          entity=user)
+                          entity=user,
+                          session=session)
 
     def test_attach_2_slas_to_role(self):
         """
@@ -956,7 +1035,8 @@ class TestSLA(SLATester):
                           expected_slas_list=[sl100],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl100]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
         sl200 = self.create_service_level(session=session, name='sla2', service_shares=200)
         role.attach_service_level(service_level=sl200)
@@ -964,7 +1044,8 @@ class TestSLA(SLATester):
         self.validate_sla(expected_slas_list=[sl100, sl200],
                           expected_attached_slas_list=[role],
                           expected_effective_slas_list=[[role, sl200]],
-                          entity=role)
+                          entity=role,
+                          session=session)
 
     #####
     # Negative tests
@@ -979,7 +1060,7 @@ class TestSLA(SLATester):
         sl = ServiceLevel(session=session, name='tmp')
         role = self.create_role(session=session, name='role1')
 
-        expected_error = 'Service Level {} doesn\'t exists.'.format(sl.name)
+        expected_error = "Service Level {} doesn\'t exists.".format(sl.name.replace('"', ''))
         with pytest.raises(InvalidRequest, match=expected_error):
             role.attach_service_level(service_level=sl)
 
@@ -1003,7 +1084,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
         sl = ServiceLevel(session=session, name='sla1')
-        expected_error = 'Service Level {} doesn\'t exists.'.format(sl.name)
+        expected_error = "Service Level {} doesn\'t exists.".format(sl.name.replace('"', ''))
 
         with pytest.raises(InvalidRequest, match=expected_error):
             sl.drop(if_exists=False)
@@ -1015,7 +1096,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
         sl = self.create_service_level(session=session, name='sla1')
-        expected_error = 'The service Level \'{}\' doesn\'t exists.'.format(sl.name)
+        expected_error = 'The service Level \'{}\' doesn\'t exists.'.format(sl.name.replace('"', ''))
 
         with pytest.raises(SyntaxException, match=expected_error):
             sl.alter(new_shares=100)
