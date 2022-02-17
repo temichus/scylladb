@@ -479,10 +479,11 @@ class TestUpdateClusterLayout(Tester):
             t = executor.submit(run)
             logger.debug("Start Node %d" % i)
             new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-            new_node.watch_log_for("JOINING: Starting to bootstrap")
-            new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
-            for node in [node1, node2, node3]:
-                self.wait_for_nodes_status(node, [['UN', 'UN', 'UN', 'UJ'], ['UN', 'UN', 'UN', 'UN']])
+            new_node.watch_log_for([
+                "JOINING: Starting to bootstrap",
+                "Beginning stream session|sync data for keyspace=ks, status=started",
+                "Streaming plan for Bootstrap-ks-index-2 succeeded|Repair 100 out of.*keyspace=ks,",
+            ])
             logger.debug("Stop Node %d" % i)
             new_node.stop(gently=False, wait_other_notice=True)
             for node in [node1, node2, node3]:
@@ -567,9 +568,11 @@ class TestUpdateClusterLayout(Tester):
         t = executor.submit(run)
         logger.debug("Start Node")
         a_new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-        a_new_node.watch_log_for("JOINING: Starting to bootstrap")
-        a_new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
-        self.wait_for_nodes_status(node1, [['UN', 'UJ', 'UN'], ['UN', 'UN', 'UN']])
+        a_new_node.watch_log_for([
+            "JOINING: Starting to bootstrap",
+            "Beginning stream session|sync data for keyspace=ks, status=started",
+            "Streaming plan for Bootstrap-ks-index-2 succeeded|Repair 100 out of.*keyspace=ks,",
+        ])
         logger.debug("Stop Node")
         a_new_node.stop(gently=False, wait_other_notice=True)
         self.wait_for_nodes_status(node1, [['UN', 'UN'], ['UN', 'DN', 'UN']])
