@@ -429,12 +429,15 @@ class TestUpdateClusterLayout(Tester):
         node3 = cluster.nodelist()[2]
 
         session = self.cql_connection(node1)
-        create_ks(session, 'ks', 1)
+        # use rf=2 so that the quorum will temporarily increase to 3
+        # while adding the new node
+        create_ks(session, 'ks', 2)
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
         session.execute(statement, ('k1',))
 
-        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        keys = 1000
+        insert_c1c2(session, keys=range(keys), consistency=ConsistencyLevel.ALL)
 
         logger.debug("Inserting more data to make streaming process longer...")
         node1.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks1'])
@@ -445,50 +448,56 @@ class TestUpdateClusterLayout(Tester):
             # creating an additional node without actually adding it to the cluster
             new_node = cluster.new_node(i, auto_bootstrap=True, add_node=False)
             failed = None
+            stop_writing = False
 
             def run():
-                try:
-                    logger.debug("start write")
-                    for key in range(2000, 4000):
-                        # working around the default retry_policy that attempts 5 times
-                        statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" %
-                                                    key, consistency_level=ConsistencyLevel.ONE,
-                                                    retry_policy=FallthroughRetryPolicy())
-                        tbefore = str(datetime.now())
+                nonlocal keys, failed, stop_writing
+                logger.debug("start write")
+                while not stop_writing:
+                    # working around the default retry_policy that attempts 5 times
+                    statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" %
+                                                keys, consistency_level=ConsistencyLevel.QUORUM,
+                                                retry_policy=FallthroughRetryPolicy())
+                    tbefore = str(datetime.now())
+                    try:
                         session.execute(statement)
-                    logger.debug("end write")
-                    failed = 'insert should have failed'
-                except (Unavailable) as e:
-                    tfailed = str(datetime.now())
-                    logger.debug("exception thrown Unavailable %s" % e)
-                    pass
-                except (WriteTimeout) as e:
-                    tfailed = str(datetime.now())
-                    logger.debug("exception thrown WriteTimeout %s" % e)
-                    pass
-                except (OperationTimedOut) as e:
-                    tfailed = str(datetime.now())
-                    failed = "Server side exception not thrown  driver side exception thrown OperationTimeout %s %s %s"\
-                             % (e, tbefore, tfailed)
+                        keys += 1
+                    except (Unavailable) as e:
+                        tfailed = str(datetime.now())
+                        logger.debug("exception thrown Unavailable %s" % e)
+                        pass
+                    except (WriteTimeout) as e:
+                        tfailed = str(datetime.now())
+                        logger.debug("exception thrown WriteTimeout %s" % e)
+                        pass
+                    except (OperationTimedOut) as e:
+                        tfailed = str(datetime.now())
+                        failed = "Server side exception not thrown  driver side exception thrown OperationTimeout %s %s %s"\
+                            % (e, tbefore, tfailed)
+                        logger.debug(failed)
+                logger.debug("end write")
 
             executor = ThreadPoolExecutor(max_workers=1)
-
+            t = executor.submit(run)
             logger.debug("Start Node %d" % i)
             new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
             new_node.watch_log_for("JOINING: Starting to bootstrap")
-            t = executor.submit(run)
-            new_node.watch_log_for("JOINING: Starting to bootstrap")
             new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
-            logger.debug("Stop Node %d" % i)
-            new_node.stop(gently=False)
             for node in [node1, node2, node3]:
-                self.wait_for_nodes_status(node, ['UN', 'UN', 'UN'])
+                self.wait_for_nodes_status(node, [['UN', 'UN', 'UN', 'UJ'], ['UN', 'UN', 'UN', 'UN']])
+            logger.debug("Stop Node %d" % i)
+            new_node.stop(gently=False, wait_other_notice=True)
+            for node in [node1, node2, node3]:
+                self.wait_for_nodes_status(node, [['UN', 'UN', 'UN'], ['UN', 'UN', 'UN', 'DN']])
+            stop_writing = True
             t.result()
             assert failed is None
 
-            # Sleep 1 second to make sure other nodes knows this node is joining through gossip
-            time.sleep(1)
-        session.execute("SELECT * FROM cf")
+            logger.debug("Query Again")
+            query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.QUORUM)
+            rows = list(session.execute(query))
+            assert len(rows) >= keys and len(rows) <= keys + \
+                1, "Expected between {} and {} rows, but got {}".format(keys, keys+1, len(rows))
 
     def test_simple_kill_new_node_while_bootstrapping_with_parallel_writes_in_multidc(self):
         """
@@ -512,7 +521,8 @@ class TestUpdateClusterLayout(Tester):
         create_ks(session, 'ks', {'dc1': 1, 'dc2': 1})
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.EACH_QUORUM)
+        keys = 1000
+        insert_c1c2(session, keys=range(keys), consistency=ConsistencyLevel.EACH_QUORUM)
 
         logger.debug("Inserting more data to make streaming process longer...")
         node1.stress(['write', 'n=5000', 'no-warmup', '-schema', 'replication(factor=3) keyspace=ks1'])
@@ -520,52 +530,56 @@ class TestUpdateClusterLayout(Tester):
 
         # create a new node and adding it - we cannot do this more then once
         a_new_node = new_node(cluster, data_center='dc1')
-        failed = before = None
+        failed = None
+        stop_writing = False
 
         def run():
-            try:
-                logger.debug("start write")
-                for key in range(2000, 4000):
-                    # working around the default retry_policy that attempts 5 times
-                    statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" %
-                                                key, consistency_level=ConsistencyLevel.EACH_QUORUM,
-                                                retry_policy=FallthroughRetryPolicy())
-                    tbefore = str(datetime.now())
+            nonlocal keys, failed, stop_writing
+
+            logger.debug("start write")
+            while not stop_writing:
+                # working around the default retry_policy that attempts 5 times
+                statement = SimpleStatement("INSERT INTO cf (key, c1, c2) VALUES ('k%d', 'value1', 'value2')" %
+                                            keys, consistency_level=ConsistencyLevel.EACH_QUORUM,
+                                            retry_policy=FallthroughRetryPolicy())
+                tbefore = str(datetime.now())
+                try:
                     session.execute(statement)
-                logger.debug("end write")
-                failed = 'insert should have failed'
-            except (Unavailable) as e:
-                tfailed = str(datetime.now())
-                logger.debug("exception thrown Unavailable %s" % e)
-                pass
-            except (WriteTimeout) as e:
-                tfailed = str(datetime.now())
-                logger.debug("exception thrown WriteTimeout %s" % e)
-                pass
-            except (OperationTimedOut) as e:
-                tfailed = str(datetime.now())
-                failed = "Server side exception not thrown driver side exception thrown OperationTimeout %s %s %s" %\
-                         (e, before, tfailed)
+                    keys += 1
+                except (Unavailable) as e:
+                    tfailed = str(datetime.now())
+                    logger.debug("exception thrown Unavailable %s" % e)
+                    pass
+                except (WriteTimeout) as e:
+                    tfailed = str(datetime.now())
+                    logger.debug("exception thrown WriteTimeout %s" % e)
+                    pass
+                except (OperationTimedOut) as e:
+                    tfailed = str(datetime.now())
+                    failed = "Server side exception not thrown driver side exception thrown OperationTimeout %s %s %s" %\
+                        (e, tbefore, tfailed)
+                    logger.debug(failed)
+            logger.debug("end write")
 
         executor = ThreadPoolExecutor(max_workers=1)
-
+        t = executor.submit(run)
         logger.debug("Start Node")
         a_new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-        a_new_node.watch_log_for("JOINING: Starting to bootstrap")
-        time.sleep(1)
-        t = executor.submit(run)
-        time.sleep(1)
         a_new_node.watch_log_for("JOINING: Starting to bootstrap")
         a_new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         self.wait_for_nodes_status(node1, [['UN', 'UJ', 'UN'], ['UN', 'UN', 'UN']])
         logger.debug("Stop Node")
-        a_new_node.stop(gently=False)
+        a_new_node.stop(gently=False, wait_other_notice=True)
+        self.wait_for_nodes_status(node1, [['UN', 'UN'], ['UN', 'DN', 'UN']])
+        stop_writing = True
         t.result()
         assert failed is None
-        self.wait_for_nodes_status(node1, [['UN', 'UN'], ['UN', 'DN', 'UN']])
 
         logger.debug("Query Again")
-        session.execute("SELECT * FROM cf")
+        query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.QUORUM)
+        rows = list(session.execute(query))
+        assert len(rows) >= keys and len(rows) <= keys + \
+            1, "Expected between {} and {} rows, but got {}".format(keys, keys+1, len(rows))
 
     def _simple_add_new_node_while_adding_info(self, rf):
         """
