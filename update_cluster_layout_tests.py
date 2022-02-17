@@ -491,6 +491,10 @@ class TestUpdateClusterLayout(Tester):
             t.result()
             assert failed is None
 
+            for node in [node1, node2, node3]:
+                status = self.nodetool_status(node, 'ks')
+                logger.debug("nodetool status from {}: {}".format(node.name, status))
+
             logger.debug("Query Again")
             query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.QUORUM)
             rows = list(session.execute(query))
@@ -572,6 +576,10 @@ class TestUpdateClusterLayout(Tester):
         stop_writing = True
         t.result()
         assert failed is None
+
+        for node in [node1, node2]:
+            status = self.nodetool_status(node, 'ks')
+            logger.debug("nodetool status from {}: {}".format(node.name, status))
 
         logger.debug("Query Again")
         query = SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.QUORUM)
