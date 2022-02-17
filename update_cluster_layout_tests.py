@@ -21,7 +21,7 @@ from ccmlib.scylla_node import ScyllaNode
 from tools.assertions import assert_invalid
 
 from dtest_class import Tester, create_ks, create_cf
-from tools.data import insert_c1c2, query_c1c2
+from tools.data import create_c1c2_table, insert_c1c2, query_c1c2
 from tools.cluster import new_node
 import scylla_tools
 
@@ -432,9 +432,7 @@ class TestUpdateClusterLayout(Tester):
         # use rf=2 so that the quorum will temporarily increase to 3
         # while adding the new node
         create_ks(session, 'ks', 2)
-        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-        statement = session.prepare("INSERT INTO cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
-        session.execute(statement, ('k1',))
+        create_c1c2_table(session)
 
         keys = 1000
         insert_c1c2(session, keys=range(keys), consistency=ConsistencyLevel.ALL)
@@ -519,7 +517,7 @@ class TestUpdateClusterLayout(Tester):
 
         session = self.cql_connection(node1)
         create_ks(session, 'ks', {'dc1': 1, 'dc2': 1})
-        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        create_c1c2_table(session)
 
         keys = 1000
         insert_c1c2(session, keys=range(keys), consistency=ConsistencyLevel.EACH_QUORUM)
