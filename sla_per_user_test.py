@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import logging
-from typing import List
+from typing import List, Union
 
 import pytest
 from cassandra import InvalidRequest, ReadTimeout
@@ -9,7 +9,8 @@ from cassandra.protocol import SyntaxException
 
 from dtest_class import Tester, create_ks
 from tools.data import create_c1c2_table, insert_c1c2
-from tools.sla import ServiceLevel, Role, User, DEFAULT_SERVICE_LEVEL_SHARES, UserRoleBase
+from tools.sla import ServiceLevel, Role, User
+from tools.units import ScyllaDuration
 
 logger = logging.getLogger(__name__)
 
@@ -33,1089 +34,260 @@ class SLATester(Tester):
         insert_c1c2(session=session, n=number_of_keys)
 
     @staticmethod
-    def create_service_level(session: Session, name: str, service_shares: int = None) -> ServiceLevel:
-        sl = ServiceLevel(session=session, name=name, shares=service_shares)
-        sl.create()
-        return sl
-
-    @staticmethod
-    def create_role(session: Session, name: str, password: str = None, login: str = None,
-                    superuser: bool = None, options_dict: dict = None) -> Role:
-        role = Role(session=session, name=name, password=password, login=login, superuser=superuser,
-                    options_dict=options_dict)
-        role.create()
-        return role
-
-    @staticmethod
     def create_entity_with_service_level(entity, service_level: ServiceLevel):
         service_level.create()
         entity.create()
         entity.attach_service_level(service_level=service_level)
         return entity
 
-    @staticmethod
-    def create_user(session: Session, name: str, password: str = None, superuser: bool = None) -> User:
-        user = User(session=session, name=name, password=password, superuser=superuser)
-        user.create()
-        return user
-
 
 @pytest.mark.dtest_enterprise
 class TestSLA(SLATester):
-    def validate_sla(self, service_level=None, expected_slas_list=None, expected_attached_slas_list=None,
-                     expected_attached_all_slas_list=None, expected_effective_slas_list=None, entity=None,
-                     session: Session = None):
-        # Validate per SLA
-        def validate_sla_list(sl_list, expected_sla_list, msg):
-            if sl_list:
-                sl_list = sorted(sl_list, key=lambda x: x.shares)
-                expected_sla_list = sorted(expected_sla_list, key=lambda x: x.shares)
+    @staticmethod
+    def _validate_sla(service_level: ServiceLevel):
+        listed_sl = service_level.list_service_level()
+        assert service_level == listed_sl, f"Expected created service level {service_level.name} to be equal " \
+                                           f"to {listed_sl.name}, but it was not. \nExpected: {service_level}" \
+                                           f"\nActual: {listed_sl}"
 
-            for s in sl_list:
-                logger.info(s.name)
-
-            for e in expected_sla_list:
-                logger.info(e.name)
-
-            assert expected_sla_list == sl_list, f"Assertion comparison: left: {len(expected_slas_list)} " \
-                                                 f":: right: {len(sl_list)}"
-
-        if expected_slas_list is not None:
-            expected_slas = expected_slas_list
-            if service_level:
-                if isinstance(service_level, list):
-                    sl_list = [sl.list_service_level() for sl in service_level]
-                else:
-                    listed_sl = service_level.list_service_level()
-                    sl_list = [listed_sl] if listed_sl else listed_sl
-                # sl_list = [ServiceLevel.from_row(session=session, row=row) for row in rows]
-            else:
-                dummy_sl = ServiceLevel(session=session, name='dummy').create()
-                all_service_levels_listed = dummy_sl.list_all_service_levels()
-                sl_list = [sl for sl in all_service_levels_listed if sl.name != '"dummy"']
-
-            for item in sl_list:
-                logger.info(f"SL list item: {item.name}:{item._sl_attributes}")
-
-            for item in expected_slas:
-                logger.info(f"Expected slas item: {item.name}:{item._sl_attributes}")
-
-            validate_sla_list(sl_list, expected_slas, 'Expected SLA list: {expected_sla_list}, actual: {sl_list}')
-
-        # Validate attached services of role
-        if expected_attached_slas_list is not None and entity:
-            expected_attached_slas = [role.attached_service_level for role in expected_attached_slas_list]
-            rows = entity.list_user_role_attached_service_levels()  # Row(role='role50', service_level='sla50')
-            sl_list = []
-
-            for row in rows:
-                sl_list.append(ServiceLevel(session=session, name=row.service_level).list_service_level())
-
-            validate_sla_list(sl_list, expected_attached_slas,
-                              'Expected attached SLA list: {expected_sla_list}, actual: {sl_list}')
-
-        # TODO: fix commented when will work
-        # Fails with "syntax error". Issue #744
-        # # Validate attached ALL services
-        # if expected_attached_all_slas_list is not None:
-        #     expected_attached_all_slas = [[role.name, sla.name] for role, sla in expected_attached_all_slas_list]
-        #     sla = entity.list_attached_service_levels(session=session)
-        #     assert expected_attached_all_sla_list == sla, \
-        #                 'Expected all attached SLA list: {expected_attached_all_sla_list}, actual: {sla}'
-        # .format(**locals())
-        # Not developed yet
-        # # Validate effective services
-        # if expected_effective_sla_list is not None:
-        #   sla = self.list_effective_service_levels(session=session, role_name=role_name)
-        #   assert expected_effective_sla_list == sla, \
-        #                 'Expected effective SLA: {expected_effective_sla_list}, actual: {sla}'.format(**locals()))
-
-    def test_sla(self):
+    def validate_sl_list(self, session: Session, expected_service_levels: List[ServiceLevel]):
         """
-        Create SLA with 100 shares
+        Validates if the provided SL list is the same as the list of
+        all the Service Levels in the db.
+        If an empty list is provided or the expected_service_levels
+        is None, it will query the db using a 'dummy' SL and check
+        if no other SLs exist.
+        If the provided list is not empty, it will query the db
+        using the first SL in the list and check the SLs listed
+        in the db against those provided as expected_service_levels.
+        """
+        if not expected_service_levels:
+            dummy_sl = ServiceLevel(session=session, name="dummy").create()
+            all_service_levels = [sl for sl in dummy_sl.list_all_service_levels() if sl.name != '"dummy"']
+            assert not all_service_levels, f"Expected to find no service levels, but found some: {all_service_levels}"
+        else:
+            first_sl = expected_service_levels[0]
+            full_service_levels_list = first_sl.list_all_service_levels()
+            assert len(full_service_levels_list) == len(expected_service_levels)
+
+            for sl in expected_service_levels:
+                self._validate_sla(service_level=sl)
+
+    @staticmethod
+    def validate_attached_slas_list(session: Session, entity: Union[Role, User],
+                                    expected_service_levels: List[ServiceLevel]):
+        """
+        Checks whether a given entity's attached SL list is equal to
+        the provided expected_service_levels list.
+        """
+        rows = entity.list_user_role_attached_service_levels()
+
+        assert len(rows) == len(expected_service_levels), "Actual number of attached service levels " \
+                                                          "is different than expected. Expected list: %s\n" \
+                                                          "Actual list: %s" % (expected_service_levels, rows)
+        for row in rows:
+            sl = ServiceLevel(session=session, name=row.service_level)
+            expected_service_level = [item for item in expected_service_levels if item.name == sl.name]
+            assert len(expected_service_level) == 1, "Did not find the expected service level: %s in the attached " \
+                                                     "service level list: %s" % (sl, expected_service_levels)
+            assert sl.list_service_level() == expected_service_level[0], "Listed attached service level did not " \
+                                                                         "match expected service level."
+
+    @pytest.mark.parametrize(argnames=["sla_name"],
+                             argvalues=[["sla1"], ["Sla1"]])
+    def test_sla(self, sla_name: str):
+        """
+        Create an SL with 100 shares using different strings as names.
+        Validate that the SL created in the db is the same as
+        the test model (i.e. same name and attributes).
         """
         session = self.prepare()
+        sl = ServiceLevel(session=session, name=sla_name, shares=100).create()
 
-        sl = self.create_service_level(session=session, name='sla1', service_shares=100)
+        self.validate_sl_list(session=session, expected_service_levels=[sl])
 
-        self.validate_sla(service_level=sl, expected_slas_list=[sl], expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[], expected_effective_slas_list=[], session=session)
-
-    def test_sla_role(self):
+    @pytest.mark.parametrize(argnames=["entity_class", "entity_name", "entity_pass", "entity_login"],
+                             argvalues=[
+                                 [Role, "role1", None, False],
+                                 [User, "user1", None, False],
+                                 [Role, "auth_role", "auth", True],
+                                 [User, "auth_user", None, False]
+    ],
+        ids=[
+                                 "attach_to_role",
+                                 "attach_to_user",
+                                 "attach_to_auth_role",
+                                 "attach_to_auth_user"
+    ])
+    def test_sla_attached_to_entity(self, entity_class, entity_name: str, entity_pass: str, entity_login: bool):
         """
-        Create SLA with 100 shares and create a role that attach to SLA
+        1. Create SL with 100 shares.
+        2. Create an entity (Role / User) with authentication
+        settings.
+        3. Attach SL to entity.
+        Assert that SL attached to the entity is the same as the
+        expected by the test model (i.e. same name and attributes).
         """
         session = self.prepare()
 
         sl = ServiceLevel(session=session, name='sla1', shares=100)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
+        entity_kwargs = {
+            "session": session,
+            "name": entity_name,
+            "password": entity_pass
+        }
 
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_attached_all_slas_list=[[role, sl]],
-                          expected_effective_slas_list=[],
-                          entity=role,
-                          session=session)
+        if entity_login:
+            entity_kwargs["login"] = entity_login
 
-    def test_sla_named_empty(self):
-        """
-        Create SLA with 100 shares
-        """
-        session = self.prepare()
+        entity = entity_class(**entity_kwargs)
+        self.create_entity_with_service_level(entity=entity, service_level=sl)
 
-        sl = self.create_service_level(session=session, name='empty', service_shares=100)
+        self.validate_sl_list(session=session, expected_service_levels=[sl])
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl])
 
-        self.validate_sla(service_level=sl, expected_slas_list=[sl], expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[], expected_effective_slas_list=[], session=session)
-
-    def test_user_named_empty(self):
-        """
-        Create SLA with 100 shares
-        """
-        session = self.prepare()
-        sl = self.create_user(session=session, name='empty')
-
-    def test_sla_role_named_empty(self):
-        """
-        Create SLA with 100 shares and create a role that attach to SLA
-        """
-        session = self.prepare()
-
-        sl = ServiceLevel(session=session, name='empty', shares=100)
-        role = Role(session=session, name='empty')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_attached_all_slas_list=[[role, sl]],
-                          expected_effective_slas_list=[],
-                          entity=role,
-                          session=session)
-
+    @pytest.mark.require('#scylladb/scylla-enterprise#2163')
     def test_sla_no_shares(self):
         """
-        Create SLA with default shares (not define SHARES parameter), create a role that attach to SLA and grant this
-        role to the user
+        1. Create SL without specifying the number of shares.
+        2. Create a Role.
+        3. Attach the SL to the Role.
+        4. Validate that the SL attached to the Role has the default
+        value for service shares (i.e. 1000).
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='sla1')
+        expected_sl = ServiceLevel(session=session, name='sla1')
+        actual_sl = ServiceLevel(session=session, name='sla1', shares=None)
         role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
+        self.create_entity_with_service_level(entity=role, service_level=actual_sl)
 
-        user = self.create_user(session=session, name='user1')
+        self.validate_sl_list(session=session, expected_service_levels=[expected_sl])
+        self.validate_attached_slas_list(session=session, entity=role, expected_service_levels=[expected_sl])
 
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_attached_all_slas_list=[[role, sl]],
-                          expected_effective_slas_list=[],
-                          entity=role,
-                          session=session)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[[role, sl]],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-    def test_user_and_role_with_sla(self):
+    @pytest.mark.parametrize(argnames=["entity_class", "entity_name"],
+                             argvalues=[[Role, "test_role"], [User, "test_user"]],
+                             ids=["with_role", "with_user"])
+    def test_replace_sla(self, entity_class, entity_name: str):
         """
-        Create SLA with shares=100, create a role that attach to SLA and grant to the user
-        Create SLA with shares=500 and attach to user
+        1. Create 2 SLs with different number of service shares.
+        2. Create a test entity (Role / User).
+        2. Attach first SL to the test Role.
+        3. Validate that both SLs exist and only the first is
+        attached to the test entity.
+        4. Replace the attached SL by:
+        - detaching the attached SL from the entity
+        - attaching the second SL to the entity
+        5.Validate that both SLs exist and only the second one is
+        attached to the test entity.
         """
         session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, shares=s) for s in [100, 500]]
+        sl_50 = ServiceLevel(session=session, name="sla50", shares=50).create()
+        sl_300 = ServiceLevel(session=session, name="sla300", shares=300).create()
+        sls = [sl_50, sl_300]
 
-        role = Role(session=session, name='role100')
-        self.create_entity_with_service_level(entity=role, service_level=service_levels[0])
+        entity = entity_class(session=session, name=entity_name).create()
 
-        user = User(session=session, name='user100')
-        self.create_entity_with_service_level(entity=user, service_level=service_levels[1])
-        role.grant_me_to(grant_to=user)
+        entity.attach_service_level(service_level=sl_50)
 
-        self.validate_sla(service_level=service_levels[0],
-                          expected_slas_list=[service_levels[0]],
-                          expected_attached_slas_list=[role],
-                          expected_attached_all_slas_list=[[role, service_levels[0]], [user, service_levels[1]]],
-                          expected_effective_slas_list=[[role, service_levels[0]]],
-                          entity=role,
-                          session=session)
+        self.validate_sl_list(session=session, expected_service_levels=sls)
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl_50])
 
-        self.validate_sla(service_level=service_levels[1],
-                          expected_slas_list=[service_levels[1]],
-                          expected_attached_slas_list=[user],
-                          expected_attached_all_slas_list=[[role, service_levels[0]], [user, service_levels[1]]],
-                          expected_effective_slas_list=[[user, service_levels[1]]],
-                          entity=user,
-                          session=session)
+        entity.attach_another_sla_to_role(service_level=sl_300)
 
-    def test_user_with_2_roles_and_slas(self):
+        self.validate_sl_list(session=session, expected_service_levels=sls)
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl_300])
+
+    @pytest.mark.require('#scylladb/scylla-enterprise#2163')
+    @pytest.mark.parametrize(argnames=["entity_class", "entity_name"],
+                             argvalues=[[Role, "test_role"], [User, "test_user"]],
+                             ids=["with_role", "with_user"])
+    def test_update_assigned_sla_service_shares(self, entity_class, entity_name: str):
         """
-        Create 2 SLAs where shares are 50 and 300, attach to 2 roles and grant both to the user
-        Create one more SLA with shares=100 and attach to user
+        1. Create entity.
+        2. Create SL with default service shares value.
+        3. Validate that the attached SL has the default service shares value.
+        3. Update the attached SL with a different shares value.
+        4. Validate that the attached SL has the updated service shares value.
         """
         session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, shares=s) for s in [50, 300, 100]]
-        role_sl = [[Role(session=session, name='role%d' % i), service_levels[i]] for i in range(1, 3)]
-        user_sl = [[User(session=session, name='user100'), service_levels[2]]]
+        default_sl = ServiceLevel(session=session, name="test_sla")
+        sl = ServiceLevel(session=session, name="test_sla", shares=None)
+        entity = entity_class(session=session, name=entity_name)
+        self.create_entity_with_service_level(entity=entity_class(session=session, name=entity_name),
+                                              service_level=sl)
 
-        for user, sl in user_sl:
-            self.create_entity_with_service_level(entity=user, service_level=sl)
+        self.validate_sl_list(session=session, expected_service_levels=[default_sl])
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[default_sl])
 
-        for role, sl in role_sl:
-            self.create_entity_with_service_level(entity=role, service_level=sl)
-            role.grant_me_to(grant_to=user_sl[0][0])
+        sl.alter(new_shares=500)
 
-        expected_attached_all_slas_list = [role_sl] + [user_sl]
+        self.validate_sl_list(session=session, expected_service_levels=[sl])
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl])
 
-        # Validate role1 and role2
-        for entity, sl in role_sl+user_sl:
-            self.validate_sla(service_level=sl,
-                              expected_slas_list=[sl],
-                              expected_attached_slas_list=[entity],
-                              expected_attached_all_slas_list=expected_attached_all_slas_list,
-                              expected_effective_slas_list=[],
-                              entity=entity,
-                              session=session)
-
-    def test_role_with_authentication(self):
+    @pytest.mark.parametrize(argnames=["entity_class", "entity_name"],
+                             argvalues=[[Role, "test_role"], [User, "test_user"]],
+                             ids=["with_role", "with_user"])
+    def test_attach_2_slas_to_role(self, entity_class, entity_name: str):
         """
-        Create SLA with default shares (not define shares parameter), create a role with password and login,
-        attach to SLA and grant this role to the use
-        """
-        session = self.prepare()
-
-        sl = ServiceLevel(session=session, name='sla1')
-        role = Role(session=session, name='role1', password='test', login=True)
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-
-        user = self.create_user(session=session, name='user1')
-        role.grant_me_to(grant_to=user)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_attached_all_slas_list=[[role, sl]],
-                          expected_effective_slas_list=[],
-                          entity=role,
-                          session=session)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_all_slas_list=[[role, sl]],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-    def test_case_sensitive_sla(self):
-        """
-        Create SLA with case sensitive name and 100 shares, create a role that attach to SLA and grant role to the user
-        """
-        session = self.prepare()
-
-        sl = ServiceLevel(session=session, name="Sla1", shares=100)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-
-        user = self.create_user(session=session, name='user1')
-        role.grant_me_to(grant_to=user)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_attached_all_slas_list=[role, sl],
-                          expected_effective_slas_list=[],
-                          entity=role,
-                          session=session)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[role, sl],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-    def test_user_with_same_slas(self):
-        """
-        Create 2 SLAs with same shares amount (300), attach to 2 roles and grant both to the user
-        """
-        session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, shares=300) for s in range(2)]
-        role_sl = [[Role(session=session, name='role%d' % i), service_levels[i]] for i in range(2)]
-
-        user = self.create_user(session=session, name='user1')
-
-        for role, sl in role_sl:
-            self.create_entity_with_service_level(entity=role, service_level=sl)
-            role.grant_me_to(grant_to=user)
-
-        # Validate role1 and role 2
-        for role, sl in role_sl:
-            self.validate_sla(service_level=sl,
-                              expected_slas_list=[sl],
-                              expected_attached_slas_list=[role],
-                              expected_attached_all_slas_list=role_sl,
-                              expected_effective_slas_list=[[role, sl]],
-                              entity=role,
-                              session=session)
-
-        # Validate user
-        # TODO: not clear, what is the effective SLA here, because of both SLAs have same SHARES amount?
-        self.validate_sla(expected_slas_list=service_levels,
-                          expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=role_sl,
-                          expected_effective_slas_list=[[user, service_levels[0]]],
-                          entity=user,
-                          session=session)
-
-    def test_user_without_role(self):
-        """
-        Create user with no role. No SLA with "default" name
-        """
-        session = self.prepare()
-
-        sl = ServiceLevel(session=session, name='', shares=DEFAULT_SERVICE_LEVEL_SHARES)
-        user = self.create_user(session=session, name='user1')
-
-        self.validate_sla(expected_slas_list=[],
-                          expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-    def test_change_default_sla_and_attach_user(self):
-        """
-        Create user with no role. Create SLA with "DEFAULT" name and shares=50 and attach to user
-        """
-        session = self.prepare()
-
-        sl = ServiceLevel(session=session, name="DEFAULT", shares=50)
-        user = User(session=session, name='user1')
-        self.create_entity_with_service_level(entity=user, service_level=sl)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[user],
-                          expected_attached_all_slas_list=[user, sl],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-    def test_change_default_sla_and_attach_role(self):
-        """
-        Create SLA with "DEFAULT" name and 100 shares, create a role and attach SLA
-        """
-        session = self.prepare()
-
-        sl = ServiceLevel(session=session, name="DEFAULT", shares=50)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_attached_all_slas_list=[role, sl],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-    def test_detach_one_of_two_slas(self):
-        """
-        -Create 2 SLAs where shares are 50 and 300, attach to 2 roles and grant both to the user.
-        -De-attach 300 shares SLA
-        """
-        session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, shares=s) for s in [50, 300]]
-        role_sl = [[Role(session=session, name='role%d' % s), service_levels[s]] for s in range(2)]
-        user = self.create_user(session=session, name='user1')
-
-        for role, sl in role_sl:
-            self.create_entity_with_service_level(entity=role, service_level=sl)
-            role.grant_me_to(grant_to=user)
-
-        # Validate role1 and role2
-        for role, sl in role_sl:
-            self.validate_sla(service_level=sl,
-                              expected_slas_list=[sl],
-                              expected_attached_slas_list=[role],
-                              expected_attached_all_slas_list=role_sl,
-                              expected_effective_slas_list=[[role, sl]],
-                              entity=role,
-                              session=session)
-
-        # Validate user
-        self.validate_sla(expected_slas_list=service_levels,
-                          expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=role_sl,
-                          expected_effective_slas_list=[[role_sl[1], service_levels[1]]],
-                          entity=user,
-                          session=session)
-
-        # Detach SERVICE_LEVEL 300 and validate
-        for i, r_s in enumerate(role_sl):
-            if r_s[1].shares == 300:
-                r_s[0].detach_service_level()
-                detached_sl = r_s[1]
-                role_sl[i][1] = ServiceLevel(session=session, name='', shares=DEFAULT_SERVICE_LEVEL_SHARES)
-
-        # Validate role1
-        for role, sl in role_sl:
-            if sl.shares == DEFAULT_SERVICE_LEVEL_SHARES:
-                service_level = detached_sl
-                expected_slas_list = [detached_sl]
-                expected_attached_slas_list = []
-            else:
-                service_level = sl
-                expected_slas_list = [sl]
-                expected_attached_slas_list = [role]
-
-            self.validate_sla(service_level=service_level,
-                              expected_slas_list=expected_slas_list,
-                              expected_attached_slas_list=expected_attached_slas_list,
-                              expected_attached_all_slas_list=role_sl,
-                              expected_effective_slas_list=[[role, sl]],
-                              entity=role,
-                              session=session)
-        # Validate user
-        # TODO: what is expected_effective_slas_list
-        self.validate_sla(expected_slas_list=service_levels,
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, role_sl[1][0]]],
-                          entity=user,
-                          session=session)
-
-    def test_detach_sla(self):
-        """
-        -Create SLA with shares=100 and attach to the user
-        -De-attach the SLA
-        """
-        session = self.prepare()
-        sla_name = 'sla1'
-        sla_shares = 100
-        user_name = 'user1'
-
-        sl = ServiceLevel(session=session, name='sla100', shares=100)
-        user = User(session=session, name='user100')
-        self.create_entity_with_service_level(entity=user, service_level=sl)
-
-        # Validate user
-        self.validate_sla(expected_slas_list=[sl],
-                          expected_attached_slas_list=[user],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-        # Detach SERVICE_LEVEL and validate
-        user.detach_service_level()
-
-        # Validate user
-        self.validate_sla(expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, ServiceLevel(session=session,
-                                                                            name='',
-                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
-                                                         ]
-                                                        ],
-                          entity=user,
-                          session=session)
-
-    def test_two_roles_one_slas_to_user(self):
-        """
-         - Create few SLAs, roles and users
-         - grant one SLA to every roles
-         - grant 2 roles to each user
-         - attache 1 SLA to each user
-        """
-        session = self.prepare()
-        sla_shares = [50, 100, 250, 350, 550, 750]
-        slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
-        roles_slas = [(Role(name="role%d" % sla.shares, session=session), sla) for sla in slas]
-
-        user_sla_roles = [[User(name='user%d' % idx, session=session), slas[idx],
-                           [roles_slas[idx + 2][0], roles_slas[idx + 3][0]]] for idx in range(0, 3)]
-
-        for role, sl in roles_slas:
-            self.create_entity_with_service_level(entity=role, service_level=sl)
-            self.validate_sla(service_level=sl,
-                              expected_slas_list=[sl],
-                              expected_attached_slas_list=[role],
-                              expected_effective_slas_list=[[role, sl]],
-                              entity=role,
-                              session=session)
-
-        for user, sl, roles in user_sla_roles:
-            self.create_entity_with_service_level(entity=user, service_level=sl)
-            for role in roles:
-                role.grant_me_to(grant_to=user)
-
-            self.validate_sla(expected_slas_list=slas,
-                              expected_attached_slas_list=[user],
-                              expected_effective_slas_list=[[user, sl]],
-                              entity=user,
-                              session=session)
-
-    def test_inherit_2_slas(self):
-        """
-        -Create 2 SLAs: 50 and 200.
-        -Create 2 role
-        -Assign SLAs to the roles
-        -Grant role with "200" to role "50".
-        -Grant role with "50" to the user
-        """
-        session = self.prepare()
-        sla_shares = [50, 200]
-        slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
-        roles_slas = [(Role(name="role%d" % sla.shares, session=session), sla) for sla in slas]
-        user = self.create_user(session=session, name='user1')
-
-        for role, sl in roles_slas:
-            self.create_entity_with_service_level(entity=role, service_level=sl)
-            # TODO: this makes no sense
-            if sl.shares == 50:
-                role50 = role
-            else:
-                role.grant_me_to(grant_to=role50)
-
-            self.validate_sla(service_level=sl,
-                              expected_slas_list=[sl],
-                              expected_attached_slas_list=[role],
-                              expected_attached_all_slas_list=[],
-                              expected_effective_slas_list=[roles_slas],
-                              entity=role,
-                              session=session)
-
-        # Validate user
-        self.validate_sla(expected_slas_list=slas,
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[user, slas[1]],
-                          entity=user,
-                          session=session)
-
-    def find_role_by_attached_share(self, roles_slas_list, find_shares):
-        for role, _ in roles_slas_list:
-            if role.attached_service_level_shares == find_shares:
-                return role
-
-        return None
-
-    def test_inherit_3_slas(self):
-        """
-        -Create 3 SLAs: 50, 200, 600.
-        -Create 3 role
-        -Assign 200 and 600 SLAs to the roles
-        -Grant role with "200" to role "600".
-        -Grant role with "200" to the user
-        -Attach SLA 50 to user
-        """
-        session = self.prepare()
-        sla_shares = [200, 600, 50]
-        slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
-        roles_slas = {s.shares: {'role': Role(name="role%d" % s.shares, session=session),
-                                         'service_level': s} for s in slas[:2]}
-        user = User(session=session, name='user1')
-
-        for _, role_sl in roles_slas.items():
-            self.create_entity_with_service_level(entity=role_sl['role'], service_level=role_sl['service_level'])
-
-        roles_slas[200]['role'].grant_me_to(grant_to=roles_slas[600]['role'])
-
-        self.create_entity_with_service_level(entity=user, service_level=slas[-1])
-        roles_slas[200]['role'].grant_me_to(grant_to=user)
-
-        expected_attached_all_sla_list = [role_sl['role'] for _, role_sl in roles_slas.items()] + [user]
-
-        for _, role_sl in roles_slas.items():
-            self.validate_sla(service_level=role_sl['service_level'],
-                              expected_slas_list=[role_sl['service_level']],
-                              expected_attached_slas_list=[role_sl['role']],
-                              expected_attached_all_slas_list=expected_attached_all_sla_list,
-                              expected_effective_slas_list=[role_sl['role'], slas[1]],
-                              entity=role_sl['role'],
-                              session=session)
-
-        # Validate user
-        self.validate_sla(expected_slas_list=slas,
-                          expected_attached_slas_list=[user],
-                          expected_attached_all_slas_list=expected_attached_all_sla_list,
-                          expected_effective_slas_list=[user, slas[1]],
-                          entity=user,
-                          session=session)
-
-    def test_inherit_4_slas(self):
-        """
-        -Create 4 SLAs: 50, 200, 500, 1000.
-        -Create 4 role
-        -Assign SLAs to the roles
-        -Grant role with "200" to role "50".
-        -Grant role with "1000" to role "200".
-        -Grant role with "500" to role "200".
-        -Grant role with "50" to the user
-        """
-        session = self.prepare()
-        sla_shares = [50, 200, 500, 1000]
-        slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
-        roles_slas = {s.shares: {'role': Role(name="role%d" % s.shares, session=session),
-                                         'service_level': s} for s in slas}
-        user = self.create_user(session=session, name='user1')
-        for _, role_sl in roles_slas.items():
-            self.create_entity_with_service_level(entity=role_sl['role'], service_level=role_sl['service_level'])
-
-        roles_slas[200]['role'].grant_me_to(grant_to=roles_slas[50]['role'])
-        roles_slas[1000]['role'].grant_me_to(grant_to=roles_slas[200]['role'])
-        roles_slas[500]['role'].grant_me_to(grant_to=roles_slas[200]['role'])
-        roles_slas[50]['role'].grant_me_to(grant_to=user)
-
-        # Validate roles after grant
-        expected_attached_all_sla_list = [role_sl['role'] for _, role_sl in roles_slas.items()]
-        for _, role_sl in roles_slas.items():
-            self.validate_sla(service_level=role_sl['service_level'],
-                              expected_slas_list=[role_sl['service_level']],
-                              expected_attached_slas_list=[role_sl['role']],
-                              expected_attached_all_slas_list=expected_attached_all_sla_list,
-                              expected_effective_slas_list=[role_sl['role'], slas[1]],
-                              entity=role_sl['role'],
-                              session=session)
-
-        # Validate user
-        self.validate_sla(expected_slas_list=slas,
-                          expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=expected_attached_all_sla_list,
-                          expected_effective_slas_list=[user, slas[3]],
-                          entity=user,
-                          session=session)
-
-    def test_drop_not_assigned_sla(self):
-        """
-        Drop not assigned and not granted SLA
-        -Create non-default SLA
-        -Drop the SLA
-        """
-        session = self.prepare()
-        sl = self.create_service_level(session=session, name='sla1', service_shares=100)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          session=session)
-
-        sl.drop()
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[],
-                          expected_attached_slas_list=[],
-                          session=session)
-
-    def test_drop_default_not_assigned_sla(self):
-        """
-        Drop default SLA
-        -Create SLA with "default" the name
-        -Create role without attach the SLA. The role's effective shares should be os "DEFAULT" service level
-        -Drop the SLA
-        -Create role without SLA and validate, that role's effective shares is DEFAULT_SERVICE_LEVEL_SHARES
-        """
-        session = self.prepare()
-
-        sl = self.create_service_level(session=session, name="DEFAULT", service_shares=100)
-        role = self.create_role(session=session, name='role1')
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          session=session)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-        sl.drop()
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[],
-                          expected_attached_slas_list=[],
-                          expected_attached_all_slas_list=[],
-                          expected_effective_slas_list=[[role, ServiceLevel(session=session,
-                                                                            name='',
-                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
-                                                         ]
-                                                        ],
-                          entity=role,
-                          session=session)
-
-    def test_drop_sla_assigned_to_role(self):
-        """
-        Drop assigned SLA
-        -Create non-default SLA
-        -Assign to the role
-        -Drop the SLA
-        """
-        session = self.prepare()
-
-        sl = self.create_service_level(session=session, name='sla1', service_shares=100)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-        sl.drop()
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[role, ServiceLevel(session=session,
-                                                                            name='',
-                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
-                                                         ]
-                                                        ],
-                          entity=role,
-                          session=session)
-
-    def test_drop_granted_sla(self):
-        """
-        Drop granted SLA
-        -Create non-default SLA
-        -Assign to the role
-        -Grant to the user
-        -Drop the SLA
-        """
-        session = self.prepare()
-
-        sl = self.create_service_level(session=session, name='sla1', service_shares=100)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-
-        user = self.create_user(session=session, name='user1')
-        role.grant_me_to(grant_to=user)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-        self.validate_sla(expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-        sl.drop()
-        dummy_sl = ServiceLevel(session=session, name='', shares=DEFAULT_SERVICE_LEVEL_SHARES)
-        self.validate_sla(expected_slas_list=[],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[role, dummy_sl]],
-                          entity=role,
-                          session=session)
-
-        self.validate_sla(expected_slas_list=[],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, dummy_sl]],
-                          entity=user,
-                          session=session)
-
-    def test_drop_sla_assigned_to_user(self):
-        """
-        -Create non-default SLA
-        -Assign to the user
-        -Drop the SLA
-        """
-        session = self.prepare()
-        sl = self.create_service_level(session=session, name='sla1', service_shares=100)
-        user = User(session=session, name='user1')
-        self.create_entity_with_service_level(entity=user, service_level=sl)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[user],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-        sl.drop()
-        self.validate_sla(service_level=sl, expected_slas_list=[],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, ServiceLevel(session=session,
-                                                                            name='',
-                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
-                                                         ]
-                                                        ],
-                          entity=user,
-                          session=session)
-
-    def test_drop_role_with_sla(self):
-        """
-        -Create non-default SLA
-        -Attach to the role
-        -Drop the role
-        """
-        session = self.prepare()
-
-        sl = self.create_service_level(session=session, name='sla1', service_shares=100)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-        role.drop()
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[],
-                          entity=role,
-                          session=session)
-
-    def test_drop_user_with_role_sla(self):
-        """
-        -Create non-default SLA
-        -Assign to the role
-        -Grant to the user
-        -Drop the user
-        """
-        session = self.prepare()
-
-        sl = self.create_service_level(session=session, name='sla1', service_shares=100)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-
-        user = self.create_user(session=session, name='user1')
-        role.grant_me_to(grant_to=user)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-        self.validate_sla(expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-        user.drop()
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-    def update_not_assigned_sla(self):
-        """
-        Update not assigned and not granted SLA
-        -Create non-default SLA
-        -Update the SLA with different shares number
-        """
-        session = self.prepare()
-
-        sl = self.create_service_level(session=session, name='sla1', service_shares=100)
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          session=session)
-
-        new_shares = 500
-        sl.alter(new_shares=new_shares)
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          session=session)
-
-    def update_default_assigned_sla(self):
-        """
-        -Create SLA with "default" in the name
-        -Create user with no SLA
-        -Update the SLA with different shares number
-        """
-        session = self.prepare()
-
-        user = self.create_user(session=session, name='user1')
-
-        self.validate_sla(expected_slas_list=[],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, ServiceLevel(session=session,
-                                                                            name='',
-                                                                            shares=DEFAULT_SERVICE_LEVEL_SHARES)
-                                                         ]
-                                                        ],
-                          entity=user,
-                          session=session)
-
-        sl = self.create_service_level(session=session, name='"DEFAULT"', service_shares=100)
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-        new_shares = 500
-        sl.alter(new_shares=new_shares)
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-    def update_assigned_sla(self):
-        """
-        -Create non-default SLA
-        -Assign to the role
-        -Grant to the user
-        -Update the SLA
-        """
-        session = self.prepare()
-
-        sl = ServiceLevel(session=session, name='sla1', shares=100)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-        user = self.create_user(session=session, name='user1')
-        role.grant_me_to(grant_to=user)
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-        new_shares = 500
-        sl.alter(new_shares=new_shares)
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl]],
-                          entity=role,
-                          session=session)
-
-        self.validate_sla(service_level=sl,
-                          expected_slas_list=[sl],
-                          expected_attached_slas_list=[],
-                          expected_effective_slas_list=[[user, sl]],
-                          entity=user,
-                          session=session)
-
-    def test_attach_2_slas_to_role(self):
-        """
-        Create 2 SLAs, attach to 1 role
+        1. Create SL with 100 shares.
+        2. Create entity (User / Role) with the SL created in (1).
+        3. Validate that the SL created in (1) exists and is attached
+        to the entity.
+        4. Create another SL with 200 shares.
+        5. Attach the SL created in (4) to the entity.
+        6. Validate that the SL created in (4) exists and is attached
+        to the entity and that the SL created in (1) is no longer
+        attached to the entity.
         """
         session = self.prepare()
 
         sl100 = ServiceLevel(session=session, name='sla1', shares=100)
-        role = Role(session=session, name='role1')
-        self.create_entity_with_service_level(entity=role, service_level=sl100)
+        entity = entity_class(session=session, name=entity_name)
+        self.create_entity_with_service_level(entity=entity, service_level=sl100)
 
-        self.validate_sla(service_level=sl100,
-                          expected_slas_list=[sl100],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl100]],
-                          entity=role,
-                          session=session)
+        self.validate_sl_list(session=session, expected_service_levels=[sl100])
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl100])
 
-        sl200 = self.create_service_level(session=session, name='sla2', service_shares=200)
-        role.attach_service_level(service_level=sl200)
+        sl200 = ServiceLevel(session=session, name='sla2', shares=200).create()
+        entity.attach_service_level(service_level=sl200)
 
-        self.validate_sla(expected_slas_list=[sl100, sl200],
-                          expected_attached_slas_list=[role],
-                          expected_effective_slas_list=[[role, sl200]],
-                          entity=role,
-                          session=session)
+        self.validate_sl_list(session=session, expected_service_levels=[sl100, sl200])
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl200])
 
-    #####
-    # Negative tests
-    #####
 
-    def test_attach_not_exists_sla_to_role(self):
+@pytest.mark.dtest_enterprise
+class TestSLANegativeTests(SLATester):
+    def test_update_not_existing_sla(self):
         """
-        Create role and attach not existing service level
-        """
-        session = self.prepare()
-
-        sl = ServiceLevel(session=session, name='tmp')
-        role = self.create_role(session=session, name='role1')
-
-        expected_error = "Service Level {} doesn\'t exists.".format(sl.name.replace('"', ''))
-        with pytest.raises(InvalidRequest, match=expected_error):
-            role.attach_service_level(service_level=sl)
-
-    def test_attach_sla_to_not_exists_role(self):
-        """
-        Create SLA and attach to not existing role
-        """
-        session = self.prepare()
-
-        sl = self.create_service_level(session=session, name='sla1')
-        role = Role(session=session, name='role1')
-
-        expected_error = 'Role {} doesn\'t exist.'.format(role.name)
-
-        with pytest.raises(InvalidRequest, match=expected_error):
-            role.attach_service_level(service_level=sl)
-
-    def test_drop_not_existing_sla(self):
-        """
-        Drop not-created service level
+        1. Create a ServiceLevel instance (but without creating the
+        SL in the db).
+        2. Attempt to alter the SL.
+        3. Validate that an InvalidRequest error is request with the
+        expected error message.
         """
         session = self.prepare()
         sl = ServiceLevel(session=session, name='sla1')
-        expected_error = "Service Level {} doesn\'t exists.".format(sl.name.replace('"', ''))
+        expected_error = fr"""The service level '{sl.name.replace('"', '')}' doesn't exist."""
 
         with pytest.raises(InvalidRequest, match=expected_error):
-            sl.drop(if_exists=False)
-
-    @pytest.mark.require('#776')
-    def test_update_not_existing_sla(self):
-        """
-        Update not-created service level
-        """
-        session = self.prepare()
-        sl = self.create_service_level(session=session, name='sla1')
-        expected_error = 'The service Level \'{}\' doesn\'t exists.'.format(sl.name.replace('"', ''))
-
-        with pytest.raises(SyntaxException, match=expected_error):
             sl.alter(new_shares=100)
 
     def test_create_sla_with_more_1000_shares(self):
         """
-        Create SLA with 1001 SHARES
+        Create SL with an invalid value of shares: 1001.
         """
         self._wrong_shares(shares=1001)
 
     def test_create_sla_with_0_shares(self):
         """
-        Create SLA with 0 SHARES
+        Create SL with an invalid value of shares: 0.
         """
         self._wrong_shares(shares=0)
 
     def test_create_sla_with_negative_shares(self):
         """
-        Create 2 SLAs, attach to 1 role
+        Create SL with an invalid value of shares: -1.
         """
         self._wrong_shares(shares=-1)
 
