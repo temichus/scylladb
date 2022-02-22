@@ -28,3 +28,6 @@ pytest-subtests==0.5.0
 filelock==3.0.12
 PyGithub==1.55
 cryptography~=36.0.0
+unidiff==0.7.3
+pyan3==1.2.0
+tqdm==4.62.3

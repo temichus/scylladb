@@ -57,16 +57,15 @@ pipeline {
                     lastStage = env.STAGE_NAME
                     try {
                         sh '''
-                        rm -rf ./temp_home
-                        mkdir -p ./temp_home
-                        export HOME=`pwd`/temp_home
-                        export SCYLLA_VERSION=dummy
-                        ./scripts/run_test.sh bash -c "pip3 install --user https://github.com/scylladb/scylla-ccm/archive/next.zip; pre-commit run -a --show-diff-on-failure"
+                        export INSTALL_CASSANDRA="pip3 install --user https://github.com/scylladb/scylla-ccm/archive/next.zip"
+                        # export SCYLLA_VERSION=dummy
+                        ./scripts/run_test.sh bash -c "pre-commit run -a --show-diff-on-failure"
                         '''
                         pullRequestSetResult('success', 'jenkins/precommit', 'Precommit passed')
                     } catch(Exception ex) {
                         pullRequestSetResult('failure', 'jenkins/precommit', 'Precommit failed')
                     }
+                    sh ''' rm -rf ./temp_home '''
                 }
             }
         }
@@ -128,28 +127,42 @@ pipeline {
                     lastStage = env.STAGE_NAME
                     try {
                         def changedFiles = jenkins.getChangedFilesList()
-                        def testFiles = changedFiles.findAll({it =~ /.*_test.*py/})
+                        def pythonChangedFiles = changedFiles.findAll({it =~ /.*\.py/})
 
-                        RELOC_JOB_NAME = params.RELOC_JOB_NAME ?: "next"
-                        BUILD_MODE = params.BUILD_MODE ?: "release"
-                        SCYLLA_DTEST_REPO = params.SCYLLA_DTEST_REPO ?: "git@github.com:${env.CHANGE_FORK}/scylla-dtest.git"
-                        SCYLLA_DTEST_BRANCH = params.SCYLLA_DTEST_BRANCH ?: env.CHANGE_BRANCH
+                        // try running tests only if python files changed
+                        if (!pythonChangedFiles.isEmpty()) {
+                            String gitSelection = ""
+                            if (env.CHANGE_TARGET) {
+                                gitSelection = "origin/$CHANGE_TARGET"
+                            } else {
+                                gitSelection = "HEAD^"
+                            }
+                            // try finding which test is affected by changes so we'll only run it
+                            sh(script: "./scripts/run_test.sh bash -c 'python scripts/selector.py $gitSelection > test_list.txt'")
+                            def testFiles = sh(returnStdout: true, script: " cat test_list.txt | tr '\n' ' '").trim()
+                            echo "$testFiles"
+                            RELOC_JOB_NAME = params.RELOC_JOB_NAME ?: "next"
+                            BUILD_MODE = params.BUILD_MODE ?: "release"
+                            SCYLLA_DTEST_REPO = params.SCYLLA_DTEST_REPO ?: "git@github.com:${env.CHANGE_FORK}/scylla-dtest.git"
+                            SCYLLA_DTEST_BRANCH = params.SCYLLA_DTEST_BRANCH ?: env.CHANGE_BRANCH
 
-                        if (testFiles) {
-                            runParallelDtest("20", testFiles.join(' '), "PR")
-                        } else {
-                            dtest.prepareDtestLocalTree (
-                                preserveWorkspace: false,
-                                dtestBranch: SCYLLA_DTEST_BRANCH,
-                                dtestRepo: SCYLLA_DTEST_REPO,
-                                ccmBranch: params.SCYLLA_CCM_BRANCH,
-                                ccmRepo: params.SCYLLA_CCM_REPO,
-                                relocWebUrl: params.RELOC_WEB_URL,
-                                baseRelocJob: RELOC_JOB_NAME,
-                                relocBuildID: params.RELOC_BUILD_ID,
-                                buildMode: BUILD_MODE,
-                            )
-                            dtest.doDtest(dryRun: params.DRY_RUN, dtestMode: BUILD_MODE, includeTests: "-m dtest_smoke bootstrap_test.py", dtestType: "PR")
+                            if (testFiles) {
+                                runParallelDtest("20", testFiles, "PR")
+                            } else {
+                                // if no affected tests, run only smoke tests (without spinning up more workers)
+                                dtest.prepareDtestLocalTree (
+                                    preserveWorkspace: false,
+                                    dtestBranch: SCYLLA_DTEST_BRANCH,
+                                    dtestRepo: SCYLLA_DTEST_REPO,
+                                    ccmBranch: params.SCYLLA_CCM_BRANCH,
+                                    ccmRepo: params.SCYLLA_CCM_REPO,
+                                    relocWebUrl: params.RELOC_WEB_URL,
+                                    baseRelocJob: RELOC_JOB_NAME,
+                                    relocBuildID: params.RELOC_BUILD_ID,
+                                    buildMode: BUILD_MODE,
+                                )
+                                dtest.doDtest(dryRun: params.DRY_RUN, dtestMode: BUILD_MODE, includeTests: "-m dtest_smoke bootstrap_test.py", dtestType: "PR")
+                            }
                         }
                         pullRequestSetResult('success', 'jenkins/test/PR', 'test passed')
                     } catch(Exception ex) {
