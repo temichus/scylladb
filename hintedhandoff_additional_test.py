@@ -10,6 +10,7 @@ from distutils.util import strtobool
 from cassandra import ConsistencyLevel
 
 from ccmlib.scylla_cluster import ScyllaCluster
+from ccmlib.node import NodeError
 
 from dtest_class import Tester, wait_for, create_ks, get_ip_from_node
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
@@ -465,6 +466,94 @@ class TestHintedHandoff(Tester):
                 logger.info("{}: scylla_hints_manager_discarded = {}".format(
                     node.name, res["scylla_hints_manager_discarded"]))
                 assert 0 == res["scylla_hints_manager_discarded"], "There were discarded hints"
+
+    @staticmethod
+    def validate_max_hinted_handoff_concurrency_value(node, expected_value):
+        response = requests.get(f'http://{get_ip_from_node(node)}:10000/v2/config/max_hinted_handoff_concurrency')
+        assert "No such config entry" not in response.text, f"No 'max_hinted_handoff_concurrency' config entry"
+        assert (response.text == expected_value,
+                f"Expected 'max_hinted_handoff_concurrency' value is {expected_value}, got {response.text}")
+
+    @pytest.mark.parametrize(argnames=("max_hinted_handoff_concurrency", "jvm_args"),
+                             argvalues=[(0, None), (64, None), (128, ['--max-hinted-handoff-concurrency', '128'])])
+    def test_support_max_hh_concurrency_param(self, max_hinted_handoff_concurrency: int, jvm_args: list):
+        logger.info(f"Creating a cluster with hints initially enabled and max_hinted_handoff_concurrency "
+                    f"is {max_hinted_handoff_concurrency}")
+        if not jvm_args:
+            if max_hinted_handoff_concurrency == 0:
+                self.cluster.set_configuration_options(values={"hinted_handoff_enabled": "true"})
+            else:
+                self.cluster.set_configuration_options(values={"hinted_handoff_enabled": "true",
+                                                               "max_hinted_handoff_concurrency":
+                                                               max_hinted_handoff_concurrency})
+
+        self.cluster.populate(2).start(wait_other_notice=True, wait_for_binary_proto=True, jvm_args=jvm_args)
+        node1, node2 = self.cluster.nodelist()
+
+        self.validate_max_hinted_handoff_concurrency_value(node=node1, expected_value=max_hinted_handoff_concurrency)
+        self.validate_max_hinted_handoff_concurrency_value(node=node2, expected_value=max_hinted_handoff_concurrency)
+
+        logger.info("Stop node1 to create a hints on node2")
+        node1.stop(wait_other_notice=True)
+        rows = 100
+        node2.stress(['write', f'n={rows}', '-schema', 'replication(factor=2)'])
+        node1.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        logger.info("Waiting for hints to be sent...")
+        self.__wait_until_hints_are_sent_from(node_from=node2, count=rows)
+
+        logger.info("Stop node2 and validate that all data was sent to node1")
+        node2.stop(wait_other_notice=True)
+
+        session = self.patient_cql_connection(node1)
+        stress_table = 'keyspace1.standard1'
+        assert list(session.execute(f"SELECT count(*) FROM {stress_table}"))[0].count == rows
+
+    @pytest.mark.require('#scylladb/scylla#10111')
+    def test_support_max_hh_concurrency_param_negative(self, fixture_dtest_setup):
+        """
+        https://github.com/scylladb/scylla/commit/de1679b1b99435bea9d2e801d0e7f61785aed8ff
+        Maximum concurrency allowed for sending hints. The concurrency is divided across shards and rounded up if not
+        divisible by the number of shards. By default, (or when set to 0), concurrency of 8*shard_count will be used.
+
+        This test scenario:
+         - run cluster with negative max_hinted_handoff_concurrency value, set in scylla.yaml
+         - validate error message
+        """
+        expected_error_message = 'bad conversion : max_hinted_handoff_concurrency'
+        self.ignore_log_patterns += [expected_error_message]
+        self.cluster.set_configuration_options(values={"hinted_handoff_enabled": "true",
+                                                       "max_hinted_handoff_concurrency": '-1'})
+        self.cluster.populate(1).start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        # TODO: validate that it's correct message
+        assert self.cluster.nodelist()[0].grep_log(expr=expected_error_message), \
+            f"Expected error message '{expected_error_message}' is not found for node {self.cluster.nodelist()[0].name}"
+
+    @pytest.mark.require('#scylladb/scylla#10111')
+    def test_support_max_hh_concurrency_param_negative_via_args(self, fixture_dtest_setup):
+        """
+        https://github.com/scylladb/scylla/commit/de1679b1b99435bea9d2e801d0e7f61785aed8ff
+        Maximum concurrency allowed for sending hints. The concurrency is divided across shards and rounded up if not
+        divisible by the number of shards. By default, (or when set to 0), concurrency of 8*shard_count will be used.
+
+        This test scenario:
+         - run cluster with negative max_hinted_handoff_concurrency value, set in arguments
+         - validate that node has not been started
+        """
+        max_hinted_handoff_concurrency = '-1'
+        # TODO: validate that it's correct message
+        expected_error_message = (rf"the argument \('{max_hinted_handoff_concurrency}'\) for option "
+                                  r"'--max-hinted-handoff-concurrency' is invalid\)")
+        self.ignore_log_patterns += [expected_error_message]
+        with pytest.raises(expected_exception=(Exception,)):
+            self.cluster.populate(1).start(wait_other_notice=True, wait_for_binary_proto=True,
+                                           jvm_args=['--max-hinted-handoff-concurrency',
+                                                     max_hinted_handoff_concurrency])
+            raise NodeError("Node was started unexpectedly")
+
+        assert self.cluster.nodelist()[0].grep_log(expr=expected_error_message), \
+            f"Expected error message '{expected_error_message}' is not found for node {self.cluster.nodelist()[0].name}"
 
     def hintedhandoff_switch_config_in_runtime_template(self, fixture_dtest_setup, hh_enabled_updater):
         """
