@@ -1171,16 +1171,20 @@ class TestLoadAndStream(BaseHelpers):
             logger.debug(f"Copy sstables of {node_load_from} to node1")
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
-            load_and_stream_result = self.run_load_and_stream(node1)
+            load_and_stream_result, mark = self.run_load_and_stream(node1)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node1, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         # Copy sstables from 2 nodes to node2
         for node_load_from in ['node3', 'node4']:
             logger.debug(f"Copy sstables of {node_load_from} to node2")
             self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
-            load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
+            load_and_stream_result, mark = self.run_load_and_stream(self.cluster.nodelist()[1])
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=self.cluster.nodelist()[1], mark=mark)
+            assert result, f"Load and stream was not finished"
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1214,16 +1218,20 @@ class TestLoadAndStream(BaseHelpers):
             logger.debug(f"Copy sstables of {node_load_from} to node1")
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
-            load_and_stream_result = self.run_load_and_stream(node1)
+            load_and_stream_result, mark = self.run_load_and_stream(node1)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node1, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         # Copy sstables from 2 nodes to node2
         for node_load_from in ['node3', 'node4']:
             logger.debug(f"Copy sstables of {node_load_from} to node2")
             self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
-            load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
+            load_and_stream_result, mark = self.run_load_and_stream(self.cluster.nodelist()[1])
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=self.cluster.nodelist()[1], mark=mark)
+            assert result, f"Load and stream was not finished"
 
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=mv_name)
 
@@ -1264,16 +1272,20 @@ class TestLoadAndStream(BaseHelpers):
             logger.debug(f"Copy sstables of {node_load_from} to node1")
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
-            load_and_stream_result = self.run_load_and_stream(node1)
+            load_and_stream_result, mark = self.run_load_and_stream(node1)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node1, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         # Copy sstables from 2 nodes to node2
         for node_load_from in ['node3', 'node4']:
             logger.debug(f"Copy sstables of {node_load_from} to node2")
             self.copy_sstables_to_node(copy_to_node=self.cluster.nodelist()[1],
                                        migrated_files_dir=f'from-cluster-4-nodes/{node_load_from}')
-            load_and_stream_result = self.run_load_and_stream(self.cluster.nodelist()[1])
+            load_and_stream_result, mark = self.run_load_and_stream(self.cluster.nodelist()[1])
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=self.cluster.nodelist()[1], mark=mark)
+            assert result, f"Load and stream was not finished"
 
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=f'{index_name}_index')
 
@@ -1317,8 +1329,10 @@ class TestLoadAndStream(BaseHelpers):
                                    migrated_files_dir='from-cluster-2-nodes/node2')
 
         for node in [node1, node4]:
-            load_and_stream_result = self.run_load_and_stream(node)
+            load_and_stream_result, mark = self.run_load_and_stream(node)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=f'{index_name}_index')
 
@@ -1357,8 +1371,10 @@ class TestLoadAndStream(BaseHelpers):
                                    migrated_files_dir='from-cluster-2-nodes-c-s-smp2/node2')
 
         for node in [node3, node4]:
-            load_and_stream_result = self.run_load_and_stream(node)
+            load_and_stream_result, mark = self.run_load_and_stream(node)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1387,8 +1403,10 @@ class TestLoadAndStream(BaseHelpers):
                                    migrated_files_dir='from-cluster-2-nodes/node2')
 
         for node in [node1, node4]:
-            load_and_stream_result = self.run_load_and_stream(node)
+            load_and_stream_result, mark = self.run_load_and_stream(node)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1416,8 +1434,10 @@ class TestLoadAndStream(BaseHelpers):
         logger.debug("Copy all sstables of node1 to node3")
         for source_files in ['from-cluster-2-nodes/node1', 'from-cluster-2-nodes/node2']:
             self.copy_sstables_to_node(copy_to_node=node3, migrated_files_dir=source_files)
-            load_and_stream_result = self.run_load_and_stream(node3)
+            load_and_stream_result, mark = self.run_load_and_stream(node3)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node3, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1455,8 +1475,10 @@ class TestLoadAndStream(BaseHelpers):
                                    migrated_files_dir='from-cluster-2-nodes/node2')
 
         for node in [node1, node4]:
-            load_and_stream_result = self.run_load_and_stream(node)
+            load_and_stream_result, mark = self.run_load_and_stream(node)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         wait_for_view(cluster=self.cluster, session=session, ks=self.KEYSPACE_NAME, view=mv_name)
 
@@ -1499,8 +1521,10 @@ class TestLoadAndStream(BaseHelpers):
             logger.debug(f"Copy sstables of {node_map[0]} to {node_map[1].name}")
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-2-nodes/{node_map[0]}')
-            load_and_stream_result = self.run_load_and_stream(node_map[1])
+            load_and_stream_result, mark = self.run_load_and_stream(node_map[1])
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node_map[1], mark=mark)
+            assert result, f"Load and stream was not finished"
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1540,8 +1564,10 @@ class TestLoadAndStream(BaseHelpers):
         self.copy_sstables_to_node(copy_to_node=node2,
                                    migrated_files_dir='from-cluster-2-nodes/node1')
 
-        load_and_stream_result = self.run_load_and_stream(node2, primary_replica_only=True)
+        load_and_stream_result, mark = self.run_load_and_stream(node2, primary_replica_only=True)
         assert load_and_stream_result, f"Failed to run load and stream."
+        result = self.wait_for_finish_load_and_stream(node=node2, mark=mark)
+        assert result, f"Load and stream was not finished"
 
         for node in self.cluster.nodelist():
             node.nodetool('repair -pr')
@@ -1575,8 +1601,10 @@ class TestLoadAndStream(BaseHelpers):
             logger.debug(f"Copy sstables of {node} to node1")
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes-frozen-pk/{node}')
-            load_and_stream_result = self.run_load_and_stream(node1)
+            load_and_stream_result, mark = self.run_load_and_stream(node1)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node1, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         logger.debug(f"Copy sstables of node3 to node2")
         self.copy_sstables_to_node(copy_to_node=node2,
@@ -1587,8 +1615,10 @@ class TestLoadAndStream(BaseHelpers):
                                    migrated_files_dir=f'from-cluster-4-nodes-frozen-pk/node4')
 
         for node in [node2, node3]:
-            load_and_stream_result = self.run_load_and_stream(node)
+            load_and_stream_result, mark = self.run_load_and_stream(node)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1620,8 +1650,10 @@ class TestLoadAndStream(BaseHelpers):
             logger.debug(f"Copy sstables of {node} to node1")
             self.copy_sstables_to_node(copy_to_node=node1,
                                        migrated_files_dir=f'from-cluster-4-nodes-2-columns-pk/{node}')
-            load_and_stream_result = self.run_load_and_stream(node1)
+            load_and_stream_result, mark = self.run_load_and_stream(node1)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node1, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         logger.debug(f"Copy sstables of node1 to node2")
         self.copy_sstables_to_node(copy_to_node=node2,
@@ -1632,8 +1664,10 @@ class TestLoadAndStream(BaseHelpers):
                                    migrated_files_dir=f'from-cluster-4-nodes-2-columns-pk/node4')
 
         for node in [node2, node3]:
-            load_and_stream_result = self.run_load_and_stream(node)
+            load_and_stream_result, mark = self.run_load_and_stream(node)
             assert load_and_stream_result, f"Failed to run load and stream."
+            result = self.wait_for_finish_load_and_stream(node=node, mark=mark)
+            assert result, f"Load and stream was not finished"
 
         for node in self.cluster.nodelist():
             self.check_number_of_rows(node, self.EXPECTED_ROWS_NUMBER,
@@ -1668,6 +1702,15 @@ class TestLoadAndStream(BaseHelpers):
         result = node.watch_log_for(f"Loading new SSTables for keyspace={self.KEYSPACE_NAME}, table={self.TABLE_NAME}, "
                                     f"load_and_stream=true, primary_replica_only={str(primary_replica_only).lower()}",
                                     from_mark=mark, timeout=10)
+        return result, mark
+
+    def wait_for_finish_load_and_stream(self, node: ScyllaNode, mark):
+        load_and_stream_done_expr = (
+            r'(?:storage_service|sstables_loader) - '
+            rf'Done loading new SSTables for keyspace={self.KEYSPACE_NAME}, table={self.TABLE_NAME}, '
+            r'load_and_stream=true.*status=(.*)'
+        )
+        result = node.watch_log_for(load_and_stream_done_expr, from_mark=mark, timeout=10)
         return result
 
     def copy_sstables_to_node(self, copy_to_node: ScyllaNode, migrated_files_dir: str):
