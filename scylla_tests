@@ -92,3 +92,4 @@ cdc_batch_test.py
 multidc_additional_tests.py
 twcs_additional_test.py
 cdc_static_row_test.py
+test_cdc_large_values.py

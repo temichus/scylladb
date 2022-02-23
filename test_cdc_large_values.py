@@ -1,15 +1,15 @@
-import pytest
 import time
 import logging
 
 from typing import Tuple, Union, List, Dict, Optional, Any
-
 from concurrent.futures import ThreadPoolExecutor
-from cassandra.cluster import Session, SimpleStatement
 
-from cdc_test import CDCInitializeHelper
+import pytest
+
+from cassandra.cluster import Session, SimpleStatement
 from ccmlib.scylla_node import ScyllaNode
 
+from cdc_test import CDCInitializeHelper
 from dtest_class import Tester, create_ks
 from tools.misc import ImmutableMapping
 from dtest_setup_overrides import DTestSetupOverrides
@@ -18,6 +18,9 @@ MB = 1024 * 1024
 LOGGER = logging.getLogger(__name__)
 
 
+@pytest.mark.full_dtest
+@pytest.mark.single_node
+@pytest.mark.scylla_cdc
 class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
 
     @pytest.fixture(scope='function', autouse=True)
@@ -49,11 +52,11 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         session.execute(create_table_stmt)
 
         insert_value = bytes("1".encode()) * 7 * MB
-        insert_statement = SimpleStatement(f"INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
+        insert_statement = SimpleStatement("INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
         insert_parameters = [{"pk": i, "ck": j, "v": insert_value} for i in range(10) for j in range(5)]
 
         update_value = bytes("2".encode()) * 4 * MB
-        update_statement = SimpleStatement(f"UPDATE ks.cf set v = %(v)s where pk = %(pk)s and ck=%(ck)s")
+        update_statement = SimpleStatement("UPDATE ks.cf set v = %(v)s where pk = %(pk)s and ck=%(ck)s")
         update_parameters = [{"pk": i, "ck": j, "v": update_value} for i in range(10) for j in range(5)]
 
         self.execute_case(node, session,
@@ -119,7 +122,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                 WITH cdc={'enabled': true, 'preimage': 'full', 'postimage': true}")
 
         insert_value = bytes("1".encode()) * 1 * MB
-        insert_statement = SimpleStatement(f"INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
+        insert_statement = SimpleStatement("INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
         insert_parameters = [{"pk": i, "ck": j, "v": {"key": insert_value}} for i in range(10) for j in range(5)]
 
         update_value = bytes("2".encode()) * 1 * MB
