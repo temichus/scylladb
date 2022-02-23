@@ -91,6 +91,8 @@ class RepairBasedNodeOperationsScenarios:
         new_node = self.add_node(replace_address=replaced_node_address, dc=dc)
         logger.debug(f"Added new node {new_node.name} ({new_node.address()})")
 
+        self.tester.cluster.remove(node=replaced_node, wait_other_notice=True, remove_node_dir=False)
+
         return new_node
 
     def bootstrap(self, dc: int = 0) -> ScyllaNode:
@@ -165,8 +167,8 @@ class RepairBasedNodeOperationsScenarios:
                     r"LeveledManifest - Reshaping \d+ disjoint sstables in level 0 into level \d+"
                 ), "Reshaping was ran in inefficient way"
 
-            if scenario.operation_name in ["decommission", "replace"]:
-                self.tester.cluster.remove(node=tested_node, wait_other_notice=True)
+            if scenario.operation_name in ["decommission"]:
+                self.tester.cluster.remove(node=tested_node, wait_other_notice=True, remove_node_dir=False)
 
 
 @pytest.mark.dtest_full
@@ -175,6 +177,8 @@ class TestRepairBasedNodeOperations(Tester):
 
     def prepare_cluster(self, nodes: int, enable_repair_based_node_ops: bool = None,
                         allowed_repair_based_node_ops: str = None):
+        # TODO: remove when https://github.com/scylladb/scylla/issues/10138 will be solved
+        self.ignore_log_patterns += ["Could not find CDC generation"]
         logger.debug("Starting cluster...")
 
         jvm_args = []
