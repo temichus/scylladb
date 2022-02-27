@@ -190,7 +190,7 @@ class RepairAdditionalBase(Tester):
         repair_logs = [
             'repair - repair.*: Started to shutdown off-strategy compaction updater',
             'repair - repair.*: Finished to shutdown off-strategy compaction updater',
-            'repair - repair id .* completed successfully',
+            'repair - repair.*: completed successfully',
         ]
         off_strategy_compaction_logs = [
             f'table - Starting off-strategy compaction for {ks}.{cf}',
