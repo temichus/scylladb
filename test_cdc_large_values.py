@@ -18,7 +18,7 @@ MB = 1024 * 1024
 LOGGER = logging.getLogger(__name__)
 
 
-@pytest.mark.full_dtest
+@pytest.mark.dtest_full
 @pytest.mark.single_node
 @pytest.mark.scylla_cdc
 class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
