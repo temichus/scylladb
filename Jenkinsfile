@@ -137,9 +137,15 @@ pipeline {
                             } else {
                                 gitSelection = "HEAD^"
                             }
-                            // try finding which test is affected by changes so we'll only run it
-                            sh(script: "./scripts/run_test.sh bash -c 'python scripts/selector.py $gitSelection > test_list.txt'")
-                            def testFiles = sh(returnStdout: true, script: " cat test_list.txt | tr '\n' ' '").trim()
+                            def testFiles = ""
+                            if (pullRequestContainsLabels("test/PR/by_files")) {
+                                // run all the changed test files (regardless of the affect of files not in this PR)
+                                testFiles = changedFiles.findAll({it =~ /.*_test.*py/}).join(' ')
+                            } else {
+                                // try finding which test is affected by changes so we'll only run it
+                                sh(script: "./scripts/run_test.sh bash -c 'python scripts/selector.py $gitSelection > test_list.txt'")
+                                testFiles = sh(returnStdout: true, script: " cat test_list.txt | tr '\n' ' '").trim()
+                            }
                             echo "$testFiles"
                             RELOC_JOB_NAME = params.RELOC_JOB_NAME ?: "next"
                             BUILD_MODE = params.BUILD_MODE ?: "release"
