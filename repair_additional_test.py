@@ -2958,9 +2958,14 @@ class TestRepairAdditional(RepairAdditionalBase):
 
         res = node2.watch_log_for(
             "sync data for keyspace=ks, status=started|starting user-requested repair for keyspace ks,")
+        logger.debug(res)
+        msg = res[0]
+        m = re.search(r'\[(?:.*uuid=)?(?P<uuid>[\w-]+)\]', msg)
+        assert m is not None, f"Could not find repair task uuid in '{msg}'"
+        uuid = m.group('uuid')
+
         for i in range(delete_table_num):
             session.execute(f"DROP TABLE ks.cf_del{i}")
-        logger.debug(res)
         logger.debug("Repair of ks just started, drop table ks.cf_del*")
 
         thread1.result()
@@ -2969,7 +2974,7 @@ class TestRepairAdditional(RepairAdditionalBase):
 
         # verify that repair completed, and the dropped table is ignored during repair
         res = node2.watch_log_for(
-            "repair - repair .* completed successfully, keyspace=ks")
+            f"repair - repair.*{uuid}.* completed successfully$")
         logger.debug(res)
 
         # verify that the cf_del* were really deleted
