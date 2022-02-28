@@ -385,7 +385,7 @@ class TestCommitLog(Tester):
         self.prepare()
         # #9343 - CL will attempt to re-delete files it fails to create/open.
         # The way we do things, this will cause more exceptions
-        self.ignore_log_patterns.append('commitlog - Could not delete segment')
+        self.ignore_log_patterns.append('commitlog - Could not (delete|recycle) segment')
 
         self._provoke_commitlog_failure()
         self.expected_log_message = "storage_service - Shutting down communications due to I/O errors until operator intervention"
