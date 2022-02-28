@@ -41,7 +41,7 @@ class TestAlternatorTTL(BaseAlternator):
         indeed happens. Reproduces issue #9787.
         """
         self.prepare_dynamodb_cluster(num_of_nodes=5,
-                                      extra_config={'experimental_features': ['alternator-ttl']})
+                                      extra_config={'experimental_features': ['alternator-ttl'], 'alternator_ttl_period_in_seconds': 1})
         node1, *_, node5 = self.cluster.nodelist()
 
         if with_down_node:
