@@ -22,12 +22,33 @@ class CollectionVisitor(CallGraphVisitor):
         self.defines_edges = defaultdict(list)
         super().process()
 
+    def visit_FunctionDef(self, node):
+        super().visit_FunctionDef(node)
+
+        # look decorator mark them as a user of current function/method
+        for n in node.decorator_list:
+            self.visit(n)
+            from_node = self.get_node(
+                namespace=self.get_node_of_current_namespace().get_name(),
+                ast_node=node,
+                name=node.name,
+            )
+            ns = from_node.get_name()
+            to_node = self.get_node(
+                namespace=ns,
+                name=self.last_value.name,
+                ast_node=self.last_value.ast_node,
+                flavor=Flavor.ATTRIBUTE,
+            )
+            self.add_uses_edge(from_node, to_node)
+            self.last_value = None
+
     def process_one(self, filename):
         if self.progress_bar and self.progress_bar.disable:
-            print(f'scanning: {filename}')
+            print(f"scanning: {filename}")  # pragma: no cover
         super().process_one(filename)
         if self.progress_bar:
-            self.progress_bar.set_postfix_str(filename)
+            self.progress_bar.set_postfix_str(Path(filename).relative_to(self.root))
             self.progress_bar.update()
 
     def postprocess(self):
@@ -42,7 +63,9 @@ def get_diff(git_repo_directory, git_selection) -> Dict[str, set]:
     Get the unified diff from git, and return a mapping between file and
     line number changed
     """
-    diff = check_output(['git', 'diff', '--no-prefix', git_selection], cwd=git_repo_directory, text=True)
+    diff = check_output(
+        ["git", "diff", "--no-prefix", git_selection], cwd=git_repo_directory, text=True
+    )
     patch = PatchSet(diff)
 
     print(patch, file=sys.stderr)
@@ -52,7 +75,9 @@ def get_diff(git_repo_directory, git_selection) -> Dict[str, set]:
         f: PatchedFile
         for hunk in f:
             hunk: Hunk
-            removed = {l.source_line_no for l in hunk if l.line_type == LINE_TYPE_REMOVED}
+            removed = {
+                l.source_line_no for l in hunk if l.line_type == LINE_TYPE_REMOVED
+            }
             added = {l.target_line_no for l in hunk if l.line_type == LINE_TYPE_ADDED}
             changed_lines[f.path] = changed_lines[f.path].union(removed, added)
 
@@ -74,7 +99,7 @@ class AffectedTestScanner:
 
     def collect_tests(self) -> list:
         for key_node, nodes in self.graph.uses_edges.items():
-            if key_node.name.startswith('test_'):
+            if key_node.name.startswith("test_"):
                 self.current_test = key_node
                 self.check_node_affected(key_node)
                 self.scan_nodes(nodes)
@@ -85,31 +110,57 @@ class AffectedTestScanner:
             relative_filename = Path(test.filename).relative_to(self.root_path)
             namespace = []
             for name in reversed(test.namespace.split(".")):
-                if name == relative_filename.name.rstrip('.py'):
+                if name == relative_filename.name.rstrip(".py"):
                     break
                 namespace += [name]
-            namespace = '::'.join(reversed(namespace))
-            namespace = f'::{namespace}' if namespace else ''
-            test_full_name = f'{relative_filename}{namespace}::{test.name}'
+            namespace = "::".join(reversed(namespace))
+            namespace = f"::{namespace}" if namespace else ""
+            test_full_name = f"{relative_filename}{namespace}::{test.name}"
             tests.append(test_full_name)
 
         return tests
 
     def scan_nodes(self, nodes):
         for node in nodes:
-            if node.flavor in [Flavor.METHOD, Flavor.CLASSMETHOD, Flavor.STATICMETHOD, Flavor.FUNCTION]:
+            if node.flavor in [
+                Flavor.METHOD,
+                Flavor.CLASSMETHOD,
+                Flavor.STATICMETHOD,
+                Flavor.FUNCTION,
+            ]:
                 if self.check_node_affected(node):
                     return True  # no point of continue if the test is already marked as affected
                 if node not in self.scanned_nodes:
                     self.scanned_nodes.append(node)
                     if node in self.graph.uses_edges:
-                        if self.scan_nodes(self.graph.uses_edges[node]):
+                        if self.scan_nodes(
+                            self.graph.uses_edges[node]
+                        ):  # pragma: no cover
                             return True  # no point of continue if the test is already marked as affected
             elif node.flavor == Flavor.IMPORTEDITEM:
                 if node not in self.scanned_nodes:
                     self.scanned_nodes.append(node)
-                    if self.scan_nodes(self.graph.nodes[node.name]):
+                    # since function name can be identical across module/classes, we need to
+                    # cross check namespace and filename are matching
+                    if self.scan_nodes(
+                        [
+                            n
+                            for n in self.graph.nodes[node.name]
+                            if node.filename == n.filename
+                            and n.flavor
+                            in [
+                                Flavor.METHOD,
+                                Flavor.CLASSMETHOD,
+                                Flavor.STATICMETHOD,
+                                Flavor.FUNCTION,
+                            ]
+                            and node.namespace in n.namespace
+                        ]
+                    ):
                         return True  # no point of continue if the test is already marked as affected
+            elif node.flavor == Flavor.ATTRIBUTE:  # decorators or global variables
+                if self.check_node_affected(node):
+                    return True  # no point of continue if the test is already marked as affected
             else:
                 continue
         return False
@@ -124,29 +175,37 @@ class AffectedTestScanner:
         return False
 
 
-def run():
-    logging.basicConfig(level=logging.WARNING)
-
-    parser = argparse.ArgumentParser(description='Select tests based on git diff')
-    parser.add_argument('git_diff', default='HEAD', type=str,
-                        help='the parameter to pass to `git diff`')
-    parser.add_argument('--path', dest='root_path',
-                        default='.',
-                        help='the path of the git repo to scan')
-
-    args = parser.parse_args()
-    root_path = Path(os.path.abspath(args.root_path))
-    changed_lines_set = get_diff(root_path, args.git_diff)
+def run(root_path: str, git_diff: str):
+    root_path = Path(os.path.abspath(root_path))
+    changed_lines_set = get_diff(root_path, git_diff)
     files_changed = list(str(root_path / f) for f in changed_lines_set.keys())
-    files_changed = [f for f in files_changed if f.endswith('.py')]
+    files_changed = [f for f in files_changed if f.endswith(".py")]
     if not files_changed:
         print("No python file in the change/diff")
-        sys.exit()
+        return []
+
     files = list(str(f) for f in root_path.glob("**/*.py"))
     graph = CollectionVisitor(files, str(root_path), logger=logging)
 
     scanner = AffectedTestScanner(graph, changed_lines_set, root_path)
     tests = scanner.collect_tests()
+
+    return tests
+
+
+def main():
+    logging.basicConfig(level=logging.WARNING)
+
+    parser = argparse.ArgumentParser(description="Select tests based on git diff")
+    parser.add_argument(
+        "git_diff", default="HEAD", type=str, help="the parameter to pass to `git diff`"
+    )
+    parser.add_argument(
+        "--path", dest="root_path", default=".", help="the path of the git repo to scan"
+    )
+
+    args = parser.parse_args()
+    tests = run(**args.__dict__)
     for test in tests:
         print(test)
 
@@ -154,4 +213,4 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    main()
