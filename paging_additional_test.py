@@ -1,5 +1,6 @@
 import logging
 import uuid
+from random import randint
 
 import pytest
 from cassandra import ConsistencyLevel as CL
@@ -419,3 +420,41 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
         assert all_data == [p for p in data if p['pk'] == 2], \
             f"Expected \"[p for p in data if p['pk'] == 2]\", got {all_data}"
         self.assert_nodes_metrics(({'lookups': pf.requested_pages - 1}, {}))
+
+
+@pytest.mark.dtest_full
+class TestPagingQueryAlternativeConsistencyLevel(BasePagingTester):
+
+    def test_consistency_level_quorum(self):
+        test_ks_name = "keyspace_complex"
+        test_table_name = "paged_query_test"
+        statement = f"select * from {test_ks_name}.{test_table_name};"
+
+        with self.prepare(consistency_level=CL.QUORUM) as session:
+            logger.info("Creating a new keyspace %s...", test_ks_name)
+            create_ks(session, test_ks_name, 2)
+
+            logger.info("Creating a new table %s...", test_table_name)
+            session.execute(f"CREATE TABLE IF NOT EXISTS {test_ks_name}.{test_table_name} "
+                            f"(k int PRIMARY KEY, v1 int, v2 int)")
+
+            logger.info("Filling %s.%s with data...", test_ks_name, test_table_name)
+            for i in range(1000):
+                random_int = randint(1, 1000000)
+                session.execute(
+                    f"INSERT INTO {test_ks_name}.{test_table_name} "
+                    f"(k, v1, v2) VALUES ({i}, {random_int}, {random_int + i})")
+
+            logger.info('Executing select query without paging feature...')
+            query_result = [list(row.values()) for row in session.execute(statement)]
+            assert query_result, f"Query '{statement}' returned no entries"
+
+            logger.info('Executing select query with paging feature...')
+            session.default_fetch_size = 100
+            future = session.execute_async(query=statement)
+            fetcher = PageFetcher(future).request_all()
+            paging_query_result = [list(row.values()) for row in fetcher.all_data()]
+            assert paging_query_result, f"Paged query '{statement}' returned no entries"
+
+            logger.info('Comparing results...')
+            assert sorted(query_result) == sorted(paging_query_result), "Results should be identical!"

@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 class BasePagingTester(Tester):
-    def prepare(self, row_factory=dict_factory):
+    def prepare(self, row_factory=dict_factory, consistency_level=CL.ONE):
         cluster = self.cluster
         cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1 = cluster.nodelist()[0]
-        session = self.patient_cql_connection(node1, row_factory=row_factory)
+        session = self.patient_cql_connection(node1, row_factory=row_factory, consistency_level=consistency_level)
         return session
 
 
