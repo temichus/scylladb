@@ -401,15 +401,24 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         # Remove unnecessary lines from:
 
         # Snapshot Details:
-        # Snapshot name                Keyspace name      Column family name              True size Size on disk
-        # 1577100708489-scheduler_task scylla_manager     scheduler_task                  0 bytes   0 bytes
-        # sm_manual_snapshot           system             local                           17.66 KB  17.66 KB
+        # Snapshot name                      Keyspace name  Column family name   True size Size on disk
+        # 1646147496434-repair_unit          scylla_manager repair_unit          0 bytes   0 bytes
+        # 1646147501653-repair_run_progress  scylla_manager repair_run_progress  0 bytes   0 bytes
+        # 1646147498513-repair_run           scylla_manager repair_run           0 bytes   0 bytes
+        # 1646147550539-repair_job_execution scylla_manager repair_job_execution 0 bytes   0 bytes
+        # 1646147545534-repair_run_progress  scylla_manager repair_run_progress  0 bytes   0 bytes
+        # 1646147491424-repair_config        scylla_manager repair_config        40 KB     40 KB
+        # 1646147496416-scheduler_task       scylla_manager scheduler_task       0 bytes   0 bytes
+        # 1646147542401-repair_run           scylla_manager repair_run           0 bytes   0 bytes
+        # sm_manual_snapshot                 system         local                17.66 KB  17.66 KB
         # ...
         #
         # Total TrueDiskSpaceUsed: 34.38 K
-        snapshot_names = [line[:line.find(' ')] for line in values_only_lines]
-        if ignore_manager_snapshots:
-            snapshot_names = [name for name in snapshot_names if "scheduler_task" not in name]
+        snapshot_names = []
+        for line in values_only_lines:
+            name, keyspace = line.split()[:2]
+            if not ignore_manager_snapshots or not keyspace == "scylla_manager":
+                snapshot_names.append(name)
         return snapshot_names
 
     def test_backup_nodetool_snapshots_before_backup(self):
