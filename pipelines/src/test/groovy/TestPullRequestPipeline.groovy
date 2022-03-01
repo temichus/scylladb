@@ -89,6 +89,10 @@ class TestPullRequestPipeline extends DeclarativePipelineTest {
             c.delegate = delegate
             helper.callClosure(c)
         })
+        helper.registerAllowedMethod('catchError', [Map, Closure], { Map args, Closure c ->
+            c.delegate = delegate
+            helper.callClosure(c)
+        })
         binding.getVariable('currentBuild').getBuildCauses = { "Started by user" }
     }
 

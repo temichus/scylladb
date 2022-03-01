@@ -325,6 +325,9 @@ def doParallelDtest (Map args) {
         }
     }
     parallel branches
+
+    Boolean failedStatus = currentBuild.result == 'FAILURE' || currentBuild.result == 'ABORTED'
+    jenkins.raiseErrorOnFailureStatus (failedStatus, "dtest phase failed")
 }
 
 

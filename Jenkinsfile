@@ -53,19 +53,27 @@ pipeline {
                 timeout(time: 30, unit: 'MINUTES')
             }
             steps {
-                script {
-                    lastStage = env.STAGE_NAME
-                    try {
+                catchError(stageResult: 'FAILURE') {
+                    script {
+                        lastStage = env.STAGE_NAME
+
                         sh '''
                         export INSTALL_CASSANDRA="pip3 install --user https://github.com/scylladb/scylla-ccm/archive/next.zip"
-                        # export SCYLLA_VERSION=dummy
                         ./scripts/run_test.sh bash -c "pre-commit run -a --show-diff-on-failure"
                         '''
+                    }
+                }
+            }
+            post {
+                success {
+                    script {
                         pullRequestSetResult('success', 'jenkins/precommit', 'Precommit passed')
-                    } catch(Exception ex) {
+                    }
+                }
+                unsuccessful {
+                    script {
                         pullRequestSetResult('failure', 'jenkins/precommit', 'Precommit failed')
                     }
-                    sh ''' rm -rf ./temp_home '''
                 }
             }
         }
@@ -74,15 +82,24 @@ pipeline {
                 timeout(time: 5, unit: 'MINUTES')
             }
             steps {
-                script {
-                    lastStage = env.STAGE_NAME
-                    try {
+                catchError(stageResult: 'FAILURE') {
+                    script {
+                        lastStage = env.STAGE_NAME
                         sh '''
                         export INSTALL_CASSANDRA="pip3 install --user https://github.com/scylladb/scylla-ccm/archive/next.zip"
                          ./scripts/run_test.sh --collect-only -qqq
                         '''
+                    }
+                }
+            }
+            post {
+                success {
+                    script {
                         pullRequestSetResult('success', 'jenkins/collection', 'test collection passed')
-                    } catch(Exception ex) {
+                    }
+                }
+                unsuccessful {
+                    script {
                         pullRequestSetResult('failure', 'jenkins/collection', 'test collection failed')
                     }
                 }
@@ -93,22 +110,31 @@ pipeline {
                 timeout(time: 30, unit: 'MINUTES')
             }
             steps {
-                script {
-                    lastStage = env.STAGE_NAME
+                catchError(stageResult: 'FAILURE') {
+                    script {
+                        lastStage = env.STAGE_NAME
 
-                    def changedFiles = jenkins.getChangedFilesList()
-                    def groovyFiles = changedFiles.findAll({it =~ /.*\.groovy/})
-                    def jenkinsFiles = changedFiles.findAll({it =~ /.*\.jenkinsfile/})
-                    if ((!groovyFiles.isEmpty() | !jenkinsFiles.isEmpty()) | (env.CHANGE_ID && pullRequestContainsLabels("test/pipelines"))) {
-                        try {
+                        def changedFiles = jenkins.getChangedFilesList()
+                        def groovyFiles = changedFiles.findAll({it =~ /.*\.groovy/})
+                        def jenkinsFiles = changedFiles.findAll({it =~ /.*\.jenkinsfile/})
+                        if ((!groovyFiles.isEmpty() | !jenkinsFiles.isEmpty()) | (env.CHANGE_ID && pullRequestContainsLabels("test/pipelines"))) {
                             sh '''
                             chmod 777 -R pipelines
                             docker run -u gradle -v `pwd`:/dtest -w /dtest/pipelines gradle:7.3.3-jdk11-alpine gradle clean test -i
                             '''
-                            pullRequestSetResult('success', 'jenkins/test-pipelines', 'Test pipelines passed')
-                        } catch(Exception ex) {
-                            pullRequestSetResult('failure', 'jenkins/test-pipelines', 'Test pipelines failed')
                         }
+                    }
+                }
+            }
+            post {
+                success {
+                    script {
+                        pullRequestSetResult('success', 'jenkins/test-pipelines', 'Test pipelines passed')
+                    }
+                }
+                unsuccessful {
+                    script {
+                        pullRequestSetResult('failure', 'jenkins/test-pipelines', 'Test pipelines failed')
                     }
                 }
             }
@@ -123,14 +149,17 @@ pipeline {
                 timeout(time: 2, unit: 'HOURS')
             }
             steps {
-                script {
-                    lastStage = env.STAGE_NAME
-                    try {
+                catchError(stageResult: 'FAILURE') {
+                    script {
+                        lastStage = env.STAGE_NAME
+
+                        needTestRun = false
                         def changedFiles = jenkins.getChangedFilesList()
                         def pythonChangedFiles = changedFiles.findAll({it =~ /.*\.py/})
 
                         // try running tests only if python files changed
                         if (!pythonChangedFiles.isEmpty()) {
+                            needTestRun = true
                             String gitSelection = ""
                             if (env.CHANGE_TARGET) {
                                 gitSelection = "origin/$CHANGE_TARGET"
@@ -170,9 +199,19 @@ pipeline {
                                 dtest.doDtest(dryRun: params.DRY_RUN, dtestMode: BUILD_MODE, includeTests: "-m dtest_smoke bootstrap_test.py", dtestType: "PR")
                             }
                         }
-                        pullRequestSetResult('success', 'jenkins/test/PR', 'test passed')
-                    } catch(Exception ex) {
-                        echo ex
+                    }
+                }
+            }
+            post {
+                success {
+                    script {
+                        if (needTestRun) {
+                            pullRequestSetResult('success', 'jenkins/test/PR', 'test passed')
+                        }
+                    }
+                }
+                unsuccessful {
+                    script {
                         pullRequestSetResult('failure', 'jenkins/test/PR', 'test failed')
                     }
                 }
