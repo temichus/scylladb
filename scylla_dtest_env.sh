@@ -8,10 +8,10 @@ export PYTHONPATH=$CCM_DIR
 echo
 echo "Examples:"
 echo "=== To run a simple boot and shutdown test:"
-echo 'pytest simple_boot_shutdown.py --cassandra-dir=`pwd`/../scylla/build/debug '
+echo 'pytest simple_boot_shutdown_test.py --cassandra-dir=`pwd`/../scylla/build/debug '
 echo
 echo "=== To run a test and keep the cluster data"
-echo 'pytest simple_boot_shutdown.py --cassandra-dir=`pwd`/../scylla/build/debug --keep-test-dir'
+echo 'pytest simple_boot_shutdown_test.py --cassandra-dir=`pwd`/../scylla/build/debug --keep-test-dir'
 echo
 echo "=== To remove dtest produced clsuter data"
 echo "ls -l ~/.dtest; rm -rf ~/.dtest"
