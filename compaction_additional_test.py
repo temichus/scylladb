@@ -688,7 +688,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
             #   origin=memtable,
             #   .dtest/dtest-e7ugljs7/test/node1/data/ks/cf2-cb269cf0195611ec8aaf6d8518342838/md-1-big-Data.db:level=0:
             #   origin=memtable]
-            split_pattern = re.compile(r"(?:mc|md)-(\d+)-")
+            split_pattern = re.compile(r"(?:m[c-e]|n[a-b])-(\d+)-")
             for one_match in matches:
                 line_groups = one_match[1].groups()
                 if not line_groups:
@@ -768,7 +768,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         #   origin=memtable]
         regular_compact, cleanup_compact = self.get_compacted_sstable_numbers(
             node=node1,
-            exprs=[r"(Compacting|Cleaning) (.*\/ks\/cf.*\/(?:mc|md)-.*)"],
+            exprs=[r"(Compacting|Cleaning) (.*\/ks\/cf.*\/(?:m[c-e]|n[a-b])-.*)"],
             from_mark=mark
         )
 
@@ -829,7 +829,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         #   origin=memtable,
         #   .dtest/dtest-e7ugljs7/test/node1/data/ks/cf2-cb269cf0195611ec8aaf6d8518342838/md-1-big-Data.db:level=0:
         #   origin=memtable]
-        reg_expr_template = r"(Compacting|Cleaning) (.*\/ks\/{}-.*\/(?:mc|md)-.*)"
+        reg_expr_template = r"(Compacting|Cleaning) (.*\/ks\/{}-.*\/(?:m[c-e]|n[a-b])-.*)"
         regular_compact, cleanup_compact = self.get_compacted_sstable_numbers(
             node=node1,
             exprs=[reg_expr_template.format(table) for table in tables],
