@@ -21,7 +21,7 @@ from ccmlib.scylla_node import ScyllaNode
 from dtest_class import Tester, create_ks, create_cf
 from scylla_tools import CassandraCluster
 from tools.tables_view_manager import wait_for_view
-from tools.files import safe_mkdtemp, get_sstables_files, get_node_cf_dir
+from tools.files import safe_mkdtemp, get_sstables_files, get_node_cf_dir, load_files_with_sstableloader
 from tools.data import drop_table, rows_to_list, check_c1c2_result_one, create_c1c2_table, query_c1c2, create_index
 from tools.misc import ImmutableMapping
 from tools.assertions import assert_one
@@ -74,6 +74,83 @@ class BaseHelpers(Tester):
         assert result[0].count == expected_number_of_rows,\
             f"Expected {expected_number_of_rows} rows in {keyspace}.{table} on {node.name}. " \
             f"Got {result[0].count}"
+
+    def get_all_rows_for_check(self, node1):
+        logger.info("Checking rows content on node1...")
+        query = "SELECT * FROM ks.cf"
+        statement = SimpleStatement(query)
+        s = self.patient_cql_connection(node1, 'ks')
+        result = list(s.execute(statement))
+        logger.info(result)
+        return result
+
+    def create_ks_and_cf(self, node, columns, compression, compact_storage, query=None):
+        logger.info("Creating a CQL connection...")
+        session = self.patient_cql_connection(node)
+
+        logger.info("Creating a keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
+
+        logger.info("Creating a column family 'cf'...")
+        if isinstance(query, str):
+            session.execute(query)
+            time.sleep(0.2)
+        elif query is not None:
+            for q in query:
+                session.execute(q)
+                time.sleep(0.2)
+        else:
+            create_cf(session, 'cf', read_repair=0.0, columns=columns,
+                      compression=compression, compact_storage=compact_storage)
+
+        logger.info("Flushing a keyspace...")
+        node.nodetool("flush -- ks")
+
+    def get_cassandra_sstable_dir(self, version, migrated_files_dir):
+        return "{}/cassandra-sstables/migration/{}/{}".format(os.path.dirname(os.path.realpath(__file__)), version,
+                                                              migrated_files_dir)
+
+    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf',
+                             partitioner='org.apache.cassandra.dht.Murmur3Partitioner', use_sstableloader: bool = False):
+        cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
+        logger.info("cassandra sstable dir is {}".format(cassandra_sstable_dir))
+
+        cf_dir = get_node_cf_dir(node, ks, cf)
+        logger.info("Column family directory is {}".format(cf_dir))
+
+        upload_dir = os.path.join(cf_dir, "upload")
+        logger.info("Column family upload directory is {}".format(upload_dir))
+
+        if use_sstableloader:
+            load_files_with_sstableloader(files_dir=cassandra_sstable_dir, node=node, keyspace=ks, table=cf)
+        else:
+            logger.info("Copying sstables created by Cassandra...")
+            self.copy_files_to(cassandra_sstable_dir, upload_dir)
+            logger.info("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
+            node.nodetool("refresh -- {} {}".format(ks, cf))
+
+    def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False,
+                                  sleep=0, query=None, use_sstableloader: bool = False):
+        node1 = self.start_cluster_and_get_node1()
+
+        self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression,
+                              compact_storage=compact_storage, query=query)
+        self.load_migrated_tables(node1, migrated_files_dir, use_sstableloader=use_sstableloader)
+
+        time.sleep(sleep)
+
+        expected_keys = 1
+        if row_content is None:
+            expected_keys = 0
+        self.check_number_of_rows(node1, expected_keys)
+
+        if row_content is not None:
+            result = self.get_all_rows_for_check(node1)
+            for k, error_string in [('key', 'check partition key'), ('c1', 'check column c1'),
+                                    ('c2', 'check column c2'), ('pk', 'check partition key'),
+                                    ('ck', 'check clustering key'), ('v1', 'check column v1')]:
+                if k in row_content:
+                    assert getattr(result[0], k) == row_content[k], error_string
 
 
 @pytest.mark.dtest_full
@@ -605,38 +682,6 @@ class MigrationTestBase(BaseHelpers):
         assert result[0].count == expected_number_of_rows, \
             "Expected {} rows. Got {}".format(expected_number_of_rows, list(s.execute("SELECT * FROM ks.cf")))
 
-    def get_all_rows_for_check(self, node1):
-        logger.info("Checking rows content on node1...")
-        query = "SELECT * FROM ks.cf"
-        statement = SimpleStatement(query)
-        s = self.patient_cql_connection(node1, 'ks')
-        result = list(s.execute(statement))
-        logger.info(result)
-        return result
-
-    def _run_basic_migration_test(self, migrated_files_dir, row_content, compression=None, compact_storage=False,
-                                  sleep=0, query=None):
-        node1 = self.start_cluster_and_get_node1()
-
-        self.create_ks_and_cf(node1, columns={'c1': 'text', 'c2': 'text'}, compression=compression,
-                              compact_storage=compact_storage, query=query)
-        self.load_migrated_tables(node1, migrated_files_dir)
-
-        time.sleep(sleep)
-
-        expected_keys = 1
-        if row_content is None:
-            expected_keys = 0
-        self.check_number_of_rows(node1, expected_keys)
-
-        if row_content is not None:
-            result = self.get_all_rows_for_check(node1)
-            for k, error_string in [('key', 'check partition key'), ('c1', 'check column c1'),
-                                    ('c2', 'check column c2'), ('pk', 'check partition key'),
-                                    ('ck', 'check clustering key'), ('v1', 'check column v1')]:
-                if k in row_content:
-                    assert getattr(result[0], k) == row_content[k], error_string
-
     def _run_migration_test_for_collection(self, migration_dir_name, collection_type, collection_content):
         node1 = self.start_cluster_and_get_node1()
 
@@ -653,32 +698,6 @@ class MigrationTestBase(BaseHelpers):
             # INSERT INTO ks.cf (key, messages) VALUES('a', {'scylladb', 'scylla', 'hello world', 'test'});
             assert result[idx].messages == value, "check messages"
             idx += 1
-
-    def create_ks_and_cf(self, node, columns, compression, compact_storage, query=None):
-        logger.info("Creating a CQL connection...")
-        session = self.patient_cql_connection(node)
-
-        logger.info("Creating a keyspace 'ks'...")
-        create_ks(session, 'ks', 1)
-
-        logger.info("Creating a column family 'cf'...")
-        if isinstance(query, str):
-            session.execute(query)
-            time.sleep(0.2)
-        elif query is not None:
-            for q in query:
-                session.execute(q)
-                time.sleep(0.2)
-        else:
-            create_cf(session, 'cf', read_repair=0.0, columns=columns,
-                      compression=compression, compact_storage=compact_storage)
-
-        logger.info("Flushing a keyspace...")
-        node.nodetool("flush -- ks")
-
-    def get_cassandra_sstable_dir(self, version, migrated_files_dir):
-        return "{}/cassandra-sstables/migration/{}/{}".format(os.path.dirname(os.path.realpath(__file__)), version,
-                                                              migrated_files_dir)
 
     def recursive_copy_to(self, from_dir, to_dir):
         shutil.copytree(from_dir, to_dir)
@@ -703,6 +722,26 @@ class MigrationTestBase(BaseHelpers):
 
 # Dtest created to test migration of data from C* to Scylla
 #
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestMigrationV4(BaseHelpers):
+
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
+        return dtest_setup_overrides
+
+    def test_migrate_sstable_with_zstd_compression_via_sstableloader(self):
+        # Content generated with:
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
+        # TODO: Temporarily testing a scylladb-4.6 generated sstable directory. Should be replaced by Cassandra-4.0 sstables once the following issue is fixed:
+        # https://github.com/scylladb/scylla/issues/8583
+        self.version = 'scylla_4_6'
+        self._run_basic_migration_test('with_zstd_compression', {
+            'key': 'a', 'c1': 'abc', 'c2': 'cde'}, compression='Zstd', use_sstableloader=True)
 
 
 @pytest.mark.dtest_full
@@ -773,23 +812,6 @@ class TestMigration(MigrationTestBase):
             self.recursive_copy_to(os.path.join(cassandra_dir, 'system_traces'),
                                    os.path.join(scylla_dir, 'system_traces'))
 
-    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf',
-                             partitioner='org.apache.cassandra.dht.Murmur3Partitioner'):
-        cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
-        logger.info("cassandra sstable dir is {}".format(cassandra_sstable_dir))
-
-        cf_dir = get_node_cf_dir(node, ks, cf)
-        logger.info("Column family directory is {}".format(cf_dir))
-
-        upload_dir = os.path.join(cf_dir, "upload")
-        logger.info("Column family upload directory is {}".format(upload_dir))
-
-        logger.info("Copying sstables created by Cassandra...")
-        self.copy_files_to(cassandra_sstable_dir, upload_dir)
-
-        logger.info("Running 'nodetool refresh -- {} {}' to load migrated sstables".format(ks, cf))
-        node.nodetool("refresh -- {} {}".format(ks, cf))
-
     def load_migrated_tables_expect_fail(self, node, migrated_files_dir, message=None, ks='ks', cf='cf'):
         if message:
             self.ignore_log_patterns += [message]
@@ -844,8 +866,9 @@ class TestMigrationUpgradeSSTables(TestMigration):
         # since expired ttl data doens't create files on disk
         pass
 
-    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf'):
-        super(TestMigrationUpgradeSSTables, self).load_migrated_tables(node, migrated_files_dir, ks='ks', cf='cf')
+    def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf', use_sstableloader: bool = False):
+        super(TestMigrationUpgradeSSTables, self).load_migrated_tables(node, migrated_files_dir, ks='ks', cf='cf',
+                                                                       use_sstableloader=use_sstableloader)
 
         cf_dir = get_node_cf_dir(node, ks, cf)
         logger.info("Column family directory is {}".format(cf_dir))

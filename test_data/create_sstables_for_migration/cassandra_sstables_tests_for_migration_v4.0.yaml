@@ -1,0 +1,12 @@
+with_zstd_compression:
+  cmds: [["cqlsh", "CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}"],
+         ["cqlsh", "CREATE COLUMNFAMILY ks.cf (key varchar PRIMARY KEY, c2 text, c1 text) WITH comment='test cf' AND compression = { 'sstable_compression':'ZstdCompressor' } "],
+         ["cqlsh", "INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde')"],
+         ["nodetool", "flush"],
+         ["subfolder", ""],
+         ["cqlsh", "DROP KEYSPACE ks"],
+         ["delete folder"]
+  ]
+  keyspace_name: 'ks'
+  table_name: 'cf'
+

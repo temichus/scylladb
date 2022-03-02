@@ -2,6 +2,7 @@ import fileinput
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import logging
@@ -155,3 +156,21 @@ def check_file_lists_are_equal(file_list_a: List[Path], file_list_b: List[Path])
     files_b = sorted([item.name for item in file_list_b])
 
     return files_a == files_b
+
+
+def load_files_with_sstableloader(files_dir, node, keyspace, table):
+    logger.info("Loading files with sstable-Loader from dir: %s", files_dir)
+    ip = node.address()
+    # copy sstables to ks.cf folder to properly load with sstableloader
+    tmpdir = safe_mkdtemp()
+    copy_directory(srcdir=files_dir, destdir=os.path.join(tmpdir, keyspace, table), ignore_subdir=False)
+
+    args = [node.get_tool('sstableloader'), '-d', ip, os.path.join(tmpdir, keyspace, table)]
+    run_cmd = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = run_cmd.communicate()
+    exit_status = run_cmd.wait()
+
+    if exit_status != 0 or 'exception' in str(stderr):
+        raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
+                        (" ".join(args), exit_status, stdout, stderr))
+    shutil.rmtree(tmpdir, ignore_errors=True)
