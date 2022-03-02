@@ -1129,11 +1129,9 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
     def test_streaming_during_adding_node_with_boostrap(self):
         time_windows = 20
-        shard_count = 1
         [node1], session = self.prepare(1)
 
         self._create_ks_cl_with_twcs(session, rf=1)
-
         self._simulate_write_process_in_minutes(session, duration_minutes=time_windows)
 
         # Not really relevant to the test, just for sanity.
@@ -1142,6 +1140,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         # node added with bootstrap enabled
         node2 = new_node(self.cluster)
         node2.start(wait_for_binary_proto=True)
+        shard_count = node2._smp
 
         # wait for off-strategy compaction to finish
         node2.watch_log_for(f"Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}",
