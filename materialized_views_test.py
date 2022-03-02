@@ -28,6 +28,7 @@ from tools.misc import flush_by_node, remove_node
 from tools.tables_view_manager import wait_for_view_build_start, wait_for_view, TableManager, MaterializedViewManager
 from cassandra.cluster import NoHostAvailable
 from ccmlib.scylla_cluster import ScyllaCluster
+from ccmlib.node import NodetoolError
 
 import logging
 
@@ -2785,25 +2786,98 @@ class TestMaterializedViews(CommonUtils):
             cl=ConsistencyLevel.ONE
         )
 
-    @pytest.mark.skip('not supported yet')
-    # TODO: the test should be finished
-    def test_viewbuildstatus(self):
-        rows = 10000
-        session = self.prepare(rf=3, nodes=3, fetch_size=rows * 2)
-        node1 = self.cluster.nodelist()[0]
-        tm = TableManager(session, self.cluster,
-                          columns={'int': {'amount': 20, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
-                                   }, cl_columns={}, pk_columns={})
-        tm.create_table()
+    def _setup_for_viewbuildstatus(self, num_of_rows):
+        """ this function creates a materialized view for viewbildstatus nodetool command tests
+            Returns a list of [TableManager, MaterializedViewManager] objects
+        """
+        session = self.prepare(rf=3, nodes=3, fetch_size=num_of_rows * 2)
+        table_manager = TableManager(session, self.cluster,
+                                     columns={
+                                         'int': {'amount': 20, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
+                                     }, cl_columns={}, pk_columns={})
+        table_manager.create_table()
+        table_manager.prefill_table(num_of_rows)
 
-        mv_pk_column = tm.column_names_list[1]
-        mv = MaterializedViewManager(tm)
-        mv.create_materialized_view(mv_pk_column={'names': [mv_pk_column]})
+        mv_pk_column = table_manager.column_names_list[1]
+        mv = MaterializedViewManager(table_manager)
+        mv.create_materialized_view(mv_pk_column={'names': [mv_pk_column]}, wait_for_view_built=False)
+        return [table_manager, mv]
 
-        tm.prefill_table(rows)
-        self.cluster.flush()
-        status = node1.nodetool('viewbuildstatus')
-        logger.debug(status)
+    def test_viewbuildstatus_progress_success_flow(self):
+        """" test viewbuildstatus nodetool command output correctness during the creation of a materialized view"""
+
+        table_manager, mv = self._setup_for_viewbuildstatus(num_of_rows=100000)
+        number_of_nodes = len(self.cluster.nodelist())
+
+        in_progress_str = output = "has not finished building; node status is below."
+        success_str = "has finished building"
+        max_retries = 20
+        current_retry = 0
+
+        """
+        viewbuildstatus command output for example:
+
+           keyspace1.m_view has not finished building; node status is below.
+
+           Host      Info
+           127.0.0.2 STARTED
+           127.0.0.3 STARTED
+           127.0.0.1 SUCCESS
+
+        """
+
+        while current_retry < max_retries and in_progress_str in output:
+            current_retry += 1
+            node_to_run = random.choice(self.cluster.nodelist())
+            logger.debug(f'Waiting for viewbuildstatus command to finish. Current retry = {current_retry},'
+                         f'command is running from {node_to_run.name}\n output = {output}')
+            try:
+                output = node_to_run.nodetool(f'viewbuildstatus {table_manager.keyspace} {mv.mv_name}')
+                assert (success_str in output[0]), "viewbuildstatus command finished with unexpected output: {}, " \
+                                                   "Terminating test".format(output)
+                logger.debug('viewbuildstatus command finished successfully')
+            except NodetoolError as e:
+                # viewbuildstatus command returns exit(1) during the materialized view build process duration
+                # TODO remove the try-except when https://github.com/scylladb/scylla-tools-java/issues/289 is resolved
+                output = e.stdout
+                logger.debug(f'e.stdout = {e.stdout}')
+                cluster_info = output.splitlines()[3:]
+                assert(len(cluster_info) == number_of_nodes), f'Wrong output of viewbuildstatus command:' \
+                    f'number of lines is wrong'
+                for line in cluster_info:
+                    host_ip, host_status = line.split()
+                    assert (host_status == "SUCCESS" or host_status == "STARTED"), \
+                        f'Wrong output of viewbuildstatus command: host {host_ip} state is not "STARTED" or ' \
+                        f'"SUCCESS" '
+
+        assert (success_str in output[0]), \
+            f'viewbuildstatus command exceeded {max_retries} retries without receiving {success_str} string in output'
+
+    def test_viewbuildstatus_progress_unknown_flow(self):
+        """" test viewbuildstatus nodetool command output correctness,
+             testing UNKNOWN host state by giving a wrong materialized view parameter to viewbuildstatus command
+        """
+        """
+           viewbildstatus command output for example:
+
+               ks.tm_table has not finished building; node status is below.
+
+               Host       Info
+               127.0.41.3 UNKNOWN
+               127.0.41.1 UNKNOWN
+               127.0.41.2 UNKNOWN
+        """
+        table_manager, mv = self._setup_for_viewbuildstatus(num_of_rows=10)
+        number_of_nodes = len(self.cluster.nodelist())
+        try:
+            node_to_run = random.choice(self.cluster.nodelist())
+            logger.debug(f'Testing viewbuilstatus nodetool command with wrong materialized view name.\n '
+                         f'command is running from {node_to_run.name}')
+            node_to_run.nodetool(f'viewbuildstatus {table_manager.keyspace} {table_manager.table_name}')
+        except NodetoolError as e:
+            logger.debug(f'e.stdout = {e.stdout}')
+            assert (e.stdout.count("UNKNOWN") == number_of_nodes), \
+                "wrong number of UNKNOWN host states in viewbuildstatus command output"
 
     def test_repair_mv(self):
         """ Test repair of materialized view """
