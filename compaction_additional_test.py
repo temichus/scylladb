@@ -1057,14 +1057,17 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                                    seconds margin: sstable={sf} \
                                    min_timestamp={stats['min_timestamp']} max_timestamp={stats['max_timestamp']}"
 
+    def _sstable_count_is_close_to_time_windows_multiplied_by_shards_count(self, node, time_windows, shards_count=1):
+        sstables = self._get_list_of_sstables(node)
+        expected_sstables_count = time_windows * shards_count
+        sstables_count_margin = 2 * shards_count  # possible additional window before and after (half-windows)
+        assert expected_sstables_count + sstables_count_margin >= len(sstables) >= time_windows * shards_count, \
+            f"Wrong sstables count on {node.name}. There should be at least one sstable per time window."
+
     def _sstable_count_is_equal_or_greater_than_time_windows(self, node, time_windows):
         sstables = self._get_list_of_sstables(node)
         assert len(sstables) >= time_windows, f"Missing sstables on {node.name}." \
                                               f" There should be at least one sstable per time window."
-
-    def _get_sstables_size(self, node):
-        sstables = node.get_sstables(self.keyspace_name, self.table_name)
-        return sum([getsize(sstable) for sstable in sstables])
 
     def _create_ks_cl_with_twcs(self, session, rf=1):
 
@@ -1124,10 +1127,11 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         return list_sstables_timewindows
 
-    @pytest.mark.single_node
     def test_streaming_during_adding_node_with_boostrap(self):
         time_windows = 20
+        shard_count = 1
         [node1], session = self.prepare(1)
+
         self._create_ks_cl_with_twcs(session, rf=1)
 
         self._simulate_write_process_in_minutes(session, duration_minutes=time_windows)
@@ -1138,15 +1142,18 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         # node added with bootstrap enabled
         node2 = new_node(self.cluster)
         node2.start(wait_for_binary_proto=True)
-        # After streaming the new node should also have at max one
-        # window per sstable.
-        self._check_sstable_timestamps(node2)
-        self._sstable_count_is_equal_or_greater_than_time_windows(node2, time_windows)
 
-        # verify write amplification is low
-        node1_sstable_size = self._get_sstables_size(node1)
-        node2_sstable_size = self._get_sstables_size(node2)
-        assert node2_sstable_size <= node1_sstable_size, "write amplification on new node detected"
+        # wait for off-strategy compaction to finish
+        node2.watch_log_for(f"Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}",
+                            timeout=300)
+
+        # After streaming the new node should also have at max one window per sstable.
+        self._check_sstable_timestamps(node2)
+        self._sstable_count_is_close_to_time_windows_multiplied_by_shards_count(node2, time_windows, shard_count)
+
+        # verify write amplification by validation only single reshape compaction was executed for each shard
+        reshapes = node2.grep_log(f"compaction - [[]Reshape {self.keyspace_name}.{self.table_name} .*[]] Reshaped")
+        assert len(list(reshapes)) == shard_count, "There should be only one table reshape per shard"
 
     def test_streaming_decommission(self):
         [node1, node2], session = self.prepare(2)
