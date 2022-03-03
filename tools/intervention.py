@@ -53,5 +53,5 @@ class KillOnBootstrap(Thread):
         self.node = node
 
     def run(self):
-        self.node.watch_log_for("JOINING: Starting to bootstrap")
+        self.node.watch_log_for("Starting to bootstrap")
         self.node.stop(gently=False)

@@ -233,7 +233,7 @@ class TestUpdateClusterLayout(Tester):
 
         logger.debug("Starting node2")
         node2.start(no_wait=True)
-        node2.watch_log_for("JOINING: Starting to bootstrap")
+        node2.watch_log_for("Starting to bootstrap")
 
         expected_error = "Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true"
         self.ignore_log_patterns += [expected_error]
@@ -308,7 +308,7 @@ class TestUpdateClusterLayout(Tester):
         logger.debug("Start node 4...")
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-        node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Starting to bootstrap")
         log_timeout = 600
         if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
             log_timeout *= 3
@@ -375,7 +375,7 @@ class TestUpdateClusterLayout(Tester):
             new_node = cluster.new_node(i, auto_bootstrap=True, add_node=False)
             logger.debug("Start Node %d" % i)
             new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-            new_node.watch_log_for("JOINING: Starting to bootstrap")
+            new_node.watch_log_for("Starting to bootstrap")
             new_node.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
             logger.debug("Stop Node %d" % i)
             new_node.stop(gently=False)
@@ -480,7 +480,7 @@ class TestUpdateClusterLayout(Tester):
             logger.debug("Start Node %d" % i)
             new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
             new_node.watch_log_for([
-                "JOINING: Starting to bootstrap",
+                "Starting to bootstrap",
                 "Beginning stream session|sync data for keyspace=ks, status=started",
                 "Streaming plan for Bootstrap-ks-index-2 succeeded|Repair 100 out of.*keyspace=ks,",
             ])
@@ -569,7 +569,7 @@ class TestUpdateClusterLayout(Tester):
         logger.debug("Start Node")
         a_new_node.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         a_new_node.watch_log_for([
-            "JOINING: Starting to bootstrap",
+            "Starting to bootstrap",
             "Beginning stream session|sync data for keyspace=ks, status=started",
             "Streaming plan for Bootstrap-ks-index-2 succeeded|Repair 100 out of.*keyspace=ks,",
         ])
@@ -616,7 +616,7 @@ class TestUpdateClusterLayout(Tester):
 
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-        node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
@@ -685,7 +685,7 @@ class TestUpdateClusterLayout(Tester):
 
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-        node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         t = executor.submit(run)
 
@@ -750,7 +750,7 @@ class TestUpdateClusterLayout(Tester):
 
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-        node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         t = executor.submit(run)
 
@@ -1392,7 +1392,7 @@ class TestUpdateClusterLayout(Tester):
 
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-        node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         # Create table and insert data during bootstrapping of the new node
         if when == "during":
@@ -1481,7 +1481,7 @@ class TestUpdateClusterLayout(Tester):
         self.ignore_log_patterns += ['Startup failed']
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
-        node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
         logger.debug("Hard-stop node 4 ...")

@@ -149,11 +149,11 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
 
-        matched_logs = node2.grep_log("Compacted .* sstables to |JOINING: Starting to bootstrap|Bootstrap completed!")
+        matched_logs = node2.grep_log("Compacted .* sstables to |Starting to bootstrap|Bootstrap completed!")
         bootstrap_status = None
         for item in matched_logs:
             line = item[0]
-            if 'JOINING: Starting to bootstrap' in line:
+            if 'Starting to bootstrap' in line:
                 bootstrap_status = 'START'
             elif 'Bootstrap completed!' in line:
                 bootstrap_status = 'END'
@@ -543,7 +543,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         mark = node4.mark_log()
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
         logger.debug("Waiting for node4 to join")
-        node4.watch_log_for("JOINING: Starting to bootstrap", from_mark=mark, timeout=0)
+        node4.watch_log_for("Starting to bootstrap", from_mark=mark, timeout=0)
 
     def test_failed_bootstap_wiped_node_can_join(self):
         """
@@ -590,7 +590,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         logger.debug("Restarting node2")
         node2.start(wait_for_binary_proto=True, wait_other_notice=True)
         logger.debug("Waiting for node2 to join")
-        node2.watch_log_for("JOINING: Starting to bootstrap", from_mark=mark, timeout=0)
+        node2.watch_log_for("Starting to bootstrap", from_mark=mark, timeout=0)
 
     # In Scylla when one node bootstraps, it will check if there is any node in bootstrap status in gossip.
     # If it finds one, it will stop bootstrap (Asias)
@@ -708,7 +708,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         https://github.com/scylladb/scylla/issues/4488
         """
         executor = ThreadPoolExecutor(max_workers=2)
-        bootstrap_msg = "JOINING: Starting to bootstrap"
+        bootstrap_msg = "Starting to bootstrap"
         kill_node_err_msg = "The process is dead, returncode={}"
         ks_name, consistency_level_key = "keyspace", "TWO"
         beginning_stream_session_msg = f"Beginning stream session|sync data for keyspace={ks_name}, status=started"

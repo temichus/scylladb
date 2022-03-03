@@ -190,7 +190,7 @@ class TestReplaceAddress(Tester):
         node4.start(replace_address=self.cluster.get_node_ip(3), no_wait=True,
                     jvm_args=['--logger-log-level', 'stream_session=debug'])
 
-        node4.watch_log_for("JOINING: Starting to bootstrap")
+        node4.watch_log_for("Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
         logger.debug("Insert 1000 rows more.")
