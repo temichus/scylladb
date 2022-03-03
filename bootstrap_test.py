@@ -234,7 +234,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         messages = [
             "Pulling schema from {}(:[0-9]+)?".format(node1.address()),
             "Schema merge with {}(:[0-9]+)? completed".format(node1.address()),
-            "JOINING: schema complete, ready to bootstrap",
+            "Checking bootstrapping/leaving nodes: ok",
         ]
 
         matches = node2.watch_log_for(messages)
