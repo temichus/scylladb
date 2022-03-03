@@ -176,7 +176,7 @@ class TestMigrationWith(MigrationTestBase):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    def tst_load_migrated_table_with_counter(self):
+    def test_load_migrated_table_with_counter(self):
         """
         Test migration of old data with counter, using the default (--ignore-dropped-counter-data isn't passed)
         """

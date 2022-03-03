@@ -11,7 +11,6 @@ import subprocess
 import datetime
 import logging
 
-import requests
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 import pytest
@@ -21,13 +20,12 @@ from ccmlib.scylla_node import ScyllaNode
 from dtest_class import Tester, create_ks, create_cf
 from scylla_tools import CassandraCluster
 from tools.tables_view_manager import wait_for_view
-from tools.files import safe_mkdtemp, get_sstables_files, get_node_cf_dir, load_files_with_sstableloader
+from tools.files import safe_mkdtemp, get_sstables_files, get_node_cf_dir, load_files_with_sstableloader, copy_files_to
 from tools.data import drop_table, rows_to_list, check_c1c2_result_one, create_c1c2_table, query_c1c2, create_index
 from tools.misc import ImmutableMapping
 from tools.assertions import assert_one
 from tools.stress import create_stress_compatible_table
 from dtest_setup_overrides import DTestSetupOverrides
-from tools.files import copy_files_to
 
 logger = logging.getLogger(__name__)
 
@@ -747,7 +745,11 @@ class TestMigrationV4(BaseHelpers):
 @pytest.mark.dtest_full
 @pytest.mark.single_node
 class TestMigration(MigrationTestBase):
-    __test__ = False
+    __test__ = True
+
+    @pytest.fixture(params=['2_1_x', '2_2_x', '3_0_mc', '3_0_md'], autouse=True)
+    def select_version(self, request):
+        self.version = request.param
 
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
@@ -848,8 +850,13 @@ class TestMigration(MigrationTestBase):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestMigrationUpgradeSSTables(TestMigration):
-    __test__ = False
+    __test__ = True
+
+    @pytest.fixture(params=['2_1_x', '2_2_x', '3_0_mc', '3_0_md'], autouse=True)
+    def select_version(self, request):
+        self.version = request.param
 
     @pytest.mark.skip('test isn\'t relevant when using nodetool upgradesstables')
     def test_migrate_sstable_with_row_tombstone(self):
@@ -1171,10 +1178,14 @@ class TestTTLWithMigrate(Tester):
 
 @pytest.mark.dtest_full
 class TestLoadAndStream(BaseHelpers):
-    __test__ = False
     KEYSPACE_NAME = 'keyspace1'
     TABLE_NAME = 'standard1'
     EXPECTED_ROWS_NUMBER = 1000
+    __test__ = True
+
+    @pytest.fixture(params=['3_0_md'], autouse=True)
+    def select_version(self, request):
+        self.version = request.param
 
     def test_load_and_stream_decrease_cluster(self):
         """
@@ -1754,16 +1765,3 @@ class TestLoadAndStream(BaseHelpers):
 
         logger.debug("Copying sstables created by Cassandra...")
         self.copy_files_to(cassandra_sstable_dir, upload_dir)
-
-
-versions = ['2_1_x', '2_2_x', '3_0_mc', '3_0_md']
-for version in versions:
-    cls_name = ('TestMigration_with_' + version)
-    vars()[cls_name] = type(cls_name, (TestMigration,), {'version': version, '__test__': True})
-
-    cls_name = ('TestMigrationUpgradeSSTables_with_' + version)
-    vars()[cls_name] = type(cls_name, (TestMigrationUpgradeSSTables,), {'version': version, '__test__': True})
-
-for version in ['3_0_md']:
-    cls_name = ('TestLoadAndStream_with_' + version)
-    vars()[cls_name] = type(cls_name, (TestLoadAndStream,), {'version': version, '__test__': True})
