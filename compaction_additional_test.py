@@ -1271,8 +1271,13 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         time_now = time.time()
         res = node1.run_sstablemetadata(keyspace=self.keyspace_name)
-        min_timestamp = min([int(min_compile.search(r[0]).group(1)) for r in res])
-        max_timestamp = max([int(max_compile.search(r[0]).group(1)) for r in res])
+        min_timestamp = max_timestamp = 0
+        try:
+            min_timestamp = min([int(min_compile.search(out).group(1)) for out, err, rc in res if out])
+            max_timestamp = max([int(max_compile.search(out).group(1)) for out, err, rc in res if out])
+        except ValueError:
+            errors = [stderr for stdout, stderr, rc in res if not stdout][:10]
+            pytest.fail(f'\nsstablemetadata failed with the following:\n\n{"".join(errors)}')
 
         assert min_timestamp < int(time_now) < max_timestamp,\
             f'New sstables timestamp must be between {min_timestamp} and {max_timestamp}, but it was {int(time_now)}'
