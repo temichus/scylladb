@@ -1186,6 +1186,45 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self._check_sstable_timestamps(node1)
         self._check_sstable_timestamps(node2)
 
+    def test_data_is_segregated_during_off_strategy(self):
+        """
+        https://github.com/scylladb/scylla/issues/9199
+        With data segregation on repair, thousands of sstables are potentially
+        added to maintenance set which causes high latency due to stalls.
+
+        That's because N*M sstables are created by a repair,
+            where N = # of ranges
+            and M = # of segregations
+
+        For TWCS, M = # of windows.
+
+        Assuming N = 768 and M = 20, ~15k sstables end up in sstable set.
+        Fix: avoid performing data segregation in repair, as offstrategy will already perform the segregation anyway
+
+        This test verifies this.
+        """
+        [node1], session = self.prepare(1, configuration_options={"enable_repair_based_node_ops": True})
+        self._create_ks_cl_with_twcs(session, rf=1)
+        duration_minutes = 5
+        self._simulate_write_process_in_minutes(session, duration_minutes=duration_minutes, num_pks=30)
+
+        node2 = new_node(self.cluster)
+        node2.start(wait_for_binary_proto=True)
+        full_table_name = f"{self.keyspace_name}.{self.table_name}"
+        node2.watch_log_for(f"Done with off-strategy compaction for {full_table_name}", timeout=300)
+
+        # get sstables count taken by off-strategy to compact.
+        lines = list(node2.grep_log(
+            fr"table - Starting off-strategy compaction for {full_table_name}, ([\d]+) candidates were found"))
+        sstables_for_compaction_count = int(lines[0][1].groups()[0])
+
+        # verify there's limited number of sstables for compaction
+        assert sstables_for_compaction_count < 10, "There were too many sstables for off-strategy compaction. #9199"
+
+        # verify data is segregated
+        self._sstable_count_is_close_to_time_windows_multiplied_by_shards_count(node2, duration_minutes,
+                                                                                shards_count=node2._smp)
+
     def run_prepared_statement(self, node, session, insert_statement, rand_pks, start, end):
         for t in range(start, end * 60):
             concurrent.execute_concurrent_with_args(
