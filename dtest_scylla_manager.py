@@ -20,6 +20,11 @@ from dtest_setup_overrides import DTestSetupOverrides
 
 logger = logging.getLogger(__name__)
 
+SPACE_PLACEHOLDER = r"SPACE"
+
+
+new_command_structure_minimum_version = LooseVersion("3.0")
+
 
 class ComparableHealthCheckField:
     def __eq__(self, other):
@@ -100,7 +105,9 @@ class TaskStatus(Enum):
     DONE = "DONE"
     UNKNOWN = "UNKNOWN"
     ERROR = "ERROR"
+    STOPPING = "STOPPING"
     STOPPED = "STOPPED"
+    WAITING = "WAITING"
     STARTING = "STARTING"
     ABORTED = "ABORTED"
     SKIPPED = "SKIPPED"
@@ -164,7 +171,7 @@ class ScyllaManagerApiBase:
                 continue
             options_list.append(option_key)
             if isinstance(option_value, list):
-                options_list.append(','.join(map(str, option_value)))
+                options_list.append(r','.join(map(str, option_value)))
             elif not isinstance(option_value, bool):
                 options_list.append(str(option_value))
         return options_list
@@ -214,7 +221,6 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
         cmd_translate_dict = {
             'dc_names': '--dc',
             'dry_run': '--dry-run',
-            'interval': '--interval',
             'keyspace_list': '--keyspace',
             'location_list': '--location',
             'num_retries': '--num-retries',
@@ -222,7 +228,7 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
             'retention': '--retention',
             'is_show_tables': '--show-tables',
             'snapshot_parallel_list': '--snapshot-parallel',
-            'start_date': '--start-date',
+            'cron': '--cron',
             'upload_parallel_list': '--upload-parallel',
             'cluster_name': '--cluster',
             'enabled': '--enabled',
@@ -236,10 +242,10 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
         super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict)
 
     def backup(self,  # pylint: disable=too-many-arguments
-               dc_names: list or str = None, dry_run: bool = None, interval: str = None,
+               dc_names: list or str = None, dry_run: bool = None,
                keyspace_list: list or str = None, location_list: list or str = None, num_retries: int = None,
                rate_limit_list: list or str = None, retention: int = None, is_show_tables: bool = None,
-               snapshot_parallel_list: list or str = None, start_date: str = None,
+               snapshot_parallel_list: list or str = None, cron: list = None,
                upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None):
         """
         Schedules backups
@@ -298,9 +304,9 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
 
     def update(self,  # pylint: disable=too-many-arguments
                backup_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               interval: str = None, keyspace_list: list or str = None, location_list: list or str = None,
+               keyspace_list: list or str = None, location_list: list or str = None,
                num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
-               is_show_tables: bool = None, snapshot_parallel_list: list or str = None, start_date: str = None,
+               is_show_tables: bool = None, snapshot_parallel_list: list or str = None, cron: list = None,
                upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None):
         """
         Modifies a backup task
@@ -399,7 +405,7 @@ class ScyllaManagerTaskApi(ScyllaManagerApiBase):
         """
         options = self.create_command_options(cmd_options_dict=locals())
         return self.sctool.run(
-            cmd=self.create_sctool_command(cmd_options=options, cmd_hierarchy=["task", "list"]),
+            cmd=self.create_sctool_command(cmd_options=options, cmd_hierarchy=["tasks"]),
             **(sctool_kwargs or {"is_verify_errorless_result": True}))
 
 
@@ -463,7 +469,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
             "is_show_tables": "--show-tables",
             "small_table_threshold": "--small-table-threshold",
             "ignore_down_hosts": "--ignore-down-hosts",
-            "start_date": "--start-date",
+            "cron": "--cron",
             "cluster_name": "--cluster",
             "host": "--host",
         }
@@ -472,9 +478,9 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
 
     def repair(self,  # pylint: disable=too-many-arguments
                dc_names: list or str = None, dry_run: bool = None, ignore_down_hosts: bool = None,
-               is_fail_fast: bool = None, intensity: float = None, interval: str = None,
+               is_fail_fast: bool = None, intensity: float = None,
                keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
-               is_show_tables: bool = None, small_table_threshold: str = None, start_date: str = None,
+               is_show_tables: bool = None, small_table_threshold: str = None, cron: list = None,
                cluster_name: str = None, sctool_kwargs: dict = None, host: str = None):
         """
         Usage:
@@ -527,9 +533,9 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
 
     def update(self,  # pylint: disable=too-many-arguments
                repair_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               is_fail_fast: bool = None, intensity: float = None, interval: str = None, ignore_down_hosts: bool = None,
+               is_fail_fast: bool = None, intensity: float = None, ignore_down_hosts: bool = None,
                keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
-               is_show_tables: bool = None, small_table_threshold: str = None, start_date: str = None,
+               is_show_tables: bool = None, small_table_threshold: str = None, cron: list = None,
                cluster_name: str = None, sctool_kwargs: dict = None, host: str = None):
         """
         Usage:
@@ -755,6 +761,8 @@ class SCTool(object):
     def run(self, cmd: Union[str, List[str]], is_verify_errorless_result=False, parse_table_res=True,
             is_multiple_tables=False):
         list_cmd = cmd.copy() if isinstance(cmd, list) else cmd.split()
+        for i in range(len(list_cmd)):
+            list_cmd[i] = list_cmd[i].replace(SPACE_PLACEHOLDER, " ")
         logger.debug("Issuing: 'sctool {}'".format(list_cmd))
         try:
             stdout, stderr = self.scylla_manager.sctool(cmd=list_cmd)
@@ -906,12 +914,12 @@ class ManagerTask(ScyllaManagerBase):
         self.cluster_id = cluster_id
 
     def stop(self):
-        cmd = "task stop {} -c {}".format(self.id, self.cluster_id)
+        cmd = "stop {} -c {}".format(self.id, self.cluster_id)
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return self.wait_and_get_final_status(timeout=30, step=3)
 
     def start(self, continue_task=True):
-        cmd = "task start {} -c {}".format(self.id, self.cluster_id)
+        cmd = "start {} -c {}".format(self.id, self.cluster_id)
         if not continue_task:
             cmd += " --no-continue"
         self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
@@ -924,8 +932,13 @@ class ManagerTask(ScyllaManagerBase):
         return cmd
 
     def delete_task(self):
-        cmd = f"task delete {self.id} -c {self.cluster_id}"
+        cmd = f"stop --delete {self.id} -c {self.cluster_id}"
         self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+
+    def task_list(self):
+        cmd = f"tasks -c {self.cluster_id}"
+        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        return stdout, stderr
 
     def update(self, **kwargs):
         """
@@ -940,15 +953,14 @@ class ManagerTask(ScyllaManagerBase):
         """
 
         cmd_mapping = {'enabled': '--enabled',
-                       'interval': '--interval',
                        'num_retries': '--num-retries',
-                       'start_time': '--start-date'}
+                       'cron': '--cron'}
         cmd_arguments = []
         for k, v in kwargs.items():
             cmd_arguments.append("{0}={1}".format(cmd_mapping[k], v))
 
-        cmd = "task update {0.id} -c {0.cluster_id} {update_arguments}".format(
-            self, update_arguments=" ".join(cmd_arguments))
+        task_type = self.id[:self.id.find('/')]
+        cmd = f"{task_type} update {self.id} -c {self.cluster_id} {' '.join(cmd_arguments)}"
         stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
@@ -966,15 +978,14 @@ class ManagerTask(ScyllaManagerBase):
         # │ b414cde5-ebe3-11e8-82c1-12c0dad619c2 │ 19 Nov 18 10:13:04 UTC │ 19 Nov 18 10:13:04 UTC │ 0s       │ NEW   │
         # │ 4e741c3d-ebe2-11e8-82c0-12c0dad619c2 │ 19 Nov 18 10:03:04 UTC │ 19 Nov 18 10:03:04 UTC │ 0s       │ NEW   │
         # ╰──────────────────────────────────────┴────────────────────────┴────────────────────────┴──────────┴───────╯
-        cmd = "task history {} -c {}".format(self.id, self.cluster_id)
+        cmd = "info {} -c {}".format(self.id, self.cluster_id)
         stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout  # or can be specified like: self.get_property(parsed_table=res, column_name='status')
 
     @property
     def history_list(self):
         history_table = self.history
-        keys = history_table[0]
-        value_rows = history_table[1:]
+        _, _, _, keys, *value_rows = history_table
         complete_list = []
 
         for row in value_rows:
@@ -995,10 +1006,14 @@ class ManagerTask(ScyllaManagerBase):
         # │ repair/0a922f7d-74dc-4fe4-9439-daf3804f84d4           │           │ 16 Sep 20 00:00:00 IDT (+7d)  │ DONE   │
         # │ repair/53d4afe0-d740-4c73-adb2-ab4c686b6b99           │ -K 'ks'   │                               │ DONE   │
         # ╰───────────────────────────────────────────────────────┴───────────┴───────────────────────────────┴────────╯
-        field_name = "arguments"
-        arguments = self.get_property(
-            parsed_table=self.task_api.list(cluster_name=self.cluster_id)[0], column_name=field_name)
-        return self.task_api.parse_output(output=arguments, regex_name=field_name)
+        arguments = ""
+        for task_property in self.progress_details(is_verify_errorless_result=True)[0]:
+            if task_property[0].startswith("Arguments"):
+                arguments = task_property[0].split()[1]
+                break
+        if not arguments:
+            return {}
+        return self.task_api.parse_output(output=arguments, regex_name="arguments")
 
     @property
     def next_run(self):
@@ -1011,17 +1026,15 @@ class ManagerTask(ScyllaManagerBase):
         # │ healthcheck/7fb6f1a7-aafc-4950-90eb-dc64729e8ecb │ 18 Nov 18 20:32:08 UTC (+15s) │ 0    │            │ NEW    │
         # │ repair/22b68423-4332-443d-b8b4-713005ea6049      │ 19 Nov 18 00:00:00 UTC (+7d)  │ 3    │            │ NEW    │
         # ╰──────────────────────────────────────────────────┴───────────────────────────────┴──────┴────────────┴────────╯
-        cmd = "task list -c {}".format(self.cluster_id)
-        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
-        return self.get_property(parsed_table=stdout, column_name='next run')
+        stdout, _ = self.task_list()
+        return self.get_property(parsed_table=stdout, column_name='Next')
 
     @property
     def status(self):
         """
         Gets the task's status
         """
-        cmd = "task list -a -c {}".format(self.cluster_id)
-        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        stdout, stderr = self.task_list()
         str_status = self.get_property(parsed_table=stdout, column_name='status', is_search_substring=True)
         return TaskStatus.from_str(str_status)
 
@@ -1033,14 +1046,13 @@ class ManagerTask(ScyllaManagerBase):
         # │ repair/dd98f6ae-bcf4-4c98-8949-573d533bb789 │                               │ 3    │            │ DONE   │
         # ╰─────────────────────────────────────────────┴───────────────────────────────┴──────┴────────────┴────────╯
 
-    @property
-    def progress_details(self):
+    def progress_details(self, **kwargs):
         """
         Gets the repair task's progress details
         """
-        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
-        stdout = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)[0]
-        return stdout
+        cmd = f"progress {self.id} -c {self.cluster_id}"
+        stdout, stderr = self.sctool.run(cmd=cmd, **kwargs)
+        return stdout, stderr
 
     @property
     def progress(self):
@@ -1064,7 +1076,7 @@ class ManagerTask(ScyllaManagerBase):
         #  ╰────────────────────┴───────╯
         # [['Status: RUNNING'], ['Start time: 26 Mar 19 19:40:21 UTC'], ['Duration: 6s'], ['Progress: 0.12%'], ... ]
         progress = "N/A"
-        for task_property in self.progress_details:
+        for task_property in self.progress_details(is_verify_errorless_result=True)[0]:
             if task_property[0].startswith("Progress"):
                 progress = task_property[0].split()[1]
                 break
@@ -1077,7 +1089,7 @@ class ManagerTask(ScyllaManagerBase):
         """
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return "01 Jan 70 00:00:00 UTC"
-        for task_property in self.progress_details:
+        for task_property in self.progress_details(is_verify_errorless_result=True)[0]:
             if task_property[0].startswith("Start time"):
                 return task_property[0].split(": ")[1].strip()
 
@@ -1097,8 +1109,7 @@ class ManagerTask(ScyllaManagerBase):
     def full_progress_string(self):
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
-        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
-        stdout_list, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        stdout_list, stderr = self.progress_details(is_verify_errorless_result=True)
         # sctool.run returns stdout_list as a list of lists, each of them containing a row of the output
         stdout_list = [line[0] for line in stdout_list]
         full_stdout_string = '\n'.join(stdout_list)
@@ -1152,8 +1163,7 @@ class ManagerTask(ScyllaManagerBase):
 
     def is_task_disabled(self):
         try:
-            cmd = "task list -a -c {}".format(self.cluster_id)
-            stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+            stdout, stderr = self.task_list()
             self.get_property(
                 parsed_table=stdout, column_name='status', is_search_substring=False, identifier="*" + self.id)
             return True
@@ -1171,16 +1181,16 @@ class RepairTask(ManagerTask):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
     def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None, is_fail_fast: bool = None,
-               intensity: float = None, interval: str = None, keyspace_list: list or str = None, host: str = None,
+               intensity: float = None, keyspace_list: list or str = None, host: str = None,
                num_retries: int = None, is_show_tables: bool = None, small_table_threshold: str = None,
-               start_date: str = None, sctool_kwargs: dict = None, ignore_down_hosts: bool = None, **kwargs):
+               cron: list = None, sctool_kwargs: dict = None, ignore_down_hosts: bool = None, **kwargs):
         if kwargs:
             raise ScyllaManagerError(f"The following variables are unused '{pformat(kwargs)}'")
         return self.repair_api.update(
             repair_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled, host=host,
-            is_fail_fast=is_fail_fast, intensity=intensity, interval=interval, ignore_down_hosts=ignore_down_hosts,
+            is_fail_fast=is_fail_fast, intensity=intensity, ignore_down_hosts=ignore_down_hosts,
             keyspace_list=keyspace_list, num_retries=num_retries,  is_show_tables=is_show_tables,
-            small_table_threshold=small_table_threshold, start_date=start_date, cluster_name=self.cluster_id,
+            small_table_threshold=small_table_threshold, cron=cron, cluster_name=self.cluster_id,
             sctool_kwargs=sctool_kwargs)
 
 
@@ -1234,10 +1244,9 @@ class BackupTask(ManagerTask):
 
     def get_snapshot_tag(self):
         # TODO: Add an option to choose from one of the tags to restore from, using backup list
-        command = f" -c {self.cluster_id} task progress {self.id}"
-        stdout, stderr = self.sctool.run(command, parse_table_res=False)
+        stdout, stderr = self.progress_details(parse_table_res=False)
         if stderr:
-            raise ScyllaManagerError(f"Failure for sctool '{command}' command:\n{stderr}")
+            raise ScyllaManagerError(f"Failure for sctool sctool progress command:\n{stderr}")
         snapshot_line = [line for line in stdout.splitlines() if "snapshot tag" in line.lower()]
         # Returns the following:
         # Snapshot Tag:	sm_20200106093455UTC
@@ -1246,18 +1255,18 @@ class BackupTask(ManagerTask):
         return snapshot_tag
 
     def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               interval: str = None, keyspace_list: list or str = None, location_list: list or str = None,
+               keyspace_list: list or str = None, location_list: list or str = None,
                num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
-               is_show_tables: bool = None, snapshot_parallel_list: list or str = None, start_date: str = None,
+               is_show_tables: bool = None, snapshot_parallel_list: list or str = None, cron: list = None,
                upload_parallel_list: list or str = None, sctool_kwargs: dict = None,
                **kwargs):
         if kwargs:
             raise ScyllaManagerError(f"The following variables are unused '{pformat(kwargs)}'")
         return self.backup_api.update(
-            backup_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled, interval=interval,
+            backup_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled,
             keyspace_list=keyspace_list, location_list=location_list, num_retries=num_retries,
             rate_limit_list=rate_limit_list, retention=retention, is_show_tables=is_show_tables,
-            snapshot_parallel_list=snapshot_parallel_list, start_date=start_date,
+            snapshot_parallel_list=snapshot_parallel_list, cron=cron,
             upload_parallel_list=upload_parallel_list, cluster_name=self.cluster_id, sctool_kwargs=sctool_kwargs)
 
 
@@ -1301,9 +1310,9 @@ class ManagerCluster(ScyllaManagerBase):
         self.client_encrypt = client_encrypt
 
     def run_backup_command(self, dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
-                           dry_run=None, force=None, interval=None, keyspace_list=None,
+                           dry_run=None, force=None, keyspace_list=None,
                            location_list=None, num_retries=None, rate_limit_list=None, retention=None, show_tables=None,
-                           snapshot_parallel_list=None, start_date=None, upload_parallel_list=None, purge_only=None):
+                           snapshot_parallel_list=None, cron=None, upload_parallel_list=None, purge_only=None):
         cmd = "backup -c {}".format(self.id)
 
         if dc_list is not None:
@@ -1313,8 +1322,6 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --dry-run"
         if force is not None:
             cmd += " --force"
-        if interval is not None:
-            cmd += " --interval {}".format(interval)
         if keyspace_list is not None:
             keyspaces_names = ','.join(keyspace_list)
             cmd += " --keyspace {} ".format(keyspaces_names)
@@ -1333,8 +1340,9 @@ class ManagerCluster(ScyllaManagerBase):
         if snapshot_parallel_list is not None:
             snapshot_parallel_string = ','.join(snapshot_parallel_list)
             cmd += " --snapshot-parallel {} ".format(snapshot_parallel_string)
-        if start_date is not None:
-            cmd += " --start-date {} ".format(start_date)
+        if cron is not None:
+            cron_string = f'{SPACE_PLACEHOLDER}'.join(str(char) for char in cron)
+            cmd += " --cron {} ".format(cron_string)
         if upload_parallel_list is not None:
             upload_parallel_string = ','.join(upload_parallel_list)
             cmd += " --upload-parallel {} ".format(upload_parallel_string)
@@ -1354,17 +1362,14 @@ class ManagerCluster(ScyllaManagerBase):
         return BackupTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def run_backup_validate_command(self, delete_orphaned_files=None,
-                                    interval=None,
                                     location_list=None,
                                     num_retries=None,
                                     parallel=None,
-                                    start_date=None):
+                                    cron=None):
         cmd = f"backup validate -c {self.id}"
 
         if delete_orphaned_files is not None:
             cmd += " --delete-orphaned-files"
-        if interval is not None:
-            cmd += f" --interval {interval}"
         if location_list is not None:
             locations_names = ','.join(location_list)
             cmd += f" --location {locations_names} "
@@ -1372,8 +1377,9 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += f" --num-retries {num_retries}"
         if parallel is not None:
             cmd += f" --parallel {parallel} "
-        if start_date is not None:
-            cmd += f" --dc {start_date} "
+        if cron is not None:
+            cron_string = ' '.join(str(char) for char in cron)
+            cmd += " --cron '{}' ".format(cron_string)
 
         stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
         if not stdout:
@@ -1491,7 +1497,7 @@ class ManagerCluster(ScyllaManagerBase):
         return self.get_property(parsed_table=self._cluster_list, column_name='ssh user')
 
     def _get_task_list(self):
-        cmd = "task list -c {}".format(self.id)
+        cmd = f"tasks -c {self.id}"
         stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
@@ -1517,19 +1523,19 @@ class ManagerCluster(ScyllaManagerBase):
 
     def get_healthcheck_task(self):
         healthcheck_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
-                                                     identifier="healthcheck/", is_search_substring=True)
+                                                     identifier="healthcheck/cql", is_search_substring=True)
         # return the manager's health-check-task object with the found id
         return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_healthcheck_alternator_task(self):
         healthcheck_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
-                                                     identifier="healthcheck_alternator/", is_search_substring=True)
+                                                     identifier="healthcheck/alternator", is_search_substring=True)
         # return the manager's health-check-task object with the found id
         return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_rest_task(self):
         rest_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
-                                              identifier="healthcheck_rest/", is_search_substring=True)
+                                              identifier="healthcheck/rest", is_search_substring=True)
         # return the manager's rest-task object with the found id
         return RestTask(task_id=rest_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 

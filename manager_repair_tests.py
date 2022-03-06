@@ -473,6 +473,13 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         Verify that on its second run, the repair will act upon its updated parameters, rather than the parameters it
          received when it was created
         """
+        def is_keyspace_in_progress_string_and_arguments(task, keyspace_name):
+            assert repair_task.arguments["keyspace_list"] == keyspace_name
+            task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=5)
+            progress_string = repair_task.full_progress_string()
+            assert keyspace_name in progress_string[0][-1], \
+                f"keyspace '{keyspace_name}' table is not reported by repair task progress"
+
         node1 = self.config_and_create_cluster(nodes=2)[0]
         session = self.patient_cql_connection(node1)
         for idx in range(1, 3):
@@ -486,17 +493,13 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         logger.debug("Create repair task with keyspace ks1")
         repair_task = mgr_cluster.repair_api.repair(keyspace_list='ks1', cluster_name=mgr_cluster.id)
         logger.debug("Verify the repair runs for keyspace ks1")
-        repair_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=5)
-        assert 'ks1' in repair_task.progress_details[-1], "keyspace 'ks1' table is not reported by repair task progress"
-        assert repair_task.arguments["keyspace_list"] == "ks1"
+        is_keyspace_in_progress_string_and_arguments(repair_task, "ks1")
         logger.debug("Update repair task with a different keyspace: ks2")
         repair_task.stop()
         repair_task.update(keyspace_list='ks2')
         repair_task.start()
         logger.debug("Test repair task updated argument values keyspace: ks2")
-        assert repair_task.arguments["keyspace_list"] == "ks2"
-        repair_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=5)
-        assert 'ks2' in repair_task.progress_details[-1], "keyspace 'ks2' table is not reported by repair task progress"
+        is_keyspace_in_progress_string_and_arguments(repair_task, "ks2")
 
     def test_intensity_and_parallel(self):
         """

@@ -1,4 +1,5 @@
 import pytest
+import re
 import logging
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -6,7 +7,7 @@ import os
 
 from dtest_scylla_manager import TaskStatus, ScyllaManagerTool, ScyllaManagerMixin, CqlStatus, HostRestStatus, Memory, \
     Status, AlternatorStatus, NodeStatus, HostHealth, ScyllaManagerError
-from dtest_class import Tester
+from dtest_class import Tester, get_ip_from_node
 from tools.retrying import retrying
 from alternator_utils import ALTERNATOR_PORT, WriteIsolation
 from iptables import IPTable, IPTableRule
@@ -29,40 +30,32 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
 
     @staticmethod
     def _check_healthcheck_updates(healthcheck_task):
-        healthcheck_task.update(interval='60m')
-        assert healthcheck_task.status != TaskStatus.ERROR, "Task interval update failed"
-        assert '+1h' in healthcheck_task.next_run, "The interval of the task did not change to the requested interval"
+        # TODO: Add cron update
 
         healthcheck_task.update(num_retries='2')
         assert healthcheck_task.status != TaskStatus.ERROR, "Task num-retries update failed"
-
-        time_to_start_task = 35
-        healthcheck_task.update(start_time='now+{}s'.format(time_to_start_task))
-        assert healthcheck_task.status != TaskStatus.ERROR, "Task start-time update failed"
-
-        now = datetime.now()
-        list_next_run = healthcheck_task.next_run.split()
-        next_run_time = datetime.strptime(" ".join(list_next_run[:4]), "%d %b %y %H:%M:%S")
-        assert next_run_time - now > timedelta(seconds=time_to_start_task - 2), \
-            "Healthcheck was not set to the proper time: {}   {}".format(next_run_time, now)
-
-        healthcheck_task.wait_for_status(list_status=[TaskStatus.DONE, TaskStatus.RUNNING, TaskStatus.STARTING],
-                                         timeout=time_to_start_task * 2, step=time_to_start_task / 2)
 
         healthcheck_task.update(enabled='false')
         assert healthcheck_task.status != TaskStatus.ERROR, "Task enabled update failed"
         assert healthcheck_task.is_task_disabled(), "The healthcheck test was not disabled"
 
-    def test_auto_gen_health_check_task(self):
+    def test_auto_gen_cql_health_check_task(self):
         """
             ver: 1.4
             verify that auto generated health check task is created and verify default interval
         """
-        default_interval = "+15s"  # seconds
-        self.config_and_create_cluster(nodes=2)
+        self._template_auto_gen_health_check_task(health_check_type="cql")
+
+    def _template_auto_gen_health_check_task(self, health_check_type, extra_config_options=None):
+        default_interval = 15  # seconds
+        self.config_and_create_cluster(nodes=2, extra_config_options=extra_config_options)
         manager_cluster = self.get_manager_cluster()
-        healthcheck_task = manager_cluster.get_healthcheck_task()
-        assert default_interval in healthcheck_task.next_run
+        if health_check_type == "cql":
+            healthcheck_task = manager_cluster.get_healthcheck_task()
+        else:
+            healthcheck_task = manager_cluster.get_healthcheck_alternator_task()
+        next_run_seconds = int(re.search(r"\d+", healthcheck_task.next_run)[0])
+        assert next_run_seconds < default_interval
         assert TaskStatus.ERROR.value not in healthcheck_task.status.value
 
     def test_update_health_check_task(self):
@@ -97,16 +90,7 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
             ver: 2.2
             verify that auto generated alternator health check task is created and verify default interval
         """
-        default_interval = "+15s"  # seconds
-
-        self.config_and_create_cluster(nodes=2,
-                                       extra_config_options=dict(alternator_port=ALTERNATOR_PORT,
-                                                                 alternator_write_isolation=WriteIsolation.ALWAYS_USE_LWT.value))
-        manager_cluster = self.get_manager_cluster()
-
-        healthcheck_alternator_task = manager_cluster.get_healthcheck_alternator_task()
-        assert default_interval in healthcheck_alternator_task.next_run
-        assert TaskStatus.ERROR.value not in healthcheck_alternator_task.status.value
+        self._template_auto_gen_health_check_task(health_check_type="alternator")
 
     def test_update_health_check_alternator_task(self):
         """
@@ -209,7 +193,7 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
 
         def _verify_port_is_blocked(rule, expected_states):
             for node in rest_of_the_nodes:
-                ip_address = self.get_ip_from_node(node=node)
+                ip_address = get_ip_from_node(node=node)
                 expected_states.address = ip_address
                 rule.destination = f'{ip_address}/32'
                 iptables_obj.add_rule(rule=rule)

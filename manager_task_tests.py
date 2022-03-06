@@ -40,6 +40,7 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
                                 consistency_level=ConsistencyLevel.ALL)
         session.execute(query)
 
+    @pytest.mark.skip("Should be rewritten with cron time")
     def test_task_next_run(self):
         self._initiate_cluster()
         node1, node2, node3 = self.cluster.nodelist()

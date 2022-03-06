@@ -8,7 +8,7 @@ import shutil
 import logging
 from glob import glob
 from time import sleep
-from datetime import datetime
+from datetime import datetime, timedelta
 from pprint import pformat
 from pathlib import Path
 
@@ -241,10 +241,9 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         else:
             assert False, "No error occurred when an invalid rate-limit is used in the sctool backup command"
 
-    @pytest.mark.skip("will return when minio bandwidth limiting is on")
-    def test_backup_start_date(self):
+    def test_backup_cron_date(self):
         """
-        The test starts a backup task with a certain start date,
+        The test starts a backup task with a certain start time using the cron flag,
         wait until the task has started and then makes sure that it
         indeed has started on the correct time.
         """
@@ -253,21 +252,45 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
         command_execution_time = datetime.now()
-        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+        intended_run_time = command_execution_time + timedelta(minutes=1)
+        backup_task = mgr_cluster.run_backup_command(location_list=[r"s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=list(keyspace_table_and_key_range.keys()),
-                                                     start_date="now+40s")
+                                                     cron=[intended_run_time.minute,
+                                                           intended_run_time.hour,
+                                                           r"*",
+                                                           r"*",
+                                                           r"*"]
+                                                     )
         next_run_string = backup_task.next_run
-        next_run_time = datetime.strptime(next_run_string, "%d %b %y %H:%M:%S %Z")
-        assert abs((next_run_time - command_execution_time).seconds) < 50, "The start time is not identical"
+        next_run_delta = self.time_diff_string_to_timedelta(next_run_string)
+        assert next_run_delta < timedelta(seconds=60), "The next run time is as requested"
 
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=2)
         start_time_string = backup_task.start_time
         start_time = datetime.strptime(start_time_string, "%d %b %y %H:%M:%S %Z")
-        assert abs((start_time - command_execution_time).seconds) < 50, "In practice, the start time of the backup " \
+        assert abs((start_time - command_execution_time).seconds) < 61, "In practice, the start time of the backup " \
                                                                         "task did not match the requested time"
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=100, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
+
+    @staticmethod
+    def time_diff_string_to_timedelta(time_diff_string):
+        if " " in time_diff_string:
+            time_diff_string = time_diff_string[time_diff_string.find(" ") + 1:]
+        days, hours, minutes, seconds = 0, 0, 0, 0
+        if "d" in time_diff_string:
+            days = int(time_diff_string[:time_diff_string.find("d")])
+            time_diff_string = time_diff_string[time_diff_string.find("d") + 1:]
+        if "h" in time_diff_string:
+            hours = int(time_diff_string[:time_diff_string.find("h")])
+            time_diff_string = time_diff_string[time_diff_string.find("h") + 1:]
+        if "m" in time_diff_string:
+            minutes = int(time_diff_string[:time_diff_string.find("m")])
+            time_diff_string = time_diff_string[time_diff_string.find("m") + 1:]
+        if "s" in time_diff_string:
+            seconds = int(time_diff_string[:time_diff_string.find("s")])
+        return timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
 
     def test_backup_multiple_keyspaces_and_tables(self):
         keyspace_table_and_key_range = {"ks1": {"cf1": (1, 21),
@@ -732,7 +755,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             healthy_node=node1, keyspace_table_and_key_range={"ks": {"cf1": (1, 1001)}}, use_clustering_key=True)
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=['ks'],
-                                                     interval="1h",
                                                      num_retries="0",
                                                      retention="3")
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
@@ -937,7 +959,8 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         backup_size_under_test = self.get_backup_size_from_backup_list(mgr_cluster=mgr_cluster,
                                                                        snapshot_tag=backup_task.get_snapshot_tag())
         actual_backup_size = self.get_backup_size_in_practice(cluster_id=mgr_cluster.id)
-        assert backup_size_under_test == actual_backup_size, \
+        # accepting 1% of error due to rounding
+        assert 0.99 <= backup_size_under_test/actual_backup_size <= 1.01, \
             f"The size of the backup in practice is not identical to the actual size of the backup in s3:\n\tSize of " \
             f"the backup as reported by the manager: {backup_size_under_test} KiB\n\tSize of the backup as seen in " \
             f"S3: {actual_backup_size} KiB"
@@ -947,7 +970,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         sst_files = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET,
                                                   Prefix=f"backup/sst/cluster/{cluster_id}/dc/datacenter1/node")
         total_size_in_bytes += sum([object_dict["Size"] for object_dict in sst_files["Contents"]])
-        complete_kib = round(total_size_in_bytes/1024)  # Manager rounds the size to KiB
+        complete_kib = total_size_in_bytes/1024.0
         return complete_kib
 
     @staticmethod
@@ -955,12 +978,12 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         backup_list_output = mgr_cluster.sctool.run(f" -c {mgr_cluster.id} backup list")[0]
         relevant_line = [line[0] for line in backup_list_output if snapshot_tag in line[0]][0]
         result = re.search(r"\(.+\)", relevant_line)[0][1:-1]  # Getting rid of parentheses
-        if "KiB" in result:
-            return int(result[:result.find("K")])
-        if "MiB" in result:
-            return int(result[:result.find("M")]) * 1024
-        if "GiB" in result:
-            return int(result[:result.find("G")]) * 1024 ** 2
+        if "k" in result:
+            return float(result[:result.find("k")])
+        if "m" in result:
+            return float(result[:result.find("m")]) * 1024
+        if "g" in result:
+            return float(result[:result.find("g")]) * 1024 ** 2
         raise ValueError("The size string does not contain any known file size unit")
 
     def test_disable_backup_task_before_run_before_executed(self):
@@ -971,26 +994,32 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         node1, *_ = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
         keyspace_name = "keyspace1"
+        self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
         location = "s3:{}".format(DESTINATION_BUCKET)
-        interval = 30
-        start_date = f"now+0d0h0m{interval}s"
+        cron_time_to_run = 1
+        command_execution_time = datetime.now()
+        cron_start_time = [command_execution_time.second,
+                           command_execution_time.minute + cron_time_to_run,
+                           command_execution_time.hour,
+                           "*",
+                           "*",
+                           "*"]
 
         logger.info(f"Creating a backup task with following values:"
                     f"\nLocation: '{location}"
                     f"\nKeyspace: '{keyspace_name}"
-                    f"\nstart_date: '{start_date}")
-        self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
+                    f"\ncron time: '{cron_start_time}")
         backup_task = mgr_cluster.backup_api.backup(
-            keyspace_list=keyspace_name, location_list=location, start_date=start_date, cluster_name=mgr_cluster.id)
+            keyspace_list=keyspace_name, location_list=location, cron=cron_start_time, cluster_name=mgr_cluster.id)
         start_time = time.time()
         logger.info(f"Disabling the backup task '{backup_task.id}'")
         backup_task.enabled(is_enabled=False)
         logger.info(f"Verifying the backup task '{backup_task.id}' is disabled")
         backup_task.is_task_disabled()
-        sleep_time = int(interval - (time.time() - start_time)) + 1
+        sleep_time = 60 * cron_time_to_run
         logger.info(f"Sleeping '{sleep_time}' seconds before verifying the status of back is '{TaskStatus.NEW}'")
         sleep(sleep_time)
-        backup_task.wait_for_status(list_status=[TaskStatus.NEW], timeout=interval, step=1)
+        backup_task.wait_for_status(list_status=[TaskStatus.NEW], timeout=100, step=1)
 
     def test_disable_backup_task_during_its_run(self):
         """
@@ -1001,9 +1030,9 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
         keyspace_name = "keyspace1"
         location = "s3:{}".format(DESTINATION_BUCKET)
-        interval = 30
-        start_date = f"now+0d0h0m{interval}s"
-        stress_command = ['write', f'duration={interval - 1}s', '-rate', 'threads=50', '-schema',
+        cron_time_to_run = 30
+        cron = [str(cron_time_to_run), "*", "*", "*", "*", "*"]
+        stress_command = ['write', f'duration={cron_time_to_run - 1}s', '-rate', 'threads=50', '-schema',
                           f'keyspace={keyspace_name}', 'compaction(strategy=SizeTieredCompactionStrategy)']
 
         def insert_data_with_casandra_stress():
@@ -1012,7 +1041,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             logger.info("Finished entering all the data")
 
         def disabled_backup_task(_backup_task):
-            sleep_time = interval - 1
+            sleep_time = cron_time_to_run - 1
             logger.info(f"Sleeping '{sleep_time}' seconds before checking the backup status")
             sleep(sleep_time)
             _list_status = [TaskStatus.STARTING, TaskStatus.RUNNING]
@@ -1022,10 +1051,10 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         logger.info(f"Creating a backup task with following values:"
                     f"\nLocation: '{location}"
                     f"\nKeyspace: '{keyspace_name}"
-                    f"\nstart_date: '{start_date}")
+                    f"\ncron time: '{cron}")
         self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
         backup_task = mgr_cluster.backup_api.backup(
-            keyspace_list=keyspace_name, location_list=location, start_date=start_date, cluster_name=mgr_cluster.id)
+            keyspace_list=keyspace_name, location_list=location, cron=cron, cluster_name=mgr_cluster.id)
         run_in_parallel([{"func": insert_data_with_casandra_stress},
                          {"func": disabled_backup_task, "args": [backup_task]}])
 
@@ -1121,7 +1150,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         nodes[0].start()
         logger.info(f"Starting a stress command with following parameters: '{stress_command}")
         repair_task = mgr_cluster.repair_api.repair(
-            keyspace_list=keyspace_name, small_table_threshold="100MiB", cluster_name=mgr_cluster.id)
+            keyspace_list=keyspace_name, small_table_threshold="100Mi", cluster_name=mgr_cluster.id)
         list_status = [TaskStatus.RUNNING]
         logger.info(f"Waiting until the status of the repair task will be '{list_status}'")
         repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
