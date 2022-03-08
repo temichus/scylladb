@@ -1,10 +1,10 @@
 import logging
-
 import tempfile
 import time
 from concurrent.futures._base import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 
+import pytest
 from ccmlib.scylla_node import ScyllaNode
 
 from upgrade_test import UpgradeTester, upgrade_matrix_from_last_release_version
@@ -12,6 +12,7 @@ from upgrade_test import UpgradeTester, upgrade_matrix_from_last_release_version
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.dtest_full
 class TestRollingUpgrade(UpgradeTester):
     __test__ = True
     _multiprocess_can_split_ = False

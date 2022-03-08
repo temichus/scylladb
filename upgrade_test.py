@@ -223,6 +223,7 @@ class BaseTests(UpgradeTester):
         session.cluster.shutdown()
 
 
+@pytest.mark.dtest_full
 class TestUpgradeFrom40ToLast(BaseTests):
     __test__ = True
 
@@ -234,6 +235,7 @@ class TestUpgradeFrom40ToLast(BaseTests):
         pass
 
 
+@pytest.mark.dtest_full
 class TestUpgradeOneNode(BaseTests):
     __test__ = True
 
