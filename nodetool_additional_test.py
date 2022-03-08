@@ -415,7 +415,7 @@ class TestNodetool(Tester):
             logger.debug(f"Run and verify nodetool {cmd}")
             o = node.nodetool(cmd, True)[0]
             res = TestNodetool._to_cfstats(o)
-            res_keyspaces = [ks for ks in res.keys() if not 'system' in ks]
+            res_keyspaces = [ks for ks in res.keys() if 'system' not in ks and 'audit' not in ks]
             expected_keyspaces = list(expected.keys())
             assert set(res_keyspaces) == set(
                 expected_keyspaces), f"Expected {expected_keyspaces} but got {res_keyspaces}"
