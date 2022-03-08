@@ -10,7 +10,7 @@ from ccmlib.scylla_node import ScyllaNode
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
-from migration_test import MigrationTestBase
+from migration_test import MigrationTestBase, BaseHelpers
 from tools.assertions import assert_one, assert_all, assert_none
 from tools.files import copy_files_to, get_node_cf_dir
 from tools.misc import ImmutableMapping, safe_mkdtemp
@@ -38,43 +38,14 @@ class TestMigrationWith(MigrationTestBase):
         return dtest_setup_overrides
 
     # pylint:disable=too-many-locals
-    def load_migrated_tables(self, node, migrated_files_dir, extra_args=None,
-                             partitioner='org.apache.cassandra.dht.Murmur3Partitioner'):
-        cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
-        logger.info("cassandra sstable dir is {}".format(cassandra_sstable_dir))
-
-        ks = "ks"
-        cf = "cf"
-        tmpdir = safe_mkdtemp()
-        dir_path = os.path.join(tmpdir, ks, cf)
-
-        os.mkdir(os.path.join(tmpdir, ks))
-        os.mkdir(dir_path)
-
-        logger.info("Copying sstables created by Cassandra...")
-        self.copy_files_to(cassandra_sstable_dir, dir_path)
-
-        ip = node.address()
-        args = [node.get_tool('sstableloader'), '-v', '-pt', partitioner, '-d', ip, dir_path]
-        if self.prepared:
-            args.append(self.prepared)
-        if extra_args:
-            args += extra_args
-
-        p_open = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p_open.communicate()
-        exit_status = p_open.wait()
-        if stderr:
-            logger.info("sstableloader command: %s" % args)
-            logger.info("=== sstableloader stderr ===")
-            logger.info(stderr)
-            logger.info("====")
-
-        shutil.rmtree(tmpdir)
-
-        if exit_status != 0:
-            raise Exception("sstableloader command '%s' failed; exit status: %d'; stdout: %s; stderr: %s" %
-                            (" ".join(args), exit_status, stdout, stderr))
+    def load_migrated_tables(self, node, migrated_files_dir,
+                             partitioner='org.apache.cassandra.dht.Murmur3Partitioner', use_sstableloader: bool = True,
+                             extra_sstableloader_args=None):
+        if not extra_sstableloader_args:
+            extra_sstableloader_args = []
+        super().load_migrated_tables(node=node, migrated_files_dir=migrated_files_dir, partitioner=partitioner,
+                                     use_sstableloader=True,
+                                     extra_sstableloader_args=['-pt', partitioner] + extra_sstableloader_args)
 
     # pylint:disable=too-many-arguments
     def load_migrated_tables_expect_fail(self, node, migrated_files_dir, message=None, ks='ks', cf='cf'):
@@ -172,7 +143,8 @@ class TestMigrationWith(MigrationTestBase):
         self.load_migrated_tables_expect_fail(node1, 'with_old_format_counter', message=expected_message)
 
         # Expect success with sstableloader --ignore-dropped-counter-data
-        self.load_migrated_tables(node1, 'with_old_format_counter', extra_args=['--ignore-dropped-counter-data'])
+        self.load_migrated_tables(node1, 'with_old_format_counter',
+                                  extra_sstableloader_args=['--ignore-dropped-counter-data'])
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -578,3 +550,30 @@ class TestAdditionalTestSSTableLoader(Tester):
         # Test with right sstable
         self.run_sstableloader(node=node1, copy_cf_dir='test-sstables/original/ks/cf-test', completed=True)
         assert_all(session, "SELECT * FROM ks.cf", [['k0', 'c1', 'c2']])
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+@pytest.mark.parametrize("version", [
+    pytest.param('4_0_nb', marks=pytest.mark.require('#8583')),
+    'scylla_4_6'])
+class TestMigrationV4(BaseHelpers):
+
+    @pytest.fixture(scope='function', autouse=True)
+    def set_version(self, version):
+        self.version = version
+
+    @staticmethod
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides():
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
+        return dtest_setup_overrides
+
+    def test_migrate_sstable_with_zstd_compression(self):
+        # Content generated with:
+        # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
+        # TODO: Temporarily testing a scylladb-4.6 generated sstable directory. Should be replaced by Cassandra-4.0 sstables once the following issue is fixed:
+        # https://github.com/scylladb/scylla/issues/8583
+        self._run_basic_migration_test('with_zstd_compression', {
+            'key': 'a', 'c1': 'abc', 'c2': 'cde'}, compression='Zstd', use_sstableloader=True)

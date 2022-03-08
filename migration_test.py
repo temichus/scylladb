@@ -109,7 +109,8 @@ class BaseHelpers(Tester):
                                                               migrated_files_dir)
 
     def load_migrated_tables(self, node, migrated_files_dir, ks='ks', cf='cf',
-                             partitioner='org.apache.cassandra.dht.Murmur3Partitioner', use_sstableloader: bool = False):
+                             partitioner='org.apache.cassandra.dht.Murmur3Partitioner', use_sstableloader: bool = False,
+                             extra_sstableloader_args=None):
         cassandra_sstable_dir = self.get_cassandra_sstable_dir(self.version, migrated_files_dir)
         logger.info("cassandra sstable dir is {}".format(cassandra_sstable_dir))
 
@@ -120,7 +121,8 @@ class BaseHelpers(Tester):
         logger.info("Column family upload directory is {}".format(upload_dir))
 
         if use_sstableloader:
-            load_files_with_sstableloader(files_dir=cassandra_sstable_dir, node=node, keyspace=ks, table=cf)
+            load_files_with_sstableloader(files_dir=cassandra_sstable_dir, node=node, keyspace=ks, table=cf,
+                                          extra_args=extra_sstableloader_args)
         else:
             logger.info("Copying sstables created by Cassandra...")
             self.copy_files_to(cassandra_sstable_dir, upload_dir)
@@ -720,27 +722,6 @@ class MigrationTestBase(BaseHelpers):
 
 # Dtest created to test migration of data from C* to Scylla
 #
-
-
-@pytest.mark.dtest_full
-@pytest.mark.single_node
-class TestMigrationV4(BaseHelpers):
-
-    @pytest.fixture(scope='function', autouse=True)
-    def fixture_dtest_setup_overrides(self, dtest_config):
-        dtest_setup_overrides = DTestSetupOverrides()
-        dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
-        return dtest_setup_overrides
-
-    def test_migrate_sstable_with_zstd_compression_via_sstableloader(self):
-        # Content generated with:
-        # INSERT INTO ks.cf (key, c1, c2) VALUES ('a', 'abc', 'cde');
-        # TODO: Temporarily testing a scylladb-4.6 generated sstable directory. Should be replaced by Cassandra-4.0 sstables once the following issue is fixed:
-        # https://github.com/scylladb/scylla/issues/8583
-        self.version = 'scylla_4_6'
-        self._run_basic_migration_test('with_zstd_compression', {
-            'key': 'a', 'c1': 'abc', 'c2': 'cde'}, compression='Zstd', use_sstableloader=True)
-
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
