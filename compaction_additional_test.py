@@ -852,6 +852,46 @@ class TestCompactionAdditional(CompactionAdditionalTester):
             insert_c1c2(session, n=num_of_keys, consistency=consistency, ks=key_space)
             node.flush()
 
+    @pytest.mark.single_node
+    def test_data_from_different_windows_compacted_together(self):
+        """
+            In specific cases, there's a need to delete from TWCS table. Normally, sstables from different time windows
+            are not compacted together, but for deletion this required.
+            https://github.com/scylladb/scylla-enterprise/pull/2055
+        """
+        logger.debug("Starting a cluster of one node...")
+        [node1], session = self.prepare(1)
+        logger.debug("Creating keyspace 'ks'...")
+        create_ks(session, 'ks', 1)
+        session.execute("""CREATE TABLE ks.tb (
+                        pk int,
+                        ck int,
+                        v int,
+                        PRIMARY KEY (pk, ck)
+                    ) WITH compaction = {'class': 'TimeWindowCompactionStrategy', 'compaction_window_unit': 'MINUTES',
+                    'compaction_window_size': '1'};
+                    """)
+        # insert data with the same pk to multiple time windows - creating 4 sstables
+        insert_statement = session.prepare("INSERT INTO ks.tb (pk, ck, v) VALUES (?, ?, ?) USING TIMESTAMP ?")
+        concurrent.execute_concurrent_with_args(
+            session,
+            insert_statement,
+            [(1, 2, 1, 100000000001),
+             (1, 3, 1, 200000000001),
+             (1, 4, 1, 300000000001),
+             (1, 5, 2, 500000000001)])
+        node1.flush()
+        node1.nodetool("compact ks tb")
+        assert len(get_list_of_sstables(node1, 'ks', 'tb')) == 4, "there should be 1 sstable for each time window"
+
+        # delete given pk
+        session.execute("DELETE FROM ks.tb where pk=1")
+        node1.flush()
+        # major compaction should compact deleted pk regardless of time window
+        node1.nodetool("compact ks tb")
+        assert len(get_list_of_sstables(node1, 'ks', 'tb')) == 1,\
+            "after deletion, major compaction should have compacted sstables regardless of time window"
+
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
