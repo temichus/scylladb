@@ -29,6 +29,8 @@ from tools.marks import get_version, is_enterprise
 
 logger = logging.getLogger(__name__)
 
+pytest_plugins = "email_plugin"
+
 
 def check_required_loopback_interfaces_available():
     """

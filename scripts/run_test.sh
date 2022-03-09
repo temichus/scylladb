@@ -196,6 +196,9 @@ fi
 # export all BUILD_* env vars into the docker run
 BUILD_OPTIONS=$(env | grep BUILD_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
 
+# export all JOB_* env vars into the docker run
+JOB_OPTIONS=$(env | grep JOB_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
+
 # export all AWS_* env vars into the docker run
 AWS_OPTIONS=$(env | grep AWS_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
 
@@ -229,6 +232,7 @@ docker_cmd="docker run --init --detach=true \
     -e LOG_SAVED_DIR \
     -e HOME \
     -e USER \
+    -e WORKSPACE \
     -e SCYLLA_EXT_OPTS \
     -e SCYLLA_EXT_ENV \
     -e LC_ALL=en_US.UTF-8 \
@@ -262,6 +266,7 @@ docker_cmd="docker run --init --detach=true \
     -v ${HOME}/.aws:${HOME}/.aws \
     ${DOCKER_NETWORK_PARAM} \
     ${BUILD_OPTIONS} \
+    ${JOB_OPTIONS} \
     ${AWS_OPTIONS} \
     ${JENKINS_OPTIONS} \
     --privileged \

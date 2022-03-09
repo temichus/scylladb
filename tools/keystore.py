@@ -26,6 +26,9 @@ class KeyStore:
     def get_elasticsearch_credentials(self):
         return self._get_json("es.json")
 
+    def get_email_credentials(self):
+        return self._get_json("email_config.json")
+
     def __del__(self):
         # TODO: make it better once https://github.com/boto/botocore/pull/1810 is merged
         self.s3.meta.client._endpoint.http_session._manager.clear()
