@@ -118,8 +118,12 @@ class TestOfflineTools(Tester):
         levels = []
         for sstable in data:
             (metadata, error, rc) = sstable
-            level = int(re.findall("SSTable Level: [0-9]", metadata)[0][-1])
-            levels.append(level)
+            try:
+                level = int(re.findall("SSTable Level: [0-9]", metadata)[0][-1])
+                levels.append(level)
+            except (IndexError, ValueError):
+                pytest.fail(
+                    f'\nsstablemetadata failed with the following:\n\nstderr:\n{error}\nstdout:\n{metadata}\nreturn code: {rc}')
         return levels
 
     def wait_for_compactions(self, node):
