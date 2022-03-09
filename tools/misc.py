@@ -91,8 +91,58 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
     subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'trust.p12'),
                            '-passin', 'pass:{0}'.format(passphrase),
                            '-out', os.path.join(base_dir, 'trust.pem')])
+    # generate a revokation list (crl) for the same cert
+    index_txt = os.path.join(base_dir, 'index.txt')
+    pulp_crl_number = os.path.join(base_dir, 'pulp_crl_number')
+    openssl_ca_conf = os.path.join(base_dir, 'openssl_ca.conf')
+    with open(index_txt, 'w') as f:
+        pass
+    with open(pulp_crl_number, 'w') as f:
+        f.write('00')
+    with open(openssl_ca_conf, 'w') as conf_file:
+        conf_file.write("""
+# OpenSSL configuration for CRL generation
+#
+####################################################################
+[ ca ]
+default_ca     = CA_default            # The default ca section
+
+####################################################################
+[ CA_default ]
+database = %s
+crlnumber = %s
+
+default_days   = 365                   # how long to certify for
+default_crl_days= 30                   # how long before next CRL
+default_md     = default               # use public key default MD
+preserve       = no                    # keep passed DN ordering
+
+####################################################################
+[ crl_ext ]
+# CRL extensions.
+# Only issuerAltName and authorityKeyIdentifier make any sense in a CRL.
+# issuerAltName=issuer:copy
+authorityKeyIdentifier=keyid:always,issuer:always
+        """ % (index_txt, pulp_crl_number)
+        )
+    crl_file = os.path.join(base_dir, 'ccm_node.crl')
+    subprocess.check_call(['openssl', 'ca', '-gencrl',
+                           '-cert', os.path.join(base_dir, 'ccm_node.pem'),
+                           '-keyfile', os.path.join(base_dir, 'ccm_node.key'),
+                           '-out', crl_file,
+                           '-config', openssl_ca_conf])
+    subprocess.check_call(['openssl', 'ca', '-revoke', os.path.join(base_dir, 'ccm_node.pem'),
+                           '-cert', os.path.join(base_dir, 'ccm_node.pem'),
+                           '-keyfile', os.path.join(base_dir, 'ccm_node.key'),
+                           '-config', openssl_ca_conf])
+    subprocess.check_call(['openssl', 'ca', '-gencrl',
+                           '-cert', os.path.join(base_dir, 'ccm_node.pem'),
+                           '-keyfile', os.path.join(base_dir, 'ccm_node.key'),
+                           '-out', crl_file,
+                           '-config', openssl_ca_conf])
+
     logger.debug("removing temporary certificates in [{0}]".format(base_dir))
-    for filename in ('ccm_node.p12', 'ccm_node.tmp', 'trust.p12'):
+    for filename in ('ccm_node.p12', 'ccm_node.tmp', 'trust.p12', 'index.txt', 'pulp_crl_number', 'index.txt.attr', 'index.txt.old', 'pulp_crl_number.old', 'openssl_ca.conf'):
         try:
             os.remove(os.path.join(base_dir, filename))
         except OSError as e:
