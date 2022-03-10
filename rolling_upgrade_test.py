@@ -124,7 +124,13 @@ class TestRollingUpgrade(UpgradeTester):
         node_for_upgrade = self.cluster.nodelist()[node_index]
         logger.debug(f"{upgrade_type.capitalize()} {node_for_upgrade.name} node to from  "
                      f"'{node_for_upgrade.node_scylla_version}' to '{upgrade_to_version}' version")
-        node_for_upgrade.upgrade(upgrade_to_version=upgrade_to_version)
+
+        if upgrade_type == "rollback":
+            node_for_upgrade.rollback(upgrade_to_version=upgrade_to_version)
+        elif upgrade_type == "upgrade":
+            node_for_upgrade.upgrade(upgrade_to_version=upgrade_to_version)
+        else:
+            raise ValueError(f"Unsupported upgrade type value '{upgrade_type}'")
 
     def validate_stress(self, stress_thread: Future, stress_type: str, ignore_msgs: str = '') -> None:
         ignore_err_msg = "com.datastax.driver.core.exceptions.WriteTimeoutException: Cassandra timeout during" \
