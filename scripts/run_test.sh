@@ -63,6 +63,7 @@ here="$(realpath $(dirname "$0"))"
 DOCKER_IMAGE="$(<"$here/image")"
 
 export CASSANDRA_DIR=${CASSANDRA_DIR:-`pwd`/../scylla}
+export PYTEST_CAPTURE=${PYTEST_CAPTURE:-'-s'}
 
 # turn CASSANDRA_DIR into an absolute path if needed
 if [[ ${CASSANDRA_DIR} != /* ]]; then
@@ -220,7 +221,7 @@ done
 if [[ ${subcommand} == *'bash'* ]] || [[ ${subcommand} == *'python'* ]]; then
     CMD=${subcommand}
 else
-    CMD="bash -c $'sudo rsyslogd; pip3 install --user ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m pytest -v -s ${subcommand}'"
+    CMD="bash -c $'sudo rsyslogd; pip3 install --user ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m pytest -v ${PYTEST_CAPTURE} ${subcommand}'"
 fi
 
 docker_cmd="docker run --init --detach=true \

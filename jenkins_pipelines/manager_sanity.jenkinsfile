@@ -25,6 +25,10 @@ pipeline {
         string(defaultValue: '720',
                description: 'timeout for jenkins job in minutes',
                name: 'timeout')
+
+        string(defaultValue: 'qa@scylladb.com,mgmt@scylladb.com',
+               description: 'The email address to send the report. If empty - will take qa@scylladb.com',
+               name: 'email_address')
     }
     options {
         timestamps()
@@ -90,8 +94,9 @@ pipeline {
                             export INSTALL_CASSANDRA='ccm create scylla-tmp --scylla -n 1 --version=\${SCYLLA_VERSION} --scylla-manager-package=\${SCYLLA_MANAGER_PACKAGE}'
 
                             echo "start test ......."
-
-                            ./scripts/run_test.sh -m="scylla_manager" manager_*.py --junit-xml="\$HOME/results.xml" --scylla-version=\${SCYLLA_VERSION} --scylla-manager-package=${params.scylla_manager_package}
+                            export PYTEST_CAPTURE=" " # make sure capturing is on, so mail would have the full errors in the attachments
+                            ./scripts/run_test.sh -m="scylla_manager" manager_*.py --junit-xml="\$HOME/results.xml" --scylla-version=\${SCYLLA_VERSION} --scylla-manager-package=${params.scylla_manager_package} \
+                                --html=report.html --email ${params.email_address} --self-contained-html
 
                             echo "end test ....."
                             """
@@ -103,25 +108,25 @@ pipeline {
     }
     post {
         always {
-            sh """
+            sh script:"""
                 docker kill ${MINIO_DOCKER_ID}
                 docker run -v `pwd`/minio_data:/data -w /data busybox sh -c "find . -user root -name '*' | xargs chmod ugo+rw"
                 rm -rf ./minio_data
-            """
+            """, returnStatus: true
             // Todo: see if you can create multiple 'always' stages, independent of one another.
-            archiveArtifacts artifacts: 'scylla-dtest/logs/**', fingerprint: true
+            archiveArtifacts artifacts: 'scylla-dtest/logs/**', fingerprint: true,  allowEmptyArchive: true
 
             // fix the format of reporting
-            sh "sed -i 's/skip=/skipped=/' \$(pwd)/scylla-dtest/tmp_dtest_run/results.xml"
+            sh script: "sed -i 's/skip=/skipped=/' \$(pwd)/scylla-dtest/tmp_dtest_run/results.xml", returnStatus: true
 
-            archiveArtifacts artifacts: '**/results.xml', fingerprint: true
+            archiveArtifacts artifacts: '**/results.xml', fingerprint: true,  allowEmptyArchive: true
 
             xunit thresholds: [failed(unstableThreshold: '1'), skipped()],
-                  tools: [JUnit(pattern: '**/results.xml')]
+                  tools: [JUnit(pattern: '**/results.xml', skipNoTestFiles: true)]
 
-            sh """
+            sh script: """
                 rm -Rf \$(pwd)/scylla-dtest/tmp_dtest_run
-            """
+            """, returnStatus: true
         }
     }
 }
