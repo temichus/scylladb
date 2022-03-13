@@ -229,6 +229,7 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
             'is_show_tables': '--show-tables',
             'snapshot_parallel_list': '--snapshot-parallel',
             'cron': '--cron',
+            'name': '--name',
             'upload_parallel_list': '--upload-parallel',
             'cluster_name': '--cluster',
             'enabled': '--enabled',
@@ -245,7 +246,7 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
                dc_names: list or str = None, dry_run: bool = None,
                keyspace_list: list or str = None, location_list: list or str = None, num_retries: int = None,
                rate_limit_list: list or str = None, retention: int = None, is_show_tables: bool = None,
-               snapshot_parallel_list: list or str = None, cron: list = None,
+               snapshot_parallel_list: list or str = None, cron: list = None, name: str = None,
                upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None):
         """
         Schedules backups
@@ -304,7 +305,7 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
 
     def update(self,  # pylint: disable=too-many-arguments
                backup_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               keyspace_list: list or str = None, location_list: list or str = None,
+               keyspace_list: list or str = None, location_list: list or str = None, name: str = None,
                num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
                is_show_tables: bool = None, snapshot_parallel_list: list or str = None, cron: list = None,
                upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None):
@@ -470,6 +471,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
             "small_table_threshold": "--small-table-threshold",
             "ignore_down_hosts": "--ignore-down-hosts",
             "cron": "--cron",
+            "name": "--name",
             "cluster_name": "--cluster",
             "host": "--host",
         }
@@ -478,7 +480,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
 
     def repair(self,  # pylint: disable=too-many-arguments
                dc_names: list or str = None, dry_run: bool = None, ignore_down_hosts: bool = None,
-               is_fail_fast: bool = None, intensity: float = None,
+               is_fail_fast: bool = None, intensity: float = None, name: str = None,
                keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
                is_show_tables: bool = None, small_table_threshold: str = None, cron: list = None,
                cluster_name: str = None, sctool_kwargs: dict = None, host: str = None):
@@ -536,7 +538,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
                is_fail_fast: bool = None, intensity: float = None, ignore_down_hosts: bool = None,
                keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
                is_show_tables: bool = None, small_table_threshold: str = None, cron: list = None,
-               cluster_name: str = None, sctool_kwargs: dict = None, host: str = None):
+               cluster_name: str = None, sctool_kwargs: dict = None, host: str = None, name: str = None):
         """
         Usage:
           sctool repair update <type/task-id> [flags]
@@ -1181,7 +1183,7 @@ class RepairTask(ManagerTask):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
     def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None, is_fail_fast: bool = None,
-               intensity: float = None, keyspace_list: list or str = None, host: str = None,
+               intensity: float = None, keyspace_list: list or str = None, host: str = None, name: str = None,
                num_retries: int = None, is_show_tables: bool = None, small_table_threshold: str = None,
                cron: list = None, sctool_kwargs: dict = None, ignore_down_hosts: bool = None, **kwargs):
         if kwargs:
@@ -1190,7 +1192,7 @@ class RepairTask(ManagerTask):
             repair_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled, host=host,
             is_fail_fast=is_fail_fast, intensity=intensity, ignore_down_hosts=ignore_down_hosts,
             keyspace_list=keyspace_list, num_retries=num_retries,  is_show_tables=is_show_tables,
-            small_table_threshold=small_table_threshold, cron=cron, cluster_name=self.cluster_id,
+            small_table_threshold=small_table_threshold, cron=cron, name=name, cluster_name=self.cluster_id,
             sctool_kwargs=sctool_kwargs)
 
 
@@ -1255,7 +1257,7 @@ class BackupTask(ManagerTask):
         return snapshot_tag
 
     def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               keyspace_list: list or str = None, location_list: list or str = None,
+               keyspace_list: list or str = None, location_list: list or str = None, name: str = None,
                num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
                is_show_tables: bool = None, snapshot_parallel_list: list or str = None, cron: list = None,
                upload_parallel_list: list or str = None, sctool_kwargs: dict = None,
@@ -1266,7 +1268,7 @@ class BackupTask(ManagerTask):
             backup_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled,
             keyspace_list=keyspace_list, location_list=location_list, num_retries=num_retries,
             rate_limit_list=rate_limit_list, retention=retention, is_show_tables=is_show_tables,
-            snapshot_parallel_list=snapshot_parallel_list, cron=cron,
+            snapshot_parallel_list=snapshot_parallel_list, cron=cron, name=name,
             upload_parallel_list=upload_parallel_list, cluster_name=self.cluster_id, sctool_kwargs=sctool_kwargs)
 
 
@@ -1310,7 +1312,7 @@ class ManagerCluster(ScyllaManagerBase):
         self.client_encrypt = client_encrypt
 
     def run_backup_command(self, dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
-                           dry_run=None, force=None, keyspace_list=None,
+                           dry_run=None, force=None, keyspace_list=None, name=None,
                            location_list=None, num_retries=None, rate_limit_list=None, retention=None, show_tables=None,
                            snapshot_parallel_list=None, cron=None, upload_parallel_list=None, purge_only=None):
         cmd = "backup -c {}".format(self.id)
@@ -1337,6 +1339,8 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --retention {} ".format(retention)
         if show_tables is not None:
             cmd += " --show-tables {} ".format(show_tables)
+        if name is not None:
+            cmd += " --name {} ".format(name)
         if snapshot_parallel_list is not None:
             snapshot_parallel_string = ','.join(snapshot_parallel_list)
             cmd += " --snapshot-parallel {} ".format(snapshot_parallel_string)
