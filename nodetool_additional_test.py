@@ -1,5 +1,4 @@
 import logging
-from typing import Optional, Dict
 import math
 import os
 import re
@@ -26,7 +25,7 @@ from ccmlib.scylla_cluster import ScyllaCluster
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.cluster import new_node
-from tools.data import rows_to_list, insert_c1c2, insert_c1c2_no_prepared
+from tools.data import rows_to_list, insert_c1c2, insert_c1c2_no_prepared, get_node_sstables_compression
 from tools.assertions import PytestRegex
 from tools.misc import ImmutableMapping
 from tools.files import copy_files_to, get_node_cf_dir
@@ -568,6 +567,66 @@ class TestNodetool(Tester):
         m = re.findall(
             r"^\s*([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([\d\.]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s].*)\s*$", out, re.MULTILINE)
         return [self._list2ring(r) for r in m]
+
+    def test_shutdown_during_sstable_upgrade(self):
+        """ Test that nodetool sstableupgrade command properly aborts
+        when scylla service is stopped.
+        The tested table requires an upgrade due to an updated compression type.
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
+        node1 = cluster.nodelist()[0]
+        with self.patient_cql_connection(node1) as session:
+            session.execute(
+                "CREATE KEYSPACE keyspace1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '2'}")
+            create_table_cmd = """CREATE TABLE keyspace1.standard1 (key blob PRIMARY KEY,"C0" blob,"C1" blob,"C2" blob,"C3" blob,"C4" blob)
+            WITH compression = {'sstable_compression' : 'LZ4Compressor', 'chunk_length_in_kb': 64, 'crc_check_chance': 0.5} """
+
+            session.execute(create_table_cmd)
+        node1.nodetool("disableautocompaction")
+
+        logger.info('Running stress')
+        writes_per_sstable = 10000
+        for start_pk in range(1, 3 * (writes_per_sstable + 1), writes_per_sstable):
+            end_pk = start_pk + writes_per_sstable
+            self.stress_write(node1, writes_per_sstable, duration='10s', pop=f'seq={start_pk}..{end_pk}',
+                              opt=["-rate threads=10"])
+            logger.info('Flushing sstable')
+            node1.flush()
+            start_pk += writes_per_sstable
+        original_compressions = get_node_sstables_compression(node=node1)
+        assert 'SnappyCompressor' not in original_compressions, f"Compression type unexpectedly updated for sstables: {original_compressions}"
+
+        session = self.patient_cql_connection(node1)
+        alter_compression_query = "ALTER TABLE keyspace1.standard1 WITH compression = {'sstable_compression' : " \
+                                  "'SnappyCompressor', 'chunk_length_in_kb': 64, 'crc_check_chance': 0.5}"
+        logger.info('Running: %s', alter_compression_query)
+        session.execute(alter_compression_query)
+        executor = ThreadPoolExecutor(max_workers=1)
+
+        def run_nodetool_upgradesstables():
+            logger.info('Running nodetool upgradesstables on: %s', node1.name)
+            try:
+                out, err = node1.nodetool(cmd="upgradesstables -a")
+                logger.info('Finished running upgradesstables on: %s with:', node1.name)
+                logger.info('output: %s , errors: %s', out, err)
+            except Exception as error:
+                logger.warning('Failed running upgradesstables on: %s', node1.name)
+                logger.warning('Got an error of: %s', error)
+
+        upgradesstables_thread = executor.submit(run_nodetool_upgradesstables)
+        time.sleep(0.5)  # Sleeping a bit for the upgrade-sstable process to initialize.
+        logger.info('Stopping %s while sstable-upgrade in progress', node1.name)
+        node1.stop(wait_other_notice=True, gently=True)
+
+        compressions = get_node_sstables_compression(node=node1)
+        assert 'SnappyCompressor' not in compressions, f"Compression type unexpectedly updated for {node1.name} sstables: {compressions}"
+        logger.info('Starting %s', node1.name)
+        node1.start(wait_for_binary_proto=True)
+        # Running nodetool upgradesstables a second time to see it completed successfully.
+        run_nodetool_upgradesstables()
+        compressions = get_node_sstables_compression(node=node1)
+        assert 'SnappyCompressor' in compressions, f"Compression type unexpectedly not updated for {node1.name} sstables"
 
     @pytest.mark.single_node
     def global_create_after_clean(self):

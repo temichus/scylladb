@@ -1,5 +1,8 @@
 import os
 import datetime
+import subprocess
+from typing import List
+
 import tabulate
 import time
 import logging
@@ -485,3 +488,19 @@ def prepare_statement(session, query, cl=ConsistencyLevel.ONE):
 
 def get_rows_set_from_res(res):
     return set([tuple(res_list) for res_list in rows_to_list(res)])
+
+
+def get_node_sstables_compression(node, keyspace: str = 'keyspace1') -> List[str]:
+    node_keyspace_folder = os.path.join(node.get_path(), 'data', keyspace)
+    stdout = \
+        subprocess.Popen([f"find {node_keyspace_folder} -type f -name *CompressionInfo* "], stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, shell=True, encoding="UTF-8").communicate()[0]
+    lines = stdout.splitlines()
+    compressions = []
+    for compression_file_path in lines:
+        stdout = subprocess.Popen([f" strings {compression_file_path} | grep Compressor"], stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, shell=True, encoding="UTF-8").communicate()[0]
+        if stdout:
+            compressions.append(stdout.strip())
+    logger.info('%s %s got compressions of: %s', node.name, keyspace, compressions)
+    return compressions
