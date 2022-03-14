@@ -1,6 +1,8 @@
+import time
+
 import pytest
 import logging
-import datetime
+from datetime import datetime, timedelta
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
@@ -58,7 +60,7 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         list_next_run = next_run.split()
 
         logger.debug("Health-check task next run is: {}".format(next_run))
-        now = datetime.datetime.now()
+        now = datetime.now()
         assert len(list_next_run) == 6
         assert int(list_next_run[0]) in [now.day, now.day+1, 1]
         assert list_next_run[5] == '(+15s)'
@@ -72,7 +74,7 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         list_next_run = next_run.split()
 
         logger.debug("Repair task next run is: {}".format(next_run))
-        now = datetime.datetime.now()
+        now = datetime.now()
         assert len(list_next_run) == 6
         assert int(list_next_run[0]) in [now.day+1, 1]  # repair starts the next day of the month
         assert list_next_run[5] == '(+7d)'
@@ -145,3 +147,79 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         stdout, _ = mgr_cluster.sctool.run(f"-c {mgr_cluster.id} progress repair", is_verify_errorless_result=True)
         assert stdout[1][0] == "Status: NEW", f"The status of the automatic repair should be {TaskStatus.NEW}, but " \
                                               f"instead it's {stdout[1][0]}"
+
+    @staticmethod
+    def _create_time_window_string_from_time(start_time, delta_minutes):
+        time_window = start_time + timedelta(minutes=delta_minutes)
+        window_string = f"{time_window.hour:02}:{time_window.minute:02}"
+        return window_string
+
+    def test_task_run_on_time_window(self):
+        """
+        New in manager 3.0
+        The test creates a task with an assigned time window to run in,
+        waits for the time window to arrive and makes sure the task has run during
+        the time window
+
+        Example:
+            sctool repair --window 03:22,03:32 --cluster 89464a41-1082-4e3a-9ea5-16e7d342638c
+        """
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
+
+        now = datetime.now()
+        time_window = "{},{}".format(self._create_time_window_string_from_time(now, 2),
+                                     self._create_time_window_string_from_time(now, 12))
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, window=[time_window])
+        final_status = repair_task.wait_and_get_final_status(timeout=740, step=5)
+        assert final_status == TaskStatus.DONE, f"The task did not run in its assigned time window: By now, its " \
+                                                f"status should've been {TaskStatus.DONE}, but at the moment it is" \
+                                                f"{final_status}"
+
+    def test_time_window_while_and_after_manager_is_suspended(self):
+        """
+        New in manager 3.0
+        The test creates a task with two time windows, suspends the manager during the first one
+        and resumes it during the second, expecting the task to run during the second one.
+        """
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
+
+        now = datetime.now()
+        first_time_window = "{},{}".format(self._create_time_window_string_from_time(now, 2),
+                                           self._create_time_window_string_from_time(now, 3))
+        second_time_window = "{},{}".format(self._create_time_window_string_from_time(now, 5),
+                                            self._create_time_window_string_from_time(now, 7))
+
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id,
+                                                    window=[first_time_window, second_time_window])
+        mgr_cluster.suspend()
+        time.sleep(200)
+        mgr_cluster.resume()
+        current_status = repair_task.status
+        assert current_status == TaskStatus.NEW, f"After missing the first time window, the status of the task should" \
+                                                 f" be {TaskStatus.NEW}, but instead it's {current_status}"
+        repair_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], step=3)
+
+    def test_odd_number_of_time_window_indicators(self):
+        """
+        New in manager 3.0
+        The test attempts to create a task with a time window that includes
+        three time indicators (time1, time2, time3), expecting the command to fail.
+        """
+        now = datetime.now()
+        time_window = "{},{},{}".format(self._create_time_window_string_from_time(now, 2),
+                                        self._create_time_window_string_from_time(now, 4),
+                                        self._create_time_window_string_from_time(now, 6))
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
+        try:
+            mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, window=[time_window])
+        except ScyllaManagerError:
+            pass
+        else:
+            raise ScyllaManagerError(f"When trying to create a task with an odd number of time window indicators"
+                                     f" ({time_window}) did not raise any error")

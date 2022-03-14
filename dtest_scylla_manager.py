@@ -230,6 +230,7 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
             'snapshot_parallel_list': '--snapshot-parallel',
             'cron': '--cron',
             'name': '--name',
+            'window': '--window',
             'upload_parallel_list': '--upload-parallel',
             'cluster_name': '--cluster',
             'enabled': '--enabled',
@@ -243,11 +244,21 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
         super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict)
 
     def backup(self,  # pylint: disable=too-many-arguments
-               dc_names: list or str = None, dry_run: bool = None,
-               keyspace_list: list or str = None, location_list: list or str = None, num_retries: int = None,
-               rate_limit_list: list or str = None, retention: int = None, is_show_tables: bool = None,
-               snapshot_parallel_list: list or str = None, cron: list = None, name: str = None,
-               upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None):
+               dc_names: list or str = None,
+               dry_run: bool = None,
+               keyspace_list: list or str = None,
+               location_list: list or str = None,
+               num_retries: int = None,
+               rate_limit_list: list or str = None,
+               retention: int = None,
+               is_show_tables: bool = None,
+               snapshot_parallel_list: list or str = None,
+               cron: list = None,
+               name: str = None,
+               window: list = None,
+               upload_parallel_list: list or str = None,
+               cluster_name: str = None,
+               sctool_kwargs: dict = None):
         """
         Schedules backups
         Usage:
@@ -304,11 +315,23 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
             task_id=stdout[0][0].strip(), cluster_id=cluster_name, scylla_manager=self.sctool.scylla_manager)
 
     def update(self,  # pylint: disable=too-many-arguments
-               backup_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               keyspace_list: list or str = None, location_list: list or str = None, name: str = None,
-               num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
-               is_show_tables: bool = None, snapshot_parallel_list: list or str = None, cron: list = None,
-               upload_parallel_list: list or str = None, cluster_name: str = None, sctool_kwargs: dict = None):
+               backup_id: str,
+               dc_names: list or str = None,
+               dry_run: bool = None,
+               enabled: str = None,
+               keyspace_list: list or str = None,
+               location_list: list or str = None,
+               name: str = None,
+               window: list = None,
+               num_retries: int = None,
+               rate_limit_list: list or str = None,
+               retention: int = None,
+               is_show_tables: bool = None,
+               snapshot_parallel_list: list or str = None,
+               cron: list = None,
+               upload_parallel_list: list or str = None,
+               cluster_name: str = None,
+               sctool_kwargs: dict = None):
         """
         Modifies a backup task
         Usage:
@@ -472,6 +495,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
             "ignore_down_hosts": "--ignore-down-hosts",
             "cron": "--cron",
             "name": "--name",
+            "window": "--window",
             "cluster_name": "--cluster",
             "host": "--host",
         }
@@ -479,11 +503,22 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
         super().__init__(sctool=sctool, cmd_translate_dict=cmd_translate_dict, parsers=parsers)
 
     def repair(self,  # pylint: disable=too-many-arguments
-               dc_names: list or str = None, dry_run: bool = None, ignore_down_hosts: bool = None,
-               is_fail_fast: bool = None, intensity: float = None, name: str = None,
-               keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
-               is_show_tables: bool = None, small_table_threshold: str = None, cron: list = None,
-               cluster_name: str = None, sctool_kwargs: dict = None, host: str = None):
+               dc_names: list or str = None,
+               dry_run: bool = None,
+               ignore_down_hosts: bool = None,
+               is_fail_fast: bool = None,
+               intensity: float = None,
+               name: str = None,
+               window: list = None,
+               keyspace_list: list or str = None,
+               num_retries: int = None,
+               parallel: int = None,
+               is_show_tables: bool = None,
+               small_table_threshold: str = None,
+               cron: list = None,
+               cluster_name: str = None,
+               sctool_kwargs: dict = None,
+               host: str = None):
         """
         Usage:
           sctool repair [flags]
@@ -534,11 +569,24 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
             task_id=stdout[0][0].strip(), cluster_id=cluster_name, scylla_manager=self.sctool.scylla_manager)
 
     def update(self,  # pylint: disable=too-many-arguments
-               repair_id: str, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               is_fail_fast: bool = None, intensity: float = None, ignore_down_hosts: bool = None,
-               keyspace_list: list or str = None, num_retries: int = None, parallel: int = None,
-               is_show_tables: bool = None, small_table_threshold: str = None, cron: list = None,
-               cluster_name: str = None, sctool_kwargs: dict = None, host: str = None, name: str = None):
+               repair_id: str,
+               dc_names: list or str = None,
+               dry_run: bool = None,
+               enabled: str = None,
+               is_fail_fast: bool = None,
+               intensity: float = None,
+               ignore_down_hosts: bool = None,
+               keyspace_list: list or str = None,
+               num_retries: int = None,
+               parallel: int = None,
+               is_show_tables: bool = None,
+               small_table_threshold: str = None,
+               cron: list = None,
+               cluster_name: str = None,
+               sctool_kwargs: dict = None,
+               host: str = None,
+               name: str = None,
+               window: list = None):
         """
         Usage:
           sctool repair update <type/task-id> [flags]
@@ -1182,18 +1230,30 @@ class RepairTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
-    def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None, is_fail_fast: bool = None,
-               intensity: float = None, keyspace_list: list or str = None, host: str = None, name: str = None,
-               num_retries: int = None, is_show_tables: bool = None, small_table_threshold: str = None,
-               cron: list = None, sctool_kwargs: dict = None, ignore_down_hosts: bool = None, **kwargs):
+    def update(self, dc_names: list or str = None,
+               dry_run: bool = None,
+               enabled: str = None,
+               is_fail_fast: bool = None,
+               intensity: float = None,
+               keyspace_list: list or str = None,
+               host: str = None,
+               name: str = None,
+               window: list = None,
+               num_retries: int = None,
+               is_show_tables: bool = None,
+               small_table_threshold: str = None,
+               cron: list = None,
+               sctool_kwargs: dict = None,
+               ignore_down_hosts: bool = None,
+               **kwargs):
         if kwargs:
             raise ScyllaManagerError(f"The following variables are unused '{pformat(kwargs)}'")
         return self.repair_api.update(
             repair_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled, host=host,
             is_fail_fast=is_fail_fast, intensity=intensity, ignore_down_hosts=ignore_down_hosts,
             keyspace_list=keyspace_list, num_retries=num_retries,  is_show_tables=is_show_tables,
-            small_table_threshold=small_table_threshold, cron=cron, name=name, cluster_name=self.cluster_id,
-            sctool_kwargs=sctool_kwargs)
+            small_table_threshold=small_table_threshold, cron=cron, name=name, window=window,
+            cluster_name=self.cluster_id, sctool_kwargs=sctool_kwargs)
 
 
 class HealthcheckTask(ManagerTask):
@@ -1256,11 +1316,21 @@ class BackupTask(ManagerTask):
         snapshot_tag = snapshot_line[0].split(":")[1].strip()
         return snapshot_tag
 
-    def update(self, dc_names: list or str = None, dry_run: bool = None, enabled: str = None,
-               keyspace_list: list or str = None, location_list: list or str = None, name: str = None,
-               num_retries: int = None, rate_limit_list: list or str = None, retention: int = None,
-               is_show_tables: bool = None, snapshot_parallel_list: list or str = None, cron: list = None,
-               upload_parallel_list: list or str = None, sctool_kwargs: dict = None,
+    def update(self, dc_names: list or str = None,
+               dry_run: bool = None,
+               enabled: str = None,
+               keyspace_list: list or str = None,
+               location_list: list or str = None,
+               name: str = None,
+               window: list = None,
+               num_retries: int = None,
+               rate_limit_list: list or str = None,
+               retention: int = None,
+               is_show_tables: bool = None,
+               snapshot_parallel_list: list or str = None,
+               cron: list = None,
+               upload_parallel_list: list or str = None,
+               sctool_kwargs: dict = None,
                **kwargs):
         if kwargs:
             raise ScyllaManagerError(f"The following variables are unused '{pformat(kwargs)}'")
@@ -1268,7 +1338,7 @@ class BackupTask(ManagerTask):
             backup_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled,
             keyspace_list=keyspace_list, location_list=location_list, num_retries=num_retries,
             rate_limit_list=rate_limit_list, retention=retention, is_show_tables=is_show_tables,
-            snapshot_parallel_list=snapshot_parallel_list, cron=cron, name=name,
+            snapshot_parallel_list=snapshot_parallel_list, cron=cron, name=name, window=window,
             upload_parallel_list=upload_parallel_list, cluster_name=self.cluster_id, sctool_kwargs=sctool_kwargs)
 
 
@@ -1312,9 +1382,20 @@ class ManagerCluster(ScyllaManagerBase):
         self.client_encrypt = client_encrypt
 
     def run_backup_command(self, dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
-                           dry_run=None, force=None, keyspace_list=None, name=None,
-                           location_list=None, num_retries=None, rate_limit_list=None, retention=None, show_tables=None,
-                           snapshot_parallel_list=None, cron=None, upload_parallel_list=None, purge_only=None):
+                           dry_run=None,
+                           force=None,
+                           keyspace_list=None,
+                           name=None,
+                           window=None,
+                           location_list=None,
+                           num_retries=None,
+                           rate_limit_list=None,
+                           retention=None,
+                           show_tables=None,
+                           snapshot_parallel_list=None,
+                           cron=None,
+                           upload_parallel_list=None,
+                           purge_only=None):
         cmd = "backup -c {}".format(self.id)
 
         if dc_list is not None:
@@ -1344,6 +1425,9 @@ class ManagerCluster(ScyllaManagerBase):
         if snapshot_parallel_list is not None:
             snapshot_parallel_string = ','.join(snapshot_parallel_list)
             cmd += " --snapshot-parallel {} ".format(snapshot_parallel_string)
+        if window is not None:
+            time_window_string = ','.join(window)
+            cmd += " --window {} ".format(time_window_string)
         if cron is not None:
             cron_string = f'{SPACE_PLACEHOLDER}'.join(str(char) for char in cron)
             cmd += " --cron {} ".format(cron_string)
