@@ -8,9 +8,6 @@ def pullRequestSetResult(String status, String context, String description){
             description: description,
             targetUrl: "${env.JOB_URL}/workflow-stage")
     }
-    if (status == 'failure') {
-        currentBuild.result = 'FAILURE'
-    }
 }
 
 def pullRequestContainsLabels(String labels){
@@ -53,7 +50,7 @@ pipeline {
                 timeout(time: 30, unit: 'MINUTES')
             }
             steps {
-                catchError(stageResult: 'FAILURE') {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     script {
                         lastStage = env.STAGE_NAME
 
@@ -70,7 +67,7 @@ pipeline {
                         pullRequestSetResult('success', 'jenkins/precommit', 'Precommit passed')
                     }
                 }
-                unsuccessful {
+                failure {
                     script {
                         pullRequestSetResult('failure', 'jenkins/precommit', 'Precommit failed')
                     }
@@ -82,7 +79,7 @@ pipeline {
                 timeout(time: 5, unit: 'MINUTES')
             }
             steps {
-                catchError(stageResult: 'FAILURE') {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     script {
                         lastStage = env.STAGE_NAME
                         sh '''
@@ -98,7 +95,7 @@ pipeline {
                         pullRequestSetResult('success', 'jenkins/collection', 'test collection passed')
                     }
                 }
-                unsuccessful {
+                failure {
                     script {
                         pullRequestSetResult('failure', 'jenkins/collection', 'test collection failed')
                     }
@@ -110,7 +107,7 @@ pipeline {
                 timeout(time: 30, unit: 'MINUTES')
             }
             steps {
-                catchError(stageResult: 'FAILURE') {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     script {
                         lastStage = env.STAGE_NAME
 
@@ -132,7 +129,7 @@ pipeline {
                         pullRequestSetResult('success', 'jenkins/test-pipelines', 'Test pipelines passed')
                     }
                 }
-                unsuccessful {
+                failure {
                     script {
                         pullRequestSetResult('failure', 'jenkins/test-pipelines', 'Test pipelines failed')
                     }
@@ -149,7 +146,7 @@ pipeline {
                 timeout(time: 2, unit: 'HOURS')
             }
             steps {
-                catchError(stageResult: 'FAILURE') {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     script {
                         lastStage = env.STAGE_NAME
 
@@ -210,7 +207,7 @@ pipeline {
                         }
                     }
                 }
-                unsuccessful {
+                failure {
                     script {
                         pullRequestSetResult('failure', 'jenkins/test/PR', 'test failed')
                     }
