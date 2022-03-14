@@ -2120,24 +2120,6 @@ class TestNodetool(Tester):
         create_cf(session, cf, columns={'c1': 'text', 'c2': 'text'},
                   compaction={'class': 'NullCompactionStrategy'})
         num_keys = 10000
-        insert_c1c2(session, keys=range(0, num_keys // 2))
-        node.nodetool("flush")
-        insert_c1c2(session, keys=range(num_keys // 2, num_keys))
-        node.nodetool("flush")
-        sstable = node.nodetool(f"getsstables {ks} {cf} k{random.randrange(num_keys)}", True)[0].strip()
-        logger.debug("Will corrupt sstable {}".format(sstable))
-        node.stop()
-
-        seed = int(time.time())
-        logger.info("Random seed: {}".format(seed))
-        random.seed(seed)
-        size = os.stat(sstable).st_size
-        offset = random.randint(0, size)
-        length = random.randint(1, 102400)
-        logger.debug("writing random contents at offset={} length={}".format(offset, length))
-        with io.open(sstable, 'rb+', buffering=0) as f:
-            f.seek(offset)
-            f.write(bytearray(randbytes(length)))
 
         self.ignore_log_patterns += self.validation_expected_errs + [
             'malformed_sstable_exception',
@@ -2151,22 +2133,52 @@ class TestNodetool(Tester):
             'Failed to allocate',
         ]
 
-        mark = node.mark_log()
-        addr = re.escape(node.address())
-        node.start()
+        tries = 0
+        while True:
+            seed = int(time.time())
+            logger.info("Random seed: {}".format(seed))
+            random.seed(seed)
 
-        self._scrub_keyspace(node, ks=ks, cf=cf, mode=mode)
+            insert_c1c2(session, keys=range(0, num_keys // 2))
+            node.nodetool("flush")
+            insert_c1c2(session, keys=range(num_keys // 2, num_keys))
+            node.nodetool("flush")
+            sstable = node.nodetool(f"getsstables {ks} {cf} k{random.randrange(num_keys)}", True)[0].strip()
+            logger.debug("Will corrupt sstable {}".format(sstable))
+            node.stop()
 
-        expected_errors = [
-            f"Scrubbing .* failed",
-            f"Finished scrubbing .* invalid",
-            f"Compaction for {ks}/{cf} .*: scrub compaction (failed|found invalid data)",
-        ]
-        timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        try:
-            node.watch_log_for("|".join(expected_errors), from_mark=mark, timeout=timeout)
-        except UnicodeDecodeError:
-            pass
+            size = os.stat(sstable).st_size
+            offset = random.randint(0, size)
+            length = random.randint(1, 102400)
+            logger.debug("writing random contents at offset={} length={}".format(offset, length))
+            with io.open(sstable, 'rb+', buffering=0) as f:
+                f.seek(offset)
+                f.write(bytearray(randbytes(length)))
+
+            mark = node.mark_log()
+            addr = re.escape(node.address())
+            node.start()
+
+            self._scrub_keyspace(node, ks=ks, cf=cf, mode=mode)
+            tries += 1
+
+            expected_errors = [
+                f"Scrubbing .* failed",
+                f"Finished scrubbing .*{sstable}",
+                f"Compaction for {ks}/{cf} .*: scrub compaction (failed|found invalid data)",
+            ]
+            timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
+            try:
+                matchings = node.watch_log_for("|".join(expected_errors), from_mark=mark, timeout=timeout)
+                if type(matchings) is tuple:
+                    matchings = [matchings]
+                for line, _ in matchings:
+                    if "Finished scrubbing" in line and line.endswith(" valid") and tries < 3:
+                        logger.debug("Scrub found no corruption, retrying...")
+                        continue
+            except UnicodeDecodeError:
+                pass
+            break
 
         try:
             list(session.execute('SELECT * FROM ks.cf'))
