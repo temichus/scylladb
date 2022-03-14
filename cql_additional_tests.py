@@ -29,13 +29,14 @@ from tools.assertions import assert_all, assert_invalid, assert_none, assert_one
     assert_row_count
 from tools.retrying import retrying
 from dtest_class import Tester, create_ks, create_cf
-from scylla_tools import CassandraCluster, get_rows_set_from_res, wait_for_view
+from tools.tables_view_manager import wait_for_view
+from tools.cassandra_helpers import CassandraCluster
 from thrift_bindings.thrift010.ttypes import CfDef
 
 
 from thrift_tests import get_thrift_client
 
-from tools.data import rows_to_list, create_index, create_local_index
+from tools.data import rows_to_list, create_index, create_local_index, get_rows_set_from_res
 from tools.metrics import get_node_metrics
 from tools.misc import require
 from tools.metrics import get_node_metrics

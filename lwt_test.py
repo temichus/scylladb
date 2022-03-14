@@ -8,9 +8,8 @@ from cassandra.query import SimpleStatement
 
 from dtest_class import Tester, create_ks, get_ip_from_node, create_cf
 from dtest_setup import DTestSetup
-from scylla_tools import prepare_statement
 from tools.assertions import assert_one, assert_none, assert_all, assert_row_count
-from tools.data import rows_to_list
+from tools.data import rows_to_list, prepare_statement
 from tools.metrics import get_node_metrics
 
 logger = logging.getLogger(__name__)

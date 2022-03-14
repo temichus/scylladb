@@ -13,9 +13,8 @@ from typing import Union, List, Dict
 from ccmlib import common
 from dtest_class import wait_for, WaitTimeoutExpired
 from dtest_config import DTestConfig
-from dtest_setup import copy_logs
+from dtest_setup import DTestSetup, copy_logs
 from distutils.version import LooseVersion
-from scylla_tools import DTestSetup
 from dtest_setup_overrides import DTestSetupOverrides
 
 logger = logging.getLogger(__name__)

@@ -11,7 +11,7 @@ from tools.assertions import assert_invalid, assert_all, assert_row_count
 from cassandra import Unauthorized, ConsistencyLevel
 from cassandra.query import SimpleStatement
 from textwrap import dedent
-from scylla_tools import wait_for_view
+from tools.tables_view_manager import wait_for_view
 
 
 logger = logging.getLogger(__file__)

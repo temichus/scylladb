@@ -23,7 +23,7 @@ from tools.assertions import assert_row_count, assert_all, assert_row_count_in_s
 
 from tools.data import insert_c1c2
 from tools.files import copy_files_to
-from scylla_tools import get_free_memory_size_in_mb
+from tools.misc import get_free_memory_size_in_mb
 
 logger = logging.getLogger(__name__)
 

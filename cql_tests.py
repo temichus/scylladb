@@ -23,9 +23,8 @@ from thrift_tests import get_thrift_client
 
 from tools.assertions import assert_invalid, assert_one, assert_unavailable, assert_all
 from dtest_class import Tester, create_ks, FlakyRetryPolicy
-from tools.data import rows_to_list
+from tools.data import rows_to_list, get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
 from tools.cluster import new_node
-from scylla_tools import get_entity_id, get_truncated_time_from_system_local, get_truncated_time_from_system_truncated
 
 
 logger = logging.getLogger(__name__)

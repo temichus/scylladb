@@ -27,7 +27,7 @@ from collections import namedtuple
 import time
 import yaml
 
-from scylla_tools import CassandraCluster
+from tools.cassandra_helpers import CassandraCluster
 from tools.files import copy_files_to, get_cf_dir
 
 

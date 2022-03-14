@@ -5,7 +5,7 @@ from dtest_class import Tester, create_ks
 from cassandra.util import Time, Date, uuid_from_time, SortedSet
 from tools.assertions import assert_one_prepared
 from tools.misc import require
-from scylla_tools import prepare_statement
+from tools.data import prepare_statement
 
 from decimal import Decimal
 from datetime import datetime

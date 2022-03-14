@@ -1,21 +1,18 @@
+import os
+import re
+import subprocess
+import tempfile
+import time
 import errno
 import threading
 from concurrent.futures.thread import ThreadPoolExecutor
-
 import random
 import string
 import hashlib
 import logging
-import os
-import pytest
-import subprocess
-import tempfile
-import time
-
 from collections.abc import Mapping
 
-from ccmlib.cluster import Cluster
-from ccmlib.dse_cluster import DseCluster
+import pytest
 
 logger = logging.getLogger(__name__)
 lock = threading.Lock()
@@ -303,3 +300,18 @@ def set_trace_probability(nodes, probability_value):
     with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
         threads = [executor.submit(_set_trace_probability_for_node, node) for node in nodes]
         [thread.result() for thread in threads]
+
+
+def get_free_memory_size_in_mb():
+    """
+    Get current free memory from /proc/meminfo
+    """
+    proc = subprocess.Popen(['cat', '/proc/meminfo'], stdout=subprocess.PIPE)
+    out, err = proc.communicate()
+    out = out.decode()
+    assert proc.returncode == 0 and 'MemFree:' in out, err
+    pattern = re.compile('MemFree: (.*) ')
+    for line in out.split('\n'):
+        if pattern.match(line):
+            return int(pattern.match(line)[1]) / 1024  # unit: mb
+    raise Exception('Failed to get the valid free memory size')

@@ -26,8 +26,7 @@ from ccmlib.scylla_cluster import ScyllaCluster
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.cluster import new_node
-from scylla_tools import insert_c1c2_no_prepared
-from tools.data import rows_to_list, insert_c1c2
+from tools.data import rows_to_list, insert_c1c2, insert_c1c2_no_prepared
 from tools.assertions import PytestRegex
 from tools.misc import ImmutableMapping
 from tools.files import copy_files_to, get_node_cf_dir

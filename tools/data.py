@@ -433,3 +433,55 @@ def print_table(table):
 def chunks_list(lst, num_chunks):
     for i in range(0, len(lst), num_chunks):
         yield lst[i:i + num_chunks]
+
+
+def insert_c1cn(session, keys=None, consistency=ConsistencyLevel.QUORUM, nr_columns=5, column_size=None, ks='ks', cf='cf'):
+    if keys is None:
+        keys = []
+
+    cql_str = "INSERT INTO {}.{} (key, ".format(ks, cf)
+    for nr in range(1, nr_columns + 1):
+        if nr != nr_columns:
+            cql_str += 'c{}, '.format(nr)
+        else:
+            cql_str += 'c{}) VALUES (?, '.format(nr)
+    for nr in range(1, nr_columns + 1):
+        if nr != nr_columns:
+            cql_str += '?, '
+        else:
+            cql_str += '?) '
+
+    statement = session.prepare(cql_str)
+    statement.consistency_level = consistency
+
+    # build column values for c1 to cn
+    col_data = []
+    for nr in range(1, nr_columns + 1):
+        'x' * column_size
+        if column_size:
+            col_data.append('x' * column_size)
+        else:
+            col_data.append('column_data_{}'.format(nr))
+
+    # build data for each row, including key and columns
+    kv = []
+    for key in keys:
+        data = ['k{}'.format(key)]
+        data.extend(col_data)
+        kv.append(data)
+
+    execute_concurrent_with_args(session, statement, kv)
+
+
+def prepare_statement(session, query, cl=ConsistencyLevel.ONE):
+    """
+    Prepare CQL query into statement and assign given consistency level to it.
+    """
+    logger.debug('Preparing statement: %s', query)
+    res = session.prepare(query)
+    res.consistency_level = cl
+    return res
+
+
+def get_rows_set_from_res(res):
+    return set([tuple(res_list) for res_list in rows_to_list(res)])

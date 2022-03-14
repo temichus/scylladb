@@ -37,7 +37,7 @@ from alternator_utils import BaseAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_N
     ALTERNATOR_SECURE_PORT
 from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest_class import wait_for, get_ip_from_node
-from scylla_tools import set_trace_probability
+from tools.misc import set_trace_probability
 from tools.cluster import new_node
 from tools.retrying import retrying
 
