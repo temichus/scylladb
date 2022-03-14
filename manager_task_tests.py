@@ -3,6 +3,7 @@ import time
 import pytest
 import logging
 from datetime import datetime, timedelta
+from dateutil import tz
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
@@ -218,8 +219,34 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
         try:
             mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, window=[time_window])
-        except ScyllaManagerError:
-            pass
+        except ScyllaManagerError as err:
+            assert "must be even" in err.args[0].lower() and "malformed" in err.args[0].lower(), \
+                f"Creating a task with an odd number of time window indicators " \
+                f"did not fail with a proper error message: {err.args[0]}"
         else:
-            raise ScyllaManagerError(f"When trying to create a task with an odd number of time window indicators"
-                                     f" ({time_window}) did not raise any error")
+            raise ScyllaManagerError(f"Unexpected behavior: Repair command didn't fail when trying to create a task "
+                                     f"with an odd number of time window indicators: ({time_window}) ")
+
+    def test_use_different_timezone(self):
+        """
+        The test creates a task to run in the near future but in a different
+        time zone (namely Sydney or Fiji time zone) and waits for it to run.
+        """
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
+        local_timezone = tz.gettz()
+        if local_timezone == tz.gettz('Australia/Sydney'):
+            different_timezone_string = 'Pacific/Fiji'
+        else:
+            different_timezone_string = 'Australia/Sydney'
+        timezone = tz.gettz(different_timezone_string)
+
+        different_timezone_now = datetime.now(tz=timezone)
+        time_window = "{},{}".format(self._create_time_window_string_from_time(different_timezone_now, 2),
+                                     self._create_time_window_string_from_time(different_timezone_now, 12))
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, window=[time_window],
+                                                    timezone=different_timezone_string)
+        final_status = repair_task.wait_and_get_final_status(timeout=740, step=5)
+        assert final_status == TaskStatus.DONE, "When using a different time zone, the task did not run in its " \
+                                                "assigned time window"

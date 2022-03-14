@@ -231,6 +231,7 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
             'cron': '--cron',
             'name': '--name',
             'window': '--window',
+            'timezone': '--timezone',
             'upload_parallel_list': '--upload-parallel',
             'cluster_name': '--cluster',
             'enabled': '--enabled',
@@ -256,6 +257,7 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
                cron: list = None,
                name: str = None,
                window: list = None,
+               timezone: str = None,
                upload_parallel_list: list or str = None,
                cluster_name: str = None,
                sctool_kwargs: dict = None):
@@ -323,6 +325,7 @@ class ScyllaManagerBackupApi(ScyllaManagerApiBase):
                location_list: list or str = None,
                name: str = None,
                window: list = None,
+               timezone: str = None,
                num_retries: int = None,
                rate_limit_list: list or str = None,
                retention: int = None,
@@ -496,6 +499,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
             "cron": "--cron",
             "name": "--name",
             "window": "--window",
+            "timezone": "--timezone",
             "cluster_name": "--cluster",
             "host": "--host",
         }
@@ -510,6 +514,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
                intensity: float = None,
                name: str = None,
                window: list = None,
+               timezone: str = None,
                keyspace_list: list or str = None,
                num_retries: int = None,
                parallel: int = None,
@@ -586,6 +591,7 @@ class ScyllaManagerRepairApi(ScyllaManagerApiBase):
                sctool_kwargs: dict = None,
                host: str = None,
                name: str = None,
+               timezone: str = None,
                window: list = None):
         """
         Usage:
@@ -1230,7 +1236,8 @@ class RepairTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
-    def update(self, dc_names: list or str = None,
+    def update(self,
+               dc_names: list or str = None,
                dry_run: bool = None,
                enabled: str = None,
                is_fail_fast: bool = None,
@@ -1239,6 +1246,7 @@ class RepairTask(ManagerTask):
                host: str = None,
                name: str = None,
                window: list = None,
+               timezone: str = None,
                num_retries: int = None,
                is_show_tables: bool = None,
                small_table_threshold: str = None,
@@ -1252,7 +1260,7 @@ class RepairTask(ManagerTask):
             repair_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled, host=host,
             is_fail_fast=is_fail_fast, intensity=intensity, ignore_down_hosts=ignore_down_hosts,
             keyspace_list=keyspace_list, num_retries=num_retries,  is_show_tables=is_show_tables,
-            small_table_threshold=small_table_threshold, cron=cron, name=name, window=window,
+            small_table_threshold=small_table_threshold, cron=cron, name=name, window=window, timezone=timezone,
             cluster_name=self.cluster_id, sctool_kwargs=sctool_kwargs)
 
 
@@ -1316,13 +1324,15 @@ class BackupTask(ManagerTask):
         snapshot_tag = snapshot_line[0].split(":")[1].strip()
         return snapshot_tag
 
-    def update(self, dc_names: list or str = None,
+    def update(self,
+               dc_names: list or str = None,
                dry_run: bool = None,
                enabled: str = None,
                keyspace_list: list or str = None,
                location_list: list or str = None,
                name: str = None,
                window: list = None,
+               timezone: str = None,
                num_retries: int = None,
                rate_limit_list: list or str = None,
                retention: int = None,
@@ -1338,7 +1348,7 @@ class BackupTask(ManagerTask):
             backup_id=self.id, dc_names=dc_names, dry_run=dry_run, enabled=enabled,
             keyspace_list=keyspace_list, location_list=location_list, num_retries=num_retries,
             rate_limit_list=rate_limit_list, retention=retention, is_show_tables=is_show_tables,
-            snapshot_parallel_list=snapshot_parallel_list, cron=cron, name=name, window=window,
+            snapshot_parallel_list=snapshot_parallel_list, cron=cron, name=name, window=window, timezone=timezone,
             upload_parallel_list=upload_parallel_list, cluster_name=self.cluster_id, sctool_kwargs=sctool_kwargs)
 
 
@@ -1381,12 +1391,14 @@ class ManagerCluster(ScyllaManagerBase):
         ScyllaManagerBase.__init__(self, id=cluster_id, scylla_manager=scylla_manager)
         self.client_encrypt = client_encrypt
 
-    def run_backup_command(self, dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
+    def run_backup_command(self,
+                           dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
                            dry_run=None,
                            force=None,
                            keyspace_list=None,
                            name=None,
                            window=None,
+                           timezone=None,
                            location_list=None,
                            num_retries=None,
                            rate_limit_list=None,
@@ -1428,6 +1440,8 @@ class ManagerCluster(ScyllaManagerBase):
         if window is not None:
             time_window_string = ','.join(window)
             cmd += " --window {} ".format(time_window_string)
+        if timezone is not None:
+            cmd += " --timezone {} ".format(timezone)
         if cron is not None:
             cron_string = f'{SPACE_PLACEHOLDER}'.join(str(char) for char in cron)
             cmd += " --cron {} ".format(cron_string)
