@@ -208,8 +208,6 @@ class UserRoleBase:
         self.superuser = superuser
         self.verbose = verbose
         self._attached_service_level = None
-        self._attached_service_level_name = ''
-        self._attached_service_level_shares = None
 
     @property
     def name(self):

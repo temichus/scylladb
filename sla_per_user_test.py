@@ -2,54 +2,35 @@
 import logging
 
 import pytest
+from cassandra import InvalidRequest, ReadTimeout
 from cassandra.cluster import Session
-from cassandra.protocol import SyntaxException, InvalidRequest
+from cassandra.protocol import SyntaxException
 
 from dtest_class import Tester, create_ks
 from tools.data import create_c1c2_table, insert_c1c2
-from tools.sla import ServiceLevel, Role, User, DEFAULT_SERVICE_LEVEL_SHARES
+from tools.sla import ServiceLevel, Role, User
+from tools.units import ScyllaDuration
 
 logger = logging.getLogger(__name__)
 
 
 class SLATester(Tester):
-    RF = 1
-    NODES = 1
-    ROLES_EXPIRY = 0
-    PERMISSION_VALIDITY_IN_MS = 0
-
-    def prepare(self, nodes: int = NODES) -> Session:
+    def prepare(self, nodes: int = 1) -> Session:
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
-                  'role_manager': 'org.apache.cassandra.auth.CassandraRoleManager',
-                  'permissions_validity_in_ms': self.PERMISSION_VALIDITY_IN_MS,
-                  'roles_validity_in_ms': self.ROLES_EXPIRY}
+                  'role_manager': 'org.apache.cassandra.auth.CassandraRoleManager'}
 
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes)
         self.cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
         session = self.patient_cql_connection(self.cluster.nodelist()[0], user='cassandra', password='cassandra')
-
         return session
 
-    def populate_data(self, session: Session, number_of_keys: int):
-        create_ks(session=session, name="ks", rf=self.RF)
+    @staticmethod
+    def populate_data(session: Session, number_of_keys: int, replication_factor: int = 1):
+        create_ks(session=session, name="ks", rf=replication_factor)
         create_c1c2_table(session=session)
         insert_c1c2(session=session, n=number_of_keys)
-
-    @staticmethod
-    def create_service_level(session: Session, name: str, service_shares: int = None) -> ServiceLevel:
-        sl = ServiceLevel(session=session, name=name, service_shares=service_shares)
-        sl.create()
-        return sl
-
-    @staticmethod
-    def create_role(session: Session, name: str, password: str = None, login: str = None,
-                    superuser: bool = None, options_dict: dict = None) -> Role:
-        role = Role(session=session, name=name, password=password, login=login, superuser=superuser,
-                    options_dict=options_dict)
-        role.create()
-        return role
 
     @staticmethod
     def create_entity_with_service_level(entity, service_level: ServiceLevel):
@@ -87,7 +68,7 @@ class TestSLA(SLATester):
 
         def default_shares(shares):
             if not shares:
-                return DEFAULT_SERVICE_LEVEL_SHARES
+                return self.DEFAULT_SHARES
             return shares
 
         if expected_slas_list is not None:
@@ -142,7 +123,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='sla1', service_shares=100)
+        sl = ServiceLevel(session=session, name='sla1', shares=100)
         role = Role(session=session, name='role1')
         self.create_entity_with_service_level(entity=role, service_level=sl)
 
@@ -177,7 +158,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='empty', service_shares=100)
+        sl = ServiceLevel(session=session, name='empty', shares=100)
         role = Role(session=session, name='empty')
         self.create_entity_with_service_level(entity=role, service_level=sl)
         self.validate_sla(service_level=sl,
@@ -220,7 +201,7 @@ class TestSLA(SLATester):
         Create SLA with shares=500 and attach to user
         """
         session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, service_shares=s) for s in [100, 500]]
+        service_levels = [ServiceLevel(session=session, name='sla%d' % s, shares=s) for s in [100, 500]]
 
         role = Role(session=session, name='role100')
         self.create_entity_with_service_level(entity=role, service_level=service_levels[0])
@@ -249,7 +230,7 @@ class TestSLA(SLATester):
         Create one more SLA with shares=100 and attach to user
         """
         session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, service_shares=s) for s in [50, 300, 100]]
+        service_levels = [ServiceLevel(session=session, name='sla%d' % s, shares=s) for s in [50, 300, 100]]
         role_sl = [[Role(session=session, name='role%d' % i), service_levels[i]] for i in range(1, 3)]
         user_sl = [[User(session=session, name='user100'), service_levels[2]]]
 
@@ -304,7 +285,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='"Sla1"', service_shares=100)
+        sl = ServiceLevel(session=session, name='"Sla1"', shares=100)
         role = Role(session=session, name='role1')
         self.create_entity_with_service_level(entity=role, service_level=sl)
 
@@ -330,7 +311,7 @@ class TestSLA(SLATester):
         Create 2 SLAs with same shares amount (300), attach to 2 roles and grant both to the user
         """
         session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, service_shares=300) for s in range(2)]
+        service_levels = [ServiceLevel(session=session, name='sla%d' % s, shares=300) for s in range(2)]
         role_sl = [[Role(session=session, name='role%d' % i), service_levels[i]] for i in range(2)]
 
         user = self.create_user(session=session, name='user1')
@@ -362,7 +343,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='', service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
+        sl = ServiceLevel(session=session, name='', shares=self.DEFAULT_SHARES)
         user = self.create_user(session=session, name='user1')
 
         self.validate_sla(expected_slas_list=[],
@@ -378,7 +359,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='"DEFAULT"', service_shares=50)
+        sl = ServiceLevel(session=session, name='"DEFAULT"', shares=50)
         user = User(session=session, name='user1')
         self.create_entity_with_service_level(entity=user, service_level=sl)
 
@@ -395,7 +376,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='"DEFAULT"', service_shares=50)
+        sl = ServiceLevel(session=session, name='"DEFAULT"', shares=50)
         role = Role(session=session, name='role1')
         self.create_entity_with_service_level(entity=role, service_level=sl)
 
@@ -412,7 +393,7 @@ class TestSLA(SLATester):
         -De-attach 300 shares SLA
         """
         session = self.prepare()
-        service_levels = [ServiceLevel(session=session, name='sla%d' % s, service_shares=s) for s in [50, 300]]
+        service_levels = [ServiceLevel(session=session, name='sla%d' % s, shares=s) for s in [50, 300]]
         role_sl = [[Role(session=session, name='role%d' % s), service_levels[s]] for s in range(2)]
         user = self.create_user(session=session, name='user1')
 
@@ -441,11 +422,11 @@ class TestSLA(SLATester):
             if r_s[1].service_shares == 300:
                 r_s[0].detach_service_level()
                 detached_sl = r_s[1]
-                role_sl[i][1] = ServiceLevel(session=session, name='', service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
+                role_sl[i][1] = ServiceLevel(session=session, name='', shares=self.DEFAULT_SHARES)
 
         # Validate role1
         for role, sl in role_sl:
-            if sl.service_shares == DEFAULT_SERVICE_LEVEL_SHARES:
+            if sl.service_shares == self.DEFAULT_SHARES:
                 service_level = detached_sl
                 expected_slas_list = [detached_sl]
                 expected_attached_slas_list = []
@@ -477,7 +458,7 @@ class TestSLA(SLATester):
         sla_shares = 100
         user_name = 'user1'
 
-        sl = ServiceLevel(session=session, name='sla100', service_shares=100)
+        sl = ServiceLevel(session=session, name='sla100', shares=100)
         user = User(session=session, name='user100')
         self.create_entity_with_service_level(entity=user, service_level=sl)
 
@@ -495,7 +476,7 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, ServiceLevel(session=session,
                                                                             name='',
-                                                                            service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
+                                                                            shares=self.DEFAULT_SHARES)
                                                          ]
                                                         ],
                           entity=user)
@@ -509,8 +490,8 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
         sla_shares = [50, 100, 250, 350, 550, 750]
-        slas = [ServiceLevel(session=session, name='sla%d' % shares, service_shares=shares) for shares in sla_shares]
-        roles_slas = [(Role(name="role%d" % sla.service_shares, session=session), sla) for sla in slas]
+        slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
+        roles_slas = [(Role(name="role%d" % sla.shares, session=session), sla) for sla in slas]
 
         user_sla_roles = [[User(name='user%d' % idx, session=session), slas[idx],
                            [roles_slas[idx + 2][0], roles_slas[idx + 3][0]]] for idx in range(0, 3)]
@@ -543,13 +524,13 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
         sla_shares = [50, 200]
-        slas = [ServiceLevel(session=session, name='sla%d' % shares, service_shares=shares) for shares in sla_shares]
-        roles_slas = [(Role(name="role%d" % sla.service_shares, session=session), sla) for sla in slas]
+        slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
+        roles_slas = [(Role(name="role%d" % sla.shares, session=session), sla) for sla in slas]
         user = self.create_user(session=session, name='user1')
 
         for role, sl in roles_slas:
             self.create_entity_with_service_level(entity=role, service_level=sl)
-            if sl.service_shares == 50:
+            if sl.shares == 50:
                 role50 = role
             else:
                 role.grant_me_to(grant_to=role50)
@@ -585,9 +566,9 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
         sla_shares = [200, 600, 50]
-        slas = [ServiceLevel(session=session, name='sla%d' % shares, service_shares=shares) for shares in sla_shares]
-        roles_slas = {s.service_shares: {'role': Role(name="role%d" % s.service_shares, session=session),
-                                         'service_level': s} for s in slas[:2]}
+        slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
+        roles_slas = {s.shares: {'role': Role(name="role%d" % s.shares, session=session),
+                                 'service_level': s} for s in slas[:2]}
         user = User(session=session, name='user1')
 
         for _, role_sl in roles_slas.items():
@@ -627,9 +608,9 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
         sla_shares = [50, 200, 500, 1000]
-        slas = [ServiceLevel(session=session, name='sla%d' % shares, service_shares=shares) for shares in sla_shares]
-        roles_slas = {s.service_shares: {'role': Role(name="role%d" % s.service_shares, session=session),
-                                         'service_level': s} for s in slas}
+        slas = [ServiceLevel(session=session, name='sla%d' % shares, shares=shares) for shares in sla_shares]
+        roles_slas = {s.shares: {'role': Role(name="role%d" % s.shares, session=session),
+                                 'service_level': s} for s in slas}
         user = self.create_user(session=session, name='user1')
         for _, role_sl in roles_slas.items():
             self.create_entity_with_service_level(entity=role_sl['role'], service_level=role_sl['service_level'])
@@ -706,7 +687,7 @@ class TestSLA(SLATester):
                           expected_attached_all_slas_list=[],
                           expected_effective_slas_list=[[role, ServiceLevel(session=session,
                                                                             name='',
-                                                                            service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
+                                                                            shares=self.DEFAULT_SHARES)
                                                          ]
                                                         ],
                           entity=role)
@@ -736,7 +717,7 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[role, ServiceLevel(session=session,
                                                                             name='',
-                                                                            service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
+                                                                            shares=self.DEFAULT_SHARES)
                                                          ]
                                                         ],
                           entity=role)
@@ -770,7 +751,7 @@ class TestSLA(SLATester):
                           entity=user)
 
         sl.drop()
-        dummy_sl = ServiceLevel(session=session, name='', service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
+        dummy_sl = ServiceLevel(session=session, name='', shares=self.DEFAULT_SHARES)
         self.validate_sla(expected_slas_list=[],
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[role, dummy_sl]],
@@ -805,7 +786,7 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, ServiceLevel(session=session,
                                                                             name='',
-                                                                            service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
+                                                                            shares=self.DEFAULT_SHARES)
                                                          ]
                                                         ],
                           entity=user)
@@ -900,7 +881,7 @@ class TestSLA(SLATester):
                           expected_attached_slas_list=[],
                           expected_effective_slas_list=[[user, ServiceLevel(session=session,
                                                                             name='',
-                                                                            service_shares=DEFAULT_SERVICE_LEVEL_SHARES)
+                                                                            shares=self.DEFAULT_SHARES)
                                                          ]
                                                         ],
                           entity=user)
@@ -929,7 +910,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl = ServiceLevel(session=session, name='sla1', service_shares=100)
+        sl = ServiceLevel(session=session, name='sla1', shares=100)
         role = Role(session=session, name='role1')
         self.create_entity_with_service_level(entity=role, service_level=sl)
 
@@ -967,7 +948,7 @@ class TestSLA(SLATester):
         """
         session = self.prepare()
 
-        sl100 = ServiceLevel(session=session, name='sla1', service_shares=100)
+        sl100 = ServiceLevel(session=session, name='sla1', shares=100)
         role = Role(session=session, name='role1')
         self.create_entity_with_service_level(entity=role, service_level=sl100)
 
@@ -1062,4 +1043,141 @@ class TestSLA(SLATester):
         expected_error = r"'SHARES' can only take values of 1-1000 \(given %d\)" % shares
 
         with pytest.raises(SyntaxException, match=expected_error):
-            self.create_service_level(session=session, name='sla1', service_shares=shares)
+            ServiceLevel(session=session, name='sla1', shares=shares).create()
+
+
+class TestSLATimeouts(SLATester):
+    KEY_NUM = 1000
+
+    @pytest.mark.parametrize(argnames=("duration"),
+                             argvalues=[
+                                 ScyllaDuration(milliseconds=1),
+                                 ScyllaDuration(hours=5),
+                                 ScyllaDuration(hours=23, minutes=2, seconds=2, milliseconds=2),
+    ],
+        ids=("1ms", "5h", "23h2m2s2ms"))
+    def test_timeout_valid_values(self, duration: ScyllaDuration):
+        """
+        Create s Service Level with a valid timeout value.
+        """
+        read_query = "SELECT * FROM ks.cf"
+        session = self.prepare()
+        node = self.cluster.nodelist()[0]
+        self.populate_data(session=session, number_of_keys=self.KEY_NUM)
+        role = Role(session=session, name="test_role", password="test_role", login=True).create()
+        sl = ServiceLevel(session=session, name="sl1", timeout=duration, shares=None).create()
+        role.attach_service_level(sl)
+        grant_select_query = f"GRANT SELECT ON KEYSPACE ks TO {role.name};"
+        session.execute(grant_select_query)
+        listed_sl = sl.list_service_level()
+
+        assert sl == listed_sl
+
+        new_session = self.patient_cql_connection(
+            node=node, user=role.name, password=role.password
+        )
+        query_result = new_session.execute(read_query).all()
+        logger.debug(f"Query result: {query_result}")
+
+        assert query_result
+
+    @pytest.mark.require('#scylladb/scylla#10285')
+    @pytest.mark.parametrize(argnames=("scylla_yaml_timeout", "sl_timeout", "query_timeout"),
+                             argvalues=[
+                                 (100, ScyllaDuration(milliseconds=0), None),
+                                 (None, ScyllaDuration(milliseconds=100), "0ms"),
+    ],
+        ids=[
+                                 "service_level_wins_over_scylla_yaml",
+                                 "query_timeout_wins_over_service_level_timeout",
+    ])
+    def test_sla_timeout_priority(self, scylla_yaml_timeout, sl_timeout: ScyllaDuration, query_timeout):
+        """
+        Request timeouts can be set using 3 different methods:
+        1. scylla.yaml config file entry
+        2. Service Level definition
+        3. Per-query timeout defined in the CQL statement
+
+        In terms of prioritization:
+        3 > 2 > 1
+
+        This test checks if 2 scenarios are true:
+        - 3 > 2
+        - 2 > 1
+
+        Test steps:
+        1) Populate db with some data.
+        2) Create a test Role.
+        3) Open a new session for the test Role.
+        and query the data.
+        4) Change the timeout value using the given method.
+        5) Open a new CQL session and attempt the same query as
+        in (2).
+        6) Assert that a RequestTimeout error was raised.
+        """
+        if query_timeout:
+            read_query = f"SELECT * FROM ks.cf USING TIMEOUT {query_timeout}"
+        else:
+            read_query = "SELECT * FROM ks.cf"
+
+        session = self.prepare()
+        node = self.cluster.nodelist()[0]
+        self.populate_data(session=session, number_of_keys=self.KEY_NUM)
+        sl = ServiceLevel(session=session, name="sl1", timeout=ScyllaDuration(milliseconds=100), shares=None).create()
+        role1 = Role(session=session, name="role1", password="role1", login=True).create()
+        role1.attach_service_level(sl)
+
+        grant_select_query = f"GRANT SELECT ON KEYSPACE ks TO {role1.name};"
+        session.execute(grant_select_query)
+        user_session = self.patient_cql_connection(
+            self.cluster.nodelist()[0], user=role1.name, password=role1.password)
+
+        pre_read_result = user_session.execute("SELECT * FROM ks.cf").all()
+        assert len(pre_read_result) == self.KEY_NUM
+
+        # update scylla yaml
+        if scylla_yaml_timeout:
+            mark = node.mark_log()
+            self.cluster.stop()
+            self.cluster.set_configuration_options(values={"read_request_timeout_in_ms": scylla_yaml_timeout})
+            self.cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
+            node.watch_log_for(exprs=["cql_server_controller - Starting listening for CQL clients"],
+                               from_mark=mark)
+
+        if sl_timeout:
+            new_session = self.patient_cql_connection(
+                node=node, user="cassandra", password="cassandra"
+            )
+            sl.session = new_session
+            sl.alter(new_timeout=sl_timeout)
+
+        with pytest.raises(ReadTimeout):
+            new_user_session = self.patient_cql_connection(
+                node=node, user=role1.name, password=role1.password)
+            read_result = new_user_session.execute(read_query)
+            logger.debug("Read result: %s", len(read_result.all()))
+
+
+class TestSLTimeoutsNegative(SLATester):
+    @pytest.mark.require('#scylladb/scylla#10286')
+    @pytest.mark.parametrize(argnames=["timeout", "expected_exception_msg"],
+                             argvalues=[
+                                 [ScyllaDuration(days=1), "Timeout values cannot be expressed in days/months"],
+                                 [ScyllaDuration(months=2), "Timeout values cannot be expressed in days/months"],
+                                 [ScyllaDuration(nanoseconds=1000),
+                                  "Timeout values must be expressed in millisecond granularity"],
+                                 [ScyllaDuration(milliseconds=-1200), "Timeout values must be nonnegative"]
+    ],
+        ids=[
+                                 "using_days_as_values",
+                                 "using_months_as_values",
+                                 "nanosecond_value",
+                                 "negative_timeout_value",
+    ])
+    def test_invalid_timeout_values(self, timeout: ScyllaDuration, expected_exception_msg: str):
+        session = self.prepare()
+
+        with pytest.raises(InvalidRequest) as exc:
+            ServiceLevel(session=session, name="sl1", timeout=timeout, shares=None).create()
+
+        assert exc.match(f".*{expected_exception_msg}.*")
