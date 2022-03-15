@@ -21,13 +21,6 @@ class ServiceLevelAttributes:
         if key != "query_string":
             self._generate_query_string()
 
-    def __eq__(self, other):
-        return all((
-            self.shares == other.shares,
-            self.timeout.get_duration() == other.timeout.get_duration(),
-            self.workload_type == other.workload_type
-        ))
-
     def __post_init__(self):
         self._generate_query_string()
 
@@ -120,7 +113,14 @@ class ServiceLevel(object):
         self._sl_attributes.workload_type = workload_type
 
     def __eq__(self, other) -> bool:
-        return (self.name == other.name) and self._sl_attributes == other._sl_attributes
+        own_timeout_duration = self.timeout.get_duration() if isinstance(self.timeout, ScyllaDuration) else None
+        other_timeout_duration = other.timeout.get_duration() if isinstance(other.timeout, ScyllaDuration) else None
+
+        return all((
+            self.shares == other.shares,
+            own_timeout_duration == other_timeout_duration,
+            self.workload_type == other.workload_type
+        ))
 
     def __repr__(self) -> str:
         return "%s: name: %s, attributes: %s" % (self.__class__.__name__, self.name, self._sl_attributes)
