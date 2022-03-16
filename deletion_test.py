@@ -56,6 +56,12 @@ class TestRangeDeletion(Tester):
         logger.info(query)
         session.execute(query)
 
+    def create_cf_2ck_int(self, session):
+        query = "CREATE TABLE ks.test1 (pk1 int, ck1 int, ck2 int, v1 int, " \
+                "PRIMARY KEY(pk1, ck1, ck2)) WITH compaction = {'class': '%s' }" % self.compaction_strategy
+        logger.info(query)
+        session.execute(query)
+
     def create_cf_2ck(self, session):
         query = "CREATE TABLE ks.test1 (pk1 int, ck1 int, ck2 varchar, v1 int, " \
                 "PRIMARY KEY(pk1, ck1, ck2)) WITH compaction = {'class': '%s' }" % self.compaction_strategy
@@ -91,6 +97,41 @@ class TestRangeDeletion(Tester):
                                                                                                      ck=ck,
                                                                                                      v1=v1,
                                                                                                      ttl=ttl_clause))
+        return data
+
+    def insert_data_cf_2ck_matrix(self, conn, num_of_pks, rows_per_ck, flush: bool = True):
+        """ Create data for 2 partitions
+            Data example:
+            [[0, 0, 0, 0], [0, 0, 1, 1], [0, 0, 2, 2], [0, 1, 0, 0], [0, 1, 1, 1], [0, 1, 2, 2],
+             [0, 2, 0, 0], [0, 2, 1, 1], [0, 2, 2, 2], [1, 0, 0, 0], [1, 0, 1, 1], [1, 0, 2, 2],
+             [1, 1, 0, 0], [1, 1, 1, 1], [1, 1, 2, 2], [1, 2, 0, 0], [1, 2, 1, 1], [1, 2, 2, 2]]
+        """
+        data = list()
+        sub_partition_rows = 2
+        # Inserting data per number of partitions
+        for pkey in range(num_of_pks):  # pk1 value
+            for ckey1 in range(rows_per_ck):  # ck1 values
+                for ckey2 in range(rows_per_ck):  # ck1 values
+                    data.append([pkey, ckey1, ckey2, ckey2])
+
+        if flush:
+            rows_in_pk = rows_per_ck ** 2
+            start_row = 0
+            for _ in range(num_of_pks):
+                end_row = start_row + rows_in_pk
+                for (pk1, ck1, ck2, v1) in data[start_row:end_row]:
+                    conn.execute(
+                        "INSERT INTO ks.test1 (pk1, ck1, ck2, v1) VALUES ({pk1}, {ck1}, {ck2}, {v1})".format(pk1=pk1,
+                                                                                                             ck1=ck1,
+                                                                                                             ck2=ck2,
+                                                                                                             v1=v1))
+                self.cluster.flush()
+                start_row += rows_in_pk
+
+        else:
+            for (pk1, ck1, ck2, v1) in data:
+                conn.execute("INSERT INTO ks.test1 (pk1, ck1, ck2, v1) VALUES ({pk1}, {ck1}, {ck2}, {v1})"
+                             .format(pk1=pk1, ck1=ck1, ck2=ck2, v1=v1))
         return data
 
     @staticmethod
@@ -155,6 +196,93 @@ class TestRangeDeletion(Tester):
             del data[indx]
 
         assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.ALL, ignore_order=True)
+
+    def test_delete_multiple_ranges_by_2ck(self):
+        """
+        The table has 1 PKs and 2 CKs.
+        Delete ranges of data using conditions on PKs and both CK columns.
+
+        """
+        session = self.prepare(nodes=2, rf=2)
+        node1, node2 = self.cluster.nodelist()
+        node1.nodetool("disableautocompaction")
+        self.create_cf_2ck_int(session=session)
+        node2.stop(wait_other_notice=True)
+        num_of_pks = 2
+        rows_per_ck = 4
+        total_rows_num = num_of_pks * rows_per_ck ** 2
+        ck_deletion_skip = 2
+        data = self.insert_data_cf_2ck_matrix(conn=session, num_of_pks=num_of_pks, rows_per_ck=rows_per_ck)
+
+        select_query = "SELECT * FROM ks.test1"
+        assert_all(session=session, query=select_query, expected=data, cl=ConsistencyLevel.ONE, ignore_order=True)
+
+        overlap_index = 2  # index for deletion ranges intersection
+        deletion_range = 2
+        delete_query = "DELETE FROM ks.test1 WHERE pk1={pk1} and ck1 = {ck1} and ck2 >= {ck2_min} and ck2 < {ck2_max}"
+        # For each pk: for some of ck1: generate 2 overlapping deletion ranges of ck2
+        # For example:
+        # DELETE FROM ks.test1 WHERE pk1=0 and ck1 = 0 and ck2 >= 0 and ck2 < 2
+        # DELETE FROM ks.test1 WHERE pk1=0 and ck1 = 0 and ck2 >= 1 and ck2 < 3
+        # DELETE FROM ks.test1 WHERE pk1=0 and ck1 = 2 and ck2 >= 0 and ck2 < 2
+        # DELETE FROM ks.test1 WHERE pk1=0 and ck1 = 2 and ck2 >= 1 and ck2 < 3
+        for pkey in range(num_of_pks):
+            for ckey1 in range(0, rows_per_ck, ck_deletion_skip):
+                query = delete_query.format(pk1=pkey,
+                                            ck1=ckey1,
+                                            ck2_min=overlap_index - deletion_range,
+                                            ck2_max=overlap_index
+                                            )
+                logger.info(query)
+                session.execute(query)
+                query = delete_query.format(pk1=pkey,
+                                            ck1=ckey1,
+                                            ck2_min=overlap_index - deletion_range + 1,
+                                            ck2_max=overlap_index + 1
+                                            )
+                logger.info(query)
+                session.execute(query)
+            self.cluster.flush()
+
+        num_of_deleted_rows = total_rows_num // ck_deletion_skip // (rows_per_ck / (deletion_range + 1))
+        total_left_rows = total_rows_num - num_of_deleted_rows
+        assert_one(session, 'select count(*) from ks.test1', [total_left_rows])
+
+        # For each pk: delete a half of the rows by ck1 filtering
+        # For example:
+        # DELETE FROM ks.test1 WHERE pk1=1 and ck1 >= 2 (causing another overlap range-tombstones.
+        for pkey in range(num_of_pks):
+            query = f"DELETE FROM ks.test1 WHERE pk1={pkey} and ck1 >= {rows_per_ck // 2}"
+            logger.info(query)
+            session.execute(query)
+            self.cluster.flush()
+
+        total_left_rows //= 2
+        assert_one(session, 'select count(*) from ks.test1', [total_left_rows])
+
+        # For a single pk: delete all its rows by ck1 filtering:
+        # DELETE FROM ks.test1 WHERE pk1 = 0 and ck1 >= 0
+        query = f"DELETE FROM ks.test1 WHERE pk1 = 0 and ck1 >= 0"
+        logger.info(query)
+        session.execute(query)
+        self.cluster.flush()
+
+        total_left_rows -= total_left_rows / num_of_pks
+        assert_one(session, 'select count(*) from ks.test1', [total_left_rows])
+
+        logger.debug("start and repair node 2")
+        node2.start(wait_for_binary_proto=True)
+        node2.repair()
+        logger.debug("Check for correct number of table rows after a repair with all range tombstones")
+        node1.stop(wait_other_notice=True)
+        session = self.fixture_dtest_setup.patient_exclusive_cql_connection(node2)
+        assert_one(session, 'select count(*) from ks.test1', [total_left_rows])
+        node1.start(wait_for_binary_proto=True)
+        node2.stop(wait_other_notice=True)
+        logger.debug("Check for correct number of table rows after a major compaction with all range tombstones")
+        node1.compact()
+        session = self.fixture_dtest_setup.patient_exclusive_cql_connection(node1)
+        assert_one(session, 'select count(*) from ks.test1 bypass cache', [total_left_rows])
 
     def test_delete_by_2ck_range_equal_and_not_equal(self):
         """
