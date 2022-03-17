@@ -155,7 +155,7 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         window_string = f"{time_window.hour:02}:{time_window.minute:02}"
         return window_string
 
-    def test_task_run_on_time_window(self):
+    def _template_task_run_on_time_window_with_ascending_timestamps(self, time_window):
         """
         New in manager 3.0
         The test creates a task with an assigned time window to run in,
@@ -169,14 +169,23 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
 
-        now = datetime.now()
-        time_window = "{},{}".format(self._create_time_window_string_from_time(now, 2),
-                                     self._create_time_window_string_from_time(now, 12))
         repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, window=[time_window])
-        final_status = repair_task.wait_and_get_final_status(timeout=740, step=5)
+        final_status = repair_task.wait_and_get_final_status(timeout=800, step=5)
         assert final_status == TaskStatus.DONE, f"The task did not run in its assigned time window: By now, its " \
                                                 f"status should've been {TaskStatus.DONE}, but at the moment it is" \
                                                 f"{final_status}"
+
+    def test_task_run_on_time_window_with_ascending_timestamps(self):
+        now = datetime.now()
+        time_window = "{},{}".format(self._create_time_window_string_from_time(now, 4),
+                                     self._create_time_window_string_from_time(now, 12))
+        self._template_task_run_on_time_window_with_ascending_timestamps(time_window)
+
+    def test_task_run_on_time_window_with_descending_timestamps(self):
+        now = datetime.now()
+        time_window = "{},{}".format(self._create_time_window_string_from_time(now, 4),
+                                     self._create_time_window_string_from_time(now, -50))
+        self._template_task_run_on_time_window_with_ascending_timestamps(time_window)
 
     def test_time_window_while_and_after_manager_is_suspended(self):
         """
