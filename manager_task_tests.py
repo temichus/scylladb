@@ -1,4 +1,5 @@
 import time
+import random
 
 import pytest
 import logging
@@ -133,6 +134,63 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         repair_task_cluster2 = secondary_mgr_cluster.repair_api.repair(cluster_name=secondary_mgr_cluster.id,
                                                                        name=task_name)
         assert repair_task_cluster2.id, "The task in the second cluster does not have an ID"
+
+    def test_two_repairs_by_the_same_name(self):
+        """
+        New in manager 3.0.
+        The test creates a repair task with a specified name and then tries to
+        create a second repair task by the same name, expecting failure.
+        """
+        task_name = "absolutely_absurd_name-2"
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, name=task_name)
+        try:
+            second_repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, name=task_name)
+        except ScyllaManagerError as err:
+            assert "already used" in err.args[0] and "task name" in err.args[0], \
+                f"Creating a task with an already used name failed with an improper error message: {err.args[0]}"
+        else:
+            raise ScyllaManagerError(f"Creating a task with a name of an already existing one ({task_name}) "
+                                     f"did not result in failure")
+
+    def test_repair_by_the_same_name_as_different_task_type(self):
+        """
+        New in manager 3.0.
+        The test creates a repair task with the name of an existing task of a different type,
+        expecting success.
+        """
+        def get_random_existing_healthcheck_task_name(manager):
+            complete_task_list_table = manager.get_task_list()
+            healthcheck_list = [row[0] for row in complete_task_list_table if row[0].startswith("healthcheck")]
+            names = [name[name.find("/")+1:] for name in healthcheck_list]
+            return random.choice(names)  # The name of one of the automatically created healthchecks
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
+        healthcheck_task_name = get_random_existing_healthcheck_task_name(mgr_cluster)
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, name=healthcheck_task_name)
+        assert repair_task.id, "A new repair task was not created"  # Just making sure the task exists
+
+    def test_create_task_by_the_same_name_of_deleted_task(self):
+        """
+        New in manager 3.0.
+        The test creates a repair task with a specified name, deletes it
+        and then creates a new repair task with the same name, expecting no issue.
+        """
+        task_name = "47_incredibly_unbelievable_name"
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
+        mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, name=task_name)
+        repair_task_id = repair_task.id
+        repair_task.delete_task()
+        repair_task_by_same_name = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, name=task_name)
+        repair_task_by_same_name_id = repair_task_by_same_name.id
+        assert repair_task_by_same_name_id != repair_task_id, \
+            "When creating a new task with the same name of a deleted task, the ID of the new task is identical to " \
+            "the ID of the deleted one, which means no new task was actually created"
 
     def test_check_status_by_task_type_single_task(self):
         """

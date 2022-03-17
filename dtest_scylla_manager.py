@@ -1597,7 +1597,7 @@ class ManagerCluster(ScyllaManagerBase):
         # ╰──────────────────────────────────────┴──────┴─────────────┴────────────────╯
         return self.get_property(parsed_table=self._cluster_list, column_name='ssh user')
 
-    def _get_task_list(self):
+    def get_task_list(self):
         cmd = f"tasks -c {self.id}"
         stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
@@ -1614,7 +1614,7 @@ class ManagerCluster(ScyllaManagerBase):
         # │ repair/dd98f6ae-bcf4-4c98-8949-573d533bb789 │                               │ 3    │            │ DONE   │
         # ╰─────────────────────────────────────────────┴───────────────────────────────┴──────┴────────────┴────────╯
         repair_task_list = []
-        table_res = self._get_task_list()
+        table_res = self.get_task_list()
         if len(table_res) > 1:  # if there are any tasks in list - add them as RepairTask generated objects.
             repair_task_rows_list = [row for row in table_res[1:] if row[0].startswith("repair/")]
             for row in repair_task_rows_list:
@@ -1623,19 +1623,19 @@ class ManagerCluster(ScyllaManagerBase):
         return repair_task_list
 
     def get_healthcheck_task(self):
-        healthcheck_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
+        healthcheck_id = self.sctool.get_table_value(parsed_table=self.get_task_list(), column_name="task",
                                                      identifier="healthcheck/cql", is_search_substring=True)
         # return the manager's health-check-task object with the found id
         return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_healthcheck_alternator_task(self):
-        healthcheck_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
+        healthcheck_id = self.sctool.get_table_value(parsed_table=self.get_task_list(), column_name="task",
                                                      identifier="healthcheck/alternator", is_search_substring=True)
         # return the manager's health-check-task object with the found id
         return HealthcheckTask(task_id=healthcheck_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def get_rest_task(self):
-        rest_id = self.sctool.get_table_value(parsed_table=self._get_task_list(), column_name="task",
+        rest_id = self.sctool.get_table_value(parsed_table=self.get_task_list(), column_name="task",
                                               identifier="healthcheck/rest", is_search_substring=True)
         # return the manager's rest-task object with the found id
         return RestTask(task_id=rest_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
