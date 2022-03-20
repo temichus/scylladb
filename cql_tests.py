@@ -604,17 +604,21 @@ class TestMiscellaneousCQL(CQLTester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 2, res
 
-    def _test_query_failed_when_node_is_down(self, stop_gently: bool):
+    def _test_query_failed_when_node_is_down(self, stop_gently: bool, query_type: str):
         """
         Test that a select query with consistency_level=QUOROM
         returns an Unavailable error properly when one out of two nodes is DOWN.
         """
         cluster = self.cluster
-        # reduce range_request_timeout to make the first try
+        # reduce read/range_request_timeout to make the first try
         # timeout faster when node2 is killed.
-        range_request_timeout_in_ms = randint(1, 10) * 1000
-        session = self.prepare(nodes=2, rf=2,
-                               configuration_options={'range_request_timeout_in_ms': f'{range_request_timeout_in_ms}'})
+        request_timeout_in_ms = randint(1, 10) * 1000
+        if query_type == "point":
+            config = {'read_request_timeout_in_ms': f'{request_timeout_in_ms}'}
+        elif query_type == "count":
+            config = {'range_request_timeout_in_ms': f'{request_timeout_in_ms}'}
+
+        session = self.prepare(nodes=2, rf=2, configuration_options=config)
         node1, node2 = self.cluster.nodelist()
 
         ks = 'ks'
@@ -635,34 +639,60 @@ class TestMiscellaneousCQL(CQLTester):
 
         with self.patient_cql_cluster_session(node1, ks, exclusive=True) as session:
             logger.debug("Selecting with CL=ONE")
-            assert_one(session,
-                       f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
-                       [1000], cl=ConsistencyLevel.ONE)
+
+            if query_type == "point":
+                assert_one(session,
+                           f"SELECT v from {ks}.{cf} WHERE pk = 1 AND ck = 1 BYPASS CACHE",
+                           ["foo"], cl=ConsistencyLevel.ONE)
+            elif query_type == "count":
+                assert_one(session,
+                           f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
+                           [1000], cl=ConsistencyLevel.ONE)
 
             logger.debug("Selecting with CL=QUORUM (expected to fail)")
             t0 = time.time()
-            q = SimpleStatement(f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
-                                consistency_level=ConsistencyLevel.QUORUM)
+
+            if query_type == "point":
+                q = SimpleStatement(f"SELECT v from {ks}.{cf} WHERE pk = 1 AND ck = 1 BYPASS CACHE",
+                                    consistency_level=ConsistencyLevel.QUORUM)
+            elif query_type == "count":
+                q = SimpleStatement(f"SELECT count(*) from {ks}.{cf} BYPASS CACHE",
+                                    consistency_level=ConsistencyLevel.QUORUM)
+
             assert_unavailable(lambda t: session.execute(q, timeout=t),
                                self.cql_timeout(60))
             dt = time.time() - t0
             allowed_timeout = 1
             if not stop_gently:
-                range_request_timeout = \
-                    int(cluster._config_options['range_request_timeout_in_ms']) / 1000
-                # The request should fail up to range_request_timeout + 1 seconds
+                if query_type == "point":
+                    config_option = "read_request_timeout_in_ms"
+                elif query_type == "count":
+                    config_option = "range_request_timeout_in_ms"
+
+                request_timeout = \
+                    int(cluster._config_options[config_option]) / 1000
+                # The request should fail up to request_timeout + 1 seconds
                 # after max_retries or after the node is marked
                 # as DN by gossip, the earlier of the two.
-                allowed_timeout += 1 + range_request_timeout + \
-                    min(range_request_timeout * FlakyRetryPolicy().max_retries, 20)
+                allowed_timeout += 1 + request_timeout + \
+                    min(request_timeout * FlakyRetryPolicy().max_retries, 20)
             assert dt <= allowed_timeout, \
                 f"Query took too long to timeout: {dt} > {allowed_timeout}"
 
-    def test_query_failed_when_node_is_stopped(self):
-        self._test_query_failed_when_node_is_down(stop_gently=True)
+    # FIXME: Use @pytest.mark.parametrize once scylladb/scylla#10131 is resolved.
+    def test_point_query_failed_when_node_is_stopped(self):
+        self._test_query_failed_when_node_is_down(stop_gently=True, query_type="point")
 
-    def test_query_failed_when_node_is_killed(self):
-        self._test_query_failed_when_node_is_down(stop_gently=False)
+    def test_point_query_failed_when_node_is_killed(self):
+        self._test_query_failed_when_node_is_down(stop_gently=False, query_type="point")
+
+    @pytest.mark.require('scylladb/scylla#10131')
+    def test_count_query_failed_when_node_is_stopped(self):
+        self._test_query_failed_when_node_is_down(stop_gently=True, query_type="count")
+
+    @pytest.mark.require('scylladb/scylla#10131')
+    def test_count_query_failed_when_node_is_killed(self):
+        self._test_query_failed_when_node_is_down(stop_gently=False, query_type="count")
 
 
 @pytest.mark.dtest_full
