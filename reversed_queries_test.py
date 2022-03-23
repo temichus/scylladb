@@ -259,7 +259,6 @@ class TestReversedQueriesMemoryUsage(Tester, ConcurrentExecutor):
         session = self.patient_cql_connection(node1, row_factory=row_factory)
         return session
 
-    @pytest.mark.require('scylladb/scylla#9134')
     def test_memory(self):
         logger.debug('Set up a cluster')
         session = self.prepare()
@@ -284,11 +283,21 @@ class TestReversedQueriesMemoryUsage(Tester, ConcurrentExecutor):
 
         self.run_concurrently(worker_count, run_writes)
 
-        # Select a small portion of rows (1MB here) which should easily fit in memory
+        # Select a portion of rows that not fit to 1MB (soft limit) to verify paging
         logger.debug('Selecting a small amount of rows from the end of the partition')
-        result = session.execute(f"SELECT * FROM memtest WHERE bucket = 0 ORDER BY id DESC LIMIT 100")
-        rows = list(result)
-        assert len(rows) == 100
+        future = session.execute_async(f"SELECT * FROM memtest WHERE bucket = 0 ORDER BY id DESC LIMIT 200")
+        reverse_query_page_fetcher = PageFetcher(future)
+        reverse_query_page_fetcher.request_all()
+        rows = reverse_query_page_fetcher.all_data()
+
+        assert reverse_query_page_fetcher.pagecount() > 1, "Response was not paged but should"
+        assert len(rows) == 200
+
+        # make sure reverse queries use the same size for paging as normal queries. scylladb/scylla#9815
+        future = session.execute_async(f"SELECT * FROM memtest WHERE bucket = 0 ORDER BY id LIMIT 200")
+        normal_query_page_fetcher = PageFetcher(future)
+        normal_query_page_fetcher.request_all()
+        assert reverse_query_page_fetcher.pagecount() == normal_query_page_fetcher.pagecount()
 
 
 @pytest.mark.dtest_full
