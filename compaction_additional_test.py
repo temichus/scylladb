@@ -1304,7 +1304,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         # get sstables count taken by off-strategy to compact.
         lines = list(node2.grep_log(
-            fr"table - Starting off-strategy compaction for {full_table_name}, ([\d]+) candidates were found"))
+            fr"Starting off-strategy compaction for {full_table_name}, ([\d]+) candidates were found"))
         sstables_for_compaction_count = int(lines[0][1].groups()[0])
 
         # verify there's limited number of sstables for compaction

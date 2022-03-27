@@ -193,8 +193,8 @@ class RepairAdditionalBase(Tester):
             'repair - repair.*: completed successfully',
         ]
         off_strategy_compaction_logs = [
-            f'table - Starting off-strategy compaction for {ks}.{cf}',
-            f'table - Done with off-strategy compaction for {ks}.{cf}'
+            f'Starting off-strategy compaction for {ks}.{cf}',
+            f'Done with off-strategy compaction for {ks}.{cf}'
         ]
         from_mark = node.mark_log()
 
