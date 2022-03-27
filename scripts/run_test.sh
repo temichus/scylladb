@@ -206,6 +206,8 @@ AWS_OPTIONS=$(env | grep AWS_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
 # export all JENKINS_* env vars into the docker run
 JENKINS_OPTIONS=$(env | grep JENKINS_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
 
+DOCKER_CONFIG_MNT="-v $(eval echo ~${USER})/.docker:${HOME}/.docker"
+
 group_args=()
 for gid in $(id -G); do
     group_args+=(--group-add "$gid")
@@ -230,6 +232,7 @@ docker_cmd="docker run --init --detach=true \
     ${MINIO_DOCKER_LINK_PARAM} \
     -v ${DTEST_DIR}:${DTEST_DIR} \
     -v ${CCM_DIR}:${CCM_DIR} \
+    ${DOCKER_CONFIG_MNT} \
     -e LOG_SAVED_DIR \
     -e HOME \
     -e USER \

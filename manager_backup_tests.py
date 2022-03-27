@@ -1,9 +1,7 @@
 import re
 import os
 import time
-import yaml
 import random
-import pytest
 import shutil
 import logging
 from glob import glob
@@ -11,14 +9,18 @@ from time import sleep
 from datetime import datetime, timedelta
 from pprint import pformat
 from pathlib import Path
+import uuid
 
+import yaml
 from cassandra import ConsistencyLevel
 import boto3
+import pytest
 
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin
 from tools.data import insert_c1c2, insert_c1c2_with_clustering, run_in_parallel
 from dtest_class import Tester, wait_for, create_ks, create_cf
 from tools.files import get_sstables_files
+from tools.minio import MinioDocker
 
 CLUSTER_NAME = 'cluster1'
 DESTINATION_BUCKET = 'backup-bucket'
@@ -29,15 +31,20 @@ C2_PREFIX = "other_value%d"
 logger = logging.getLogger(__name__)
 
 
+@pytest.fixture(scope="class")
+def minio_docker():
+    with MinioDocker(name=f"minio-{str(uuid.uuid4())[:8]}") as minio:
+        yield minio
+
+
 @pytest.mark.scylla_manager
 class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
     @pytest.fixture(scope="class")
-    def boto_client(self):
-        minio_full_address = os.getenv("AWS_S3_ENDPOINT")
+    def boto_client(self, minio_docker):
         client = boto3.client(service_name='s3',
-                              aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-                              aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-                              endpoint_url=minio_full_address)
+                              aws_access_key_id=minio_docker.access_key,
+                              aws_secret_access_key=minio_docker.secret_key,
+                              endpoint_url=minio_docker.endpoint_url)
         try:
             client.create_bucket(Bucket=DESTINATION_BUCKET)
         except client.exceptions.BucketAlreadyOwnedByYou:
@@ -45,8 +52,19 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         return client
 
     @pytest.fixture(scope="function", autouse=True)
-    def append_boto3_client(self, boto_client):
+    def append_boto3_client(self, boto_client, minio_docker):
         self.boto_client = boto_client
+        self.minio_docker = minio_docker
+
+    def config_and_create_cluster(self, *args, **kwargs):
+        node_list = super().config_and_create_cluster(*args, **kwargs)
+        for node in node_list:
+            node.update_agent_config(new_settings={'s3': {"endpoint": self.minio_docker.endpoint_url,
+                                                          "access_key_id": self.minio_docker.access_key,
+                                                          "secret_access_key": self.minio_docker.secret_key,
+                                                          "provider": "Minio"}},
+                                     restart_agent_after_change=True)
+        return node_list
 
     def _prepare_cluster_with_data(self, keyspace_table_and_key_range, rf=2, number_of_nodes=2):
         node_list = self.config_and_create_cluster(nodes=number_of_nodes)
@@ -696,7 +714,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                      keyspace_list=['ks'])
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
-        node3.restart_scylla_manager_agent(gently=True)
+        node3.restart_scylla_manager_agent(gently=True, recreate_config=False)
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=600, step=5)
 
     @pytest.mark.skip("will return when minio bandwidth limiting is on")
@@ -801,7 +819,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         pre_rerun_snapshot_set = self._get_total_snapshot_set()
 
         for node in self.cluster.nodelist():
-            node.start_scylla_manager_agent()
+            node.start_scylla_manager_agent(create_config=False)
 
         session = self.patient_cql_connection(node1)
         session.execute("TRUNCATE keyspace1.standard1;")
