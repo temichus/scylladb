@@ -213,6 +213,11 @@ class RepairAdditionalBase(Tester):
                          'off-strategy compaction timer on other table')
             node.repair(options=[*more_options, ks, aux_cf])
 
+        try:
+            run_rest_api(node, f"/storage_service/keyspace_offstrategy_compaction/{ks}?cf={cf}")
+        except Exception as e:
+            logger.warn("Triggering off-strategy compaction on {} failed: {}".format(node.name, e))
+
         logger.debug('Wait till off-strategy compactions have been started and completed')
         assert node.watch_log_for(
             exprs=off_strategy_compaction_logs,
