@@ -1,5 +1,6 @@
 import pytest
 import logging
+import requests
 from time import sleep
 from datetime import datetime, timedelta
 
@@ -158,3 +159,18 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         for node_address, node_health in cluster_health.items():
             assert node_health.node_status == NodeStatus.UP, \
                 f"After changing the port of the agent, the manager falsely reports that node {node_address} is down"
+
+    def test_rest_api_status_nonexistent_task(self):
+        """
+        This test was created to cover https://github.com/scylladb/scylla/pull/9578 scenario
+        The tests checks the status of a non-existing repair and expects it to be 404
+        """
+        expected_status_of_nonexistent_task = 500
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        self._create_mgr_cluster(node=node1, name="cluster1")
+        address = self.cluster._scylla_manager._get_api_address()
+        url = f"http://{address}/storage_service/repair_status?id=1"
+        repair_get_request = requests.get(url=url)
+        assert repair_get_request.status_code == expected_status_of_nonexistent_task,\
+            f"Wrong status of repair get REST API command: {repair_get_request.status_code}" \
+            f" instead of {expected_status_of_nonexistent_task}"
