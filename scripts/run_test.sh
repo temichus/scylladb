@@ -171,17 +171,8 @@ if [[ ! "${SCYLLA_ARCH}" == "$(uname -m)" ]]; then
     DOCKER_COMMAND_PARAMS="${DOCKER_COMMAND_PARAMS} --platform linux/${SCYLLA_ARCH}"
 fi
 
-# A link between the dtest docker to the minio docker
-if [[ -z ${MINIO_DOCKER_ID} ]]; then
-    export MINIO_DOCKER_LINK_PARAM=""
-    export DOCKER_NETWORK_PARAM="--network=bridge"  # TODO: Enhancement: replace the bridge with a network
-    # removed the --network=bridge from the docker run command specifically for manager testing,
-    # since docker sometimes does not allow to create a link when this attribute is set (even though it's the default)
-else
-    export MINIO_DOCKER_LINK_PARAM="--link ${MINIO_DOCKER_ID}:MinioServer"
-    export DOCKER_NETWORK_PARAM=""
-    export AWS_S3_ENDPOINT="http://MinioServer:9000"
-fi
+
+export DOCKER_NETWORK_PARAM="--network=bridge"  # TODO: Enhancement: replace the bridge with a network
 
 echo
 env | grep -E '^((DTEST|CCM|SCYLLA_ROOT|CASSANDRA|TOOLS_JAVA|JMX|SCYLLA_DBUILD_SO|LOG_SAVED)_DIR|HOME|SCYLLA_.*|CLUSTER_.*|DRY_.*|NODE_.*|AWS_.*)='
@@ -229,7 +220,6 @@ fi
 docker_cmd="docker run --init --detach=true \
     ${WORKSPACE_MNT} \
     ${DOCKER_COMMAND_PARAMS} \
-    ${MINIO_DOCKER_LINK_PARAM} \
     -v ${DTEST_DIR}:${DTEST_DIR} \
     -v ${CCM_DIR}:${CCM_DIR} \
     ${DOCKER_CONFIG_MNT} \

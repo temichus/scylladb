@@ -54,15 +54,6 @@ pipeline {
               }
            }
         }
-        stage('Starting minio server')
-        {
-            steps {
-                script {
-                    MINIO_DOCKER_ID = sh(script: """docker run -d -e "MINIO_ACCESS_KEY=${AWS_ACCESS_KEY_ID}"   -e "MINIO_SECRET_KEY=${AWS_SECRET_ACCESS_KEY}"   -v \$(pwd)/minio_data:/data   minio/minio server /data""",
-                                  returnStdout: true).trim()
-                }
-            }
-        }
         stage('Run dtest Tests') {
             steps {
                 script {
@@ -74,7 +65,6 @@ pipeline {
                             set -xe
                             env
 
-                            export CLUSTER_ID_ALLOCATOR=random
                             export SCYLLA_VERSION="${params.scylla_version}"
                             if [ \${#SCYLLA_VERSION} -eq "0" ]; then
                                 export SCYLLA_BRANCH="master"
@@ -83,7 +73,6 @@ pipeline {
                             fi
                             export CCM_DIR=\$(pwd)"/scylla-ccm"
                             export SCYLLA_MANAGER_PACKAGE="${params.scylla_manager_package}"
-                            export MINIO_DOCKER_ID="${MINIO_DOCKER_ID}"
 
                             export HOME=\$(pwd)/tmp_dtest_run
                             mkdir -p \$HOME
@@ -108,11 +97,6 @@ pipeline {
     }
     post {
         always {
-            sh script:"""
-                docker kill ${MINIO_DOCKER_ID}
-                docker run -v `pwd`/minio_data:/data -w /data busybox sh -c "find . -user root -name '*' | xargs chmod ugo+rw"
-                rm -rf ./minio_data
-            """, returnStatus: true
             // Todo: see if you can create multiple 'always' stages, independent of one another.
             archiveArtifacts artifacts: 'scylla-dtest/logs/**', fingerprint: true,  allowEmptyArchive: true
 
