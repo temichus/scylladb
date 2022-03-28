@@ -1102,7 +1102,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
 
         logger.info(f"Changing the backup table name to '{new_keyspace_name}' from '{keyspace_name}'")
         backup_task.update(
-            keyspace_list=new_keyspace_name, location_list=new_location, cluster_name=CLUSTER_NAME,
+            keyspace_list=new_keyspace_name, location_list=new_location,
             num_retries=num_retries, rate_limit_list=rate_limit_list, retention=retention,
             snapshot_parallel_list=snapshot_parallel_list, upload_parallel_list=upload_parallel_list)
 

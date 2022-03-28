@@ -168,10 +168,17 @@ class ScyllaManagerApiBase:
         for option_key, option_value in cmd_options.items():
             if option_value is None:
                 continue
+            # see https://github.com/scylladb/scylla-manager/issues/3066
+            if isinstance(option_value, bool):
+                options_list.append(str(f'{option_key}={str(option_value).lower()}'))
+                continue
+
             options_list.append(option_key)
-            if isinstance(option_value, list):
+            if 'cron' in option_key:
+                options_list.append(f'{SPACE_PLACEHOLDER}'.join(map(str, option_value)))
+            elif isinstance(option_value, list):
                 options_list.append(r','.join(map(str, option_value)))
-            elif not isinstance(option_value, bool):
+            else:
                 options_list.append(str(option_value))
         return options_list
 
@@ -1228,7 +1235,7 @@ class ManagerTask(ScyllaManagerBase):
             raise err
 
     def enabled(self, is_enabled):
-        return self.update(enabled="true" if is_enabled else "false")
+        return self.update(enabled=is_enabled)
 
 
 class RepairTask(ManagerTask):
