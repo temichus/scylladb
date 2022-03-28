@@ -1041,12 +1041,12 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             logger.info("Finished entering all the data")
 
         def disabled_backup_task(_backup_task):
-            sleep_time = cron_time_to_run - 1
+            sleep_time = abs(cron_time_to_run - datetime.now().second % cron_time_to_run)
             logger.info(f"Sleeping '{sleep_time}' seconds before checking the backup status")
             sleep(sleep_time)
             _list_status = [TaskStatus.STARTING, TaskStatus.RUNNING]
             logger.info(f"Waiting until the status of backup task '{_backup_task.id}' will be one of '{_list_status}'")
-            _backup_task.wait_for_status(list_status=_list_status, timeout=20, step=1)
+            _backup_task.wait_for_status(list_status=_list_status, timeout=cron_time_to_run + 5, step=1)
 
         logger.info(f"Creating a backup task with following values:"
                     f"\nLocation: '{location}"

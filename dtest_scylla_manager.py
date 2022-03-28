@@ -998,7 +998,7 @@ class ManagerTask(ScyllaManagerBase):
         self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
 
     def task_list(self):
-        cmd = f"tasks -c {self.cluster_id}"
+        cmd = f"tasks -c {self.cluster_id} --all"
         stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout, stderr
 
