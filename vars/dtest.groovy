@@ -31,6 +31,7 @@ String setDtestParams (Map args) {
 	String randomDtestsSeed = args.randomDtestsSeed ?: ""
 	String dtestRepeats = args.dtestRepeats ?: "1"
     String dtestType = args.dtestType ?: "full"
+    String managerPackage = args.managerPackage ?: ""
 
 	String dtestParameters = "--home=${WORKSPACE}/${params.PRODUCT_NAME}"
 	dtestParameters += " --mode=$args.dtestMode"
@@ -66,6 +67,10 @@ String setDtestParams (Map args) {
 	if (dtestRepeats != "1") {
 		dtestParameters = dtestParameters + " --repeat=\"$dtestRepeats\""
 	}
+
+    if (managerPackage) {
+        dtestParameters = dtestParameters + " --manager-package=\"$managerPackage\""
+    }
 
 	setupTestEnv(args.dtestMode)
 
@@ -250,6 +255,7 @@ def doParallelDtest (Map args) {
 	String extEnv = args.extEnv ?: ""
 	String cloudUrl = args.cloudUrl ?: "latest"
     String dtestType = args.dtestType ?: "full"
+    String managerPackage = args.managerPackage ?: ""
 
 	def branches = [:]
 	def runnersLabel =  args.splitFleetLabal ?: generalProperties.targetDtestStrongBuilder
@@ -295,7 +301,8 @@ def doParallelDtest (Map args) {
                         includeTests: localIncludeTests,
                         extOpts: extOpts,
                         extEnv: extEnv,
-                        dtestType: dtestType)
+                        dtestType: dtestType,
+                        managerPackage: managerPackage)
 
                     String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
                     echo "dtestParameters: |${dtestParameters}|"
@@ -359,6 +366,7 @@ def doDtest (Map args) {
 	String testRunner = args.testRunner ?: ""
 	String architecture = args.architecture ?: ""
     String dtestType = args.dtestType ?: "full"
+    String managerPackage = args.managerPackage ?: ""
 
 	echo "Calling dtest in docker toolchain"
 	String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
@@ -374,7 +382,8 @@ def doDtest (Map args) {
 			randomDtests: randomDtests,
 			randomDtestsSeed: randomDtestsSeed,
 			dtestRepeats: dtestRepeats,
-			dtestType: args.dtestType
+			dtestType: args.dtestType,
+			managerPackage: managerPackage
 		)
 
 	boolean dtestFailed = false

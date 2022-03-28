@@ -25,6 +25,7 @@ function usage {
   echo "    --keep_logs               Keep logs"
   echo "    --repeat=<num>            How many times to repeat the tests. Default is 1"
   echo "    --dry_run                 Print commands instead of running them"
+  echo "    --manager-package=<url>   Url to the scylla-manager relocatable package"
   exit 1
 }
 
@@ -164,6 +165,9 @@ case $i in
     dtest_type="${i#*=}"
     shift
     ;;
+    --manager-package*)
+    manager_package="${i#*=}"
+    ;;
     *)
     echo "Error: unknown command line option: |$i|"
     usage
@@ -189,6 +193,7 @@ echo "   --keep_logs       = \"$keep_logs\""
 echo "   --scylla_ext_opts = \"$scylla_ext_opts_param\""
 echo "   --scylla_ext_env  = \"$scylla_ext_env_param\""
 echo "   --dtest_type      = \"$dtest_type\""
+echo "   --manager-package = \"$manager_package\""
 echo "=================="
 
 # Script is called on with workspace as the current directory, which contains the scylla, scylla-ccm, scylla-dtest, and other directories.
@@ -215,6 +220,10 @@ if [ -z $SCYLLA_VERSION ] ; then
 else
   echo "SCYLLA_VERSION is defined: |${SCYLLA_VERSION}| Running ccm create scylla-tmp and cas-tmp"
   export INSTALL_CASSANDRA='ccm create cas-tmp --vnodes -n 1 --version=3.11.3; ccm create scylla-tmp --scylla -n 1 --version=${SCYLLA_VERSION}'
+fi
+
+if [ ! -z $manager_package ]; then
+  export INSTALL_CASSANDRA="$INSTALL_CASSANDRA --scylla-manager-package=$manager_package"
 fi
 
 RUN_TEST_CMD="./scripts/run_test.sh"
@@ -322,6 +331,10 @@ export KEEP_CORES=true
 
 if $dry_run ; then
     PYTEST_FLAGS="$PYTEST_FLAGS --collect-only"
+fi
+
+if [ ! -z $manager_package ] ; then
+  export PYTEST_FLAGS="$PYTEST_FLAGS --scylla-manager-package=$manager_package"
 fi
 
 echo "PYTEST_FLAGS=\"$PYTEST_FLAGS\""

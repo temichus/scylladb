@@ -178,8 +178,12 @@ pipeline {
                             SCYLLA_DTEST_REPO = params.SCYLLA_DTEST_REPO ?: "git@github.com:${env.CHANGE_FORK}/scylla-dtest.git"
                             SCYLLA_DTEST_BRANCH = params.SCYLLA_DTEST_BRANCH ?: env.CHANGE_BRANCH
 
+                            String managerPackage = ""
+                            if (testFiles.contains(' manager_')) {
+                                managerPackage = artifact.getManagerRelocUrl("master")
+                            }
                             if (testFiles) {
-                                runParallelDtest("20", testFiles, "PR")
+                                runParallelDtest("20", testFiles, "PR", managerPackage)
                             } else {
                                 // if no affected tests, run only smoke tests (without spinning up more workers)
                                 dtest.prepareDtestLocalTree (
@@ -227,7 +231,7 @@ pipeline {
     }
 }
 
-def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtestType) {
+def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, String managerPackage) {
     echo "runParallelDtest"
     dtest.prepareDtestLocalTree (
         preserveWorkspace: false,
@@ -265,6 +269,7 @@ def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtest
         ccmRepo: params.SCYLLA_CCM_REPO,
         splitFleetLabal: params.SPLIT_FLEET_LABEL,
         dtestType: dtestType,
+        managerPackage: managerPackage,
     )
 }
 

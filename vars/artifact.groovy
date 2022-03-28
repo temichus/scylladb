@@ -42,6 +42,25 @@ def downloadArtifactFromS3(Map args) {
         sh "aws s3 cp --only-show-errors ${sourceUrl}/${artifact} $targetPath/$artifact"
     }
 }
+
+def getManagerRelocUrl(String url, String architecture='x86_64') {
+    if (url.startsWith('http')) {
+        return url
+    }
+
+    if (url.isEmpty()) {
+        url = "master"
+    }
+
+    url = "s3://downloads.scylladb.com/manager/relocatable/unstable/$url/"
+    String directory = sh(script: "aws s3 ls $url | sort | tail -n1 | awk '{print \$2}'", returnStdout:true).trim()
+    String filename = sh(script: "aws s3 ls $url$directory | grep $architecture | awk '{print \$4}'", returnStdout:true).trim()
+
+    url = url.replace('s3:', 'http:')
+
+    return "$url$directory$filename"
+}
+
 def getRelocArtifacts (String cloudUrl, String buildMode) {
 	// get Test artifacts from jenkins or cloud
 	//
