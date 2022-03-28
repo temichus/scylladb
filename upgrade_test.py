@@ -2,6 +2,8 @@ import copy
 from concurrent.futures.thread import ThreadPoolExecutor
 from time import sleep
 import logging
+import yaml
+import os.path
 
 import pytest
 from filelock import FileLock
@@ -9,9 +11,12 @@ from cassandra import ConsistencyLevel
 from cassandra.cluster import Session
 from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib import scylla_repository
+from ccmlib.scylla_cluster import ScyllaCluster, ScyllaNode
+
 
 from tools.assertions import assert_all
-from dtest_class import Tester, create_ks, create_cf
+from tools.cluster import new_node
+from dtest_class import DtestTimeoutError, Tester, create_ks, create_cf
 from dtest_setup import DTestSetup
 from dtest_config import DTestConfig
 
@@ -21,6 +26,7 @@ upgrade_matrix_full_path = ['release:4.0', 'release:4.1', 'release:4.2', 'releas
 upgrade_matrix_from_last_release_version = ['release:4.5']
 upgrade_matrix_from_last_enterprise_release_version = ['release:2021.1']
 upgrade_matrix_enterprise_full_path = ['release:2020.1', 'release:2021.1']
+upgrade_matrix_for_raft_experimental = ['release:4.6']
 
 
 class UpgradeTester(Tester):
@@ -247,3 +253,174 @@ class TestUpgradeOneNode(BaseTests):
     @pytest.mark.skip("skip the test for this matrix")
     def test_cluster_upgrade(self):
         pass
+
+
+class TestUpgradeWithExperimentalRaft(BaseTests):
+    __test__ = True
+
+    upgrade_path = upgrade_matrix_for_raft_experimental
+    init_version = upgrade_path[0]
+
+    @pytest.mark.skip("skip the test for this matrix")
+    def test_cluster_upgrade(self, dtest_config):
+        pass
+
+    @pytest.mark.skip("skip the test for this matrix")
+    def test_one_node_upgrade(self, dtest_config):
+        pass
+
+    def test_upgrade_cluster_with_node_different_versions(self, dtest_config: DTestConfig):
+        """
+        Test scenario:
+         1. create cluster with version without raft
+         2. add new node with experimental feature - raft: disabled
+         3. upgrade other nodes to new version
+         4. enable raft on all nodes and restart one by one
+         5. check data
+        """
+        self.clone_upgrade_path(dtest_config)
+
+        cluster: ScyllaCluster = self.cluster
+        logger.info(f"Init cluster with version {dtest_config.scylla_version}")
+        session = self.init_cluster(nodes=3)
+        logger.info("Create schema and insert data")
+        self.prepare_schema(session)
+        # add node with new version
+        logger.info(f"Add node with version {self.upgrade_path[0]} to cluster")
+        self.add_new_node(version=self.upgrade_path[0], dtest_config=dtest_config)
+        logger.info("Validate data on cluster")
+        self.validate_data(session=session, row_start_index=1, row_end_index=100, flush=True)
+
+        logger.info(f"Upgrade nodes with version {dtest_config.scylla_version} to {self.upgrade_path[0]}")
+        for node in cluster.nodelist()[:3]:
+            node.upgrade(self.upgrade_path[0])
+
+        logger.info("Validate data on cluster")
+        self.validate_data(session=session, row_start_index=1, row_end_index=100, flush=True)
+
+        self.enable_raft_experimental_per_node()
+
+        logger.info("Insert and validate new data")
+        self.insert_rows(session, start=100, end=200)
+        self.validate_data(session, row_start_index=1, row_end_index=200, flush=True)
+
+    def test_enable_raft_after_upgrade(self, dtest_config: DTestConfig):
+        """
+        Test scenario:
+         1. create cluster with version without raft
+         2. upgrade nodes to version with experimental raft
+         3. enable raft on all nodes
+         4. restart node one by one
+         5. check data
+        """
+        self.clone_upgrade_path(dtest_config)
+
+        self.init_cluster_upgrade_enable_raft(dtest_config)
+
+        logger.info("Insert and verify data")
+        session = self.get_session()
+        self.insert_rows(session, start=100, end=200)
+        self.validate_data(session, row_start_index=1, row_end_index=200, flush=True)
+
+    def test_add_node_with_next_raft_enabling_to_upgraded_cluster_with_raft(self, dtest_config: DTestConfig):
+        """
+        Test scenario:
+         1. create cluster with version without raft
+         2. upgrade nodes to version with experimental raft
+         3. enable raft on all nodes
+         4. restart node one by one
+         5. Add new node with disabled raft and enable raft
+         5. check data
+        """
+        self.clone_upgrade_path(dtest_config)
+        self.init_cluster_upgrade_enable_raft(dtest_config)
+
+        logger.info(f"Add node with version {self.upgrade_path[0]} to cluster ")
+        new_node = self.add_new_node(version=self.upgrade_path[0], dtest_config=dtest_config)
+        logger.info("Enable raft experimental on new node")
+        self.enable_raft_on_node(new_node)
+        session = self.get_session(new_node)
+        self.validate_data(session=session, row_start_index=1, row_end_index=100, flush=True)
+
+        logger.info("Insert and verify data")
+        session = self.get_session()
+        self.insert_rows(session, start=100, end=200)
+        self.validate_data(session, row_start_index=1, row_end_index=200, flush=True)
+
+    def init_cluster_upgrade_enable_raft(self, dtest_config: DTestConfig):
+        """Base case for cluster upgrade and enable raft
+
+        Create cluster with base version,
+        Populate with data
+        Upgrade cluster per each node
+        Enable raft per node.
+        Verify dataset
+
+        """
+        cluster: ScyllaCluster = self.cluster
+        logger.info(f"Init cluster with version {dtest_config.scylla_version}")
+        session = self.init_cluster(nodes=3)
+        self.prepare_schema(session)
+        self.validate_data(session=session, row_start_index=1, row_end_index=100, flush=True)
+
+        logger.info(f"Upgrade cluster version {dtest_config.scylla_version} to {self.upgrade_path[0]}")
+        for node in cluster.nodelist():
+            node.upgrade(self.upgrade_path[0])
+        logger.info("Verify data after upgrade")
+        self.validate_data(session=session, row_start_index=1, row_end_index=100, flush=True)
+        self.enable_raft_experimental_per_node()
+        self.validate_data(session=session, row_start_index=1, row_end_index=100, flush=True)
+
+    def enable_raft_experimental_per_node(self):
+        """ Enable experimental raft feature on cluster nodes
+        """
+        logger.info("Enable raft and restart node")
+        for node in self.cluster.nodelist():
+            self.enable_raft_on_node(node)
+            session = self.patient_cql_connection(node)
+            logger.info("Validate data after upgrade")
+
+    @staticmethod
+    def enable_raft_on_node(node):
+        """ Enable raft on node
+        Stop node
+        Add config option to yaml
+        Start node
+        """
+        node.stop(wait_other_notice=True)
+        node.set_configuration_options({"experimental_features": ["raft"]})
+        node.start(wait_other_notice=True)
+
+    @staticmethod
+    def _change_cluster_version(cluster: ScyllaCluster, version: str):
+        logger.debug(f"Change cluster version to {version}")
+        cdir, _ = scylla_repository.setup(version)
+        cluster.set_install_dir(cdir)
+
+    def add_new_node(self, version: str, dtest_config: DTestConfig) -> ScyllaNode:
+
+        self._change_cluster_version(self.cluster, version)
+        logger.info(f"Add new node to cluster with version {version}")
+        node = new_node(self.cluster)
+
+        self._change_cluster_version(self.cluster, dtest_config.scylla_version)
+        logger.debug(f"Node scylla version: {node.node_scylla_version}")
+        return node
+
+    def _update_yaml_with_raft(self, node: ScyllaNode):
+        scylla_yaml = os.path.join(node.get_conf_dir(), "scylla.yaml")
+        with open(scylla_yaml, "r") as fp:
+            data = yaml.safe_load(fp)
+
+        data["experimental_features"] = ["raft"]
+
+        with open(scylla_yaml, "w") as fp:
+            yaml.safe_dump(data, fp)
+
+        with open(scylla_yaml, "r") as fp:
+            data = yaml.safe_load(fp)
+
+    def get_session(self, node=None) -> Session:
+        if not node:
+            node = self.cluster.nodelist()[0]
+        return self.patient_cql_connection(node)
