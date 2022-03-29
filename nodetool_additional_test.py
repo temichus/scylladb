@@ -2197,6 +2197,7 @@ class TestNodetool(Tester):
             logger.info("Random seed: {}".format(seed))
             random.seed(seed)
 
+            session = self.patient_cql_connection(node)
             insert_c1c2(session, keys=range(0, num_keys // 2))
             node.nodetool("flush")
             insert_c1c2(session, keys=range(num_keys // 2, num_keys))
