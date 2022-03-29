@@ -2220,20 +2220,37 @@ class TestNodetool(Tester):
             self._scrub_keyspace(node, ks=ks, cf=cf, mode=mode)
             tries += 1
 
-            expected_errors = [
-                f"Scrubbing .* failed",
-                f"Finished scrubbing .*{sstable}",
-                f"Compaction for {ks}/{cf} .*: scrub compaction (failed|found invalid data)",
-            ]
             timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
             try:
+                start_messages = [
+                    rf"Scrub {ks}\.{cf} (?P<jobid>[0-9a-f-]+).*{sstable}",
+                    rf"Scrubbing in validate mode.*{sstable}",
+                ]
+
+                line, m = node.watch_log_for("|".join(start_messages), from_mark=mark, timeout=timeout)
+                if "failed" in line or "invalid" in line:
+                    break
+                jobid = m.group("jobid") or ""
+
+                expected_errors = [
+                    rf"Scrub {ks}\.{cf} {jobid}.*Finished scrubbing",
+                    rf"Finished scrubbing in validate mode .*{sstable}",
+                    rf"Scrubbing .*{sstable} .*failed",
+                    f"Compaction for {ks}/{cf} .*: scrub compaction (?P<failed>(failed|found invalid data))",
+                ]
+
                 matchings = node.watch_log_for("|".join(expected_errors), from_mark=mark, timeout=timeout)
                 if type(matchings) is tuple:
                     matchings = [matchings]
                 for line, _ in matchings:
-                    if "Finished scrubbing" in line and line.endswith(" valid") and tries < 3:
-                        logger.debug("Scrub found no corruption, retrying...")
-                        continue
+                    logger.debug(f"{line}")
+                    if "failed" in line or "invalid" in line:
+                        break
+                else:
+                    if tries >= 3:
+                        pytest.fail("Scrub found no corruption")
+                    logger.debug("Scrub found no corruption, retrying...")
+                    continue
             except UnicodeDecodeError:
                 pass
             break
