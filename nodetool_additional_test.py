@@ -2202,7 +2202,7 @@ class TestNodetool(Tester):
             node.nodetool("flush")
             insert_c1c2(session, keys=range(num_keys // 2, num_keys))
             node.nodetool("flush")
-            sstable = node.nodetool(f"getsstables {ks} {cf} k{random.randrange(num_keys)}", True)[0].strip()
+            sstable = node.nodetool(f"getsstables {ks} {cf} k{random.randrange(num_keys)}", True)[0].split()[0].strip()
             logger.debug("Will corrupt sstable {}".format(sstable))
             node.stop()
 
