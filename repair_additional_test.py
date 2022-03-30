@@ -1,4 +1,5 @@
 # coding: utf-8
+import shutil
 import string
 import random
 import re
@@ -6,13 +7,13 @@ from datetime import datetime
 import time
 import tempfile
 import os
-from subprocess import getoutput
+from subprocess import getoutput, getstatusoutput
 from concurrent.futures import ThreadPoolExecutor
 import logging
 
 from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.query import SimpleStatement
-from ccmlib.node import NodetoolError
+from ccmlib.node import NodetoolError, Node
 from ccmlib.scylla_node import ScyllaNode
 import pytest
 
@@ -3115,3 +3116,60 @@ class TestRepairAdditional(RepairAdditionalBase):
         with self.patient_cql_connection(node2, keyspace) as session:
             result = list(session.execute(query_cl1))
             assert len(result) == 1000
+
+    def test_repair_streams_data_from_closest_node(self):
+        """To reduce cross-dc communication, when repairing, Scylla should get data from closest nodes first.
+        This test verifies the order of nodes from which repair fetches the data."""
+        # prepare multi-dc cluster with some data
+        self.ignore_log_patterns += ["Could not find CDC generation"]
+        config_options = self.default_config_options() | {
+            'enable_repair_based_node_ops': True, 'allowed_repair_based_node_ops': "bootstrap,replace,removenode,decommission,rebuild"}
+        self.cluster.set_configuration_options(values=config_options)
+        self.cluster.populate([2, 2]).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1_1, node1_2, node2_1, node2_2 = self.cluster.nodelist()
+        with self.patient_cql_cluster_session(node1_1) as session:
+            create_ks(session, 'ks', {'dc1': 2, 'dc2': 2})
+            create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+        num_keys = 1000
+        with self.patient_cql_cluster_session(node1_1, 'ks') as session1:
+            insert_c1c2(session1, keys=range(num_keys), consistency=ConsistencyLevel.ALL)
+        self.cluster.flush()
+
+        # delete data on node2 to have something to repair
+        path = ""
+        basepath = os.path.join(node1_2.get_path(), 'data', "ks")
+        for table in os.listdir(basepath):
+            if table.startswith("cf"):
+                path = os.path.join(basepath, table)
+                break
+        shutil.rmtree(path)
+
+        # set debug logging to see exact peers order that repair will get data from
+        rc, out = getstatusoutput(f'curl -X POST http://{node1_2.address()}:10000/system/logger/repair?level=debug')
+        assert rc == 0, f"error during setting log level: {out}"
+
+        # start repair on node2 and wait until it finishes
+        node1_2.repair(["ks"])
+        node1_2.watch_log_for(r"repair\[.+\]: completed successfully", timeout=120)
+
+        # verify that first peer node is the one from the same DC
+        matchings = node1_2.grep_log(r"Started Row Level Repair .+ peers={(.+)},")
+        assert matchings
+        for matches in matchings:
+            peers = matches[1].groups()[0].split(",")
+            assert peers[0] == node1_1.address(), "Missing rows should be fetched from a node from the same dc first"
+
+        # add new node to test RBNO
+        self.cluster.flush()
+        node2_2.stop(wait_other_notice=True)
+        new_node: Node = self.cluster.new_node(5, data_center="dc2", is_seed=False)
+        new_node.start(replace_address=node2_2.address(), no_wait=False)
+
+        # verify that new node will get data from the same DC
+        new_node.watch_log_for("initialization completed")
+        matchings = new_node.grep_log(r"repair .+ keyspace=ks, .+ peers={(.+)},")
+        assert matchings
+        for matches in matchings:
+            peers = matches[1].groups()[0].split(",")
+            assert set(peers[0]) == set(node2_1.address()), "New node should fetched data only from the same dc"
