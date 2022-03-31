@@ -26,5 +26,21 @@ class StorageServiceClient:
 
         return response
 
+    def cleanup_ks_cf(self, keyspace: str, cf: Optional[str]) -> Response:
+        params = {"cf": cf} if cf else {}
+        path = f"keyspace_cleanup/{keyspace}"
+
+        response = requests.post(url=self._full_url(path), params=params)
+        logger.debug(f"Request url: {response.request.url}")
+
+        return response
+
+    def upgrade_sstables(self, keyspace: str = "ks", cf: str = "cf") -> Response:
+        params = {"cf": cf} if cf else {}
+        path = f"keyspace_upgrade_sstables/{keyspace}"
+        response = requests.get(url=self._full_url(path), params=params)
+
+        return response
+
     def _full_url(self, path: str):
         return f"{self._endpoint_url}{path}"

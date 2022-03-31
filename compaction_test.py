@@ -14,13 +14,16 @@ from tools.data import create_c1c2_table, insert_c1c2, chunks_list
 from tools.misc import ImmutableMapping
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.marks import enterprise_only_param
+from tools.rest_clients import StorageServiceClient
 
 logger = logging.getLogger(__file__)
 
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-@pytest.mark.parametrize('strategy', ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy',
+@pytest.mark.parametrize('strategy', ['LeveledCompactionStrategy',
+                                      'SizeTieredCompactionStrategy',
+                                      'TimeWindowCompactionStrategy',
                                       enterprise_only_param('IncrementalCompactionStrategy')])
 class TestCompaction(Tester):
     strategy = None
