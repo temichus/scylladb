@@ -12,21 +12,22 @@ source $DIR/sh-utils.sh
 function usage {
   echo "Usage: $PROGRAM --mode=<mode> --smp=<smp> [--home=<path>] [--include=<tests>] [--exclude=<tests>] [--random=<n>|all [--random_seed=<seed>]] [--scylla_ext_opts=<flags>] [--scylla_ext_env=<vars>] [--debug] [--repeat=<num>] [--repeat=<num>] [--dry_run]"
   echo ""
-  echo "    --home=<path>             Path that overrides the HOME environment variable"
-  echo "    --mode=<mode>             Build mode (supported values: release, debug, dev)"
-  echo "    --smp=<smp>               Number of processors to use when launching Scylla"
-  echo "    --include=<tests>         Comma separated list of tests attributes and/or space separated list of tests to include in the dtest run"
-  echo "    --exclude=<tests>         Comma separated list of tests attributes and/or space separated list of tests to exclude in the dtest run"
-  echo "    --random=<n>|all          Number of random tests to run. \"all\" for shuffling all tests"
-  echo "    --random_seed=<seed>      Optional random seed"
-  echo "    --scylla_ext_opts=<flags> Space separated list of command line options and values. Example: \"--abort-on-seastar-bad-alloc --abort-on-lsa-bad-alloc=1\""
-  echo "    --scylla_ext_env=<vars>   Semicolon separated list of env vars and values. Example: \"ASAN_OPTIONS=disable_coredump=0,abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no\""
-  echo "    --debug                   Enable dtest debugging"
-  echo "    --keep_logs               Keep logs"
-  echo "    --repeat=<num>            How many times to repeat the tests. Default is 1"
-  echo "    --dry_run                 Print commands instead of running them"
-  echo "    --manager-package=<url>   Url to the scylla-manager relocatable package"
-  echo "    --driver-version=<ver>    driver version to install before tests start, ex. scylla-driver==3.25.4"
+  echo "    --home=<path>                  Path that overrides the HOME environment variable"
+  echo "    --mode=<mode>                  Build mode (supported values: release, debug, dev)"
+  echo "    --smp=<smp>                    Number of processors to use when launching Scylla"
+  echo "    --include=<tests>              Comma separated list of tests attributes and/or space separated list of tests to include in the dtest run"
+  echo "    --exclude=<tests>              Comma separated list of tests attributes and/or space separated list of tests to exclude in the dtest run"
+  echo "    --random=<n>|all               Number of random tests to run. \"all\" for shuffling all tests"
+  echo "    --random_seed=<seed>           Optional random seed"
+  echo "    --scylla_ext_opts=<flags>      Space separated list of command line options and values. Example: \"--abort-on-seastar-bad-alloc --abort-on-lsa-bad-alloc=1\""
+  echo "    --scylla_ext_env=<vars>        Semicolon separated list of env vars and values. Example: \"ASAN_OPTIONS=disable_coredump=0,abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no\""
+  echo "    --debug                        Enable dtest debugging"
+  echo "    --keep_logs                    Keep logs"
+  echo "    --repeat=<num>                 How many times to repeat the tests. Default is 1"
+  echo "    --dry_run                      Print commands instead of running them"
+  echo "    --manager-package=<url>        Url to the scylla-manager relocatable package"
+  echo "    --driver-version=<ver>         driver version to install before tests start, ex. scylla-driver==3.25.4"
+  echo "    --pytest-ext-opts=<options>    space separated list of cli options and values for pytest.ex: \"--option1=1 --option2=2\""
 
   exit 1
 }
@@ -169,9 +170,15 @@ case $i in
     ;;
     --manager-package*)
     manager_package="${i#*=}"
+    shift
     ;;
     --driver-version*)
     driver_version="${i#*=}"
+    shift
+    ;;
+    --pytest-ext-opts*)
+    pytest_ext_opts="${i#*=}"
+    shift
     ;;
     *)
     echo "Error: unknown command line option: |$i|"
@@ -185,21 +192,22 @@ fail_if_param_missing "$mode" '--mode'
 fail_if_param_missing "$smp" '--smp'
 
 echo "$PROGRAM got these Parameters:"
-echo "   --home            = \"$home_dir\""
-echo "   --mode            = \"$mode\""
-echo "   --smp             = \"$smp\""
-echo "   --dry_run         = \"$dry_run\""
-echo "   --debug           = \"$set_dtest_debug\""
-echo "   --exclude         = \"$excluded_tests\""
-echo "   --include         = \"$tests\""
-echo "   --random          = \"$random\""
-echo "   --random_seed     = \"$random_seed\""
-echo "   --keep_logs       = \"$keep_logs\""
-echo "   --scylla_ext_opts = \"$scylla_ext_opts_param\""
-echo "   --scylla_ext_env  = \"$scylla_ext_env_param\""
-echo "   --dtest_type      = \"$dtest_type\""
-echo "   --manager-package = \"$manager_package\""
-echo "   --driver-version  = \"$driver_version\""
+echo "   --home                  = \"$home_dir\""
+echo "   --mode                  = \"$mode\""
+echo "   --smp                   = \"$smp\""
+echo "   --dry_run               = \"$dry_run\""
+echo "   --debug                 = \"$set_dtest_debug\""
+echo "   --exclude               = \"$excluded_tests\""
+echo "   --include               = \"$tests\""
+echo "   --random                = \"$random\""
+echo "   --random_seed           = \"$random_seed\""
+echo "   --keep_logs             = \"$keep_logs\""
+echo "   --scylla_ext_opts       = \"$scylla_ext_opts_param\""
+echo "   --scylla_ext_env        = \"$scylla_ext_env_param\""
+echo "   --dtest_type            = \"$dtest_type\""
+echo "   --manager-package       = \"$manager_package\""
+echo "   --driver-version        = \"$driver_version\""
+echo "   --pytest-ext-opts       = \"$pytest_ext_opts\""
 echo "=================="
 
 # Script is called on with workspace as the current directory, which contains the scylla, scylla-ccm, scylla-dtest, and other directories.
@@ -341,6 +349,10 @@ export KEEP_CORES=true
 
 if $dry_run ; then
     PYTEST_FLAGS="$PYTEST_FLAGS --collect-only"
+fi
+
+if [ ! -z $pytest_ext_opts ]; then
+    PYTEST_FLAGS="$PYTEST_FLAGS $pytest_ext_opts"
 fi
 
 if [ ! -z $manager_package ] ; then

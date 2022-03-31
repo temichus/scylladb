@@ -92,9 +92,8 @@ def pytest_addoption(parser):
                      help="scylla manager package url. ex: "
                           "http://downloads.scylladb.com/manager/"
                           "rpm/unstable/centos/branch-2.3/2/scylla-manager/x86_64/")
-
-    parser.addoption("--experimental-features", action="append",
-                     help="Pass experimental feature to enable")
+    parser.addoption("--experimental-features", type=lambda s: s.split(","), action="store",
+                     help="Pass experimental features <feature>,<feature> to enable")
 
     parser.addoption("--collect-required", action="store_true", default=False,
                      help="collect a report on require tests")
