@@ -188,11 +188,13 @@ class TestHelper(Tester):
             "SELECT * from counters WHERE id = %d" % (id_value,), consistency_level=consistency)
         res = session.execute(statement)
         expected = [[id_value, val]] if val else []
-        ret = rows_to_list(res) == expected
+        res = rows_to_list(res)
+        ret = res == expected
         if check_ret:
             assert ret, "Got %s from %s, expected %s at %s" % (
                 res, session.cluster.contact_points, expected, self._name(consistency))
-        return ret
+        return ret, "" if ret else "Got %s from %s, expected %s at %s" % (
+                    res, session.cluster.contact_points, expected, self._name(consistency))
 
     @staticmethod
     def read_counter(session, id_value, consistency):
@@ -324,7 +326,7 @@ class TestAvailability(TestHelper):
 
         self._test_simple_strategy(combinations)
 
-    @pytest.mark.require('1117')
+    @pytest.mark.require('#1117')
     def test_simple_strategy_each_quorum(self):
         """
         @jira_ticket CASSANDRA-10584
@@ -416,8 +418,9 @@ class TestAccuracy(TestHelper):
             self.read_cl = read_cl
             self.serial_cl = serial_cl
 
-            logger.info('Testing accuracy for %s/%s/%s (keys : %d to %d)' %
-                        (outer._name(write_cl), outer._name(read_cl), outer._name(serial_cl), start, end))
+            self.test_name = f'Testing accuracy for {outer._name(write_cl)}/{outer._name(read_cl)}/{outer._name(serial_cl)} ' \
+                             f'(keys : {start} to {end})'
+            logger.info('Starting [%s]', self.test_name)
 
         def get_num_nodes(self, idx):
             """
@@ -431,16 +434,15 @@ class TestAccuracy(TestHelper):
             read_cl = self.read_cl
 
             dc_value = 0
-            try:
-                for i in range(1, len(nodes)):
-                    if idx < sum(nodes[:i]):
+            if isinstance(nodes, list):
+                for i in range(len(nodes)):
+                    if idx < sum(nodes[:i + 1]):
                         break
-                    dc_value = + 1
-            except Exception as err:
-                print()
+                    dc_value += 1
+
             if write_cl == ConsistencyLevel.EACH_QUORUM:
                 write_nodes = sum(
-                    [outer._required_nodes(write_cl, rf_factors, i) for i in range(0, len(nodes))])
+                    [outer._required_nodes(write_cl, rf_factors, i) for i in range(len(nodes))])
             else:
                 write_nodes = outer._required_nodes(write_cl, rf_factors, dc_value)
 
@@ -464,7 +466,7 @@ class TestAccuracy(TestHelper):
             read_cl = self.read_cl
             serial_cl = self.serial_cl
 
-            def check_all_sessions(idx, _userid, val):
+            def check_all_sessions(idx: int, _userid, val):
                 write_nodes, _, strong_consistency = self.get_num_nodes(idx)
                 num = 0
                 for _session in sessions:
@@ -478,7 +480,7 @@ class TestAccuracy(TestHelper):
                 age = 30
                 for session_idx, session in enumerate(sessions):
                     outer.insert_user(session, userid, age, write_cl, serial_cl)
-                    check_all_sessions(session, userid, age)
+                    check_all_sessions(session_idx, userid, age)
                     if serial_cl is None:
                         age = age + 1
                 for session_idx, session in enumerate(sessions):
@@ -506,19 +508,24 @@ class TestAccuracy(TestHelper):
             def check_all_sessions(session_idx, counter_id, val):
                 write_nodes, _, strong_consistency = self.get_num_nodes(session_idx)
                 num = 0
+                messages = []
                 for _session in sessions:
-                    if outer.query_counter(_session, counter_id, val, read_cl, check_ret=strong_consistency):
+                    ok, msg = outer.query_counter(_session, counter_id, val, read_cl, check_ret=strong_consistency)
+                    if ok:
                         num = num + 1
+                    if msg:
+                        logger.debug(f"{self.test_name}: {msg}")
+                    messages.append(msg)
                 assert num >= write_nodes, \
-                    "Failed to read value from sufficient number of nodes, required %d but got %d - [%d, %s]" \
-                    % (write_nodes, num, counter_id, val)
+                    "Failed to read value from sufficient number of nodes, required %d but got %d - [%d, %s]\n\n%s" \
+                    % (write_nodes, num, counter_id, val, "\n".join(messages))
 
             for idx in range(start, end):
-                consistency_level = outer.read_counter(sessions[0], idx, ConsistencyLevel.ALL)
+                counter_value = outer.read_counter(sessions[0], idx, ConsistencyLevel.ALL)
                 for session_idx, session in enumerate(sessions):
-                    consistency_level = consistency_level + 1
+                    counter_value = counter_value + 1
                     outer.update_counter(session, idx, write_cl, serial_cl)
-                    check_all_sessions(session_idx, idx, consistency_level)
+                    check_all_sessions(session_idx, idx, counter_value)
 
     def _run_test_function_in_parallel(self, valid_fcn, nodes, rf_factors, combinations):
         """
@@ -531,14 +538,15 @@ class TestAccuracy(TestHelper):
 
         def run():
             while not input_queue.empty():
+                test_accuracy_obj = None
                 try:
                     test_accuracy_obj = TestAccuracy.Validation(
                         self, self.sessions, nodes, rf_factors, *input_queue.get(block=False))
                     valid_fcn(test_accuracy_obj)
                 except queue.Empty:
                     pass
-                except:  # pylint:disable=bare-except
-                    exceptions_queue.put(sys.exc_info())
+                except Exception:
+                    exceptions_queue.put((sys.exc_info(), test_accuracy_obj.test_name if test_accuracy_obj else ''))
 
         start = 0
         num_keys = 50
@@ -548,8 +556,7 @@ class TestAccuracy(TestHelper):
 
         threads = []
         for _ in range(0, 8):
-            thread = threading.Thread(target=run)
-            thread.setDaemon(True)
+            thread = threading.Thread(target=run, daemon=True)
             thread.start()
             threads.append(thread)
 
@@ -560,8 +567,12 @@ class TestAccuracy(TestHelper):
                 break
 
         if not exceptions_queue.empty():
-            traceback.print_exception(*exceptions_queue.get())
-            assert False, "Look for an exception above"
+            output = ""
+            while not exceptions_queue.empty():
+                exc_info, test_name = exceptions_queue.get()
+                output += f"Failed in {test_name}:\n\n"
+                output += "\n".join(traceback.format_exception(*exc_info))
+            pytest.fail(output)
 
     def test_simple_strategy_users(self):
         """
@@ -647,8 +658,8 @@ class TestAccuracy(TestHelper):
         ]
 
         logger.info("Testing multiple dcs, users")
-        _ = self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_users, self.nodes, self.rf_value.values(), combinations),
+        self._run_test_function_in_parallel(
+            TestAccuracy.Validation.validate_users, self.nodes, self.rf_value.values(), combinations)
 
     @pytest.mark.require('#1117')
     def test_network_topology_strategy_each_quorum_users(self):
@@ -748,8 +759,8 @@ class TestAccuracy(TestHelper):
         ]
 
         logger.info("Testing multiple dcs, counters")
-        _ = self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_counters, self.nodes, self.rf_value.values(), combinations),
+        self._run_test_function_in_parallel(
+            TestAccuracy.Validation.validate_counters, self.nodes, self.rf_value.values(), combinations)
 
     @pytest.mark.require('#1117')
     def test_network_topology_strategy_each_quorum_counters(self):
@@ -767,8 +778,8 @@ class TestAccuracy(TestHelper):
         ]
 
         logger.info("Testing multiple dcs, counters, each quorum reads")
-        _ = self._run_test_function_in_parallel(
-            TestAccuracy.Validation.validate_counters, self.nodes, self.rf_value.values(), combinations),
+        self._run_test_function_in_parallel(
+            TestAccuracy.Validation.validate_counters, self.nodes, self.rf_value.values(), combinations)
 
 
 @pytest.mark.dtest_full
