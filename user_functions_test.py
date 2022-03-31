@@ -197,7 +197,6 @@ class TestUserFunctions(Tester):
         assert_one(session, "SELECT avg(val) FROM nums", [5.0])
         assert_one(session, "SELECT count(*) FROM nums", [9])
 
-    @pytest.mark.skip(reason="CREATE AGGREGATE is not supported yet")
     @pytest.mark.single_node
     def test_aggregate_udf(self):
         session = self.prepare()
@@ -269,7 +268,6 @@ class TestUserFunctions(Tester):
             "Statement on keyspace user_ks cannot refer to a user type in keyspace ks"
         )
 
-    @pytest.mark.skip(reason="CREATE AGGREGATE is not supported yet")
     @pytest.mark.single_node
     def test_aggregate_with_udt_keyspace_isolation(self):
         """
