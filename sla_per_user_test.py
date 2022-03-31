@@ -1077,7 +1077,7 @@ class TestSLATimeouts(SLATester):
             node=node, user=role.name, password=role.password
         )
         query_result = new_session.execute(read_query).all()
-        logger.debug(f"Query result: {query_result}")
+        logger.debug("Query result: %s", query_result)
 
         assert query_result
 
