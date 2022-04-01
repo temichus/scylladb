@@ -1,30 +1,36 @@
+import datetime
+import logging
 import os
+import random
 import re
 import tempfile
 import time
-import random
-import pytest
-import logging
-from pkg_resources import parse_version
-import datetime
+from typing import Dict
 
-from tools.assertions import assert_none, assert_one
+import pytest
+from pkg_resources import parse_version
+
 from dtest_class import Tester, create_ks, is_autocompaction_enabled, retry_till_success
-from tools.data import create_c1c2_table, insert_c1c2, chunks_list
-from tools.misc import ImmutableMapping
 from dtest_setup_overrides import DTestSetupOverrides
+from tools.assertions import assert_none, assert_one
+from tools.data import create_c1c2_table, insert_c1c2, chunks_list
+from tools.files import get_node_cf_dir, copy_files_to
 from tools.marks import enterprise_only_param
+from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
+from tools.stress import fill_data_by_cs
 
 logger = logging.getLogger(__file__)
 
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-@pytest.mark.parametrize('strategy', ['LeveledCompactionStrategy',
-                                      'SizeTieredCompactionStrategy',
-                                      'TimeWindowCompactionStrategy',
-                                      enterprise_only_param('IncrementalCompactionStrategy')])
+@pytest.mark.parametrize('strategy', [
+    'LeveledCompactionStrategy',
+    'SizeTieredCompactionStrategy',
+    'TimeWindowCompactionStrategy',
+    enterprise_only_param('IncrementalCompactionStrategy')
+])
 class TestCompaction(Tester):
     strategy = None
 
@@ -637,11 +643,165 @@ class TestCompaction(Tester):
         self.assert_table_did_not_compact(session, self.primary_table, since_timestamp=timestamp)
         self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
 
+    @pytest.mark.require("#scylladb/scylla-dtest#10378")
+    @pytest.mark.timeout(300)
+    @pytest.mark.parametrize(argnames=["compaction_type"],
+                             argvalues=[
+                                 ["CLEANUP"],
+                                 ["VALIDATE"],
+                                 ["SCRUB"],
+    ])
+    def test_disable_autocompaction_doesnt_block_user_initiated_compactions(self, compaction_type: str):
+        """
+        Test that disabling autocompaction does not affect the
+        user's ability to trigger maintenance compactions such
+        as VALIDATE, CLEANUP etc.
+
+        Test steps:
+        1. Disable autocompaction on the test table.
+        2. Fill the test table with some data.
+        3. Wait for remaining compactions to stop.
+        4. Trigger a maintenance compaction using the Rest API.
+        5. Assert that the compaction ran and was completed.
+        """
+        node = self.prepate_testbed()
+        storage_service_client = StorageServiceClient(node)
+
+        self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+        self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
+
+        compactions = {
+            "VALIDATE": {
+                "func": storage_service_client.scrub_ks_cf,
+                "kwargs": {
+                    "keyspace": self.primary_ks,
+                    "cf": self.primary_table,
+                    "scrub_mode": compaction_type
+                },
+                "log_expression": "Finished scrubbing in validate mode"
+            },
+            "SCRUB": {
+                "func": storage_service_client.scrub_ks_cf,
+                "kwargs": {
+                    "keyspace": self.primary_ks,
+                    "cf": self.primary_table
+                },
+                "log_expression": "Finished scrubbing in abort mode"
+            },
+            "CLEANUP": {
+                "func": storage_service_client.cleanup_ks_cf,
+                "kwargs": {
+                    "keyspace": self.primary_ks,
+                    "cf": self.primary_table,
+                },
+                "log_expression": "Cleaned \d* sstables to"
+            }
+        }
+
+        func = compactions[compaction_type]["func"]
+        func_kwargs = compactions[compaction_type]["kwargs"]
+        func(**func_kwargs)
+
+        assert node.watch_log_for(compactions[compaction_type]["log_expression"], timeout=180)
+
+    def test_disable_autocompaction_doesnt_block_user_initiated_upgrade_compaction(self):
+        """
+        Test that disabling autocompaction does not affect the
+        user's ability to trigger upgrade compaction.
+
+        Test steps:
+        1. Create a cluster using the old md sstable format.
+        2. Fill the table with some data.
+        3. Disable autocompaction on the test table.
+        4. Stop the cluster.
+        5. Change the sstable format to mc and restart the cluster.
+        6. Trigger the upgrade compaction using the Rest API.
+        7. Assert that the compaction ran and was completed.
+        """
+        log_expression = f"Upgrade {self.primary_ks}.{self.primary_table}"
+        node = self.prepate_testbed(configuration_options={"enable_sstables_mc_format": True,
+                                                           "enable_sstables_md_format": False})
+        storage_service_client = StorageServiceClient(node)
+
+        self.fill_table_with_data(node=node, ks=self.primary_ks, table=self.primary_table, keys=1000)
+        self.disable_autocompaction(node=node, ks=self.primary_ks, table=self.primary_table)
+        self.cluster.stop()
+        self.cluster.set_configuration_options(values={"enable_sstables_mc_format": False,
+                                                       "enable_sstables_md_format": True})
+        self.cluster.start()
+        mark = node.mark_log()
+
+        storage_service_client.upgrade_sstables(keyspace=self.primary_ks, cf=self.primary_table)
+
+        assert node.watch_log_for(exprs=log_expression, from_mark=mark)
+
+    def test_disable_autocompaction_doesnt_block_user_initiated_reshape_compaction(self):
+        """
+        Test that disabling autocompaction does not affect the
+        user's ability to trigger reshape compaction.
+
+        Test steps:
+        1. Initialize cluster with 1 node.
+        2. Populate using STCS as the compaction mode.
+        3. Disable autocompaction on the test table.
+        4. Populate the cluster with data using c-s and flush to sstables.
+        5. Copy the sstables to the upload directory.
+        6. Truncate the test table.
+        7. Alter the compaction strategy for the table to TWCS.
+        8. Run nodetool refresh to on the test table.
+        9. Assert that the Reshape compaction ran.
+        """
+        if self.strategy != "LeveledCompactionStrategy":
+            pytest.skip("Skipping redundant runs as this test does not depend on preset compaction strategy.")
+
+        TWCS = {'class': 'TimeWindowCompactionStrategy', 'compaction_window_size': 1,
+                'compaction_window_unit': 'MINUTES', 'max_threshold': 1, 'min_threshold': 1}
+        STCS = {'class': 'SizeTieredCompactionStrategy', 'bucket_high': 1.5, 'bucket_low': 0.5,
+                'min_sstable_size': 1, 'max_threshold': 1, 'min_threshold': 1}
+        ks = "keyspace1"
+        cf = "standard1"
+        node, session = self._prepare_reshape_testbed()
+        session.execute(f"ALTER TABLE {ks}.{cf} WITH compaction={STCS}")
+        self.disable_autocompaction(node=node, ks=ks, table=cf, verify=False)
+        fill_data_by_cs(node, n_range=[], duration_range=[70],
+                        other_opt=['-rate', 'threads=1', '-col', 'size=FIXED(1024)'])
+        self._copy_files_for_population_after_restart(ks=ks, cf=cf)
+        mark = node.mark_log()
+        session.execute(f"TRUNCATE {ks}.{cf}")
+        session.execute(f"ALTER TABLE {ks}.{cf} WITH compaction={TWCS}")
+        node.nodetool(f"refresh -- {ks} {cf}")
+
+        assert node.watch_log_for(exprs="Reshaped", from_mark=mark)
+
     primary_ks = 'ks'
     primary_table = 'to_disable'
     secondary_ks = 'ks2'
     secondary_table = 'std1'
     empty_error_message = "Query didn't return any rows"
+
+    def _prepare_reshape_testbed(self):
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node] = cluster.nodelist()
+        session = self.patient_cql_connection(node)
+        session.execute("DROP KEYSPACE IF EXISTS keyspace1")
+        node.stress(['write', 'n=0', 'no-warmup', '-schema', 'replication(factor=1)', '-rate', 'threads=1'])
+
+        return node, session
+
+    def _copy_files_for_population_after_restart(self, ks: str, cf: str) -> None:
+        [node] = self.cluster.nodelist()
+        cf_dir = get_node_cf_dir(node, f'{ks}', f'{cf}', latest=True)
+        copy_files_to(cf_dir, os.path.join(cf_dir, './upload/'), files_only=True)
+
+    @staticmethod
+    def wait_for_compactions(node, timeout: int):
+        pattern = re.compile("pending tasks: 0")
+        start = time.time()
+        while True and time.time() < start + timeout:
+            output, err = node.nodetool("compactionstats", capture_output=True)
+            if pattern.search(output):
+                break
 
     def disable_autocompaction(self, node, ks, table, verify=True):
         node.nodetool(f'disableautocompaction {ks} {table}')
@@ -678,9 +838,12 @@ class TestCompaction(Tester):
             if flush:
                 node.flush()
 
-    def prepate_testbed(self, with_compaction=None):
+    def prepate_testbed(self, with_compaction=None, configuration_options: Dict = None):
         cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True)
+        cluster.populate(1)
+        if configuration_options:
+            self.cluster.set_configuration_options(values=configuration_options)
+        cluster.start(wait_for_binary_proto=True)
         [node] = cluster.nodelist()
         self.create_ks_and_table(node=node, ks=self.primary_ks, table=self.primary_table,
                                  with_compaction=with_compaction)
