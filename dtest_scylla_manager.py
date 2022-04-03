@@ -991,7 +991,11 @@ class ManagerTask(ScyllaManagerBase):
             cmd += " --no-continue"
         self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         list_expected_task_status = [status for status in TaskStatus.all_members() if status != TaskStatus.STOPPED]
-        return self.wait_for_status(list_status=list_expected_task_status, timeout=30, step=3)
+        if isinstance(self, HealthcheckTask):  # Checking the progress of healthcheck task is no longer possible
+            return self.wait_for_status(list_status=list_expected_task_status, check_task_progress=False,
+                                        timeout=30, step=3)
+        return self.wait_for_status(list_status=list_expected_task_status, check_task_progress=True,
+                                    timeout=30, step=3)
 
     def _add_kwargs_to_cmd(self, cmd, **kwargs):
         for k, v in kwargs.items():
