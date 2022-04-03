@@ -573,10 +573,7 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         nodes[0].start()
         logger.info(f"Starting a stress command with following parameters: '{stress_command}")
         repair_task = mgr_cluster.repair_api.repair(
-            keyspace_list=keyspace_name, small_table_threshold="100Mi", cluster_name=mgr_cluster.id)
-        list_status = [TaskStatus.RUNNING]
-        logger.info(f"Waiting until the status of the repair task will be '{list_status}'")
-        repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
+            keyspace_list=keyspace_name, small_table_threshold="100M", cluster_name=mgr_cluster.id)
         list_status = [TaskStatus.DONE]
         logger.info(f"Waiting until the status of the repair task will be '{list_status}'")
         repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
@@ -589,8 +586,9 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
                 if line:
                     line = line[0]
                     logs.append(line)
-                    table_names.append(line.rsplit("->", maxsplit=1)[1].split("}", maxsplit=1)[0].strip())
-
+                    table_names.append(line.rsplit("->")[2].split("}", maxsplit=1)[0].strip())
+        # The message changed: `INFO  ..., repair id [id=1, uuid=...], options {{ hosts -> 127.0.20.2,127.0.20.1}, {
+        # columnFamilies -> cf1}, { ranges -> 9209982974977393503:9222531363442643382,9154358551385403971
         assert len(table_names) == len(set(logs)), "More than one repair was executed"
         assert table_name in table_names, \
             f"The '{repair_log_message}' message for keyspace '{keyspace_name}.{table_name}' not found!" \
