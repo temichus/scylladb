@@ -16,8 +16,9 @@ from cassandra import ConsistencyLevel
 import boto3
 import pytest
 
-from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin
-from tools.data import insert_c1c2, insert_c1c2_with_clustering, run_in_parallel
+from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin, \
+    C1_PREFIX, C2_PREFIX
+from tools.data import run_in_parallel
 from dtest_class import Tester, wait_for, create_ks, create_cf
 from tools.files import get_sstables_files
 from tools.minio import MinioDocker
@@ -25,8 +26,6 @@ from tools.minio import MinioDocker
 CLUSTER_NAME = 'cluster1'
 DESTINATION_BUCKET = 'backup-bucket'
 FALSE_BUCKET = 'nonexistent_bucket'
-C1_PREFIX = "value%d"
-C2_PREFIX = "other_value%d"
 
 logger = logging.getLogger(__name__)
 
@@ -72,57 +71,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
                                      keyspace_table_and_key_range=keyspace_table_and_key_range,
                                      rf=rf)
         return node_list
-
-    def create_c1_c2_with_clustering_key(self, session, keyspace_name, table_name, partition_key_name="pkey",
-                                         partition_key_type="int", clustering_key_name="ckey", clustering_key_type="int"):
-        session.execute(f"create table {keyspace_name}.{table_name} ( {partition_key_name} {partition_key_type}, "
-                        f"{clustering_key_name} {clustering_key_type}, c1 text, c2 text, "
-                        f"PRIMARY KEY({partition_key_name}, {clustering_key_name}));")
-
-    def insert_data_from_ranges(self, healthy_node, keyspace_table_and_key_range, rf=2, use_clustering_key=False, partition_key_value=1):
-        """
-
-        :param healthy_node: node in UN status
-        :param keyspace_table_and_key_range: a dict that contains what rows to insert, per table in each keyspace, like so:
-        {
-            keyspace_name:
-            {
-                table_name: key_range[]
-            }
-        }
-        :param use_clustering_key:
-        :param partition_key_value:
-        :return:
-        """
-        session = self.patient_cql_connection(healthy_node)
-        keyspace_list_rows = session.execute("SELECT keyspace_name FROM system_schema.keyspaces;")
-        keyspace_list = [row.keyspace_name for row in keyspace_list_rows]
-
-        for keyspace in keyspace_table_and_key_range:
-            if keyspace not in keyspace_list:
-                create_ks(session=session, name=keyspace, rf=rf)
-            table_list_rows = session.execute(
-                f"SELECT table_name FROM system_schema.tables where keyspace_name='{keyspace}';")
-            table_list = [row.table_name for row in table_list_rows]
-
-            for table, key_range in keyspace_table_and_key_range.get(keyspace, {}).items():
-                if table not in table_list:
-                    if use_clustering_key:
-                        self.create_c1_c2_with_clustering_key(
-                            session=session, keyspace_name=keyspace, table_name=table)
-                    else:
-                        create_cf(session=session, name="{}.{}".format(keyspace, table), read_repair=0.0,
-                                  columns={'c1': 'text', 'c2': 'text'},
-                                  dclocal_read_repair_chance=0.0, speculative_retry='NONE')
-
-                if use_clustering_key:
-                    insert_c1c2_with_clustering(session=session, clustering_key_values=range(*key_range),
-                                                ks=keyspace, cf=table, partition_key_set_value=partition_key_value)
-                else:
-                    insert_c1c2(session=session, keys=range(*key_range), consistency=ConsistencyLevel.ALL,
-                                c1_values=[C1_PREFIX % i for i in range(*key_range)],
-                                c2_values=[C2_PREFIX % i for i in range(*key_range)],
-                                ks=keyspace, cf=table)
 
     def delete_range(self, healthy_node, keyspace, table, key_range, clustering_key_name="ckey",
                      partition_key_name="pkey", partition_key_set_value=1):
@@ -1034,57 +982,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
             "snapshot_parallel_list", arguments["snapshot_parallel_list"], snapshot_parallel_list)
         assert arguments['upload_parallel_list'] == list(map(int, upload_parallel_list.split(","))), err_msg.format(
             'upload_parallel_list', arguments['upload_parallel_list'], 'upload_parallel_list')
-
-    def test_small_table_threshold_parameter(self):
-        """
-        * Check the small table threshold setting is working correctly.
-        Expected: Only one repair command has been executed for a table with a threshold less or equal than that
-         specified in the command.
-        """
-        nodes = self.config_and_create_cluster(nodes=2)
-        mgr_cluster = self._create_mgr_cluster(node=nodes[0], name=CLUSTER_NAME)
-        keyspace_name = "keyspace1"
-        table_name = "cf1"
-        keyspace_table_and_key_range = {keyspace_name: {table_name: (1, 21)}}
-        repair_log_message = f"starting user-requested repair for keyspace {keyspace_name}, repair id"
-
-        logger.info(f"Creating a new table with following values: '{pformat(keyspace_table_and_key_range)}")
-        self.insert_data_from_ranges(healthy_node=nodes[1], keyspace_table_and_key_range=keyspace_table_and_key_range)
-        logger.info(f"Stopping the node '{nodes[0].name}")
-        nodes[0].stop()
-        stress_command = ['write', 'no-warmup', 'n=3000', '-schema', f'keyspace={keyspace_name}', '-rate', 'threads=50',
-                          '-pop', 'seq=1..3000']
-        logger.info(f"Starting a stress command form node '{nodes[0].name}' with following parameters: "
-                    f"\n'{pformat(stress_command)}")
-        nodes[1].stress(stress_command)
-
-        marks = [node.mark_log() for node in nodes]
-        logger.info(f"Starting the node '{nodes[0].name}")
-        nodes[0].start()
-        logger.info(f"Starting a stress command with following parameters: '{stress_command}")
-        repair_task = mgr_cluster.repair_api.repair(
-            keyspace_list=keyspace_name, small_table_threshold="100Mi", cluster_name=mgr_cluster.id)
-        list_status = [TaskStatus.RUNNING]
-        logger.info(f"Waiting until the status of the repair task will be '{list_status}'")
-        repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
-        list_status = [TaskStatus.DONE]
-        logger.info(f"Waiting until the status of the repair task will be '{list_status}'")
-        repair_task.wait_for_status(list_status=list_status, timeout=40, step=3)
-        logger.info(f"Verifying that the '{repair_log_message}' message appears only once in node logs")
-
-        table_names = []
-        logs = []
-        for node, mark in zip(nodes, marks):
-            for line in node.grep_log(repair_log_message, from_mark=mark):
-                if line:
-                    line = line[0]
-                    logs.append(line)
-                    table_names.append(line.rsplit("->", maxsplit=1)[1].split("}", maxsplit=1)[0].strip())
-
-        assert len(table_names) == len(set(logs)), "More than one repair was executed"
-        assert table_name in table_names, \
-            f"The '{repair_log_message}' message for keyspace '{keyspace_name}.{table_name}' not found!" \
-            f"\nThe following logs are found {pformat(logs)} "
 
     def _get_s3_files(self, cluster_id, category="sst", datacenter=None, node_id=None, keyspace=None, table=None,
                       suffix=None):

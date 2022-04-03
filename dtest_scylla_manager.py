@@ -10,8 +10,11 @@ from pprint import pformat
 from ast import literal_eval
 from typing import Union, List, Dict
 
+from cassandra import ConsistencyLevel
+
 from ccmlib import common
-from dtest_class import wait_for, WaitTimeoutExpired
+from dtest_class import wait_for, WaitTimeoutExpired, create_ks, create_cf
+from tools.data import insert_c1c2, insert_c1c2_with_clustering
 from dtest_config import DTestConfig
 from dtest_setup import DTestSetup, copy_logs
 from distutils.version import LooseVersion
@@ -20,6 +23,8 @@ from dtest_setup_overrides import DTestSetupOverrides
 logger = logging.getLogger(__name__)
 
 SPACE_PLACEHOLDER = r"SPACE"
+C1_PREFIX = "value%d"
+C2_PREFIX = "other_value%d"
 
 
 new_command_structure_minimum_version = LooseVersion("3.0")
@@ -1760,3 +1765,56 @@ class ScyllaManagerMixin:
                 logger.error("Error saving log: %s", str(e))
             finally:
                 dtest_setup.cleanup_cluster()
+
+    @staticmethod
+    def create_c1_c2_with_clustering_key(session, keyspace_name, table_name, partition_key_name="pkey",
+                                         partition_key_type="int", clustering_key_name="ckey",
+                                         clustering_key_type="int"):
+        session.execute(f"create table {keyspace_name}.{table_name} ( {partition_key_name} {partition_key_type}, "
+                        f"{clustering_key_name} {clustering_key_type}, c1 text, c2 text, "
+                        f"PRIMARY KEY({partition_key_name}, {clustering_key_name}));")
+
+    def insert_data_from_ranges(self, healthy_node, keyspace_table_and_key_range, rf=2, use_clustering_key=False, partition_key_value=1):
+        """
+
+        :param healthy_node: node in UN status
+        :param keyspace_table_and_key_range: a dict that contains what rows to insert, per table in each keyspace, like so:
+        {
+            keyspace_name:
+            {
+                table_name: key_range[]
+            }
+        }
+        :param use_clustering_key:
+        :param partition_key_value:
+        :return:
+        """
+        session = self.patient_cql_connection(healthy_node)
+        keyspace_list_rows = session.execute("SELECT keyspace_name FROM system_schema.keyspaces;")
+        keyspace_list = [row.keyspace_name for row in keyspace_list_rows]
+
+        for keyspace in keyspace_table_and_key_range:
+            if keyspace not in keyspace_list:
+                create_ks(session=session, name=keyspace, rf=rf)
+            table_list_rows = session.execute(
+                f"SELECT table_name FROM system_schema.tables where keyspace_name='{keyspace}';")
+            table_list = [row.table_name for row in table_list_rows]
+
+            for table, key_range in keyspace_table_and_key_range.get(keyspace, {}).items():
+                if table not in table_list:
+                    if use_clustering_key:
+                        self.create_c1_c2_with_clustering_key(
+                            session=session, keyspace_name=keyspace, table_name=table)
+                    else:
+                        create_cf(session=session, name="{}.{}".format(keyspace, table), read_repair=0.0,
+                                  columns={'c1': 'text', 'c2': 'text'},
+                                  dclocal_read_repair_chance=0.0, speculative_retry='NONE')
+
+                if use_clustering_key:
+                    insert_c1c2_with_clustering(session=session, clustering_key_values=range(*key_range),
+                                                ks=keyspace, cf=table, partition_key_set_value=partition_key_value)
+                else:
+                    insert_c1c2(session=session, keys=range(*key_range), consistency=ConsistencyLevel.ALL,
+                                c1_values=[C1_PREFIX % i for i in range(*key_range)],
+                                c2_values=[C2_PREFIX % i for i in range(*key_range)],
+                                ks=keyspace, cf=table)
