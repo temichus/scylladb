@@ -184,13 +184,11 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
         mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
         repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, name=task_name)
-        repair_task_id = repair_task.id
         repair_task.delete_task()
-        repair_task_by_same_name = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, name=task_name)
-        repair_task_by_same_name_id = repair_task_by_same_name.id
-        assert repair_task_by_same_name_id != repair_task_id, \
-            "When creating a new task with the same name of a deleted task, the ID of the new task is identical to " \
-            "the ID of the deleted one, which means no new task was actually created"
+        try:
+            repair_task_by_same_name = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, name=task_name)
+        except ScyllaManagerError as err:
+            raise ScyllaManagerError(f"Creating a task with a name of a deleted task failed:\n{err.args}")
 
     def test_check_status_by_task_type_single_task(self):
         """
