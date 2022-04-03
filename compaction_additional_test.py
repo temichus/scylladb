@@ -20,7 +20,11 @@ from typing import Optional, List
 import pytest
 import sstable_tools.statistics
 from cassandra import ConsistencyLevel, concurrent
+from cassandra.cluster import Session
+from cassandra.concurrent import execute_concurrent_with_args
+
 from ccmlib.node import NodetoolError, TimeoutError, Node
+from ccmlib.scylla_node import ScyllaNode
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
@@ -109,6 +113,45 @@ class TestCompactionAdditional(CompactionAdditionalTester):
                          r"\[shard (?P<stop_shard>\d+)\] compaction - \[Compact {ks}\.{table} (?P<stop_task_id>.*)\] "
                          r"Compacting of .* (?P<interrupt>interrupted due) to: .* user-triggered operation"
                          % SSTABLE_PREFIX_REG_EXPR)
+
+    @staticmethod
+    def validate_tombstones_in_sstables(node: ScyllaNode):
+        """
+        Get sstable content in json format and validate that tombstones do not keep row data
+        """
+        _, sstables_json_file_path = tempfile.mkstemp(suffix='.json')
+        sstables_json_file = Path(sstables_json_file_path)
+
+        with open(sstables_json_file, 'w') as sstable_in_json:
+            node.run_sstable2json(sstable_in_json)
+
+        with open(sstables_json_file, 'r') as sstable:
+            jsoninfo = sstable.read().splitlines(keepends=False)
+
+        sstables_json_file.unlink()
+
+        validate_deleted_row = False
+        tombstones_found = False
+        for line in jsoninfo:
+            # Expected deleted row details format in sstable:
+            #   {
+            #     "partition" : {
+            #       "key" : [ "3" ],
+            #       "position" : 3411,
+            #       "deletion_info" : { "marked_deleted" : "2022-04-03T06:16:54.796195Z", "local_delete_time" :
+            #       "2022-04-03T06:16:54Z" }
+            #     },
+            #     "rows" : [ ]
+            #   }
+            if "marked_deleted" in line:
+                validate_deleted_row = True
+                tombstones_found = True
+
+            if validate_deleted_row and '"rows"' in line:
+                assert line.strip() == '"rows" : [ ]', f"Unexpectedly found row data in deleted row: {line}"
+                validate_deleted_row = False
+
+        assert tombstones_found, "Tombstones were not found"
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -231,6 +274,93 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         numfound = jsoninfo.count("marked_deleted")
         logger.debug(f"{numfound} keys are now marked_deleted (Excpecting 0)")
         assert numfound == 0, "Not all tombstones were removed during compactions"
+
+    @staticmethod
+    def prepare_schema_and_data_for_memtable_tests(session: Session, rf: int, rows_amount: int, deleted_keys: int):
+        create_ks(session=session, name='ks', rf=rf)
+        logger.debug("Create test table")
+        session.execute('CREATE TABLE test (i int PRIMARY KEY, t text)')
+
+        insert_stmt = session.prepare("INSERT INTO test (i, t) values(?, 'skdjhdskjh')")
+        logger.debug(f"Insert {rows_amount} rows")
+        execute_concurrent_with_args(session, insert_stmt, [[k] for k in range(rows_amount)])
+
+        delete_stmt = session.prepare('DELETE FROM test where i = ?')
+        logger.debug(f"Delete {deleted_keys} rows")
+        execute_concurrent_with_args(session, delete_stmt, [[k] for k in range(deleted_keys)])
+
+    def test_compact_tombstones_when_memtable_flush_one_node(self):
+        """
+        Test for commit :
+        https://github.com/scylladb/scylla/commit/bcadd8229b0345c50494e33ed4b3b7e3bd21cd85
+
+        1. Create one node cluster
+        2. Create test keyspace and table
+        3. Insert 100 rows
+        4. Delete 10 rows
+        5. Flush
+        6. Validate that no row data for deleted rows
+        7. Validate that the table has 90 rows
+        """
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        rows_amount = 100
+        deleted_keys = 10
+        self.prepare_schema_and_data_for_memtable_tests(session=session, rf=1, rows_amount=rows_amount,
+                                                        deleted_keys=deleted_keys)
+        logger.debug(f"Run 'nodetool flush'")
+        node1.flush()
+
+        self.validate_tombstones_in_sstables(node1)
+
+        actual_rows_after_flush = list(session.execute("select count(*) from test"))[0].count
+        expected_row_after_flush = (rows_amount - deleted_keys)
+        assert actual_rows_after_flush == expected_row_after_flush, \
+            f"Expected {expected_row_after_flush} rows after flush, but actually got {actual_rows_after_flush}"
+
+    def test_compact_tombstones_when_memtable_flush_one_node_stopped(self):
+        """
+        Test for commit :
+        https://github.com/scylladb/scylla/commit/bcadd8229b0345c50494e33ed4b3b7e3bd21cd85
+
+        Run rows deletion when one node stopped
+
+        1. Create 3 nodes cluster
+        2. Stop node2
+        3. Create test keyspace and table
+        4. Insert 100 rows
+        5. Delete 10 rows
+        6. Flush
+        7. Validate that no row data for deleted rows
+        8. Start node2 and repair
+        7. Validate that the table has 90 rows
+        """
+        self.cluster.populate(3).start(wait_for_binary_proto=True)
+        node1, node2, node3 = self.cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+
+        node2.stop(wait_other_notice=True)
+
+        rows_amount = 100
+        deleted_keys = 10
+        self.prepare_schema_and_data_for_memtable_tests(session=session, rf=3, rows_amount=rows_amount,
+                                                        deleted_keys=deleted_keys)
+
+        logger.debug(f"Run 'nodetool flush'")
+        node1.flush()
+        node3.flush()
+
+        self.validate_tombstones_in_sstables(node1)
+        self.validate_tombstones_in_sstables(node3)
+
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.nodetool("repair")
+
+        actual_rows_after_flush = list(session.execute("select count(*) from test"))[0].count
+        expected_row_after_flush = (rows_amount - deleted_keys)
+        assert actual_rows_after_flush == expected_row_after_flush, \
+            f"Expected {expected_row_after_flush} rows after flush, but actually got {actual_rows_after_flush}"
 
     @pytest.mark.single_node
     @pytest.mark.parametrize("timestamp_resolution", ["MILLISECONDS"])
