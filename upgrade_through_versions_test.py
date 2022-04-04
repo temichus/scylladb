@@ -60,7 +60,7 @@ LOCAL_MODE = os.environ.get('LOCAL_MODE', '').lower() in ('yes', 'true')
 if LOCAL_MODE:
     REPO_LOCATION = os.environ.get('CASSANDRA_DIR')
 else:
-    REPO_LOCATION = "https://git-wip-us.apache.org/repos/asf/cassandra.git"
+    REPO_LOCATION = "https://gitbox.apache.org/repos/asf/cassandra.git"
 
 # lets cache this once so we don't make a bunch of remote requests
 GIT_LS = subprocess.check_output(["git", "ls-remote", "-h", "-t", REPO_LOCATION]).rstrip().decode('utf-8')
