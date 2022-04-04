@@ -8,6 +8,7 @@ import re
 import shutil
 import tempfile
 import time
+import json
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -15,15 +16,16 @@ from datetime import datetime as dt
 from functools import reduce
 from pathlib import Path
 from threading import Thread
-from typing import Optional, List, Match, AnyStr, Dict, Tuple
+from typing import Optional, List, Match, AnyStr, Dict, Tuple, Any
 
 import pytest
 import sstable_tools.statistics
 from cassandra import ConsistencyLevel, concurrent
 from cassandra.cluster import Session
-from cassandra.concurrent import execute_concurrent_with_args
+from ccmlib import scylla_node
+from ccmlib.common import parse_settings
 from ccmlib.node import NodetoolError, TimeoutError, Node
-from ccmlib.scylla_node import ScyllaNode
+from ccmlib.scylla_cluster import ScyllaCluster, ScyllaNode
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
@@ -54,7 +56,8 @@ SpanningSStable = namedtuple("SpanningSStable", ["is_spanning_one_window",
 
 class CompactionAdditionalTester(Tester):
 
-    def prepare(self, nodes, wait_for_binary_proto=True, jvm_args=None, configuration_options={}) -> Tuple[List[ScyllaNode], Session]:
+    def prepare(self, nodes, wait_for_binary_proto=True,
+                jvm_args=None, configuration_options={}) -> Tuple[List[ScyllaNode], Session]:
         configuration_options.update({'enable_sstable_key_validation': True})
         self.cluster.set_configuration_options(values=configuration_options)
         self.cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
@@ -285,11 +288,11 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         insert_stmt = session.prepare("INSERT INTO test (i, t) values(?, 'skdjhdskjh')")
         logger.debug(f"Insert {rows_amount} rows")
-        execute_concurrent_with_args(session, insert_stmt, [[k] for k in range(rows_amount)])
+        concurrent.execute_concurrent_with_args(session, insert_stmt, [[k] for k in range(rows_amount)])
 
         delete_stmt = session.prepare('DELETE FROM test where i = ?')
         logger.debug(f"Delete {deleted_keys} rows")
-        execute_concurrent_with_args(session, delete_stmt, [[k] for k in range(deleted_keys)])
+        concurrent.execute_concurrent_with_args(session, delete_stmt, [[k] for k in range(deleted_keys)])
 
     def test_compact_tombstones_when_memtable_flush_one_node(self):
         """
@@ -1239,6 +1242,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
     table_name = "test"
     window_size = 1
     window_unit = "MINUTES"
+    ttl = 1800
+    gc_period = 1800
 
     def _get_stats(self, statistics_file):
         with open(statistics_file, 'rb') as f:
@@ -1274,6 +1279,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
     def _check_sstable_timestamps(self, node, window_size=None, window_unit=None):
         window_size = window_size or self.window_size
         window_unit = window_unit or self.window_unit
+
         statistics_files = self._get_list_of_sstables(node)
         assert len(statistics_files) > 0, "No statisitcs files"
         multiplier = 60 if window_unit == "MINUTES" else 3600
@@ -1285,6 +1291,11 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             assert tw <= margin, f"time window of {tw} seconds is greater than {margin} \
                                    seconds margin: sstable={sf} \
                                    min_timestamp={stats['min_timestamp']} max_timestamp={stats['max_timestamp']}"
+
+    def _get_min_max_window_bounds(self, statistics_file, stats=None):
+        if not stats:
+            stats = self.get_stats(statistics_file)
+        return stats['min_timestamp'], stats['max_timestamp']
 
     def _sstable_count_is_close_to_time_windows_multiplied_by_shards_count(self, node, time_windows, shards_count=1):
         sstables = self._get_list_of_sstables(node)
@@ -1303,8 +1314,10 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': {}}}".format(
             self.keyspace_name, rf))
         session.execute(
-            "CREATE TABLE {0.keyspace_name}.{0.table_name} (pk int, ck int, v blob, PRIMARY KEY(pk, ck))"
-            "WITH compaction = {{"
+            "CREATE TABLE {0.keyspace_name}.{0.table_name} (pk int, ck int, v blob, PRIMARY KEY(pk, ck)) "
+            "WITH default_time_to_live = {0.ttl} AND "
+            "gc_grace_seconds = {0.gc_period} AND "
+            "compaction = {{"
             "'class': 'TimeWindowCompactionStrategy',"
             "'compaction_window_unit': '{0.window_unit}',"
             "'compaction_window_size': {0.window_size} }}".format(self))
@@ -1334,14 +1347,12 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                                            "USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
         v = b"a" * size
 
-        if isinstance(num_pks, list):
-            pks = num_pks
+        pks = set()
+        if isinstance(num_pks, int):
+            while len(pks) < num_pks:
+                pks.add(random.randint(-2147483647, 2147483647))
         else:
-            rand_pks = set()
-
-            while len(rand_pks) < num_pks:
-                rand_pks.add(random.randint(-2147483647, 2147483647))
-            pks = rand_pks
+            pks = set(num_pks)
 
         flushing_nodes = [node for node in self.cluster.nodelist() if node not in exclude_nodes]
         for t in range(start_from_minute * 60, duration_minutes * 60):
@@ -1354,6 +1365,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             if t % flush_period_seconds == 0:
                 for node in flushing_nodes:
                     node.flush()
+        total_rows = (duration_minutes - start_from_minute) * 60 * len(pks)
+        return pks, total_rows
 
     def _list_sstable_timestamps(self, node):
         statistics_files = self._get_list_of_sstables(node)
@@ -1363,6 +1376,12 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             list_sstables_timewindows.append((sf, time_window))
 
         return list_sstables_timewindows
+
+    def _get_compaction_history(self, session) -> list:
+        compaction_history_query = f"SELECT * " \
+                                   f"FROM system.compaction_history"
+        compaction_history_result = session.execute(compaction_history_query).all()
+        return [row for row in compaction_history_result if row.keyspace_name == self.keyspace_name]
 
     def test_streaming_during_adding_node_with_boostrap(self):
         time_windows = 20
@@ -1733,6 +1752,307 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         ]
 
         self.run_flow_generate_and_reshape_twcs_sstables()
+
+    @pytest.mark.single_node
+    def test_compact_several_timewindows_after_delete_all_rows_in_old_timewindows(self):
+        """
+        Feature presented by: scylladb/scylla: e44a28d
+
+        validate that major compaction process sstables
+        from different buckets for TWCS.
+
+        Using window unit = minutes and window size = 1
+        generate 5 sstable each containing data for 1 minute
+
+        Delete all previous rows in next window unit and get one
+        more sstable.
+
+        after major compaction, sstables with deleted data should
+        be removed.
+        """
+        self.window_unit = "MINUTES"
+        self.window_size = 1
+        number_of_sstables_with_delete = 1
+        total_partitions = 1
+
+        [node1], session = self.prepare(1, jvm_args=["--smp", "1"])
+        self._create_ks_cl_with_twcs(session, 1)
+        pks, total_rows = self._simulate_write_process_in_minutes(session=session, duration_minutes=5,
+                                                                  flush_period_seconds=10, num_pks=total_partitions)
+        self._check_sstable_timestamps(node1)
+
+        logger.debug("Run major compaction and validate that there is only 1 table per unit")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        self._check_sstable_timestamps(node1)
+
+        num_sstables = len(self._get_list_of_sstables(node1))
+        assert num_sstables == 5, f"Number of sstables {num_sstables} more than expected 5"
+        self.delete_rows_in_previous_time_windows(node1, start_window_for_delete=0, end_window_for_delete=5,
+                                                  del_ck_per_window=60, write_mutaion_from_minute=5,
+                                                  num_windows_with_del_mutation=number_of_sstables_with_delete,
+                                                  partitions=pks)
+        self._check_sstable_timestamps(node1)
+
+        logger.debug("Check that new sstables appeared with delete mutation")
+        num_sstables = len(self._get_list_of_sstables(node1))
+        assert num_sstables == 5 + number_of_sstables_with_delete, \
+            f"Number of sstables {num_sstables} is not expected {5 + number_of_sstables_with_delete}"
+
+        logger.debug("Run major compaction")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        logger.debug("Check that only 1 sstable left with delete mutations")
+        num_sstables = len(self._get_list_of_sstables(node1))
+        self._check_sstable_timestamps(node1)
+        assert num_sstables == number_of_sstables_with_delete, \
+            f"Number of sstables {num_sstables} more than {number_of_sstables_with_delete}"
+
+        logger.debug("Check that all rows are removed")
+        current_rows = list(session.execute(f"select * from {self.keyspace_name}.{self.table_name}"))
+        assert [] == current_rows, \
+            f"Some rows were resurrected {current_rows}"
+
+    @pytest.mark.single_node
+    def test_compact_several_timewindows_after_delete_several_rows_per_timewindow(self):
+        """
+        Validate that sstables with previous timewindows saved if delete operations
+        remove only several rows from each timewindow.
+
+        1. generate time-series dataset with 5 minutes where each row is writen per second
+        2. run major compaction and validate that there are 5 sstables: 1 sstable for each minute
+        3. delete several rows for each time window by pk and ck
+        4. validate that there 6 sstables: 1 sstable for each previous time window and 1 new sstable with
+        delete operations
+        5. run magor compaction and validate that 6 sstables left: 1 sstable for each timewindow
+        """
+        self.window_unit = "MINUTES"
+        self.window_size = 1
+        num_pks = 4
+
+        [node1], session = self.prepare(1, jvm_args=["--smp", "1"])
+        self._create_ks_cl_with_twcs(session, 1)
+
+        pks, total_row = self._simulate_write_process_in_minutes(session=session, duration_minutes=5,
+                                                                 flush_period_seconds=10, num_pks=num_pks)
+        self._check_sstable_timestamps(node1)
+        logger.debug("Run major compaction and validate that there is only 1 table per unit")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        self._check_sstable_timestamps(node1)
+        num_sstables = len(self._get_list_of_sstables(node1))
+        expected_num_sstables = 5
+        assert num_sstables == expected_num_sstables, \
+            f"Number of sstables {num_sstables} more than expected {expected_num_sstables}"
+
+        total_deleted_rows = self.delete_rows_in_previous_time_windows(node1,
+                                                                       start_window_for_delete=0, end_window_for_delete=5,
+                                                                       del_ck_per_window=20, write_mutaion_from_minute=5,
+                                                                       num_windows_with_del_mutation=1, partitions=pks)
+        self._check_sstable_timestamps(node1)
+
+        logger.debug("Check that new sstables appeared with delete mutation")
+        num_sstables = len(self._get_list_of_sstables(node1))
+        assert num_sstables == expected_num_sstables + 1, \
+            f"Number of sstables {num_sstables} less than expected 6"
+
+        logger.debug("Run major compaction")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        logger.debug("Check that only 6 sstable left")
+
+        num_sstables = len(self._get_list_of_sstables(node1))
+        self._check_sstable_timestamps(node1)
+        assert num_sstables == expected_num_sstables + 1, \
+            f"Number of sstables {num_sstables} more than expected 6"
+
+        logger.debug("Check that all rows are removed")
+        current_rows = list(session.execute(f"select * from {self.keyspace_name}.{self.table_name}"))
+        assert total_row - total_deleted_rows == len(current_rows), \
+            f"Some rows were resurrected {len(current_rows)}"
+
+    @pytest.mark.single_node
+    def test_compaction_remove_deleted_rows_in_previous_time_window(self):
+        """
+        Verify major compaction processes delete mutations for the same rows in different
+        timewindow.
+
+        1. generate time-series dataset with 1 minute timewindow where each row is writen per second
+        2. run major compaction and validate that there is 1 sstable
+        3. delete several rows by pk and ck belongs to previous timewindow in next timewindow
+        4. validate that there 2 sstables for each previous time window and new with
+        delete operations
+        5. run magor compaction
+        6. validate that stable for 1st timewindow doesn't contain deleted rows.
+        rows
+        """
+        self.window_unit = "MINUTES"
+        self.window_size = 1
+        num_pks = [1]
+
+        [node1], session = self.prepare(1, jvm_args=["--smp", "1"])
+        self._create_ks_cl_with_twcs(session, 1)
+        pks, total_row = self._simulate_write_process_in_minutes(session=session, duration_minutes=1,
+                                                                 flush_period_seconds=10, num_pks=num_pks)
+        logger.debug("Run major compaction and validate that there is only 1 table per unit")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        self._check_sstable_timestamps(node1)
+        num_sstables = len(self._get_list_of_sstables(node1))
+        assert num_sstables == 1, \
+            f"Number of sstables {num_sstables} more than 1"
+        # delete first 20 seconds ( first 20 rows )
+        total_deleted_rows = self.delete_rows_in_previous_time_windows(node1,
+                                                                       start_window_for_delete=0, end_window_for_delete=1,
+                                                                       del_ck_per_window=20, write_mutaion_from_minute=1,
+                                                                       num_windows_with_del_mutation=1, partitions=pks)
+        self._check_sstable_timestamps(node1)
+        cluster_keys = [i for i in range(20)]
+        self.assert_deleted_rows_in_sstables_exists(node1, timewindows=1, partition_keys=[1], cluster_keys=cluster_keys)
+
+        logger.debug("Check that new sstables appeared with delete mutation")
+        num_sstables = len(self._get_list_of_sstables(node1))
+        assert num_sstables == 2, \
+            f"Number of sstables {num_sstables} less than expected 6"
+
+        logger.debug("Run major compaction")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        logger.debug("Check that only 6 sstable left")
+
+        num_sstables = len(self._get_list_of_sstables(node1))
+        self._check_sstable_timestamps(node1)
+        assert num_sstables == 2, \
+            f"Number of sstables {num_sstables} more than expected 6"
+
+        logger.debug("Check that all rows are removed")
+        current_rows = list(session.execute(f"select * from {self.keyspace_name}.{self.table_name}"))
+        assert total_row - total_deleted_rows == len(current_rows), \
+            f"Some rows were resurrected {len(current_rows)}"
+
+        self.assert_deleted_rows_in_sstables_removed(
+            node1, timewindows=1, partition_keys=[1], cluster_keys=cluster_keys)
+
+    @pytest.mark.single_node
+    def test_compact_several_timewindows_after_delete_rows_in_first_timewindow(self):
+        """
+        Validate that sstables with previous timewindow compacted if delete operations
+        remove only all rows from first timewindow.
+
+        1. generate time-series dataset within 5 minutes where each row is writen per second
+        2. run major compaction and validate that there are 5 sstables:1 sstable for each minute
+        3. delete all rows for 1st time window by pk and ck
+        4. validate that there 6 sstables: 1 sstable for each previous timewindows and new for delete operations
+        5. run magor compaction and validate that 5 sstables left. sstable for 1st window
+        has been compacted and removed
+        """
+        self.window_unit = "MINUTES"
+        self.window_size = 1
+        number_of_sstables_with_delete = 1
+        number_of_sstables_with_insert = duration = 5
+        number_of_partitions = 5
+
+        node1: ScyllaNode
+        [node1], session = self.prepare(1, jvm_args=["--smp", "1"])
+        self._create_ks_cl_with_twcs(session, 1)
+        partitions, total_rows = self._simulate_write_process_in_minutes(session=session, duration_minutes=duration,
+                                                                         flush_period_seconds=10, num_pks=number_of_partitions)
+        self._check_sstable_timestamps(node1)
+        logger.debug("Run major compaction and validate that there is only 1 table per unit")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        self._check_sstable_timestamps(node1)
+        num_sstables = len(self._get_list_of_sstables(node1))
+        assert num_sstables == number_of_sstables_with_insert, \
+            f"Number of sstables {num_sstables} more than expected {number_of_sstables_with_insert}"
+
+        logger.debug("Delete all rows in 1st time window")
+        self.delete_rows_in_previous_time_windows(node1, start_window_for_delete=0, end_window_for_delete=1,
+                                                  del_ck_per_window=60,
+                                                  num_windows_with_del_mutation=number_of_sstables_with_delete,
+                                                  write_mutaion_from_minute=duration, partitions=partitions)
+        self._check_sstable_timestamps(node1)
+
+        logger.debug("Check that new sstables appeared with delete mutation")
+        num_sstables = len(self._get_list_of_sstables(node1))
+        assert num_sstables == 5 + number_of_sstables_with_delete, \
+            f"Number of sstables {num_sstables} more than expected {number_of_sstables_with_insert + number_of_sstables_with_delete}"
+
+        logger.debug("Run major compaction")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        logger.debug("Check stable with 1st window is removed")
+        num_sstables = len(self._get_list_of_sstables(node1))
+        self._check_sstable_timestamps(node1)
+        expected_number_of_sstables = number_of_sstables_with_insert + number_of_sstables_with_delete - 1
+        assert num_sstables == expected_number_of_sstables, \
+            f"Number of sstables {num_sstables} more than expected {expected_number_of_sstables}"
+
+        logger.debug("Check that all rows are removed")
+        current_rows = list(session.execute(f"select * from {self.keyspace_name}.{self.table_name}"))
+        assert total_rows - number_of_partitions * 60 == len(current_rows), \
+            f"Some rows were resurrected {len(current_rows)}"
+
+    def delete_rows_in_previous_time_windows(self, node: ScyllaNode,
+                                             start_window_for_delete, end_window_for_delete, del_ck_per_window,
+                                             write_mutaion_from_minute, num_windows_with_del_mutation, partitions):
+        """
+            Simulate delete mutation on previous time window
+
+            Calculate ck key based on provided windows in start_window end_window.
+            Assume that data was written with method self._simulate_write_process_in_minutes.
+            and then remove appropriate rows with cluster keys in previous windows and write delete
+            mutation with timestamp counted from write_from_minute
+        """
+
+        session = self.patient_cql_connection(node)
+        logger.debug(
+            f"Delete {del_ck_per_window} rows in time windows: {start_window_for_delete}-{end_window_for_delete}")
+        del_statement = session.prepare(
+            f"DELETE FROM {self.keyspace_name}.{self.table_name} USING TIMESTAMP ? where pk =? and ck=?")
+        sec = write_mutaion_from_minute * 60
+        delta = num_windows_with_del_mutation * 60 // int(end_window_for_delete - start_window_for_delete)
+        for i in range(int(start_window_for_delete * 60), int(end_window_for_delete * 60), self.window_size * 60):
+            for ck in range(i, i + del_ck_per_window):
+                concurrent.execute_concurrent_with_args(
+                    session,
+                    del_statement,
+                    [(self.seconds_to_micros(sec), pk, ck) for pk in partitions]
+                )
+            sec += delta
+
+        node.flush()
+        total_deleted_rows = del_ck_per_window * len(partitions) * (end_window_for_delete - start_window_for_delete)
+        return total_deleted_rows
+
+    def assert_deleted_rows_in_sstables_exists(self, node: ScyllaNode, timewindows: int, partition_keys: List, cluster_keys: List):
+        sstables = sorted(get_list_of_sstables(node, self.keyspace_name, self.table_name, suffix="-Data.db"))
+        for sstable in sstables[:timewindows]:
+            for pk in partition_keys:
+                deleted = self.is_deleted_rows_in_sstable(node, sstable, pk, cluster_keys)
+                assert not deleted, f"Keys {cluster_keys} are deleted from sstable {sstable} for window {timewindows}"
+
+    def assert_deleted_rows_in_sstables_removed(self, node: ScyllaNode, timewindows: int, partition_keys: List, cluster_keys: List):
+        sstables = sorted(get_list_of_sstables(node, self.keyspace_name, self.table_name, suffix="-Data.db"))
+        for sstable in sstables[:timewindows]:
+            for pk in partition_keys:
+                deleted = self.is_deleted_rows_in_sstable(node, sstable, pk, cluster_keys)
+                assert deleted, f"Keys {cluster_keys} are left in sstable {sstable} for window {timewindows}"
+
+    def is_deleted_rows_in_sstable(self, node: ScyllaNode, sstable_data_file: str, partition_key: Any, cluster_keys: List):
+        """ check that rows was removed from sstable
+
+            Dump sstable *-Data.db file to json object, and check that partition with partition_key
+            doesn't have rows with cluster_keys
+
+        """
+
+        tmp_file = tempfile.mktemp()
+        with open(tmp_file, "w") as fp:
+            node.run_sstable2json(fp, keyspace=self.keyspace_name, column_families=[
+                                  self.table_name], datafiles=[sstable_data_file])
+
+        with open(tmp_file) as fp:
+            json_data = json.load(fp)
+
+        for partition in json_data:
+            if int(partition["partition"]["key"][0]) == partition_key:
+                cluster_key_values = set([row["clustering"][0] for row in partition["rows"]])
+                return not set(cluster_keys).issubset(cluster_key_values)
+            logger.error(f"Partition {partition_key} was not found")
+        return False
 
     @pytest.mark.single_node
     def test_reshape_sstables_after_change_window_size_when_small_files_more_than_large(self):
