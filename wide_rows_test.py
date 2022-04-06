@@ -471,6 +471,12 @@ class TestWideRows(Tester):
         self.cluster.flush()
         self.cluster.wait_for_compactions()
 
+        self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME,
+                                   data_column='rows',
+                                   expected_entity_number=0,
+                                   expected_entity_data_size=initial_rows_number)
+
         self.create_too_many_rows_data(session=session,
                                        table_name=self.TABLE_NAME,
                                        columns_num=columns_num,
