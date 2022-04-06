@@ -1,15 +1,19 @@
 import logging
 import re
+import os
 from time import sleep
 from typing import List, Union, Dict, Any, Optional
 
+import yaml
 import pytest
 from ccmlib.cluster import Cluster
 from ccmlib.node import Node
 from cassandra.cluster import Session
+from cassandra import WriteFailure, InvalidRequest
 from dtest_class import Tester, create_ks
 from tools.data import create_c1c2_table, insert_c1c2
 
+# pylint: disable=too-many-lines
 
 logger = logging.getLogger(__name__)
 
@@ -898,3 +902,275 @@ class TestRuntimeInfoTable(SystemTableBase):
         logger.info("Comparing the results...")
         assert metrics_after["entries"] > metrics_before["entries"]
         assert metrics_after["memory_used"] > metrics_before["memory_used"]
+
+
+@pytest.mark.dtest_full
+class TestConfigTable(SystemTableBase):
+    """
+    Table content example:
+     name                                            | source   | type              | value
+    -------------------------------------------------+----------+-------------------+----------------------------------
+                       alternator_encryption_options |  default |        string map |                                {}
+               native_shard_aware_transport_port_ssl |  default |           integer |                             19142
+                                        cluster_name |  default |            string |                                ""
+                       enable_sstable_key_validation |  default |              bool |                             false
+                              saved_caches_directory | internal |            string |    "/var/lib/scylla/saved_caches"
+           large_memory_allocation_warning_threshold |  default |           integer |                           1048576
+                               sstable_summary_ratio |  default |            double |                            0.0005
+                         listen_on_broadcast_address |  default |              bool |                             false
+                               data_file_directories | internal |       string list |          ["/var/lib/scylla/data"]
+                                            api_port |   config |           integer |                             10000
+                                     prometheus_port |  default |           integer |                              9180
+                        enable_repair_based_node_ops |  default |              bool |                              true
+                                     hints_directory | internal |            string |           "/var/lib/scylla/hints"
+                              memtable_flush_writers |  default |           integer |                                 1
+                            compaction_static_shares |  default |             float |                                 0
+                                      developer_mode |      cli |              bool |                              true
+                                  prometheus_address |      cli |            string |                      "127.0.21.1"
+    """
+    TABLE_NAME = "config"
+
+    def test_content_values_types(self):
+        """
+        1. Create a one-node Scylla cluster
+        2. Select content from 'system.config' table
+        3. Verify the types of values in the 'value' column
+        """
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Getting content of %s.%s table on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
+                        node.address())
+            table_content = self.run_query_on_node(session=session,
+                                                   query=f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME};")
+
+        logger.info("Verifying the values' types...")
+        for row in table_content:
+            if row.type in ["integer", "double", "float"]:
+                assert self.is_number(row.value), f"It seems the type of value for '{row.name}' is not '{row.type}'."
+            elif row.type == "bool":
+                assert row.value.lower() in ["true", "false"], \
+                    f"It seems the type of value for '{row.name}' is not '{row.type}'."
+            elif row.type == "string list":
+                assert re.match(r"\[.*]", row.value), \
+                    f"It seems the type of value for '{row.name}' is not '{row.type}'."
+            elif row.type == "string map":
+                assert re.match(r"\{.*}", row.value), \
+                    f"It seems the type of value for '{row.name}' is not '{row.type}'."
+            elif row.type == "string":
+                assert row.value.isprintable(), \
+                    f"It seems the type of value for '{row.name}' is not '{row.type}'."
+            else:
+                assert row.value, "The value is empty!"
+
+    def test_content_source_config(self):
+        """
+        1. Create a one-node Scylla cluster
+        2. Select content from 'system.config' table
+        3. Verify the values of the parameters with source='config' match the values from scylla.yaml
+        """
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+        node_ip_address = node.address()
+
+        logger.info("Getting content of scylla.yaml on node %s...", node_ip_address)
+        config_file_path = os.path.join(node.get_path(), 'conf/scylla.yaml')
+        with open(file=config_file_path, encoding='utf-8') as file:
+            scylla_yaml_content = yaml.safe_load(file)
+
+        for key, value in scylla_yaml_content.items():
+            scylla_yaml_content[key] = str(value).lower() if isinstance(value, bool) else str(value)
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Getting content of %s.%s table on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
+                        node_ip_address)
+            table_content = self.run_query_on_node(session=session,
+                                                   query=f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME};")
+
+        config_properties = [row for row in table_content if row.source == "config"]
+
+        logger.info("Verifying values of config parameters...")
+        for row in config_properties:
+            assert scylla_yaml_content.get(row.name), f"Could not find the parameter '{row.name}' in scylla.yaml!"
+
+            row_value = row.value.strip('"').replace('"', "'")
+            scylla_yaml_value = "seed_provider_type" if row.name == "seed_provider" else scylla_yaml_content[row.name]
+            assert scylla_yaml_value == row_value, \
+                f"Wrong value for name='{row.name}' in the table {self.KEYSPACE_NAME}.{self.TABLE_NAME}. " \
+                f"Expected: {scylla_yaml_value}. Got: {row_value}."
+
+    def test_content_source_cli(self):
+        """
+        1. Create a one-node Scylla cluster
+        2. Select content from 'system.config' table
+        3. Verify the values of the parameters with source='cli' match the values of startup CLI arguments
+        """
+        logger.debug("Preparing the cluster...")
+        cluster = self.cluster
+        started_node_data = cluster.populate(1).start()[0]
+        logger.debug("Cluster has been prepared...")
+
+        node = cluster.nodelist()[0]
+        node_ip_address = node.address()
+
+        logger.info("Getting startup CLI args on node %s...", node_ip_address)
+        startup_args = started_node_data[1].args
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Getting content of %s.%s table on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
+                        node_ip_address)
+            table_content = self.run_query_on_node(session=session,
+                                                   query=f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME};")
+
+        cli_properties = [row for row in table_content if row.source == "cli"]
+
+        logger.info("Verifying values of CLI parameters...")
+        for row in cli_properties:
+            # The example of the list of Scylla CLI arguments saved in 'startup_args' variable:
+            # ['--api-address', '127.0.21.1', '--developer-mode', 'true', '--prometheus-address', '127.0.21.1']
+            # The name of the parameter from the table is transformed to match the name of the CLI parameter
+            arg_name = f"--{row.name}".replace("_", "-")
+            row_value = row.value.strip('"').replace('"', "'")
+            assert arg_name in startup_args, f"Could not find the parameter '{arg_name}' in Scylla startup arguments!"
+
+            startup_arg_value = startup_args[startup_args.index(arg_name) + 1]
+            if row_value == "true":
+                assert startup_arg_value in ["1", "true"], \
+                    f"Wrong value for name='{row.name}' in the table {self.KEYSPACE_NAME}.{self.TABLE_NAME}. " \
+                    f"Expected: '1' or 'true'. Got: {row_value}."
+            elif row_value == "false":
+                assert startup_arg_value in ["0", "false"], \
+                    f"Wrong value for name='{row.name}' in the table {self.KEYSPACE_NAME}.{self.TABLE_NAME}. " \
+                    f"Expected: '0' or 'false'. Got: {row_value}."
+            else:
+                assert row_value == startup_arg_value, \
+                    f"Wrong value for name='{row.name}' in the table {self.KEYSPACE_NAME}.{self.TABLE_NAME}. " \
+                    f"Expected: {startup_arg_value}. Got: {row_value}."
+
+    @pytest.mark.parametrize("statement,error_message",
+                             [("set source = 'default' where name = 'api_port'", "option value is required"),
+                              ("set source = 'default', value = '15000' where name = 'api_port'",
+                               "option source is not updateable"),
+                              ("set type = 'bool', value = '15000' where name = 'api_port'",
+                               "option type is immutable"),
+                              ("set value = '15000' where name = 'api_port'",
+                               "option is not live-updateable"),
+                              ("set value = '15000' where name = 'some_generic_name'",
+                               "no such option"),
+                              pytest.param("set value = 'true' where name='failure_detector_timeout_in_ms'",
+                                           "Operation failed for system.config",
+                                           marks=pytest.mark.xfail(
+                                               reason="https://github.com/scylladb/scylla/issues/10394"))],
+                             ids=["no_value_provided", "source_not_updatable", "type_not_updatable",
+                                  "parameter_not_live_updatable", "wrong_parameter_name", "wrong_value_type"])
+    def test_invalid_update(self, statement: str, error_message: str):
+        """
+        Test scenario:
+        1. Create a one-node Scylla cluster
+        2. Run unacceptable update query fot 'system.config' table
+        3. Verify the exception was raised
+        """
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+
+        with self.patient_cql_connection(node) as session:
+            query_to_run = f"update {self.KEYSPACE_NAME}.{self.TABLE_NAME} {statement};"
+
+            logger.info("Trying to run update query '%s' on the node %s...", query_to_run, node.address())
+
+            with pytest.raises(WriteFailure) as exc_info:
+                self.run_query_on_node(session=session, query=query_to_run)
+            assert error_message in str(exc_info.value), \
+                f"Returned message '{str(exc_info.value)}' doesn't contain '{error_message}'!"
+
+    def test_content_update_value(self):
+        """
+        Test scenario:
+        1. Create a one-node Scylla cluster
+        2. Update the parameter in 'system.config' table
+        3. Verify the updated value of the parameter and the changed source (after update it should be 'cql').
+        """
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+
+        parameters_to_update = {"compaction_enforce_min_threshold": "true",
+                                "failure_detector_timeout_in_ms": "30000",
+                                "max_hinted_handoff_concurrency": "10",
+                                "enable_repair_based_node_ops": "false",
+                                "allowed_repair_based_node_ops": "some_value",
+                                "force_gossip_generation": "5",
+                                "abort_on_internal_error": "true",
+                                "max_partition_key_restrictions_per_query": "150",
+                                "max_clustering_key_restrictions_per_query": "150",
+                                "max_memory_for_unlimited_query_soft_limit": "1572864",
+                                "max_memory_for_unlimited_query_hard_limit": "157286400",
+                                "max_concurrent_requests_per_shard": "430000000",
+                                "strict_allow_filtering": "1",
+                                "reversed_reads_auto_bypass_cache": "true",
+                                "enable_optimized_reversed_reads": "false",
+                                "flush_schema_tables_after_modification": "false",
+                                "restrict_replication_simplestrategy": "warn",
+                                "restrict_dtcs": "0"}
+
+        # TODO: remove the following filtering when the fix for
+        #  the issue https://github.com/scylladb/scylla/issues/10047 becomes the part of the Scylla build
+        for parameter in ["strict_allow_filtering", "restrict_replication_simplestrategy", "restrict_dtcs"]:
+            parameters_to_update.pop(parameter)
+
+        errors = {}
+
+        with self.patient_cql_connection(node) as session:
+            for parameter, value in parameters_to_update.items():
+                logger.info("Updating parameter '%s' in the table %s.%s on the node %s...", parameter,
+                            self.KEYSPACE_NAME, self.TABLE_NAME, node.address())
+                value_for_update = "0" if value == "false" else "1" if value == "true" else value
+                try:
+                    self.run_query_on_node(session=session,
+                                           query=f"update {self.KEYSPACE_NAME}.{self.TABLE_NAME} "
+                                                 f"set value = '{value_for_update}' where name = '{parameter}';")
+                except (WriteFailure, InvalidRequest) as exc:
+                    errors[parameter] = f"Could not update the parameter '{parameter}'. The error message: {exc}"
+
+                logger.info("Checking updated parameter '%s'...", parameter)
+                updated_parameter = self.run_query_on_node(session=session,
+                                                           query=f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME}"
+                                                                 f" where name = '{parameter}';")[0]
+
+                logger.info("Validating values...")
+                updated_parameter_value = updated_parameter.value.strip('"')
+                if updated_parameter_value != value and not errors.get(parameter):
+                    errors[parameter] = f"Wrong value for the updated parameter '{parameter}'! Expected: '{value}', " \
+                                        f"got: '{updated_parameter_value}'"
+                if updated_parameter.source != "cql" and not errors.get(parameter):
+                    errors[parameter] = f"Wrong source for the updated parameter '{parameter}'! " \
+                                        f"Expected: 'cql', got: '{updated_parameter.source}'"
+        assert not errors, f"Got the following errors:\n{list(errors.values())}"
+
+    def test_content_disable_update(self):
+        """
+        Test scenario:
+        1. Create a one-node Scylla cluster
+        2. Set the parameter 'enable_cql_config_updates' to false in 'system.config' table
+        3. Try to update the parameter 'enable_cql_config_updates' back to true and verify that update is now impossible
+           and the exception is raised.
+        """
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+
+        error_message = "this virtual table doesn't allow updates"
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Setting parameter 'enable_cql_config_updates' to false in the table %s.%s on "
+                        "the node %s...", self.KEYSPACE_NAME, self.TABLE_NAME, node.address())
+            self.run_query_on_node(session=session,
+                                   query=f"update {self.KEYSPACE_NAME}.{self.TABLE_NAME} set value = '0' "
+                                         f"where name = 'enable_cql_config_updates';")
+
+            logger.info("Trying to change the value of 'enable_cql_config_updates' back to true...")
+            with pytest.raises(WriteFailure) as exc_info:
+                self.run_query_on_node(session=session,
+                                       query=f"update {self.KEYSPACE_NAME}.{self.TABLE_NAME} set value = '1' "
+                                             f"where name = 'enable_cql_config_updates';")
+            assert error_message in str(exc_info.value), \
+                f"Returned message '{str(exc_info.value)}' doesn't contain '{error_message}'!"
