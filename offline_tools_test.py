@@ -223,7 +223,7 @@ class TestOfflineTools(Tester):
 
         # test on nonexistent keyspace
         (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
-        assert "Unknown keyspace/table keyspace1.standard1" in err, "Message was not found in stderr"
+        assert "Unknown keyspace/table keyspace1.standard1" in err, f"Message was not found in stderr:\nstdout:\n{out}\nstderr:\n{err}"
         assert rc == 1, f"Invalid exit code: {str(rc)}"
 
         # test on nonexistent sstables:
@@ -289,7 +289,7 @@ class TestOfflineTools(Tester):
         # Process sstableverify output to normalize paths in string to Python casing as above
         error = re.sub("(?<=Corrupted: ).*", lambda match: os.path.normcase(match.group(0)), error)
 
-        assert "Corrupted: " + sstable1 in error, "Message was not found in stderr"
+        assert "Corrupted: " + sstable1 in error, f"Message was not found in stderr:\nstdout:\n{out}\nstderr:\n{error}"
         assert rc == 1, f"Invalid exit code: {str(rc)}"
 
     @pytest.mark.skip("Skip test due to issue: scylladb/scylla-tools-java#154")
