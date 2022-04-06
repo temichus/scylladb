@@ -210,6 +210,7 @@ class TestOfflineTools(Tester):
         # let's check sstables were promoted after releveling
         assert max(final_levels) > 1, "Level was not reached"
 
+    @pytest.mark.single_node
     def test_sstableverify(self):
         """
         Generate sstables and test offline verification works correctly
@@ -218,7 +219,7 @@ class TestOfflineTools(Tester):
         """
 
         cluster = self.cluster
-        cluster.populate(3).start(wait_for_binary_proto=True)
+        cluster.populate(1).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
 
         # test on nonexistent keyspace
@@ -227,14 +228,14 @@ class TestOfflineTools(Tester):
         assert rc == 1, f"Invalid exit code: {str(rc)}"
 
         # test on nonexistent sstables:
-        node1.stress(['write', 'n=100', '-schema', 'replication(factor=3)'])
+        node1.stress(['write', 'n=100', '-schema', 'replication(factor=1)'])
         (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
         assert rc == 0, f"Invalid exit code: {str(rc)}"
 
         # Generate multiple sstables and test works properly in the simple case
-        node1.stress(['write', 'n=100K', '-schema', 'replication(factor=3)'])
+        node1.stress(['write', 'n=100K', '-schema', 'replication(factor=1)'])
         node1.flush()
-        node1.stress(['write', 'n=100K', '-schema', 'replication(factor=3)'])
+        node1.stress(['write', 'n=100K', '-schema', 'replication(factor=1)'])
         node1.flush()
         # wait if any compaction are running
         node1.wait_for_compactions()
