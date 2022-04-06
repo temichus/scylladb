@@ -287,9 +287,10 @@ class TestOfflineTools(Tester):
         (out, error, rc) = node1.run_sstableverify("keyspace1", "standard1", options=['-v'], output=True)
 
         # Process sstableverify output to normalize paths in string to Python casing as above
-        error = re.sub("(?<=Corrupted: ).*", lambda match: os.path.normcase(match.group(0)), error)
+        regex = rf"Corrupted( SSTable\s*)?:\s+{sstable1}"
 
-        assert "Corrupted: " + sstable1 in error, f"Message was not found in stderr:\nstdout:\n{out}\nstderr:\n{error}"
+        assert re.search(regex, out) or re.search(
+            regex, error), f"'{regex}' was not found in sstableverify standard output or error:\nstdout:\n{out}\nstderr:\n{error}"
         assert rc == 1, f"Invalid exit code: {str(rc)}"
 
     @pytest.mark.skip("Skip test due to issue: scylladb/scylla-tools-java#154")
