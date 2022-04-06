@@ -233,9 +233,9 @@ class TestOfflineTools(Tester):
         assert rc == 0, f"Invalid exit code: {str(rc)}"
 
         # Generate multiple sstables and test works properly in the simple case
-        node1.stress(['write', 'n=100K', '-schema', 'replication(factor=1)'])
+        node1.stress(['write', 'n=10K', '-schema', 'replication(factor=1)'])
         node1.flush()
-        node1.stress(['write', 'n=100K', '-schema', 'replication(factor=1)'])
+        node1.stress(['write', 'n=10K', '-schema', 'replication(factor=1)'])
         node1.flush()
         # wait if any compaction are running
         node1.wait_for_compactions()
