@@ -1,12 +1,14 @@
 import logging
+import re
 from time import sleep
-from typing import List, Union, Dict, Any
+from typing import List, Union, Dict, Any, Optional
 
 import pytest
 from ccmlib.cluster import Cluster
 from ccmlib.node import Node
 from cassandra.cluster import Session
 from dtest_class import Tester, create_ks
+from tools.data import create_c1c2_table, insert_c1c2
 
 
 logger = logging.getLogger(__name__)
@@ -15,10 +17,15 @@ logger = logging.getLogger(__name__)
 class SystemTableBase(Tester):
     KEYSPACE_NAME = "system"
 
-    def prepare_cluster(self, nodes: Union[List[int], int]) -> Cluster:
+    def prepare_cluster(self,
+                        nodes: Union[List[int], int],
+                        options: Dict[str, Union[str, bool, int]] = None,
+                        jvm_args: List[str] = None) -> Cluster:
         logger.debug("Preparing the cluster...")
         cluster = self.cluster
-        cluster.populate(nodes).start()
+        if options:
+            cluster.set_configuration_options(values=options)
+        cluster.populate(nodes).start(jvm_args=jvm_args)
         logger.debug("Cluster has been prepared...")
         return cluster
 
@@ -26,6 +33,40 @@ class SystemTableBase(Tester):
     def run_query_on_node(session: Session, query: str) -> List:
         logger.debug("Running query \"%s\"...", query)
         return session.execute(query).current_rows
+
+    @staticmethod
+    # pylint: disable=too-many-arguments
+    def create_tables_with_data(session: Session,
+                                keyspace_name: str,
+                                replication_factor: Union[Dict[str, int], int],
+                                table_name_prefix: str,
+                                number_of_tables: int,
+                                number_of_rows: int) -> List[str]:
+        logger.info("Creating a new keyspace '%s'...", keyspace_name)
+        create_ks(session=session, name=keyspace_name, rf=replication_factor)
+
+        tables = []
+
+        for table_index in range(number_of_tables):
+            table_name = f"{table_name_prefix}_{table_index + 1}"
+            full_table_name = f"{keyspace_name}.{table_name}"
+            logger.info("Creating a new table '%s'...", full_table_name)
+            create_c1c2_table(session=session, cf=full_table_name)
+
+            logger.info("Populating %s with data...", full_table_name)
+            insert_c1c2(session=session, n=number_of_rows, ks=keyspace_name, cf=table_name)
+            tables.append(full_table_name)
+            logger.info("Table '%s' has been created and populated...", full_table_name)
+
+        return tables
+
+    @staticmethod
+    def is_number(value: str) -> bool:
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
 
 
 @pytest.mark.dtest_full
@@ -447,3 +488,413 @@ class TestTokenRingTable(SystemTableBase):
 
         node4_token_set = [row.start_token for row in test_ks_token_set if row.endpoint == node4_ip_address]
         assert node3_token_set == node4_token_set, "The token ranges before and after node replacement do not match!"
+
+
+@pytest.mark.dtest_full
+class TestVersionsTable(SystemTableBase):
+    TABLE_NAME = "versions"
+
+    def test_content(self):
+        """
+        Table content example:
+         key   | build_id                                 | build_mode | version
+        -------+------------------------------------------+------------+------------------------------
+        local | 20d9fa2c6020017f4afdc4941c0cca9c9a29d94a |    release | 5.0.rc1-0.20220206.891990ec0
+
+        Test scenario:
+        1. Create one-node cluster
+        2. Run select query on system.versions table
+        3. Verify the content of the table
+        """
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Getting table content of %s.%s on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
+                        node.address())
+            query_to_run = f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME} where key = 'local';"
+            output = self.run_query_on_node(session=session, query=query_to_run)[0]
+
+        scylla_build_id = node.scylla_build_id
+        scylla_version = node.node_scylla_version
+        scylla_mode = node.scylla_mode()
+
+        logger.info("Verifying the content of the table %s.%s...", self.KEYSPACE_NAME, self.TABLE_NAME)
+        assert output.key, "The 'key' attribute must not be empty!"
+        assert output.build_id == scylla_build_id, \
+            f"The build ids do not match! Expected: {scylla_build_id} Got: {output.build_id}"
+        assert output.build_mode == scylla_mode, \
+            f"The build modes do not match! Expected: {scylla_mode} Got: {output.build_mode}"
+        assert output.version == scylla_version, \
+            f"The Scylla versions do not match! Expected: {scylla_version} Got: {output.version}"
+
+
+@pytest.mark.dtest_full
+class TestProtocolServersTable(SystemTableBase):
+    """
+    Table content example:
+     name             | listen_addresses                        | protocol | protocol_version
+    ------------------+-----------------------------------------+----------+------------------
+    native transport | ['172.17.0.2:9042', '172.17.0.2:19042'] |      cql |            3.3.1
+            alternator |                                        [] | dynamodb |       2012-08-10
+                   rpc |                                        [] |   thrift |           20.1.0
+                 redis |                                        [] |     RESP |              2.0
+    """
+    TABLE_NAME = "protocol_servers"
+
+    @pytest.mark.parametrize("mode,scylla_yaml_options,port",
+                             [("default", None, None),
+                              ("alternator", {"alternator_port": "8000",
+                                              "alternator_write_isolation": "only_rmw_uses_lwt"}, "8000"),
+                              ("rpc", {"start_rpc": "true"}, "9160"),
+                              ("redis", {"redis_port": "6379"}, "6379")],
+                             ids=["default", "alternator", "thrift", "redis"])
+    def test_content(self, mode: str, scylla_yaml_options: Optional[Dict[str, str]], port: Optional[str]):
+        """
+        Test scenario:
+        1. Create one-node cluster
+        2. Run select query on system.protocol_servers table
+        3. Verify the content of the table
+        4. Repeat steps 1-3 for each mode:
+            - default - no special features enabled
+            - alternator - Alternator (DynamoDB API) enabled
+            - rpc - Thrift enabled
+            - redis - Redis API (RESP) enabled
+        """
+        cluster = self.prepare_cluster(nodes=1, options=scylla_yaml_options)
+        node = cluster.nodelist()[0]
+        node_ip_address = node.address()
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Getting table content of %s.%s on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
+                        node_ip_address)
+            table_content_query = f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME};"
+            table_content = self.run_query_on_node(session=session, query=table_content_query)
+
+            logger.info("Getting CQL and Thrift protocol version from system.local...")
+            protocols_query = "select cql_version, thrift_version from system.local"
+
+            protocols = self.run_query_on_node(session=session, query=protocols_query)[0]
+
+        expected_content = {
+            "native transport": {"listen_addresses": [f"{node_ip_address}:9042", f"{node_ip_address}:19042"],
+                                 "protocol": "cql", "protocol_version": protocols.cql_version},
+            "alternator": {"listen_addresses": [f"{node_ip_address}:{port}"] if mode == "alternator" else [],
+                           "protocol": "dynamodb"},
+            "rpc": {"listen_addresses": [f"{node_ip_address}:{port}"] if mode == "rpc" else [], "protocol": "thrift",
+                    "protocol_version": protocols.thrift_version},
+            "redis": {"listen_addresses": [f"{node_ip_address}:{port}"] if mode == "redis" else [], "protocol": "RESP"},
+        }
+
+        logger.info("Verifying the content of the table %s.%s...", self.KEYSPACE_NAME, self.TABLE_NAME)
+        for row in table_content:
+            expected_row = expected_content.get(row.name)
+
+            assert expected_row, f"Unexpected value in column 'name': {row.name}"
+            assert expected_row["listen_addresses"] == row.listen_addresses, \
+                f"Unexpected value in column 'listen_addresses': {row.listen_addresses}"
+            assert expected_row["protocol"] == row.protocol, f"Unexpected value in column 'protocol': {row.protocol}"
+
+            if row.name in ["native transport", "rpc"]:
+                assert expected_row["protocol_version"] == row.protocol_version, \
+                    f"Unexpected value in column 'protocol': {row.protocol_version}"
+
+
+@pytest.mark.dtest_full
+class TestSnapshotsTable(SystemTableBase):
+    """
+    Table content example:
+     keyspace_name | table_name | snapshot_name | live | total
+    ---------------+------------+---------------+------+--------
+             my_ks | test_table | 1649001070121 |    0 | 655360
+    """
+    TABLE_NAME = "snapshots"
+    TEST_KEYSPACE = "test_keyspace"
+
+    @pytest.mark.parametrize("mode,number_of_tables", [("one_table", 1), ("keyspace", 5)],
+                             ids=["one_table", "keyspace"])
+    def test_content_create_and_remove_snapshot(self, mode: str, number_of_tables: int):
+        """
+        Test scenario:
+        1. Create one-node cluster
+        2. Create a new keyspace and table(s) with data (1 table for 'one_table' mode and 5 tables for 'keyspace' mode).
+        3. Create snapshot for the created table ('one_table' mode) or for entire keyspace ('keyspace' mode)
+        using the 'nodetool snapshot' command.
+        4. Select and verify the content of system.snapshots table.
+        5. Remove the snapshot.
+        6. Verify the table of system.snapshots is empty.
+        """
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Creating a new keyspace '%s' and %d table(s) with data...", self.TEST_KEYSPACE,
+                        number_of_tables)
+            tables = self.create_tables_with_data(session=session, keyspace_name=self.TEST_KEYSPACE,
+                                                  replication_factor=1, table_name_prefix="table",
+                                                  number_of_tables=number_of_tables, number_of_rows=10)
+
+            logger.info("Creating a snapshot with 'nodetool snapshot' command...")
+            out, _ = node.nodetool(cmd=f"snapshot {self.TEST_KEYSPACE if mode == 'keyspace' else tables[0]}")
+
+            # Parsing of 'nodetool snapshot' output to get snapshot_name
+            # The example of the output:
+            # "Requested creating snapshot(s) for [test_keyspace.table_1] with snapshot name [1649077599088]
+            # and options {skipFlush=false}
+            # Snapshot directory: 1649077599088"
+            snapshot_name = re.search(r"(with snapshot name \[)(\d+)(])", out).group(2)
+
+            logger.info("Getting table content of %s.%s on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
+                        node.address())
+            query_to_run = f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME};"
+            table_content = self.run_query_on_node(session=session, query=query_to_run)
+            snapshot_tables = sorted([f"{row.keyspace_name}.{row.table_name}" for row in table_content])
+
+            logger.info("Verifying the content of the table %s.%s...", self.KEYSPACE_NAME, self.TABLE_NAME)
+            assert snapshot_tables == tables,\
+                f"Expected to get snapshot data for tables: {tables}, but {self.KEYSPACE_NAME}.{self.TABLE_NAME} " \
+                f"contains data for {snapshot_tables}!"
+            for row in table_content:
+                assert row.snapshot_name == snapshot_name, f"Found unexpected snapshot name: {row.snapshot_name}!"
+                assert isinstance(row.live, (int, float)), "Unexpected value type in 'live' column!"
+                assert isinstance(row.total, (int, float)), "Unexpected value type in 'total' column!"
+
+            logger.info("Removing a snapshot with 'nodetool clearsnapshot' command...")
+            node.nodetool(cmd=f"clearsnapshot -t {snapshot_name}")
+
+            logger.info("Verifying the table %s.%s is empty...", self.KEYSPACE_NAME, self.TABLE_NAME)
+            content_after_removal = self.run_query_on_node(session=session, query=query_to_run)
+            assert not content_after_removal, \
+                f"The table is supposed to be empty, but it contains the following data: {content_after_removal}!"
+
+    def test_content_auto_snapshot(self):
+        """
+        Test scenario:
+        1. Create cluster of 3 nodes with auto_snapshot = true
+        2. Create a new keyspace with RF=3 and table with data.
+        3. Create snapshot for the table by truncating the created table.
+        4. Using the exclusive cql connection verify the created snapshot has been represented
+        in the table on each node.
+        """
+        cluster = self.prepare_cluster(nodes=3, options={"auto_snapshot": "true"})
+        node = cluster.nodelist()[0]
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Creating a new keyspace '%s' and a table with data...", self.TEST_KEYSPACE)
+            table = self.create_tables_with_data(session=session, keyspace_name=self.TEST_KEYSPACE,
+                                                 replication_factor=3, table_name_prefix="table",
+                                                 number_of_tables=1, number_of_rows=10)[0]
+
+            logger.info("Truncating the table '%s'...", table)
+            self.run_query_on_node(session=session, query=f"truncate table {table};")
+
+        query_to_run = f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME};"
+        for node in cluster.nodelist():
+            with self.patient_exclusive_cql_connection(node) as session:
+                logger.debug("Getting table content of %s.%s on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
+                             node.address())
+                table_content = self.run_query_on_node(session=session, query=query_to_run)
+            assert len(table_content) == 1, \
+                f"Expected to get 1 row from the table {self.KEYSPACE_NAME}.{self.TABLE_NAME}, " \
+                f"but got {len(table_content)} rows!"
+            assert table == f"{table_content[0].keyspace_name}.{table_content[0].table_name}", \
+                f"Expected to get the snapshot information for the table {table}, but didn't get it!"
+
+
+@pytest.mark.dtest_full
+class TestRuntimeInfoTable(SystemTableBase):
+    TABLE_NAME = "runtime_info"
+    TEST_KEYSPACE = "test_keyspace"
+
+    def test_default_content(self):
+        """
+        Test scenario:
+        1. Start one Scylla node (all parameters are default except predefined memory value)
+        2. Run select query on system.runtime_info table
+        3. Verify the content of the table
+        """
+        cluster = self.prepare_cluster(nodes=1, jvm_args=["--memory", "1G"])
+        node = cluster.nodelist()[0]
+
+        expected_content = {"cache": ["entries", "hit_rate_recent", "hit_rate_total", "hits", "memory_free",
+                                      "memory_total", "memory_used", "misses", "requests_recent", "requests_total"],
+                            "memory": ["free", "total", "used"],
+                            "generic": ["gossip_active", "incremental_backup_enabled", "load", "trace_probability",
+                                        "uptime"],
+                            "memtable": ["entries", "memory_free", "memory_total", "memory_used"]}
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Getting table content of %s.%s on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
+                        node.address())
+            query_to_run = f"select * from {self.KEYSPACE_NAME}.{self.TABLE_NAME};"
+            table_content = self.run_query_on_node(session=session, query=query_to_run)
+
+        table_content_dict = {}
+
+        logger.info("Verifying the content of %s.%s...", self.KEYSPACE_NAME, self.TABLE_NAME)
+        for row in table_content:
+            table_content_dict.setdefault(row.group, []).append(row.item)
+            if row.item == "gossip_active":
+                assert row.value == "true", f"The value='{row.value}' is unexpected for item='{row.item}'!"
+            elif row.item == "incremental_backup_enabled":
+                assert row.value == "false", f"The value='{row.value}' is unexpected for item='{row.item}'!"
+            elif row.item == "uptime":
+                assert re.match(r"\d+ seconds", row.value), \
+                    f"The value='{row.value}' is unexpected for item='{row.item}'!"
+                assert int(row.value.replace(" seconds", "")) > 0, "Uptime for a node should be more than 0!"
+            elif row.group == "memory" and row.item == "total":
+                assert int(row.value) == 1024 * 1024 * 1024, f"Unexpected memory value: {row.value}"
+            else:
+                assert self.is_number(value=row.value),\
+                    f"The type of value='{row.value}' for item='{row.item}' is not number (integer or float)!"
+
+        for group, item_list in expected_content.items():
+            assert table_content_dict.get(group), f"Records for group='{group}' were not found in the table!"
+            assert sorted(item_list) == sorted(table_content_dict.get(group)),\
+                f"Unexpected list of items for group='{group}'!"
+
+    @pytest.mark.parametrize("item,default_state,changed_state,changing_command,reverting_command",
+                             [("gossip_active", "true", "false", "disablegossip", "enablegossip"),
+                              ("incremental_backup_enabled", "false", "true", "enablebackup", "disablebackup")],
+                             ids=["gossip_active", "incremental_backup_enabled"])
+    # pylint: disable=too-many-arguments
+    def test_content_toggle_item(self,
+                                 item: str,
+                                 default_state: str,
+                                 changed_state: str,
+                                 changing_command: str,
+                                 reverting_command: str):
+        """
+        Test scenario:
+        1. Start one Scylla node
+        2. Change default state of the selected item (gossip_active or incremental_backup_enabled)
+           using nodetool command
+        3. Select and verify status of the selected item from the table system.runtime_info
+        4. Revert default state of the selected item
+        5. Select and verify status of the selected item from system.runtime_info one more time
+        """
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+        node_ip_address = node.address()
+
+        logger.info("Changing default state of %s on the node %s...", item, node_ip_address)
+        node.nodetool(cmd=changing_command)
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Getting %s state from the table %s.%s on node %s...", item, self.KEYSPACE_NAME,
+                        self.TABLE_NAME, node_ip_address)
+            query_to_run = f"select value from {self.KEYSPACE_NAME}.{self.TABLE_NAME} " \
+                           f"where group = 'generic' and item = '{item}';"
+            item_state_changed = self.run_query_on_node(session=session, query=query_to_run)[0].value
+
+            logger.info("Verifying the %s state...", item)
+            assert item_state_changed == changed_state, f"Expected to get state '{changed_state}' for {item}, " \
+                                                        f"but it has '{item_state_changed}' state!"
+
+            logger.info("Reverting default state of %s on the node %s...", item, node_ip_address)
+            node.nodetool(cmd=reverting_command)
+
+            logger.info("Getting %s state from the table %s.%s on node %s...", item, self.KEYSPACE_NAME,
+                        self.TABLE_NAME, node_ip_address)
+            item_state_reverted = self.run_query_on_node(session=session, query=query_to_run)[0].value
+
+            logger.info("Verifying the %s state...", item)
+            assert item_state_reverted == default_state, f"Expected to get state '{default_state}' for {item}, " \
+                                                         f"but it has '{item_state_reverted}' state!"
+
+    def test_cache_metrics(self):
+        """
+        Test scenario:
+        1. Start one-node Scylla cluster
+        2. Create one new table with data
+        3. Select the cache metrics values from the table (group='cache')
+        4. Flush the memtable for created table
+        5. Select the cache metrics again and compare the results
+        6. Send requests to the cashed data from flushed table
+        7. Select the cache metrics one more time and compare the values
+        """
+
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+        node_ip_address = node.address()
+
+        number_of_rows = 100
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Creating a new keyspace '%s' and 1 table with data...", self.TEST_KEYSPACE)
+            table = self.create_tables_with_data(session=session, keyspace_name=self.TEST_KEYSPACE,
+                                                 replication_factor=1, table_name_prefix="table",
+                                                 number_of_tables=1, number_of_rows=number_of_rows)[0]
+
+            logger.info("Getting the cache metrics values from %s.%s on node %s before flush...", self.KEYSPACE_NAME,
+                        self.TABLE_NAME, node_ip_address)
+            query_to_run = f"select item, value from {self.KEYSPACE_NAME}.{self.TABLE_NAME} where group = 'cache';"
+            result = self.run_query_on_node(session=session, query=query_to_run)
+            metrics_before_flush = {row.item: int(row.value) for row in result
+                                    if row.item not in ["hit_rate_recent", "hit_rate_total"]}
+
+            logger.info("Flushing the table %s...", table)
+            node.nodetool(cmd=f"flush {table.replace('.', ' ')}")
+
+            logger.info("Getting the cache metrics values from %s.%s on node %s after flush...", self.KEYSPACE_NAME,
+                        self.TABLE_NAME, node_ip_address)
+            result = self.run_query_on_node(session=session, query=query_to_run)
+            metrics_after_flush = {row.item: int(row.value) for row in result
+                                   if row.item not in ["hit_rate_recent", "hit_rate_total"]}
+
+        logger.info("Comparing the results...")
+        assert metrics_after_flush["entries"] - metrics_before_flush["entries"] == number_of_rows
+        assert metrics_after_flush["memory_used"] > metrics_before_flush["memory_used"]
+
+        with self.patient_cql_connection(node) as session:
+
+            logger.info("Sending request to the cached data...")
+            self.run_query_on_node(session=session, query=f"select * from {table}")
+
+            logger.info("Getting the cache metrics values from %s.%s on node %s after sending request...",
+                        self.KEYSPACE_NAME, self.TABLE_NAME, node_ip_address)
+            result = self.run_query_on_node(session=session, query=query_to_run)
+            metrics_after_request = {row.item: int(row.value) for row in result
+                                     if row.item not in ["hit_rate_recent", "hit_rate_total"]}
+
+        logger.info("Comparing the results...")
+        assert metrics_after_request["requests_total"] > metrics_after_flush["requests_total"]
+        assert metrics_after_request["hits"] > metrics_after_flush["hits"]
+        assert metrics_after_request["misses"] == metrics_after_flush["misses"]
+        assert metrics_after_request["requests_total"] == \
+            metrics_after_request["hits"] + metrics_after_request["misses"]
+
+    @pytest.mark.xfail(reason="https://github.com/scylladb/scylla/issues/10340")
+    def test_memtable_metrics(self):
+        """
+        Test scenario:
+        1. Start one-node Scylla cluster
+        2. Select the current memtable metrics values from the table (group='memtable')
+        3. Create one new table with data
+        4. Select the memtable metrics again and compare the results
+        """
+
+        cluster = self.prepare_cluster(nodes=1)
+        node = cluster.nodelist()[0]
+        node_ip_address = node.address()
+
+        with self.patient_cql_connection(node) as session:
+            logger.info("Getting the memtable metrics values from %s.%s on node %s...", self.KEYSPACE_NAME,
+                        self.TABLE_NAME, node_ip_address)
+            query_to_run = f"select item, value from {self.KEYSPACE_NAME}.{self.TABLE_NAME} where group = 'memtable';"
+            result = self.run_query_on_node(session=session, query=query_to_run)
+            metrics_before = {row.item: int(row.value) for row in result}
+
+            logger.info("Creating a new keyspace '%s' and 1 table with data...", self.TEST_KEYSPACE)
+            self.create_tables_with_data(session=session, keyspace_name=self.TEST_KEYSPACE,
+                                         replication_factor=1, table_name_prefix="table",
+                                         number_of_tables=1, number_of_rows=100)
+
+            logger.info("Getting the memtable metrics values from %s.%s on node %s after creating the new table...",
+                        self.KEYSPACE_NAME, self.TABLE_NAME, node_ip_address)
+            result = self.run_query_on_node(session=session, query=query_to_run)
+            metrics_after = {row.item: int(row.value) for row in result}
+
+        logger.info("Comparing the results...")
+        assert metrics_after["entries"] > metrics_before["entries"]
+        assert metrics_after["memory_used"] > metrics_before["memory_used"]
