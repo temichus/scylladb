@@ -1064,27 +1064,49 @@ class ManagerTask(ScyllaManagerBase):
             complete_list.append(row_dict)
         return complete_list
 
+    def info(self, **kwargs):
+        # Info example:
+        # Name:	repair/56b7df19-1348-48fb-925a-1e731579ea73
+        # Tz:	Asia/Jerusalem
+        # Retry:	3 (initial backoff 10m)
+        #
+        # Properties:
+        # - intensity: 2
+        # - keyspace: keyspace1,keyspace12
+        # - parallel: 1
+        #
+        # +--------------------------------------+------------------------+----------+--------+
+        # | ID                                   | Start time             | Duration | Status |
+        # +--------------------------------------+------------------------+----------+--------+
+        # | df682dbb-b4f0-11ec-8cf1-f4ee08c9cc47 | 05 Apr 22 17:58:37 IDT | 1s       | …      |
+        # +--------------------------------------+------------------------+----------+--------+
+        cmd = f"info {self.id} -c {self.cluster_id}"
+        stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True, **kwargs)
+        return stdout
+
     @property
-    def arguments(self):
-        """
-        Gets the task's arguments
-        """
-        # ╭───────────────────────────────────────────────────────┬───────────┬───────────────────────────────┬────────╮
-        # │ Task                                                  │ Arguments │ Next run                      │ Status │
-        # ├───────────────────────────────────────────────────────┼───────────┼───────────────────────────────┼────────┤
-        # │ healthcheck/49a8215e-fb49-4922-9dbc-10ba81feb6a1      │           │ 09 Sep 20 10:48:23 IDT (+15s) │ DONE   │
-        # │ healthcheck_rest/203191b9-550c-4469-9899-1ca832aa063b │           │ 09 Sep 20 10:49:08 IDT (+1m)  │ DONE   │
-        # │ repair/0a922f7d-74dc-4fe4-9439-daf3804f84d4           │           │ 16 Sep 20 00:00:00 IDT (+7d)  │ DONE   │
-        # │ repair/53d4afe0-d740-4c73-adb2-ab4c686b6b99           │ -K 'ks'   │                               │ DONE   │
-        # ╰───────────────────────────────────────────────────────┴───────────┴───────────────────────────────┴────────╯
-        arguments = ""
-        for task_property in self.progress_details(is_verify_errorless_result=True)[0]:
-            if task_property[0].startswith("Arguments"):
-                arguments = task_property[0].split()[1]
-                break
-        if not arguments:
-            return {}
-        return self.task_api.parse_output(output=arguments, regex_name="arguments")
+    def properties(self):
+        def parse_line(line_string):
+            name, value = [string.strip() for string in line_string.split(": ")]
+            final_value = value
+            if "- " in name:  # Like "- intensity: 2"
+                name = name[2:]
+            if " (" in value:  # Like "Retry:	3 (initial backoff 10m)"
+                final_value = value[:value.find(" (")]
+            if "," in value:  # Like "- keyspace: keyspace1,keyspace12"
+                final_value = [int(i) if i.isdigit() else i for i in value.split(",")]
+            if value.isdigit():  # Like "- parallel: 1"
+                final_value = int(value)
+            return name, final_value
+
+        properties_dict = {}
+        info_lines = self.info()
+        for line_list in info_lines:
+            line = line_list[0]
+            if ": " in line:
+                property_name, property_value = parse_line(line_string=line)
+                properties_dict[property_name] = property_value
+        return properties_dict
 
     @property
     def next_run(self):

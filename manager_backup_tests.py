@@ -969,19 +969,19 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
 
         logger.info(f"Validating the 'keyspace', 'location', 'retention', 'rate_limit', 'retention', "
                     f"'snapshot-parallel' and 'upload-parallel' fields are updated")
-        arguments = backup_task.arguments
+        properties = backup_task.properties
         err_msg = "The expected '{}' value should to be '{}' and not '{}'"
-        assert arguments["keyspace_list"] == new_keyspace_name, err_msg.format(
-            "keyspace", arguments["keyspace_list"], new_keyspace_name)
-        assert arguments["location_list"] == new_location, err_msg.format(
-            "location", arguments["location_list"], new_location)
-        assert arguments["retention"] == retention, err_msg.format("retention", arguments["retention"], retention)
-        assert arguments["rate_limit"] == rate_limit_list, err_msg.format(
-            "rate_limit", arguments["rate_limit"], rate_limit_list)
-        assert arguments["snapshot_parallel_list"] == list(map(int, snapshot_parallel_list.split(","))), err_msg.format(
-            "snapshot_parallel_list", arguments["snapshot_parallel_list"], snapshot_parallel_list)
-        assert arguments['upload_parallel_list'] == list(map(int, upload_parallel_list.split(","))), err_msg.format(
-            'upload_parallel_list', arguments['upload_parallel_list'], 'upload_parallel_list')
+        assert properties["keyspace"] == new_keyspace_name, err_msg.format(
+            "keyspace", properties["keyspace"], new_keyspace_name)
+        assert properties["location"] == new_location, err_msg.format(
+            "location", properties["location"], new_location)
+        assert properties["retention"] == retention, err_msg.format("retention", properties["retention"], retention)
+        assert properties["rate-limit"] == rate_limit_list, err_msg.format(
+            "rate_limit", properties["rate-limit"], rate_limit_list)
+        assert properties["snapshot-parallel"] == list(map(int, snapshot_parallel_list.split(","))), err_msg.format(
+            "snapshot_parallel_list", properties["snapshot-parallel"], snapshot_parallel_list)
+        assert properties['upload-parallel'] == list(map(int, upload_parallel_list.split(","))), err_msg.format(
+            'upload_parallel_list', properties['upload-parallel'], 'upload_parallel_list')
 
     def _get_s3_files(self, cluster_id, category="sst", datacenter=None, node_id=None, keyspace=None, table=None,
                       suffix=None):

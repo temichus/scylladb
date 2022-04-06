@@ -474,12 +474,8 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         Verify that on its second run, the repair will act upon its updated parameters, rather than the parameters it
          received when it was created
         """
-        def is_keyspace_in_progress_string_and_arguments(task, keyspace_name):
-            assert repair_task.arguments["keyspace_list"] == keyspace_name
-            task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=5)
-            progress_string = repair_task.full_progress_string()
-            assert keyspace_name in progress_string[0][-1], \
-                f"keyspace '{keyspace_name}' table is not reported by repair task progress"
+        def is_keyspace_in_sctool_info(task, keyspace_name):
+            assert repair_task.properties["keyspace"] == keyspace_name
 
         node1 = self.config_and_create_cluster(nodes=2)[0]
         session = self.patient_cql_connection(node1)
@@ -494,19 +490,19 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         logger.debug("Create repair task with keyspace ks1")
         repair_task = mgr_cluster.repair_api.repair(keyspace_list='ks1', cluster_name=mgr_cluster.id)
         logger.debug("Verify the repair runs for keyspace ks1")
-        is_keyspace_in_progress_string_and_arguments(repair_task, "ks1")
+        is_keyspace_in_sctool_info(repair_task, "ks1")
         logger.debug("Update repair task with a different keyspace: ks2")
         repair_task.stop()
         repair_task.update(keyspace_list='ks2')
         repair_task.start()
         logger.debug("Test repair task updated argument values keyspace: ks2")
-        is_keyspace_in_progress_string_and_arguments(repair_task, "ks2")
+        is_keyspace_in_sctool_info(repair_task, "ks2")
 
     def test_intensity_and_parallel(self):
         """
         Executing a repair with a specified intensity, and executing a task status
         Expected:
-         The value of the intensity arg of the task status will be included in the output of task progress
+         The value of the intensity arg of the task status will be included in the output of task info
         """
         cluster_size = 2
         node1, *_ = self.config_and_create_cluster(nodes=cluster_size)
@@ -520,30 +516,21 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
             create_ks(session=session, name=keyspace_name, rf=cluster_size)
             create_cf(session=session, name=table_name)
 
-        logger.info(f"Creating new repair task with following values: 'keyspace'={keyspace_name}, intensity='{intensity}'"
-                    f"and parallel='{parallel_value}'")
+        logger.info(f"Creating new repair task with following values: 'keyspace'={keyspace_name}, "
+                    f"intensity='{intensity}' and parallel='{parallel_value}'")
         repair_task = mgr_cluster.repair_api.repair(
             keyspace_list=keyspace_name, intensity=intensity, parallel=parallel_value, cluster_name=mgr_cluster.id)
-        logger.info(f"Checking the 'intensity' and 'keyspace' parameters are exists under task arguments")
-        arguments = repair_task.arguments
-        assert arguments["keyspace_list"] == keyspace_name, \
-            "The expected `keysapce` should be '{}' and not '{}'".format(keyspace_name, arguments["keyspace_list"])
-        assert arguments["intensity"] == intensity, \
-            "The expected `intensity` should be '{}' and not '{}'".format(intensity, arguments["intensity"])
-        assert arguments["parallel"] == parallel_value, \
-            "The expected `parallel` should be '{}' and not '{}'".format(parallel_value, arguments["parallel"])
-
-        list_status = [TaskStatus.DONE]
-        logger.info(f"Waiting until the task will be in '{list_status}' state")
-        repair_task.wait_for_status(list_status=list_status, timeout=40, step=2)
-        logger.info(f"Checking the 'intensity' is exists under 'task progress' command")
-        intensity_field = f"--intensity {intensity}"
-        parallel_field = f"--parallel {parallel_value}"
-        full_progress_string = repair_task.full_progress_string()
-        assert intensity_field in full_progress_string, \
-            f"The '{intensity_field}' not found under 'task progress' command"
-        assert parallel_field in full_progress_string, \
-            f"The '{parallel_field}' not found under 'task progress' command"
+        logger.info(f"Checking the 'intensity', 'parallel' and 'keyspace' parameters are exists under task info")
+        task_properties = repair_task.properties
+        assert task_properties["keyspace"] == keyspace_name, \
+            "The value of the `keyspace` property should be '{}' and not '{}'".format(
+                keyspace_name, task_properties["keyspace"])
+        assert task_properties["intensity"] == intensity, \
+            "The value of the `intensity` property should be '{}' and not '{}'".format(
+                intensity, task_properties["intensity"])
+        assert task_properties["parallel"] == parallel_value, \
+            "The value of the `parallel` property should be '{}' and not '{}'".format(
+                parallel_value, task_properties["parallel"])
 
     def test_small_table_threshold_parameter(self):
         """
@@ -594,24 +581,21 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
             f"The '{repair_log_message}' message for keyspace '{keyspace_name}.{table_name}' not found!" \
             f"\nThe following logs are found {pformat(logs)} "
 
-    def test_repair_host_flag_appears_in_arguments_column(self):
+    def test_repair_host_flag_appears_in_task_info(self):
         """
-            New in manager 2.6
-            Due to a previous bug in manager, the host flag was not printed in the argument
-            list of the `sctool task list` command.
-            The test creates a repair task that uses the --host flag, and then checks that
-            the flag was printed properly.
+        New in manager 3.0
+        The test creates a repair task with a specified host to repair,
+        and then makes sure that the host flag appear in the output of the
+        sctool info command.
         """
         node1, node2 = self.config_and_create_cluster(nodes=2)
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
         repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, host=node1.address())
-        arguments_dict = repair_task.arguments
-        assert "host" in arguments_dict, \
-            "Even though the task used --host flag, it was not included in the argument column of the task list output"
-        assert arguments_dict["host"] == node1.address(), \
-            f'While the host flag was printed in `task list`, its value is {arguments_dict["host"]}, instead of the' \
-            f'expected - {node1.address()}'
+        task_properties = repair_task.properties
+        assert "host" in task_properties and task_properties["host"] == node1.address(), \
+            f"The sctool info command should have reported '{node1.address()}' as the host of the task, but it did " \
+            f"not:\n{repair_task.info(parse_table_res=False)}"
 
     def test_ignore_down_hosts_with_one_down_host(self):
         """
