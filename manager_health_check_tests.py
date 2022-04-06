@@ -28,17 +28,6 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
         manager_cluster = manager_tool.add_cluster(node=self.cluster.nodelist()[0], name=cluster_name)
         return manager_cluster
 
-    @staticmethod
-    def _check_healthcheck_updates(healthcheck_task):
-        # TODO: Add cron update
-
-        healthcheck_task.update(num_retries='2')
-        assert healthcheck_task.status != TaskStatus.ERROR, "Task num-retries update failed"
-
-        healthcheck_task.update(enabled='false')
-        assert healthcheck_task.status != TaskStatus.ERROR, "Task enabled update failed"
-        assert healthcheck_task.is_task_disabled(), "The healthcheck test was not disabled"
-
     def test_auto_gen_cql_health_check_task(self):
         """
             ver: 1.4
@@ -57,17 +46,6 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
         next_run_seconds = int(re.search(r"\d+", healthcheck_task.next_run)[0])
         assert next_run_seconds < default_interval
         assert TaskStatus.ERROR.value not in healthcheck_task.status.value
-
-    def test_update_health_check_task(self):
-        """
-            ver: 1.4
-            verify that auto generated health check task can be updated
-        """
-        self.config_and_create_cluster(nodes=2)
-        manager_cluster = self.get_manager_cluster()
-        healthcheck_task = manager_cluster.get_healthcheck_task()
-
-        self._check_healthcheck_updates(healthcheck_task)
 
     def test_down_node_isnt_pinged(self):
         """
@@ -91,19 +69,6 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
             verify that auto generated alternator health check task is created and verify default interval
         """
         self._template_auto_gen_health_check_task(health_check_type="alternator")
-
-    def test_update_health_check_alternator_task(self):
-        """
-            ver: 2.2
-            verify that auto generated alternator health check task can be updated
-        """
-        self.config_and_create_cluster(nodes=2,
-                                       extra_config_options=dict(alternator_port=ALTERNATOR_PORT,
-                                                                 alternator_write_isolation=WriteIsolation.ALWAYS_USE_LWT.value))
-        manager_cluster = self.get_manager_cluster()
-        healthcheck_alternator_task = manager_cluster.get_healthcheck_alternator_task()
-
-        self._check_healthcheck_updates(healthcheck_alternator_task)
 
     def test_down_alternator_node_isnt_pinged(self):
         """
