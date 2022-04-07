@@ -34,7 +34,7 @@ from alternator.utils import schemas
 from alternator.utils.data_generator import AlternatorDataGenerator, TypeMode
 from alternator_utils import BaseAlternator, ALTERNATOR_SNAPSHOT_FOLDER, TABLE_NAME, NUM_OF_ITEMS, random_string, \
     DEFAULT_STRING_LENGTH, NUM_OF_NODES, set_write_isolation, WriteIsolation, LONGEST_TABLE_SIZE, SHORTEST_TABLE_SIZE, \
-    ALTERNATOR_SECURE_PORT
+    ALTERNATOR_SECURE_PORT, NUM_OF_ELEMENTS_IN_SET
 from alternator_utils import generate_put_request_items, Gsi, full_query
 from dtest_class import wait_for, get_ip_from_node
 from tools.misc import set_trace_probability
@@ -124,17 +124,21 @@ class TesterAlternator(BaseAlternator):
         assert not diff_result, f"The following items differs:\n{pformat(diff_result)}"
 
     def test_drain_during_dynamo_load(self):
+        """
+        1. Create a load of read + update-items delete-set-elements
+        2. Run nodetool drain for one node.
+        """
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, _, node3 = self.cluster.nodelist()
         self.create_table(table_name=TABLE_NAME, node=node1)
 
-        items = self.create_items(num_of_items=NUM_OF_ITEMS)
+        items = self.create_items(num_of_items=NUM_OF_ITEMS, use_set_data_type=True)
         self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
-        get_items_thread = self.run_read_stress(table_name=TABLE_NAME, node=node1)
+        read_and_delete_set_elements_thread = self.run_delete_set_elements_stress(table_name=TABLE_NAME, node=node1)
         logger.info(f'Start drain for: {node3.name}')
         node3.drain()
         logger.info('Drain finished')
-        get_items_thread.join()
+        read_and_delete_set_elements_thread.join()
 
     def test_decommission_during_dynamo_load(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -1278,6 +1282,39 @@ class TesterAlternator(BaseAlternator):
                 stack.enter_context(pytest.raises(expected_exception=AssertionError))
             assert result[0]["value"] == expected_item["value"], \
                 "The value of the result is not equal to the sum of the values added through the threads"
+
+    def test_delete_elements_from_a_set(self):
+        """
+            Verifies https://github.com/scylladb/scylla/commit/253387ea07962d4fd8cb221eb90298b9127caf9f
+            alternator: implement AttributeUpdates DELETE operation with Value
+            Test scenario:
+            1) Generate a load with set-type data.
+            2) Issue topology-change operations (add/remove node)
+            3) Run AttributeUpdates DELETE operation on a set of strings.
+            4) Verify the data can be read and no unexpected errors.
+        """
+        self.prepare_dynamodb_cluster(num_of_nodes=3)
+        node1 = self.cluster.nodelist()[0]
+        num_of_items = 300
+        items = self.create_items(num_of_items=num_of_items, use_set_data_type=True)
+        self.create_table(table_name=TABLE_NAME, node=node1)
+        self.batch_write_actions(table_name=TABLE_NAME, node=node1, new_items=items)
+        logger.info("Running background stress and topology changes..")
+        stress_thread = self.run_write_stress(table_name=TABLE_NAME, node=node1, num_of_item=num_of_items,
+                                              use_set_data_type=True, ignore_errors=True)
+        decommission_thread = self.run_decommission_add_node_thread()
+
+        logger.info("Run AttributeUpdates DELETE operations")
+        self.update_table_delete_set_elements(table_name=TABLE_NAME, node=node1, num_of_items=num_of_items,
+                                              consistent_read=False)
+        stress_thread.join()
+        self.update_table_delete_set_elements(table_name=TABLE_NAME, node=node1, num_of_items=num_of_items,
+                                              consistent_read=False)
+        decommission_thread.join()
+        logger.info("Reading all existing data after delete-operations are completed")
+        items = self.get_table_items(table_name=TABLE_NAME, node=node1, consistent_read=False,
+                                     num_of_items=num_of_items)
+        assert [item for item in items if NUM_OF_ELEMENTS_IN_SET > len(item['Item']['hello_set']) > 0]
 
 
 class ConcurrencyLimitNotExceeded(Exception):

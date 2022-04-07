@@ -48,6 +48,7 @@ ALTERNATOR_SNAPSHOT_FOLDER = os.path.join(os.getcwd(), "alternator", "snapshot")
 TABLE_NAME = 'user_table'
 NUM_OF_NODES = 3
 NUM_OF_ITEMS = 100
+NUM_OF_ELEMENTS_IN_SET = 20
 ALTERNATOR_PORT = 8080
 ALTERNATOR_SECURE_PORT = 8043
 DEFAULT_STRING_LENGTH = 5
@@ -323,26 +324,28 @@ class BaseAlternator(Tester):
         # since `node.rmtree` remove only the content of the folder, we'll rmnode the parent
         node.rmtree(path=pathlib.Path(node_ks_path).parent)
 
-    def create_nested_items(self, level: int, item_idx: int):
+    def _create_nested_items(self, level: int, item_idx: int):
         if level == 1:
             return {'a': str(item_idx), 'level1': {'hello': f'world{item_idx}'}}
-        return {'a': str(item_idx), f'level{level}': self.create_nested_items(level=level-1, item_idx=item_idx)}
+        return {'a': str(item_idx), f'level{level}': self._create_nested_items(level=level - 1, item_idx=item_idx)}
 
-    def create_items(self, primary_key: str = None, items: List[Dict[str, str]] = None,
-                     num_of_items: int = NUM_OF_ITEMS, nested_attributes_levels: int = 0) -> List[Dict[str, str]]:
-        items = items or num_of_items
+    def create_nested_items(self, num_of_items: int = NUM_OF_ITEMS, nested_attributes_levels: int = 3) -> \
+            List[Dict[str, str]]:
+        return [{self._table_primary_key: self._table_primary_key_format.format(item_idx),
+                 "x": self._create_nested_items(level=nested_attributes_levels, item_idx=item_idx), }
+                for item_idx in range(num_of_items)]
+
+    def create_items(self, primary_key: str = None, num_of_items: int = NUM_OF_ITEMS,
+                     use_set_data_type: bool = False) -> List[Dict[str, str]]:
         primary_key = primary_key or self._table_primary_key
-        if isinstance(items, int):
-            if items < 1:
-                raise ValueError("The number of items should be greater from 1")
-            if nested_attributes_levels > 0:
-                items = [{primary_key: self._table_primary_key_format.format(item_idx),
-                          "x": self.create_nested_items(level=nested_attributes_levels, item_idx=item_idx), }
-                         for item_idx in range(items)]
-            else:
-                items = [{primary_key: self._table_primary_key_format.format(item_idx),
-                          "x": {"hello": f"world{item_idx}"}, } for item_idx in range(items)]
-
+        if use_set_data_type:
+            items = [{primary_key: self._table_primary_key_format.format(item_idx),
+                      "x": {"hello": f"world{item_idx}"},
+                      "hello_set": set([f's{idx}' for idx in range(NUM_OF_ELEMENTS_IN_SET)])} for item_idx
+                     in range(num_of_items)]
+        else:
+            items = [{primary_key: self._table_primary_key_format.format(item_idx),
+                      "x": {"hello": f"world{item_idx}"}, } for item_idx in range(num_of_items)]
         return items
 
     # pylint:disable=too-many-arguments
@@ -553,17 +556,25 @@ class BaseAlternator(Tester):
                                 verbose=verbose, consistent_read=consistent_read, **kwargs)
 
     def run_write_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS, ignore_errors=False,
-                         verbose=False, **kwargs) -> StoppableThread:
+                         use_set_data_type: bool = False, verbose=False, **kwargs) -> StoppableThread:
         return self._run_stress(table_name=table_name, node=node, target=self.put_table_items, num_of_item=num_of_item,
-                                ignore_errors=ignore_errors, verbose=verbose, **kwargs)
+                                ignore_errors=ignore_errors, use_set_data_type=use_set_data_type, verbose=verbose, **kwargs)
+
+    def run_delete_set_elements_stress(self, table_name: str, node: ScyllaNode, num_of_item: int = NUM_OF_ITEMS,
+                                       verbose: bool = True, consistent_read: bool = True, **kwargs) -> StoppableThread:
+        return self._run_stress(table_name=table_name, node=node, target=self.update_table_delete_set_elements,
+                                num_of_item=num_of_item, verbose=verbose, consistent_read=consistent_read, **kwargs)
 
     def get_table(self, table_name: str, node: ScyllaNode):
         return self.get_dynamodb_api(node=node).resource.Table(name=table_name)
 
     def put_table_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
-                        ignore_errors: bool = False, verbose=True, **kwargs):
-        nested_attributes_levels = kwargs['nested_attributes_levels'] if 'nested_attributes_levels' in kwargs else 0
-        items = self.create_items(num_of_items=num_of_items, nested_attributes_levels=nested_attributes_levels)
+                        ignore_errors: bool = False, use_set_data_type: bool = False, verbose=True, **kwargs):
+        if nested_attributes_levels := kwargs.get('nested_attributes_levels'):
+            items = self.create_nested_items(num_of_items=num_of_items,
+                                             nested_attributes_levels=nested_attributes_levels)
+        else:
+            items = self.create_items(num_of_items=num_of_items, use_set_data_type=use_set_data_type)
         self.batch_write_actions(table_name=table_name, node=node, new_items=items, ignore_errors=ignore_errors,
                                  verbose=verbose)
 
@@ -639,8 +650,30 @@ class BaseAlternator(Tester):
                                                                                    updated_value=updated_value,
                                                                                    item_idx=item_idx)}
 
+    def update_table_delete_set_elements(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
+                                         verbose: bool = True, consistent_read: bool = True):
+        dynamodb_api = self.get_dynamodb_api(node=node)
+        table: Table = dynamodb_api.resource.Table(name=table_name)
+        logger.debug("Starting queries of: %s items with ConsistentRead = %s", num_of_items, consistent_read)
+        if verbose:
+            logger.debug("First Item in range: %s",
+                         table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: 'test0'}))
+            logger.debug("Last Item in range: %s", table.get_item(ConsistentRead=consistent_read, Key={
+                self._table_primary_key: f'test{num_of_items - 1}'}))
+
+        for idx in range(num_of_items):
+            key = {self._table_primary_key: f'test{idx}'}
+            item = table.get_item(ConsistentRead=consistent_read, Key=key)
+            # Delete few of the item's set elements if exist.
+            if item and 'hello_set' in item['Item']:
+                if hello_set := item['Item']['hello_set']:
+                    count = random.randint(1, min(len(hello_set), 7))
+                    sub_items_to_delete = random.sample(list(hello_set), count)
+                    table.update_item(Key=key, AttributeUpdates={
+                        'hello_set': {'Action': 'DELETE', 'Value': set(sub_items_to_delete)}})
+
     def get_table_items(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
-                        verbose: bool = True, consistent_read: bool = True):
+                        verbose: bool = True, consistent_read: bool = True) -> list:
         dynamodb_api = self.get_dynamodb_api(node=node)
         table: Table = dynamodb_api.resource.Table(name=table_name)
         logger.debug(f"Starting queries of: {num_of_items} items with ConsistentRead = {consistent_read}")
@@ -650,8 +683,8 @@ class BaseAlternator(Tester):
             logger.debug("Last Item in range: {}".format(
                 table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{num_of_items - 1}'})))
 
-        for idx in range(num_of_items):
-            table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{idx}'})
+        return [table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: f'test{idx}'}) for idx in
+                range(num_of_items)]
 
     def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME, num_of_items: int = NUM_OF_ITEMS,
                                **kwargs):
