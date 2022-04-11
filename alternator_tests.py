@@ -127,6 +127,7 @@ class TesterAlternator(BaseAlternator):
         """
         1. Create a load of read + update-items delete-set-elements
         2. Run nodetool drain for one node.
+        3. The test verifies that Alternator queries load runs ok during drain, no db-node errors / core-dumps etc.
         """
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, _, node3 = self.cluster.nodelist()

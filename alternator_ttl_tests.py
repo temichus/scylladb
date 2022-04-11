@@ -9,12 +9,19 @@
 # better implemented in scylla.git's test/alternator/test_ttl.py - those
 # tests are significantly faster to run and therefore to develop than
 # these dtests.
+import logging
+import random
 
 import pytest
 import time
 
 from alternator_utils import BaseAlternator, TABLE_NAME, random_string
 from alternator.utils import schemas
+from ccmlib.node import NodetoolError
+from ccmlib.scylla_node import ScyllaNode
+from tools.retrying import retrying
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
@@ -80,3 +87,67 @@ class TestAlternatorTTL(BaseAlternator):
                 break
             time.sleep(1)
         assert success
+
+    def test_ttl_with_load_and_decommission(self):
+        """
+        1. Configure a table with TTL enabled and an 'expiration' column.
+        2. Create a load of read/write/update-items delete-set-elements
+        3. Run a loop of flush and compaction on cluster nodes.
+        4. Verify all data is eventually deleted on cluster nodes.
+        """
+        ttl_polling_interval = 4
+        self.prepare_dynamodb_cluster(num_of_nodes=4,
+                                      extra_config={'experimental_features': ['alternator-ttl'],
+                                                    'alternator_ttl_period_in_seconds': ttl_polling_interval})
+        node1, *_ = self.cluster.nodelist()
+        table = self.create_table(node=node1)
+        # Enable TTL for table
+        self.get_dynamodb_api(node=node1).client.update_time_to_live(TableName=table.name, TimeToLiveSpecification={
+            'AttributeName': 'expiration', 'Enabled': True})
+        expiration_sec = 10
+        num_of_items = 100
+        logger.info("Running background stress and topology changes..")
+        stress_thread = self.run_write_stress(table_name=TABLE_NAME, node=node1, num_of_item=num_of_items,
+                                              use_set_data_type=True, expiration_sec=expiration_sec,
+                                              random_start_index=True, ignore_errors=True)
+        read_and_delete_set_elements_thread = self.run_delete_set_elements_stress(table_name=TABLE_NAME, node=node1,
+                                                                                  random_start_index=True)
+        decommission_thread = self.run_decommission_add_node_thread()
+
+        logger.info('Run flush and compaction on cluster nodes')
+        for _ in range(3):
+            try:
+                random.choice(self.cluster.nodelist()).flush()
+                random.choice(self.cluster.nodelist()).compact()
+            except NodetoolError as exc:
+                assert "ConnectException" in str(exc)
+
+        logger.info('Stopping background stress and decommission')
+        read_and_delete_set_elements_thread.join()
+        stress_thread.join()
+        decommission_thread.join()
+
+        logger.info('Verify all data is eventually deleted')
+
+        @retrying(num_attempts=expiration_sec + ttl_polling_interval, sleep_time=2,
+                  allowed_exceptions=TtlNotExpiredError,
+                  message="Wait for TTL expiration threshold of a configured table")
+        def wait_for_deletion_post_ttl_expiration(node: ScyllaNode):
+            """
+            Wait for TTL expiration threshold of a configured table.
+            :param node: the node for running table full scan
+
+            """
+            table_data = self.scan_table(table_name=TABLE_NAME, node=node, ConsistentRead=False)
+            logger.info('scan table result: %s', table_data)
+            if not table_data:
+                return
+            raise TtlNotExpiredError
+
+        # Check 2 nodes for TTL expiration of all data
+        for db_node in self.cluster.nodelist()[:1]:
+            wait_for_deletion_post_ttl_expiration(node=db_node)
+
+
+class TtlNotExpiredError(Exception):
+    pass

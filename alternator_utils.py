@@ -336,16 +336,27 @@ class BaseAlternator(Tester):
                 for item_idx in range(num_of_items)]
 
     def create_items(self, primary_key: str = None, num_of_items: int = NUM_OF_ITEMS,
-                     use_set_data_type: bool = False) -> List[Dict[str, str]]:
+                     use_set_data_type: bool = False, expiration_sec: int = None, random_start_index: bool = False) -> \
+            List[Dict[str, str]]:
         primary_key = primary_key or self._table_primary_key
+        if not random_start_index:
+            items_range = range(num_of_items)
+        else:
+            start_index = random.randint(0, num_of_items * 10)
+            items_range = range(start_index, start_index + num_of_items)
         if use_set_data_type:
             items = [{primary_key: self._table_primary_key_format.format(item_idx),
                       "x": {"hello": f"world{item_idx}"},
                       "hello_set": set([f's{idx}' for idx in range(NUM_OF_ELEMENTS_IN_SET)])} for item_idx
-                     in range(num_of_items)]
+                     in items_range]
         else:
             items = [{primary_key: self._table_primary_key_format.format(item_idx),
-                      "x": {"hello": f"world{item_idx}"}, } for item_idx in range(num_of_items)]
+                      "x": {"hello": f"world{item_idx}"}, } for item_idx in items_range]
+
+        if expiration_sec:
+            expiration = int(time.time()) + expiration_sec
+            for item in items:
+                item.update({'expiration': expiration})
         return items
 
     # pylint:disable=too-many-arguments
@@ -574,7 +585,11 @@ class BaseAlternator(Tester):
             items = self.create_nested_items(num_of_items=num_of_items,
                                              nested_attributes_levels=nested_attributes_levels)
         else:
-            items = self.create_items(num_of_items=num_of_items, use_set_data_type=use_set_data_type)
+            expiration_sec = kwargs['expiration_sec'] if 'expiration_sec' in kwargs else None
+            random_start_index = kwargs['random_start_index'] if 'random_start_index' in kwargs else False
+            items = self.create_items(num_of_items=num_of_items, use_set_data_type=use_set_data_type,
+                                      expiration_sec=expiration_sec, random_start_index=random_start_index)
+
         self.batch_write_actions(table_name=table_name, node=node, new_items=items, ignore_errors=ignore_errors,
                                  verbose=verbose)
 
@@ -651,21 +666,28 @@ class BaseAlternator(Tester):
                                                                                    item_idx=item_idx)}
 
     def update_table_delete_set_elements(self, table_name: str, node: ScyllaNode, num_of_items: int = NUM_OF_ITEMS,
-                                         verbose: bool = True, consistent_read: bool = True):
+                                         verbose: bool = True, consistent_read: bool = True,
+                                         random_start_index: bool = False):  # pylint:disable=too-many-locals
         dynamodb_api = self.get_dynamodb_api(node=node)
         table: Table = dynamodb_api.resource.Table(name=table_name)
         logger.debug("Starting queries of: %s items with ConsistentRead = %s", num_of_items, consistent_read)
+        # random_start_index means not writing data to the exact same indexes. thus, it has a factor of 10x bigger
+        # range to randomly choose from. then every cycle may write to a different token range and not necessarily
+        # override all existing previous data.
+        random_range_factor = 10
+        start_index = 0 if not random_start_index else random.randint(0, num_of_items * random_range_factor)
+        end_index = start_index + num_of_items
         if verbose:
-            logger.debug("First Item in range: %s",
-                         table.get_item(ConsistentRead=consistent_read, Key={self._table_primary_key: 'test0'}))
+            logger.debug("First Item in range: %s", table.get_item(ConsistentRead=consistent_read,
+                                                                   Key={self._table_primary_key: f'test{start_index}'}))
             logger.debug("Last Item in range: %s", table.get_item(ConsistentRead=consistent_read, Key={
-                self._table_primary_key: f'test{num_of_items - 1}'}))
+                self._table_primary_key: f'test{end_index - 1}'}))
 
-        for idx in range(num_of_items):
+        for idx in range(start_index, end_index):
             key = {self._table_primary_key: f'test{idx}'}
             item = table.get_item(ConsistentRead=consistent_read, Key=key)
             # Delete few of the item's set elements if exist.
-            if item and 'hello_set' in item['Item']:
+            if item and 'Item' in item and 'hello_set' in item['Item']:
                 if hello_set := item['Item']['hello_set']:
                     count = random.randint(1, min(len(hello_set), 7))
                     sub_items_to_delete = random.sample(list(hello_set), count)
