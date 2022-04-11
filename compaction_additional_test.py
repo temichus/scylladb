@@ -15,7 +15,7 @@ from datetime import datetime as dt
 from functools import reduce
 from pathlib import Path
 from threading import Thread
-from typing import Optional, List, Match, AnyStr
+from typing import Optional, List, Match, AnyStr, Dict, Tuple
 
 import pytest
 import sstable_tools.statistics
@@ -27,6 +27,7 @@ from ccmlib.scylla_node import ScyllaNode
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
+from tools import tables_view_manager
 from tools.assertions import assert_none, assert_all, assert_row_count
 from tools.cluster import new_node
 from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_table
@@ -53,7 +54,7 @@ SpanningSStable = namedtuple("SpanningSStable", ["is_spanning_one_window",
 
 class CompactionAdditionalTester(Tester):
 
-    def prepare(self, nodes, wait_for_binary_proto=True, jvm_args=None, configuration_options={}):
+    def prepare(self, nodes, wait_for_binary_proto=True, jvm_args=None, configuration_options={}) -> Tuple[List[ScyllaNode], Session]:
         configuration_options.update({'enable_sstable_key_validation': True})
         self.cluster.set_configuration_options(values=configuration_options)
         self.cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
@@ -1270,15 +1271,17 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         max_timestamp = stats['max_timestamp']
         return self.micros_to_seconds(max_timestamp - min_timestamp)
 
-    def _check_sstable_timestamps(self, node):
+    def _check_sstable_timestamps(self, node, window_size=None, window_unit=None):
+        window_size = window_size or self.window_size
+        window_unit = window_unit or self.window_unit
         statistics_files = self._get_list_of_sstables(node)
         assert len(statistics_files) > 0, "No statisitcs files"
+        multiplier = 60 if window_unit == "MINUTES" else 3600
         for sf in statistics_files:
             stats = self.get_stats(sf)
             tw = self._get_time_window_in_seconds(sf, stats)
-
             # Allow an error margin of a half-window.
-            margin = 1.5 * self.window_size * 60
+            margin = 1.5 * window_size * multiplier
             assert tw <= margin, f"time window of {tw} seconds is greater than {margin} \
                                    seconds margin: sstable={sf} \
                                    min_timestamp={stats['min_timestamp']} max_timestamp={stats['max_timestamp']}"
@@ -1300,14 +1303,14 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': {}}}".format(
             self.keyspace_name, rf))
         session.execute(
-            "CREATE TABLE {0.keyspace_name}.{0.table_name} (pk int, ck int, v int, PRIMARY KEY(pk, ck))"
+            "CREATE TABLE {0.keyspace_name}.{0.table_name} (pk int, ck int, v blob, PRIMARY KEY(pk, ck))"
             "WITH compaction = {{"
             "'class': 'TimeWindowCompactionStrategy',"
             "'compaction_window_unit': '{0.window_unit}',"
             "'compaction_window_size': {0.window_size} }}".format(self))
 
     def _simulate_write_process_in_minutes(self, session, duration_minutes=20, start_from_minute=0,
-                                           flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=10):
+                                           flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=10, size=1):
         """Simulate a write process across duration minutes.
 
         We use `USING TIMESTAMP` to distribute the writes evenly
@@ -1329,15 +1332,23 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         exclude_nodes = flushing_exclude_nodes if flushing_exclude_nodes else []
         insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?)"
                                            "USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
-        rand_pks = set()
-        while len(rand_pks) < num_pks:
-            rand_pks.add(random.randint(-2147483647, 2147483647))
+        v = b"a" * size
+
+        if isinstance(num_pks, list):
+            pks = num_pks
+        else:
+            rand_pks = set()
+
+            while len(rand_pks) < num_pks:
+                rand_pks.add(random.randint(-2147483647, 2147483647))
+            pks = rand_pks
+
         flushing_nodes = [node for node in self.cluster.nodelist() if node not in exclude_nodes]
         for t in range(start_from_minute * 60, duration_minutes * 60):
             concurrent.execute_concurrent_with_args(
                 session,
                 insert_statement,
-                [(pk, t, 0, self.seconds_to_micros(t)) for pk in rand_pks])
+                [(pk, t, v, self.seconds_to_micros(t)) for pk in pks])
 
             # Flush every flush period in seconds on each node
             if t % flush_period_seconds == 0:
@@ -1580,7 +1591,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         session.execute("CREATE KEYSPACE {} "
                         " WITH replication = {{"
                         "'class': 'NetworkTopologyStrategy', 'dc1':1}}".format(self.keyspace_name))
-        session.execute("CREATE TABLE {}.{} (pk int, ck int, v int, PRIMARY KEY(pk, ck))"
+        session.execute("CREATE TABLE {}.{} (pk int, ck int, v blob, PRIMARY KEY(pk, ck))"
                         " WITH compaction = {{"
                         "'class': 'TimeWindowCompactionStrategy',"
                         "'compaction_window_unit': 'MINUTES',"
@@ -1692,6 +1703,179 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                       f"max_timestamp_seconds = {span_info.max_timestamp_seconds} " + \
                       f"window_size_in_seconds = {self.window_size * 60}"
                 assert span_info.is_spanning_one_window, msg
+
+    @pytest.mark.single_node
+    def test_reshape_sstables_different_size_after_change_window_size(self):
+        """ Reshaping table of similar size
+
+            If window size was changed and a lot of sstables should be
+            reshaped, the bucket of sstables should contain files
+            of similar size.
+
+            1. Create 64 sstables with window size 1 minute and
+            32 sstables with size ~1k, other 32 sstables with size ~2M
+            2. Change window size to 64.
+            3. Restart node
+            4. Validate that reshape process sstables in buckets by size
+
+
+        """
+        self.window_size = 1
+        self.window_unit = "MINUTES"
+        self.new_window_size = 64
+        self.new_window_unit = "MINUTES"
+        self.small_file_size = 5_000
+        self.sstable_size_distribution = [
+            {"duration": 16, "sstable_size": 10},
+            {"duration": 32, "sstable_size": 1_000_000},
+            {"duration": 48, "sstable_size": 10},
+            {"duration": 64, "sstable_size": 1_000_000},
+        ]
+
+        self.run_flow_generate_and_reshape_twcs_sstables()
+
+    @pytest.mark.single_node
+    def test_reshape_sstables_after_change_window_size_when_small_files_more_than_large(self):
+        """ Reshaping table of similar size but different number
+
+            If window size was changed and a lot of sstables should be
+            reshaped, the bucket of sstables should contain files
+            of similar size, Latest bucket will contain all left sstables
+            with no matter of size.
+
+            1. Create 96 sstables with window size 1 minute and
+               80 sstables with size ~1k, other 16 sstables with size ~2M
+            2. Change window size to 96.
+            3. Restart node
+            4. Validate that reshape process sstables in buckets by size
+
+
+        """
+        self.window_size = 1
+        self.window_unit = "MINUTES"
+        self.new_window_size = 100
+        self.new_window_unit = "MINUTES"
+        self.small_file_size = 5_000
+        self.sstable_size_distribution = [
+            {"duration": 32, "sstable_size": 10},
+            {"duration": 40, "sstable_size": 10},
+            {"duration": 72, "sstable_size": 10},
+            {"duration": 80, "sstable_size": 1_000_000},
+            {"duration": 96, "sstable_size": 10},
+        ]
+
+        self.run_flow_generate_and_reshape_twcs_sstables()
+
+    @pytest.mark.single_node
+    def test_reshape_sstables_after_change_window_size_and_unit(self):
+        """ Reshaping table of similar size but different number
+
+            If window size was changed and a lot of sstables should be
+            reshaped, the bucket of sstables should contain files
+            of similar size, Latest bucket will contain all left sstables
+            with no matter of size.
+
+            1. Create 120 sstables with window size 1 minute and
+               80 sstables with size ~1k, other 40 sstables with size ~2M
+            2. Change window size to 2 HOURS.
+            3. Restart node
+            4. Validate that reshape process sstables in buckets by size
+        """
+        self.window_size = 1
+        self.window_unit = "MINUTES"
+        self.new_window_size = 2
+        self.new_window_unit = "HOURS"
+        self.small_file_size = 5_000
+        self.sstable_size_distribution = [
+            {"duration": 32, "sstable_size": 10},
+            {"duration": 40, "sstable_size": 1_000_000},
+            {"duration": 72, "sstable_size": 10},
+            {"duration": 80, "sstable_size": 1_000_000},
+            {"duration": 96, "sstable_size": 1},
+        ]
+
+        self.run_flow_generate_and_reshape_twcs_sstables()
+
+    def run_flow_generate_and_reshape_twcs_sstables(self):
+        [node1], session = self.prepare(1)
+        self._create_ks_cl_with_twcs(session, rf=1)
+        logger.debug("Simulate write process according sstable_size_distribution")
+
+        self.simulate_twcs_write_data_per_minute_by_size(session, self.sstable_size_distribution, num_pks=[1])
+
+        logger.debug("Compact sstables and validate window size per table")
+        node1.nodetool(f"compact {self.keyspace_name} {self.table_name}")
+        self._check_sstable_timestamps(node1)
+
+        logger.debug("Sort sstables by size")
+        sorted_sstables = self._group_sstables_by_size(node1, self.small_file_size)
+
+        node1.nodetool(f"disableautocompaction {self.keyspace_name} {self.table_name}")
+
+        logger.debug(
+            f"Change window size to {self.new_window_size} {self.new_window_unit} and alter table with new settings")
+        session.execute(f"ALTER TABLE {self.keyspace_name}.{self.table_name} WITH compaction = {{"
+                        "'class': 'TimeWindowCompactionStrategy',"
+                        f"'compaction_window_unit': '{self.new_window_unit}',"
+                        f"'compaction_window_size': {self.new_window_size} }}")
+        logger.debug("Restart node and waiting reshaping")
+        node1.stop(wait_other_notice=True)
+
+        mark = node1.mark_log()
+        node1.start(wait_other_notice=True)
+        found = node1.grep_log(r"compaction - \[Reshape {ks}\.{cf} .*\] Reshaping \[(.*)\]".format(ks=self.keyspace_name, cf=self.table_name),
+                               from_mark=mark)
+
+        logger.debug("Verify that reshaping was run for buckets with sstable similar size")
+        assert len(found) > 0, f"Reshaping buckets found: {len(found)}, Reshape was not run"
+
+        logger.debug("Check 1st buckets. they should contain only small files")
+        for bucket in found[:-1]:
+            list_of_reshaping_sstables = [sstable.split(":")[0] for sstable in bucket[1].group(
+                1).strip().split(",") if "origin=reshape" not in sstable]
+            for sstable in list_of_reshaping_sstables:
+                assert sstable in sorted_sstables["small"], \
+                    f"Sstable {sstable} with size {sorted_sstables['large']['sstable']} in wrong bucket"
+                sorted_sstables["small"].pop(sstable)
+
+        logger.debug("Check that last bucket contain all rest sstables")
+        bucket = found[-1:][0]
+        list_of_reshaping_sstables = [sstable.split(":")[0] for sstable in bucket[1].group(
+            1).strip().split(",") if "origin=reshape" not in sstable]
+        for sstable in list_of_reshaping_sstables:
+            assert sstable in sorted_sstables["large"] or sstable in sorted_sstables["small"], \
+                f"Sstable {sstable} doesn't belong to any bound"
+
+        logger.debug("Compact sstables and validate window size per table")
+        node1.nodetool(f"compact {self.keyspace_name} {self.table_name}")
+
+        logger.debug(
+            "Validate that after node started, All sstables compacted to 1 with window {self.new_window_size} {self.new_window_unit}")
+        self._check_sstable_timestamps(node1, window_size=self.new_window_size, window_unit=self.new_window_unit)
+        sstables = get_list_of_sstables(node1, self.keyspace_name, self.table_name)
+        assert len(sstables) == 1, f"invalid number of sstables {len(sstables)}, Expected 1"
+
+    def simulate_twcs_write_data_per_minute_by_size(self, session, sstable_size_distribution, num_pks):
+        prev_min = 0
+        for period in sstable_size_distribution:
+            self._simulate_write_process_in_minutes(session, duration_minutes=period["duration"],
+                                                    start_from_minute=prev_min,
+                                                    flush_period_seconds=30,
+                                                    num_pks=num_pks,
+                                                    size=period["sstable_size"])
+            prev_min = period["duration"]
+
+    def _group_sstables_by_size(self, node: ScyllaNode, size_criteria: int) -> Dict[str, Dict[str, int]]:
+        sstables = get_list_of_sstables(node, self.keyspace_name, self.table_name, suffix="-Data.db")
+        sorted_sstables = {"small": {}, "large": {}}
+        for sstable in sorted(sstables):
+            size = os.path.getsize(sstable)
+            if size <= size_criteria:
+                sorted_sstables["small"].update({sstable: size})
+            else:
+                sorted_sstables["large"].update({sstable: size})
+
+        return sorted_sstables
 
 
 @pytest.mark.dtest_full
