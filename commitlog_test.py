@@ -854,10 +854,15 @@ class TestCommitLog(Tester):
         logger.debug(f"commitlog_segment_size_in_mb={commitlog_segment_size_in_mb}")
         logger.debug(f"commitlog_total_space_in_mb={commitlog_total_space_in_mb}")
 
+        # Calculate a reasonably low commitlog_disk_usage_threshold, flushing will be triggered
+        # at this point. We want something that is within reachable range
+        commitlog_disk_usage_threshold = int(total_space_limit / 2)
+
         # By default periodic commitlog_sync mode will be used, so we have chance
         # to accumulate more commitlogs.
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': commitlog_segment_size_in_mb,
                                                 'commitlog_total_space_in_mb': commitlog_total_space_in_mb,
+                                                'commitlog_flush_threshold_in_mb': commitlog_disk_usage_threshold,
                                                 'commitlog_reuse_segments': True,
                                                 'commitlog_use_hard_size_limit': True})
 
@@ -873,13 +878,6 @@ class TestCommitLog(Tester):
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 1)
         create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
-
-        # Calculate the commitlog_disk_usage_threshold, flushing will be triggered
-        # before when we only have a half segment left before hitting used == max.
-        if total_space_limit > commitlog_segment_size_in_mb / 2:
-            commitlog_disk_usage_threshold = total_space_limit - commitlog_segment_size_in_mb / 2
-        else:
-            commitlog_disk_usage_threshold = total_space_limit
 
         # Fill data by CS workload, a set of commitlogs will be generated for testing the space limit
         cs_n = max(int(total_space_limit * 200), 20000)
