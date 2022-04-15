@@ -222,15 +222,18 @@ class TestOfflineTools(Tester):
         cluster.populate(1).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
 
+        def assert_rc(rc, expected, out, error):
+            assert rc == expected, f"Invalid exit code: {str(rc)}\nstdout:\n{out}\nstderr:\n{error}"
+
         # test on nonexistent keyspace
         (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
         assert "Unknown keyspace/table keyspace1.standard1" in err, f"Message was not found in stderr:\nstdout:\n{out}\nstderr:\n{err}"
-        assert rc == 1, f"Invalid exit code: {str(rc)}"
+        assert_rc(rc, 1, out, err)
 
         # test on nonexistent sstables:
         node1.stress(['write', 'n=100', '-schema', 'replication(factor=1)'])
         (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
-        assert rc == 0, f"Invalid exit code: {str(rc)}"
+        assert_rc(rc, 0, out, err)
 
         # Generate multiple sstables and test works properly in the simple case
         node1.stress(['write', 'n=10K', '-schema', 'replication(factor=1)'])
@@ -243,7 +246,7 @@ class TestOfflineTools(Tester):
 
         (out, error, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
         logger.info(out)
-        assert rc == 0, f"Invalid exit code: {str(rc)}"
+        assert_rc(rc, 0, out, err)
 
         # STDOUT of the sstableverify command consists of multiple lines which may contain
         # Java-normalized paths. To later compare these with Python-normalized paths, we
@@ -292,7 +295,7 @@ class TestOfflineTools(Tester):
 
         assert re.search(regex, out) or re.search(
             regex, error), f"'{regex}' was not found in sstableverify standard output or error:\nstdout:\n{out}\nstderr:\n{error}"
-        assert rc == 1, f"Invalid exit code: {str(rc)}"
+        assert_rc(rc, 1, out, err)
 
     @pytest.mark.skip("Skip test due to issue: scylladb/scylla-tools-java#154")
     @pytest.mark.single_node
