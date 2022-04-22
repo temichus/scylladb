@@ -1401,6 +1401,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self._check_sstable_timestamps(node1)
         node2.start(wait_for_binary_proto=True)
         node2.repair(['-seq', self.keyspace_name])
+        node2.flush()
 
         self._check_sstable_timestamps(node1)
         self._check_sstable_timestamps(node2)
