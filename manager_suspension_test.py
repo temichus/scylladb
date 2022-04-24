@@ -26,6 +26,28 @@ class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
         else:
             raise AssertionError("Test creation while the manager is suspended did not fail")
 
+    def test_suspend_on_resume_start_tasks_without_duration(self):
+        """
+        New in manager 3.0
+
+        The on-resume-start-tasks flag in the sctool suspend command is meant to be used in conjunction
+        with the duration flag.
+        If on-resume-start-tasks is used without duration, the command should fail. The test makes sure
+        of that.
+        """
+        self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(self.cluster.nodelist()[0], name=CLUSTER_NAME)
+
+        try:
+            mgr_cluster.suspend(on_resume_start_tasks=True)
+        except ScyllaManagerError as err:
+            assert "duration" in err.args[0].lower(), \
+                f"Suspending the cluster with the 'on-resume-start-tasks' flag but without  duration failed, but " \
+                f"without a proper error message: {err.args[0]}"
+        else:
+            raise ScyllaManagerError("Suspending the cluster with 'on-resume-start-tasks' but without 'duration' "
+                                     "did not fail")
+
     def test_create_scheduled_task_while_suspended(self):
         """
         When suspended, the manager lets the user scheduled task only at least 8 hours in the future.
