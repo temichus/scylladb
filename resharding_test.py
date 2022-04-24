@@ -199,6 +199,7 @@ class TestReshardingSingleNodeGating(ReshardingBase):
         self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
 
+@pytest.mark.dtest_full
 @pytest.mark.single_node
 @pytest.mark.parametrize("node_count,compaction_strategy,murmur3", [
     (1, strategy, MURMUR3)
