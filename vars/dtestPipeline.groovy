@@ -23,7 +23,7 @@ def call(Map pipelineParams) {
             string(name: 'RANDOM_DTESTS_SEED', defaultValue: '', description: 'Optionally specify a random seed for reproducing a run of random dtests (printed as `random_seed` by dtest.sh)')
             booleanParam(name: 'DTEST_DEBUG_INFO', defaultValue: false, description: 'Check this to print debug to stdout when running dtest')
             booleanParam(name: 'DTEST_KEEP_LOGS', defaultValue: false, description: 'Check this, to keep dtest logs')
-            string(name: 'INCLUDE_DTESTS', defaultValue: '' , description: """Specify which dtests to run. default for release:
+            string(name: 'INCLUDE_DTESTS', defaultValue: "${pipelineParams.get('INCLUDE_DTESTS', '')}" , description: """Specify which dtests to run. default for release:
                                                                  -m 'dtest_full and not dtest_heavy and not dtest_long',
                                                                  for debug: -m dtest_debug """)
             string(name: 'EXCLUDE_DTESTS', defaultValue: '', description: 'Specify dtests to exclude.')
