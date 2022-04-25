@@ -12,17 +12,16 @@ from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime as dt
+from functools import reduce
 from pathlib import Path
-from os.path import getsize
 from threading import Thread
-from typing import Optional, List
+from typing import Optional, List, Match, AnyStr
 
 import pytest
 import sstable_tools.statistics
 from cassandra import ConsistencyLevel, concurrent
 from cassandra.cluster import Session
 from cassandra.concurrent import execute_concurrent_with_args
-
 from ccmlib.node import NodetoolError, TimeoutError, Node
 from ccmlib.scylla_node import ScyllaNode
 
@@ -36,6 +35,7 @@ from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_
 from tools.marks import enterprise_only_param
 from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
+from tools.scylla_defines import CompactionStrategy
 from tools.stress import fill_data_by_cs
 
 logger = logging.getLogger(__name__)
@@ -1847,3 +1847,128 @@ class TestValidationCompaction(CompactionAdditionalTester):
     @staticmethod
     def _grep_log_patterns(node: Node, patterns: List[str]):
         return [node.grep_log(pattern) for pattern in patterns]
+
+
+class TestLCSSSTablePromotion(CompactionAdditionalTester):
+    KS = "ks"
+    CF = "cf"
+    TABLE_LEVELS_PATTERN = "SSTables in each level:\s*\[(?P<sstable_list>[\d,\s/]*)\]"
+    LCS = {'class': CompactionStrategy.LEVELED.value, 'sstable_size_in_mb': 1}
+    STCS = {'class': CompactionStrategy.SIZE_TIERED.value}
+
+    def test_lcs_sstable_promotion(self):
+        """
+        This test validates that LCS adheres to the restrictions
+        on promoting sstables to higher levels. The basic restriction
+        is that when promoting sstables to higher levels, for sstable count of
+        level L: L <= 10 x L-1
+
+        Test steps:
+        1. Create a single-node cluster.
+        2. Create keyspace and column family with a small sstable
+        size value for test efficiency.
+        3. Populate the cluster with data.
+        4. Flush the data to sstables.
+        5. Wait for Scylla to finish compacting the sstables.
+        6. Assert that the sstables levels conform to the LCS
+        promotion restriction, i.e.:
+        - sstables are not all in the top level
+        - the distribution conforms to the L <= 10 x L-1 restriction
+
+        Scylla commit: 9de7abdc80721c14663fc698c7132a0dce878c18
+        """
+        node, session, storage_service_client = self._prepare()
+        create_ks(session=session, name=self.KS, rf=1)
+        create_cf(session=session, name=self.CF, columns={'c1': 'text', 'c2': 'text'},
+                  compaction=self.LCS)
+        insert_c1c2(session=session, n=1_000_000)
+        node.flush()
+
+        node.wait_for_compactions()
+
+        regex_match = self._get_table_levels(node=node)
+        self._validate_levels_distribution(regex_match)
+
+    @pytest.mark.require("#scylladb/scylla#10378")
+    def test_lcs_table_promotion_major_compaction(self):
+        node, session, storage_service_client = self._prepare()
+        create_ks(session=session, name='ks', rf=1)
+        create_cf(session=session, name='cf', columns={'c1': 'text', 'c2': 'text'},
+                  compaction=self.LCS)
+        node.nodetool(f'disableautocompaction {self.KS} {self.CF}')
+        insert_c1c2(session=session, n=1_000_000)
+        node.flush()
+
+        storage_service_client.compact_ks_cf(keyspace=self.KS, cf=self.CF)
+
+        regex_match = self._get_table_levels(node=node)
+        self._validate_levels_distribution(regex_match)
+
+    def test_lcs_table_promotion_after_stcs_migration(self):
+        node, session, storage_service_client = self._prepare()
+        create_ks(session=session, name=self.KS, rf=1)
+        create_cf(session=session, name=self.CF, columns={'c1': 'text', 'c2': 'text'},
+                  compaction=self.STCS)
+        keys_to_insert = [20_000, 80_000, 150_000, 250_000, 500_000]
+
+        for item in keys_to_insert:
+            insert_c1c2(session=session, n=item)
+            node.flush()
+
+        session.execute(f"ALTER TABLE ks.cf WITH compaction={self.LCS}")
+        node.nodetool(f"refresh {self.KS} {self.CF}")
+
+        regex_match = self._get_table_levels(node=node)
+        self._validate_levels_distribution(regex_match)
+
+    def _get_table_levels(self, node: Node) -> Optional[Match[AnyStr]]:
+        """
+        Run <nodetool cfstats> command and get the sstable levels
+        info from it.
+
+        Example:
+            Cfstats output:
+                Keyspace: keyspace1
+                Read Count: 0
+                Read Latency: NaN ms.
+                Write Count: 41656
+                Write Latency: 0.016199467063568274 ms.
+                Pending Flushes: 0
+                Table: standard1
+                SSTable count: 17
+                SSTables in each level: [0, 2, 15]
+                Space used (live): 28331544
+                Space used (total): 38060888
+                ...
+                ...
+                Maximum tombstones per slice (last five minutes): 0.0
+
+            Regex: SSTables in each level:\s*\[(?P<sstable_list>[\d,\s/]*)\]
+            returned Match with groupdict: {"sstable_list": "0, 2, 15"}
+        """
+        cfstats = "\n".join(node.nodetool(f"cfstats {self.KS}.{self.CF}"))
+        sstable_levels_line_pattern = re.compile(self.TABLE_LEVELS_PATTERN)
+        return sstable_levels_line_pattern.search(cfstats)
+
+    @staticmethod
+    def _validate_levels_distribution(levels_regex: Match[AnyStr]):
+        assert levels_regex
+
+        # Get the sstable_list from the Match object and parse it into a list of integers
+        levels = [levels_regex.groupdict().get("sstable_list").split(",")][0]
+
+        if "/" in levels[-1]:
+            levels[-1] = levels[-1].split("/")[0]
+
+        levels = [int(item) for item in levels]
+        assert levels[-1] != sum(levels), "Expected sstables to not be promoted solely to the " \
+                                          "top level, but found all in the top level: %s" % levels
+
+        level_count_validation = reduce(lambda x, y: y >= (x * 10), levels)
+        assert level_count_validation, "Expected each LCS level to be at least 10x of the previous " \
+                                       "level, but they were not: %s" % levels
+
+    def _prepare(self):
+        [node], session = self.prepare(1)
+        storage_service_client = StorageServiceClient(node=node)
+        return node, session, storage_service_client

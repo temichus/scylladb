@@ -1,4 +1,5 @@
 import logging
+import re
 
 import requests
 from ccmlib.cluster import Cluster
@@ -66,3 +67,11 @@ def run_rest_api(run_on_node: ScyllaNode, cmd, api_method: str = 'post'):
     result.raise_for_status()
     logger.debug(f"API result: {result.json()}")
     return result
+
+
+def wait_for_compactions(node) -> None:
+    pattern = re.compile("pending tasks: 0")
+    while True:
+        output, err = node.nodetool("compactionstats", capture_output=True)
+        if pattern.search(output):
+            break
