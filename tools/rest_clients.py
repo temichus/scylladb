@@ -42,5 +42,13 @@ class StorageServiceClient:
 
         return response
 
+    def compact_ks_cf(self, keyspace: str, cf: str) -> Response:
+        params = {"cf": cf} if cf else {}
+        path = f"keyspace_compaction/{keyspace}"
+
+        logger.debug("Making REST API request to: %s with params: %s", self._full_url(path), params)
+        response = requests.post(url=self._full_url(path), params=params)
+        return response
+
     def _full_url(self, path: str):
         return f"{self._endpoint_url}{path}"
