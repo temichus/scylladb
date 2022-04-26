@@ -18,7 +18,9 @@ from ccmlib.scylla_node import ScyllaNode
 import pytest
 
 from dtest_class import Tester, create_ks, create_cf, get_ip_from_node, wait_for
+from tools.assertions import assert_row_count
 from tools.data import insert_c1c2, query_c1c2
+from tools.files import get_node_cf_dir, remove_files_in_folder
 from tools.metrics import get_node_metrics
 from tools.cluster import run_rest_api
 
@@ -225,17 +227,13 @@ class RepairAdditionalBase(Tester):
     def _repair(self, node, options=[]):
         return node.repair(options)
 
-    def _run_repair_and_wait_for_compactions(self, node, more_options, ks: str, cf: str, aux_cf: str = None):
+    @staticmethod
+    def _run_repair_and_check_completed(node, more_options, ks: str, cf: str, from_mark: int, aux_cf: str = None):
         repair_logs = [
             'repair - repair.*: Started to shutdown off-strategy compaction updater',
             'repair - repair.*: Finished to shutdown off-strategy compaction updater',
             'repair - repair.*: completed successfully',
         ]
-        off_strategy_compaction_logs = [
-            f'Starting off-strategy compaction for {ks}.{cf}',
-            f'Done with off-strategy compaction for {ks}.{cf}'
-        ]
-        from_mark = node.mark_log()
 
         logger.debug('Start repair on the %s.%s', ks, cf)
         node.repair(options=[*more_options, ks, cf])
@@ -251,6 +249,15 @@ class RepairAdditionalBase(Tester):
             logger.debug('Run repair on other table to make sure that repair on one table does not affect '
                          'off-strategy compaction timer on other table')
             node.repair(options=[*more_options, ks, aux_cf])
+
+    def _run_repair_and_wait_for_compactions(self, node, more_options, ks: str, cf: str, aux_cf: str = None):
+        off_strategy_compaction_logs = [
+            f'Starting off-strategy compaction for {ks}.{cf}',
+            f'Done with off-strategy compaction for {ks}.{cf}'
+        ]
+        from_mark = node.mark_log()
+        self._run_repair_and_check_completed(node=node, more_options=more_options, ks=ks, cf=cf,
+                                             from_mark=from_mark, aux_cf=aux_cf)
 
         try:
             run_rest_api(node, f"/storage_service/keyspace_offstrategy_compaction/{ks}?cf={cf}")
@@ -3173,3 +3180,63 @@ class TestRepairAdditional(RepairAdditionalBase):
         for matches in matchings:
             peers = matches[1].groups()[0].split(",")
             assert set(peers[0]) == set(node2_1.address()), "New node should fetched data only from the same dc"
+
+    def test_postpone_reshape_sstables_created_by_repair(self):
+        """
+        This test covers https://github.com/scylladb/scylla/commit/b6828e899ae214d8571464ec121f237069c1c4f1 commit.
+        Since 5.0
+        Before this commit reshaping was run synchronous, meaning that node would only become online once all reshape
+        activity completed.
+        Using of off-strategy means that reshape runs asynchronous and node will be available faster.
+
+        The test scenario:
+        - delete SSTables on first node
+        - run repair on second node
+        - wait for repair is finished - new SSTables are recreated on the fist node by repair
+        - re-start first node
+        - validate that reshaping was started by off-strategy mechanism
+        - validate rows count
+        """
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2 = cluster.nodelist()
+        keyspace = 'ks'
+        table = 'cf'
+        with self.patient_cql_connection(node1) as session:
+            create_ks(session, keyspace, 2)
+            create_cf(session, table, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+
+            rows = 10000
+            logger.info(f"Insert {rows} rows")
+            insert_c1c2(session=session, keys=range(0, rows), consistency=ConsistencyLevel.ONE)
+            cluster.flush()
+
+            table_folder = get_node_cf_dir(node=node1, ks_name=keyspace, cf_name=table)
+            logger.info(f"Remove SSTables from '{table_folder}' folder")
+            remove_files_in_folder(table_folder)
+
+            # Restart the node1 because node1 is holding file descriptors to deleted files in data dir,
+            # so it can still read from them even though they cannot be found in the directory listing
+            logger.info(f"Restart {node1.name} node")
+            node1.stop(wait_other_notice=True)
+            node1.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+            from_mark = node2.mark_log()
+            self._run_repair_and_check_completed(node=node2, more_options=[], ks=keyspace, cf=table,
+                                                 from_mark=from_mark)
+
+            logger.info(f"Stop {node1.name} node")
+            node1.stop(wait_other_notice=True)
+
+            from_mark = node1.mark_log()
+            logger.info(f"Start {node1.name} node")
+            node1.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+            assert node1.grep_log(rf"Starting off-strategy compaction for {keyspace}.{table}", from_mark=from_mark),  \
+                "Expected that off-strategy compaction is started, but it was not started"
+
+            assert node1.grep_log(rf"Reshape {keyspace}.{table}", from_mark=from_mark), \
+                "Expected that reshape is started, but it was not started"
+
+            assert_row_count(session=session, table_name=table, expected=rows,
+                             consistency_level=ConsistencyLevel.QUORUM)

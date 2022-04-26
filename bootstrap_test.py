@@ -13,11 +13,12 @@ from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib.node import NodeError
 from psutil import Process
 
+from ccmlib.scylla_node import ScyllaNode
 from dtest_class import create_cf, create_ks, Tester, get_ip_from_node
 from dtest_setup import DTestSetup
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.assertions import (assert_almost_equal,
-                              assert_one)
+                              assert_one, assert_all)
 from tools.cluster import new_node
 from tools.data import query_c1c2, insert_c1c2, create_c1c2_table
 from tools.intervention import InterruptBootstrap, KillOnBootstrap
@@ -131,23 +132,29 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         cluster = self.cluster
         cluster.set_configuration_options(values={'enable_repair_based_node_ops': True})
         keys = 10000
+        keyspace_name = 'ks'
+        table_name = 'cf'
 
         # Create a single node cluster
         cluster.populate(1)
         node1 = cluster.nodelist()[0]
         cluster.start()
 
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 1)
-        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        with self.patient_cql_connection(node1) as session:
+            create_ks(session, keyspace_name, 1)
+            create_cf(session, table_name, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_statement = session.prepare("INSERT INTO ks.cf (key, c1, c2) VALUES (?, 'value1', 'value2')")
-        execute_concurrent_with_args(session, insert_statement, [['k%d' % k] for k in range(keys)])
+            insert_statement = session.prepare(f"INSERT INTO {keyspace_name}.{table_name} (key, c1, c2) "
+                                               f"VALUES (?, 'value1', 'value2')")
+            execute_concurrent_with_args(session, insert_statement, [['k%d' % k] for k in range(keys)])
+
         node1.flush()
 
         # Bootstrapping a new node
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
+
+        self._validate_off_strategy_started(node=node2, keyspace=keyspace_name, table=table_name, from_mark=0)
 
         matched_logs = node2.grep_log("Compacted .* sstables to |Starting to bootstrap|Bootstrap completed!")
         bootstrap_status = None
@@ -158,7 +165,8 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             elif 'Bootstrap completed!' in line:
                 bootstrap_status = 'END'
                 break
-            if bootstrap_status == 'START' and 'Compact ks.cf ' in line and 'Compacted ' in line:
+            if bootstrap_status == 'START' and f'Compact {keyspace_name}.{table_name} ' in line \
+                    and 'Compacted ' in line:
                 raise Exception("Unexpected compaction of test table occurred during bootstrap, off-strategy doesn't"
                                 " work")
         assert bootstrap_status == 'END'
@@ -497,6 +505,25 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             pass
         node4.watch_log_for(expected_error, from_mark=mark)
 
+    @staticmethod
+    def _validate_off_strategy_started(node: ScyllaNode, keyspace: str, table: str, from_mark: int):
+        logger.debug(f"Validate off-strategy start on the {node.name} node")
+        off_strategy_message = f"Starting off-strategy compaction for {keyspace}.{table}"
+        matched_logs = node.grep_log(f"{off_strategy_message}|Starting to bootstrap",
+                                     from_mark=from_mark)
+        bootstrap_status = None
+        off_strategy_run = False
+        for item in matched_logs:
+            line = item[0]
+            if 'Starting to bootstrap' in line:
+                bootstrap_status = 'START'
+
+            if bootstrap_status == 'START' and off_strategy_message in line:
+                off_strategy_run = True
+                break
+
+        assert off_strategy_run, "off-strategy was not started during bootstrap"
+
     def test_decommissioned_wiped_node_can_join(self):
         """
         @jira_ticket CASSANDRA-9765
@@ -506,22 +533,25 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         cluster.populate(3)
         cluster.start(wait_for_binary_proto=True)
 
-        stress_table = 'keyspace1.standard1'
+        keyspace_name = 'keyspace1'
+        table_name = 'standard1'
+        query = f"SELECT * FROM {keyspace_name}.{table_name}"
 
         # write some data
         node1 = cluster.nodelist()[0]
         node1.stress(['write', 'n=10K', '-rate', 'threads=8'])
 
-        session = self.patient_cql_connection(node1)
-        original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
+        with self.patient_cql_connection(node1) as session:
+            original_rows = list(session.execute(query))
 
         # Add a new node, bootstrap=True ensures that it is not a seed
         logger.info("Starting node4")
         node4 = cluster.new_node(4, auto_bootstrap=True)
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
 
-        session = self.patient_cql_connection(node4)
-        assert original_rows == list(session.execute("SELECT * FROM {}".format(stress_table,)))
+        with self.patient_cql_connection(node4) as session:
+            assert_all(session=session, query=query, expected=original_rows, cl=ConsistencyLevel.QUORUM,
+                       ignore_order=True)
 
         # Decommision the new node and wipe its data
         logger.info("Decommissioning node4")
@@ -544,6 +574,8 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
         logger.debug("Waiting for node4 to join")
         node4.watch_log_for("Starting to bootstrap", from_mark=mark, timeout=0)
+
+        self._validate_off_strategy_started(node=node4, keyspace=keyspace_name, table=table_name, from_mark=mark)
 
     def test_failed_bootstap_wiped_node_can_join(self):
         """
