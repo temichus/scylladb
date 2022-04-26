@@ -178,3 +178,12 @@ def load_files_with_sstableloader(files_dir, node, keyspace, table, extra_args=N
                             (" ".join(args), exit_status, stdout, stderr))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def remove_files_in_folder(folder, in_root_folder_only=True):
+    for root, dirs, files in os.walk(folder):
+        for file in files:
+            os.remove(os.path.join(root, file))
+
+        if in_root_folder_only:
+            break
