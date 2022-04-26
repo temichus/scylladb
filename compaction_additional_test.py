@@ -1370,7 +1370,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self._sstable_count_is_close_to_time_windows_multiplied_by_shards_count(node2, time_windows, shard_count)
 
         # verify write amplification by validation only single reshape compaction was executed for each shard
-        reshapes = node2.grep_log(f"compaction - [[]Reshape {self.keyspace_name}.{self.table_name} .*[]] Reshaped")
+        reshapes = node2.grep_log(rf"compaction - \[Reshape {self.keyspace_name}.{self.table_name} .*\] Reshaped")
         assert len(list(reshapes)) == shard_count, "There should be only one table reshape per shard"
 
     def test_streaming_decommission(self):
