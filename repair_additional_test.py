@@ -184,6 +184,44 @@ class RepairAdditionalBase(Tester):
         for stmt in stmts:
             session.execute(stmt)
 
+    def _run_repair_api(self, run_on_node: ScyllaNode, keyspace: str, ignore_nodes: list = None,
+                        await_completion: bool = True):
+        """
+        :param run_on_node: node to send the REST API command.
+        :param keyspace: mandatory parameter for repair.
+        :param ignore_nodes: list of nodes to be excluded by repair.
+        :param await_completion: wait for repair command to complete or continue immediately.
+        :return:
+        """
+        repair_cmd = f"/storage_service/repair_async/{keyspace}"
+        if ignore_nodes:
+            ignore_nodes_ips = ','.join(node.address() for node in ignore_nodes)
+            repair_cmd += f"?ignore_nodes={ignore_nodes_ips}"
+        result = run_rest_api(run_on_node=run_on_node, cmd=repair_cmd)
+        if await_completion:
+            self.wait_for_repair(run_on_node=run_on_node, repair_id=result.json())
+
+    def _setup_cluster_with_table(self):
+        cluster = self.cluster
+        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
+        cluster.populate(3).start()
+        node1 = cluster.nodelist()[0]
+        keyspace = 'ks'
+        table = 'cf'
+        with self.patient_cql_connection(node1) as session:
+            # Create keyspace and table.
+            create_ks(session, keyspace, 3)
+            create_cf(session, table, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        return keyspace, table
+
+    @staticmethod
+    def wait_for_repair(run_on_node, repair_id):
+        repair_id = str(repair_id)
+        await_cmd = f"/storage_service/repair_status?id={repair_id}"
+        wait_for(
+            func=lambda: run_rest_api(run_on_node=run_on_node, cmd=await_cmd, api_method='get').json() == 'SUCCESSFUL',
+            timeout=60, text=f"[{run_on_node.name}] Waiting for repair {repair_id} completion..")
+
     def _repair(self, node, options=[]):
         return node.repair(options)
 
@@ -2353,111 +2391,6 @@ class RepairAdditionalBase(Tester):
         self.prefill_table_data(session=test_session, partition_range_start=big_partition,
                                 partition_range_end=big_partition, rows_in_partition=self.BIG_PARTITION_ROWS)
 
-    def test_repair_large_partition_new_rows(self):
-        """
-                Add new keys on large-partitions-table for all nodes except for node2
-                Repair on node2
-                Make sure node2 receives/transfer the correct number of rows
-        """
-        self._setup_cluster_prefilled_with_large_partitions()
-
-        big_partition = self.PARTITIONS + 1
-        total_rows = self.PARTITIONS * self.ROWS_IN_PARTITION + self.BIG_PARTITION_ROWS
-
-        # Test adding new rows
-
-        node1 = self.cluster.nodelist()[0]
-        repaired_node = self.cluster.nodelist()[1]  # zero-based "2"
-
-        self.cluster.flush()
-        logger.debug("Stopping: {}".format(repaired_node.name))
-        repaired_node.stop(wait_other_notice=True)
-
-        logger.debug("Inserting new data on all nodes except for node 2...")
-        session = self.patient_cql_connection(node1)
-        session.set_keyspace(self.KEYSPACE_NAME)
-        num_of_new_rows = 50
-
-        stmts = []
-        logger.debug("Going to generate {} CQL inserts, for table {}".format(
-            num_of_new_rows, self.TABLE_NAME))
-        for i in range(1, num_of_new_rows + 1):
-            logger.debug("#{} cmd - ".format(i))
-            stmts.append(self.create_insert_command(pk=big_partition + i,
-                                                    ck=random.randint(1, self.ROWS_IN_PARTITION)))
-
-        for stmt in stmts:
-            session.execute(stmt)
-
-        # Bring up Node 2
-        logger.debug("Starting: {}".format(repaired_node.name))
-        repaired_node.start(wait_other_notice=True, wait_for_binary_proto=True)
-
-        logger.debug("starting repair on {}".format(repaired_node.name))
-        info = self._repair(repaired_node, [self.KEYSPACE_NAME])
-
-        # Check for correct number of rows on nodes
-        total_rows += num_of_new_rows
-
-        # Node 2 is expected to receive num_of_new_rows from other nodes, and transfer nothing.
-        expected_tx_row_nr = 0
-        expected_rx_row_nr = num_of_new_rows
-        self.verify_repair_tx_rx_rows(node_idx=2, expected_tx_row_nr=expected_tx_row_nr,
-                                      expected_rx_row_nr=expected_rx_row_nr,
-                                      list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
-
-        self.verify_num_of_rows_on_nodes(list_nodes=[node1, repaired_node], total_rows=total_rows)
-
-    def test_repair_large_partition_existing_rows(self):
-        """
-        Insert keys on large partitions for all nodes
-        Insert some updates for existing keys on all nodes except for node2
-        Repair on node2
-        Make sure node2 receives/transfer the correct number of rows
-        """
-
-        self._setup_cluster_prefilled_with_large_partitions()
-
-        # Prefill
-        partitions = self.PARTITIONS
-        rows_in_partition = self.ROWS_IN_PARTITION
-
-        big_partition = self.PARTITIONS + 1
-        big_partition_rows = 10000
-        total_rows = partitions * rows_in_partition + big_partition_rows
-
-        node1 = self.cluster.nodelist()[0]
-        repaired_node = self.cluster.nodelist()[1]  # zero-based "2"
-
-        # Test updating existing rows #################################################################################
-
-        self.cluster.flush()
-        logger.debug("Stopping: {}".format(repaired_node.name))
-        repaired_node.stop(wait_other_notice=True)
-        num_of_updates = 50
-        num_of_total_updates = num_of_updates * 2
-        logger.debug("Updating data on all nodes except for {}...".format(repaired_node.name))
-        self.write_table_updates(node=node1, partitions_range_end=partitions, rows_in_partition=rows_in_partition,
-                                 num_of_updates=num_of_updates)
-
-        self.write_table_updates(node=node1, partitions_range_end=big_partition, partitions_range_start=big_partition,
-                                 rows_in_partition=big_partition_rows, num_of_updates=num_of_updates)
-
-        # Bring up repaired_node
-        logger.debug("Starting: {}".format(repaired_node.name))
-        repaired_node.start(wait_other_notice=True, wait_for_binary_proto=True)
-
-        logger.debug("starting repair on {}".format(repaired_node.name))
-        info = self._repair(repaired_node, [self.KEYSPACE_NAME])
-
-        # repaired_node is expected to receive up-to num_of_updates rows from other nodes,
-        # and transfer as twice(NUM_OF_PEERS) much.
-        self.verify_repair_tx_rx_rows(node_idx=2, expected_tx_row_nr=num_of_total_updates * self.NUM_OF_PEERS,
-                                      expected_rx_row_nr=num_of_total_updates,
-                                      list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
-
-        self.verify_num_of_rows_on_nodes(list_nodes=[node1, repaired_node], total_rows=total_rows)
-
     @pytest.mark.skip('unimplemented')
     def _repair_of_cluster_all_nodes_are_out_of_sync(self):
         """
@@ -3007,43 +2940,110 @@ class TestRepairAdditional(RepairAdditionalBase):
             result = list(session.execute(query))
             assert len(result) == 2000, len(result)
 
-    def _run_repair_api(self, run_on_node: ScyllaNode, keyspace: str, ignore_nodes: list = None,
-                        await_completion: bool = True):
+    def test_repair_large_partition_new_rows(self):
         """
-        :param run_on_node: node to send the REST API command.
-        :param keyspace: mandatory parameter for repair.
-        :param ignore_nodes: list of nodes to be excluded by repair.
-        :param await_completion: wait for repair command to complete or continue immediately.
-        :return:
+                Add new keys on large-partitions-table for all nodes except for node2
+                Repair on node2
+                Make sure node2 receives/transfer the correct number of rows
         """
-        repair_cmd = f"/storage_service/repair_async/{keyspace}"
-        if ignore_nodes:
-            ignore_nodes_ips = ','.join(node.address() for node in ignore_nodes)
-            repair_cmd += f"?ignore_nodes={ignore_nodes_ips}"
-        result = run_rest_api(run_on_node=run_on_node, cmd=repair_cmd)
-        if await_completion:
-            self.wait_for_repair(run_on_node=run_on_node, repair_id=result.json())
+        self._setup_cluster_prefilled_with_large_partitions()
 
-    def _setup_cluster_with_table(self):
-        cluster = self.cluster
-        cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate(3).start()
-        node1 = cluster.nodelist()[0]
-        keyspace = 'ks'
-        table = 'cf'
-        with self.patient_cql_connection(node1) as session:
-            # Create keyspace and table.
-            create_ks(session, keyspace, 3)
-            create_cf(session, table, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-        return keyspace, table
+        big_partition = self.PARTITIONS + 1
+        total_rows = self.PARTITIONS * self.ROWS_IN_PARTITION + self.BIG_PARTITION_ROWS
 
-    @staticmethod
-    def wait_for_repair(run_on_node, repair_id):
-        repair_id = str(repair_id)
-        await_cmd = f"/storage_service/repair_status?id={repair_id}"
-        wait_for(
-            func=lambda: run_rest_api(run_on_node=run_on_node, cmd=await_cmd, api_method='get').json() == 'SUCCESSFUL',
-            timeout=60, text=f"[{run_on_node.name}] Waiting for repair {repair_id} completion..")
+        # Test adding new rows
+
+        node1 = self.cluster.nodelist()[0]
+        repaired_node = self.cluster.nodelist()[1]  # zero-based "2"
+
+        self.cluster.flush()
+        logger.debug("Stopping: {}".format(repaired_node.name))
+        repaired_node.stop(wait_other_notice=True)
+
+        logger.debug("Inserting new data on all nodes except for node 2...")
+        session = self.patient_cql_connection(node1)
+        session.set_keyspace(self.KEYSPACE_NAME)
+        num_of_new_rows = 50
+
+        stmts = []
+        logger.debug("Going to generate {} CQL inserts, for table {}".format(
+            num_of_new_rows, self.TABLE_NAME))
+        for i in range(1, num_of_new_rows + 1):
+            logger.debug("#{} cmd - ".format(i))
+            stmts.append(self.create_insert_command(pk=big_partition + i,
+                                                    ck=random.randint(1, self.ROWS_IN_PARTITION)))
+
+        for stmt in stmts:
+            session.execute(stmt)
+
+        # Bring up Node 2
+        logger.debug("Starting: {}".format(repaired_node.name))
+        repaired_node.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        logger.debug("starting repair on {}".format(repaired_node.name))
+        info = self._repair(repaired_node, [self.KEYSPACE_NAME])
+
+        # Check for correct number of rows on nodes
+        total_rows += num_of_new_rows
+
+        # Node 2 is expected to receive num_of_new_rows from other nodes, and transfer nothing.
+        expected_tx_row_nr = 0
+        expected_rx_row_nr = num_of_new_rows
+        self.verify_repair_tx_rx_rows(node_idx=2, expected_tx_row_nr=expected_tx_row_nr,
+                                      expected_rx_row_nr=expected_rx_row_nr,
+                                      list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
+
+        self.verify_num_of_rows_on_nodes(list_nodes=[node1, repaired_node], total_rows=total_rows)
+
+    def test_repair_large_partition_existing_rows(self):
+        """
+        Insert keys on large partitions for all nodes
+        Insert some updates for existing keys on all nodes except for node2
+        Repair on node2
+        Make sure node2 receives/transfer the correct number of rows
+        """
+
+        self._setup_cluster_prefilled_with_large_partitions()
+
+        # Prefill
+        partitions = self.PARTITIONS
+        rows_in_partition = self.ROWS_IN_PARTITION
+
+        big_partition = self.PARTITIONS + 1
+        big_partition_rows = 10000
+        total_rows = partitions * rows_in_partition + big_partition_rows
+
+        node1 = self.cluster.nodelist()[0]
+        repaired_node = self.cluster.nodelist()[1]  # zero-based "2"
+
+        # Test updating existing rows #################################################################################
+
+        self.cluster.flush()
+        logger.debug("Stopping: {}".format(repaired_node.name))
+        repaired_node.stop(wait_other_notice=True)
+        num_of_updates = 50
+        num_of_total_updates = num_of_updates * 2
+        logger.debug("Updating data on all nodes except for {}...".format(repaired_node.name))
+        self.write_table_updates(node=node1, partitions_range_end=partitions, rows_in_partition=rows_in_partition,
+                                 num_of_updates=num_of_updates)
+
+        self.write_table_updates(node=node1, partitions_range_end=big_partition, partitions_range_start=big_partition,
+                                 rows_in_partition=big_partition_rows, num_of_updates=num_of_updates)
+
+        # Bring up repaired_node
+        logger.debug("Starting: {}".format(repaired_node.name))
+        repaired_node.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        logger.debug("starting repair on {}".format(repaired_node.name))
+        info = self._repair(repaired_node, [self.KEYSPACE_NAME])
+
+        # repaired_node is expected to receive up-to num_of_updates rows from other nodes,
+        # and transfer as twice(NUM_OF_PEERS) much.
+        self.verify_repair_tx_rx_rows(node_idx=2, expected_tx_row_nr=num_of_total_updates * self.NUM_OF_PEERS,
+                                      expected_rx_row_nr=num_of_total_updates,
+                                      list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
+
+        self.verify_num_of_rows_on_nodes(list_nodes=[node1, repaired_node], total_rows=total_rows)
 
     def test_repair_ignore_nodes(self):
         """
