@@ -50,6 +50,12 @@ def getRelocArtifacts (String cloudUrl, String buildMode) {
     String url = getRelocatableLink(cloudUrl)
     String architecture = ""
 
+    // normalize the url to make sure it's a vaild s3 url
+    url = url.replaceFirst("http://", "")
+    if (! url.contains("s3://")) {
+		url = "s3://$url"
+    }
+
     String packageName = relocPackageName (
 		checkLocal: false,
 		mustExist: true,
