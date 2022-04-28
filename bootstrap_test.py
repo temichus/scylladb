@@ -815,12 +815,11 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         for k in range(1000):
             query_c1c2(session, k)
 
-    # Issue: the cluster can't start if the first (smallest) node isn't up #7726
-    @pytest.mark.require("scylladb/scylla#7726")
     def test_smallest_ip_join_late(self):
         """
         The first node has smallest ip in seeds list, it always skips the bootstrap.
-        In this test, we other nodes firstly, and start the first node later.
+        In this test we start the other nodes first, before the first node is started,
+        and we expect them to fail their bootstrap. See scylladb/scylla#7726
         """
         cluster = self.cluster
         cluster.populate(3)
@@ -834,28 +833,21 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         # node3: auto_bootstrap option will be ignored even it's set to False
         node3.set_configuration_options(values={'auto_bootstrap': False})
 
+        skip_shadow_round_msg = "All nodes.* are down.* Skip ShadowRound"
+        start_failure_msg = "Startup failed: .*Failed to learn about other nodes' tokens during bootstrap"
+
+        self.ignore_log_patterns.append(start_failure_msg)
+
         # only start node2 and node3, node2 will be the real `first node`
-        node2.start(wait_for_binary_proto=True)
-        node3.start(wait_for_binary_proto=True)
+        node2.start(wait_for_binary_proto=False, wait_other_notice=False)
 
-        skip_bootstrap_msg = "I am the first node in the cluster. Skip bootstrap"
-        start_bootstrap_msg = 'Starting to bootstrap'
+        node2.watch_log_for(exprs=skip_shadow_round_msg)
+        logger.info("Verified shadow round doesn't start on node2")
 
-        node2.watch_log_for(exprs=skip_bootstrap_msg)
-        logger.info("Verified bootstrap doesn't start on node2")
-        node3.watch_log_for(exprs=start_bootstrap_msg)
-        logger.info("Verified bootstrap started on node3")
+        node3.start(wait_for_binary_proto=False, wait_other_notice=False)
 
-        session = self.patient_exclusive_cql_connection(node2)
-        create_ks(session, 'ks', 3)
-        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-        insert_c1c2(session, n=1000)
-
-        node1.start(wait_for_binary_proto=True)
-        node1.watch_log_for(exprs=start_bootstrap_msg)
-        logger.info("Verified bootstrap started on node2")
-        for k in range(1000):
-            query_c1c2(session, k)
+        node2.watch_log_for(exprs=start_failure_msg)
+        node3.watch_log_for(exprs=start_failure_msg)
 
     def test_seeds_on_duty(self):
         """
