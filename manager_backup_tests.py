@@ -610,31 +610,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
                                                          mgr_cluster=mgr_cluster, healthy_node=node1,
                                                          number_of_rows="10000K", threads=50)
 
-    def test_failed_backup_snapshots_deleted_on_rerun(self):
-        node1, node2, node3 = self.config_and_create_cluster(nodes=3)
-        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-
-        # C-S for 2.5M rows minutes
-        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50',
-                             '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
-
-        backup_task = mgr_cluster.run_backup_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
-                                                     keyspace_list=["keyspace1"])
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=120, step=1)
-        self.cluster.stop_scylla_manager()
-        self.cluster.start_scylla_manager()
-
-        backup_task.wait_for_status(list_status=[TaskStatus.ABORTED], timeout=180, step=5)
-
-        backup_task.start(continue_task=False)
-        backup_task.wait_and_get_final_status(timeout=300)
-        assert backup_task.status == TaskStatus.DONE, "The restarted backup task failed!"
-        total_snapshot_list = list()
-        for node in self.cluster.nodelist():
-            total_snapshot_list.extend(self.extract_all_snapshot_names(node.nodetool("listsnapshots",
-                                                                                     capture_output=True)[0]))
-        assert len(total_snapshot_list) == 0, "Some snapshots were not deleted after the second run of the backup"
-
     def test_backup_while_node_is_drained(self):
         keyspace_table_and_key_range = {"ks": {"cf1": (1, 21)}}
         node1, node2, node3 = self._prepare_cluster_with_data(
@@ -800,39 +775,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
                 node.nodetool("listsnapshots", capture_output=True)[0]))
 
         return current_snapshot_set
-
-    def test_snapshot_deleted_upon_rerun(self):
-        node1, node2 = self.config_and_create_cluster(nodes=2)
-        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50', '-pop', 'seq=1..10000000',
-                             '-schema', 'compaction(strategy=SizeTieredCompactionStrategy)'])
-
-        backup_task = mgr_cluster.run_backup_command(keyspace_list=["keyspace1"], location_list=[
-                                                     "s3:{}".format(DESTINATION_BUCKET)])
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=.5)
-
-        self.cluster.stop_scylla_manager()
-        self.cluster.start_scylla_manager()
-
-        backup_task.wait_for_status(list_status=[TaskStatus.ABORTED], timeout=180, step=5)
-
-        pre_rerun_snapshot_set = self._get_total_snapshot_set()
-
-        for node in self.cluster.nodelist():
-            node.start_scylla_manager_agent(create_config=False)
-
-        session = self.patient_cql_connection(node1)
-        session.execute("TRUNCATE keyspace1.standard1;")
-        self.cluster.stress(['write', 'n=2500K', '-rate', 'threads=50', '-pop',
-                             'seq=10000001..20000000'])  # Modifying the data
-        backup_task.start(continue_task=False)
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=.5)
-        post_rerun_snapshot_set = self._get_total_snapshot_set()
-
-        assert not pre_rerun_snapshot_set.intersection(post_rerun_snapshot_set), \
-            f"There are common snapshots between \n{' '.join(pre_rerun_snapshot_set)}\nand" \
-            f"\n{' '.join(post_rerun_snapshot_set)}\neven though all of the failed run's snapshots should have been " \
-            f"deleted before the new ones were created"
 
     def test_delete_nonexisting_backup(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
@@ -1038,53 +980,6 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         logger.info(f"Sleeping '{sleep_time}' seconds before verifying the status of back is '{TaskStatus.NEW}'")
         sleep(sleep_time)
         backup_task.wait_for_status(list_status=[TaskStatus.NEW], timeout=100, step=1)
-
-    def test_disable_backup_task_during_its_run(self):
-        """
-        Create a backup task and update it during its run, and letting the task run until completion
-        Expected: The task will not stop due to the update
-        """
-        node1, *_ = self.config_and_create_cluster(nodes=2)
-        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-        keyspace_name = "keyspace1"
-        location = "s3:{}".format(DESTINATION_BUCKET)
-        cron_time_to_run = 30
-        cron = [str(cron_time_to_run), "*", "*", "*", "*", "*"]
-        stress_command = ['write', f'duration={cron_time_to_run - 1}s', '-rate', 'threads=50', '-schema',
-                          f'keyspace={keyspace_name}', 'compaction(strategy=SizeTieredCompactionStrategy)']
-
-        def insert_data_with_casandra_stress():
-            logger.info(f"Starting a stress command with following parameters: '{stress_command}")
-            node1.stress(stress_command)
-            logger.info("Finished entering all the data")
-
-        def disabled_backup_task(_backup_task):
-            sleep_time = abs(cron_time_to_run - datetime.now().second % cron_time_to_run)
-            logger.info(f"Sleeping '{sleep_time}' seconds before checking the backup status")
-            sleep(sleep_time)
-            _list_status = [TaskStatus.STARTING, TaskStatus.RUNNING]
-            logger.info(f"Waiting until the status of backup task '{_backup_task.id}' will be one of '{_list_status}'")
-            _backup_task.wait_for_status(list_status=_list_status, timeout=cron_time_to_run + 5, step=1)
-
-        logger.info(f"Creating a backup task with following values:"
-                    f"\nLocation: '{location}"
-                    f"\nKeyspace: '{keyspace_name}"
-                    f"\ncron time: '{cron}")
-        self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
-        backup_task = mgr_cluster.backup_api.backup(
-            keyspace_list=keyspace_name, location_list=location, cron=cron, cluster_name=mgr_cluster.id)
-        run_in_parallel([{"func": insert_data_with_casandra_stress},
-                         {"func": disabled_backup_task, "args": [backup_task]}])
-
-        logger.info(f"Disabling the backup task {backup_task.id}")
-        backup_task.enabled(is_enabled=False)
-        logger.info(f"Verifying the backup task '{backup_task.id}' is disabled")
-        backup_task.is_task_disabled()
-        logger.info(f"Verifying the backup task '{backup_task.id}' is still running")
-        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=10, step=1)
-        list_status = [TaskStatus.DONE]
-        logger.info(f"Waiting until the status of backup task '{backup_task.id}' will be '{list_status}'")
-        backup_task.wait_for_status(list_status=list_status, timeout=20, step=1)
 
     def test_update_backup_parameters(self):
         """
