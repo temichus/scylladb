@@ -13,7 +13,7 @@ import subprocess
 import time
 import uuid
 from collections import defaultdict
-from distutils.version import LooseVersion
+from packaging.version import Version
 from multiprocessing import Process, Queue
 from queue import Empty, Full
 
@@ -34,73 +34,75 @@ logger = logging.getLogger(__name__)
 # Used to build upgrade path(s) for tests. Some tests will go from start to finish,
 # other tests will focus on single upgrades from UPGRADE_PATH[n] to UPGRADE_PATH[n+1]
 
-TRUNK_VER = (3, 2)
+UPGRADE_PATH = []
 
-# maps protocol version to c* version(s)
-PROTOCOL_PATHS = {
-    1: [(2, 0), (2, 1), (2, 2)],
-    2: [(2, 0), (2, 1), (2, 2)],
-    3: [(2, 1), (2, 2), (3, 0), TRUNK_VER],
-    4: [(2, 2), (3, 0), TRUNK_VER]
-}
+# TRUNK_VER = (3, 2)
+#
+# # maps protocol version to c* version(s)
+# PROTOCOL_PATHS = {
+#     1: [(2, 0), (2, 1), (2, 2)],
+#     2: [(2, 0), (2, 1), (2, 2)],
+#     3: [(2, 1), (2, 2), (3, 0), TRUNK_VER],
+#     4: [(2, 2), (3, 0), TRUNK_VER]
+# }
+#
+# PROTOCOL_VERSION = int(os.environ.get('PROTOCOL_VERSION', 3))
+#
+# CUSTOM_PATH = os.environ.get('UPGRADE_PATH', None)
+# if CUSTOM_PATH:
+#     # provide a custom path like so: "1_2:2_0:2_1" to test upgrading from 1.2 to 2.0 to 2.1
+#     UPGRADE_PATH = []
+#     for _vertup in CUSTOM_PATH.split(':'):
+#         _major, _minor = _vertup.split('_')
+#         UPGRADE_PATH.append((int(_major), int(_minor)))
+# else:
+#     UPGRADE_PATH = PROTOCOL_PATHS[PROTOCOL_VERSION]
+#
+# LOCAL_MODE = os.environ.get('LOCAL_MODE', '').lower() in ('yes', 'true')
+# if LOCAL_MODE:
+#     REPO_LOCATION = os.environ.get('CASSANDRA_DIR')
+# else:
+#     REPO_LOCATION = "https://gitbox.apache.org/repos/asf/cassandra.git"
+#
+# # lets cache this once so we don't make a bunch of remote requests
+# GIT_LS = subprocess.check_output(["git", "ls-remote", "-h", "-t", REPO_LOCATION]).rstrip().decode('utf-8')
+#
+# # maps ref type (branch, tags) to ref names and sha's
+# MAPPED_REFS = defaultdict(dict)
+# for row in GIT_LS.split('\n'):
+#     sha, _fullref = row.split('\t')
+#     _, ref_type, ref = _fullref.split('/')
+#     MAPPED_REFS[ref_type][ref.split('^')[0]] = sha
+#
+# # We often want this post-mortem when debugging may have been disabled, so print/pprint is intentional here
+# print(
+#     "************************************* GIT REFS USED FOR THIS TEST RUN *********************************************")
+# print(
+#     "************************** KEEP IN MIND THAT A SHA MAY POINT TO ANOTHER COMMIT SHA! *******************************")
+# for ref_type in MAPPED_REFS.keys():
+#     print("Git refs for {}:".format(ref_type.upper()))
+#     pprint.pprint(MAPPED_REFS[ref_type], indent=4)
+#
+# if os.environ.get('CASSANDRA_VERSION'):
+#     logger.debug('CASSANDRA_VERSION is not used by upgrade tests!')
 
-PROTOCOL_VERSION = int(os.environ.get('PROTOCOL_VERSION', 3))
 
-CUSTOM_PATH = os.environ.get('UPGRADE_PATH', None)
-if CUSTOM_PATH:
-    # provide a custom path like so: "1_2:2_0:2_1" to test upgrading from 1.2 to 2.0 to 2.1
-    UPGRADE_PATH = []
-    for _vertup in CUSTOM_PATH.split(':'):
-        _major, _minor = _vertup.split('_')
-        UPGRADE_PATH.append((int(_major), int(_minor)))
-else:
-    UPGRADE_PATH = PROTOCOL_PATHS[PROTOCOL_VERSION]
-
-LOCAL_MODE = os.environ.get('LOCAL_MODE', '').lower() in ('yes', 'true')
-if LOCAL_MODE:
-    REPO_LOCATION = os.environ.get('CASSANDRA_DIR')
-else:
-    REPO_LOCATION = "https://gitbox.apache.org/repos/asf/cassandra.git"
-
-# lets cache this once so we don't make a bunch of remote requests
-GIT_LS = subprocess.check_output(["git", "ls-remote", "-h", "-t", REPO_LOCATION]).rstrip().decode('utf-8')
-
-# maps ref type (branch, tags) to ref names and sha's
-MAPPED_REFS = defaultdict(dict)
-for row in GIT_LS.split('\n'):
-    sha, _fullref = row.split('\t')
-    _, ref_type, ref = _fullref.split('/')
-    MAPPED_REFS[ref_type][ref.split('^')[0]] = sha
-
-# We often want this post-mortem when debugging may have been disabled, so print/pprint is intentional here
-print(
-    "************************************* GIT REFS USED FOR THIS TEST RUN *********************************************")
-print(
-    "************************** KEEP IN MIND THAT A SHA MAY POINT TO ANOTHER COMMIT SHA! *******************************")
-for ref_type in MAPPED_REFS.keys():
-    print("Git refs for {}:".format(ref_type.upper()))
-    pprint.pprint(MAPPED_REFS[ref_type], indent=4)
-
-if os.environ.get('CASSANDRA_VERSION'):
-    logger.debug('CASSANDRA_VERSION is not used by upgrade tests!')
-
-
-def sha_for_ref_name(ref_name, ref_type='tags'):
-    return MAPPED_REFS[ref_type][ref_name]
+# def sha_for_ref_name(ref_name, ref_type='tags'):
+#    return MAPPED_REFS[ref_type][ref_name]
 
 
 class GitSemVer:
     """
-    Wraps a git ref up with a semver (as LooseVersion)
+    Wraps a git ref up with a semver (as Version)
     """
     git_ref = None
     semver = None
 
     def __init__(self, git_ref, semver_str):
         self.git_ref = git_ref
-        self.semver = LooseVersion(semver_str)
+        self.semver = Version(semver_str)
         if semver_str == 'trunk':
-            self.semver = LooseVersion(make_ver_str(TRUNK_VER))
+            self.semver = Version(make_ver_str(TRUNK_VER))
 
     # when comparing x.y.z and x.y.z-foo, we need to value x.y.z higher than the "nicknamed" tag x.y.z-foo
     # likewise for shorter versions of the form X.Y and X.Y-foo
@@ -108,13 +110,13 @@ class GitSemVer:
     # e.g. when comparing 3.0.0 and 3.0.0-rc1, consider 3.0.0 higher
     # e.g. when comparing 3.3 and 3.3-beta1, consider 3.3 higher
     def __gt__(self, other):
-        if self.semver.vstring + "-" in other.semver.vstring:
+        if str(self.semver) + "-" in str(other.semver):
             return True
         else:
             return self.semver.__gt__(other.semver)
 
     def __le__(self, other):
-        if other.semver.vstring + "-" in self.semver.vstring:
+        if str(other.semver) + "-" in str(self.semver):
             return True
         else:
             return self.semver.__le__(other.semver)
@@ -174,11 +176,11 @@ def sanitize_version(version):
     Returns just the version string 'X.Y.Z'
     """
     if version.find('-') >= 0:
-        return LooseVersion(version.split('-')[1])
+        return Version(version.split('-')[1])
     elif version == 'trunk':
-        return LooseVersion(make_ver_str(TRUNK_VER))
+        return Version(make_ver_str(TRUNK_VER))
     else:
-        return LooseVersion(version)
+        return Version(version)
 
 
 def switch_jdks(version):

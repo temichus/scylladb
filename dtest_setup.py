@@ -25,7 +25,7 @@ from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import (get_ip_from_node, make_execution_profile, get_auth_provider, get_port_from_node,
                          get_eager_protocol_version)
-from distutils.version import LooseVersion
+from packaging.version import Version
 
 from dtest_config import DTestConfig
 from tools.context import log_filter
@@ -587,7 +587,7 @@ class DTestSetup:
             logger.debug(stderr)
 
     def supports_v5_protocol(self, cluster_version):
-        return cluster_version >= LooseVersion('4.0')
+        return cluster_version >= Version('4.0')
 
     def cleanup_last_test_dir(self):
         if os.path.exists(self.last_test_dir):

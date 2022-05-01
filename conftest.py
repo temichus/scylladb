@@ -7,7 +7,7 @@ import inspect
 import re
 from itertools import zip_longest
 from datetime import datetime
-from distutils.version import LooseVersion
+from packaging.version import Version
 from pkg_resources import parse_version
 
 import github
@@ -349,10 +349,10 @@ def fixture_since(request, fixture_dtest_setup):
         max_version_str = request.node.get_closest_marker('since').kwargs.get('max_version', None)
         max_version = None
         if max_version_str:
-            max_version = LooseVersion(max_version_str)
+            max_version = Version(max_version_str)
 
         since_str = request.node.get_closest_marker('since').args[0]
-        since = LooseVersion(since_str)
+        since = Version(since_str)
         # For upgrade tests don't run the test if any of the involved versions
         # are excluded by the annotation
         if hasattr(request.cls, "UPGRADE_PATH"):
@@ -370,9 +370,9 @@ def fixture_since(request, fixture_dtest_setup):
         else:
             # For regular tests the value in the current cluster actually means something so we should
             # use that to check.
-            # Use cassandra_version_from_build as it's guaranteed to be a LooseVersion
+            # Use cassandra_version_from_build as it's guaranteed to be a Version
             # whereas cassandra_version may be a string if set in the cli options
-            current_running_version = LooseVersion(str(fixture_dtest_setup.dtest_config.cassandra_version_from_build))
+            current_running_version = Version(str(fixture_dtest_setup.dtest_config.cassandra_version_from_build))
             skip_msg = _skip_msg(current_running_version, since, max_version)
             if skip_msg:
                 pytest.skip(skip_msg)
@@ -382,7 +382,7 @@ def fixture_since(request, fixture_dtest_setup):
 def fixture_skip_version(request, fixture_dtest_setup):
     marker = request.node.get_closest_marker('skip_version')
     if marker is not None:
-        version_to_skip = LooseVersion(marker.args[0])
+        version_to_skip = Version(marker.args[0])
         if version_to_skip == fixture_dtest_setup.dtest_config.cassandra_version_from_build:
             pytest.skip("Test marked not to run on version %s" % version_to_skip)
 

@@ -17,7 +17,7 @@ from dtest_class import wait_for, WaitTimeoutExpired, create_ks, create_cf
 from tools.data import insert_c1c2, insert_c1c2_with_clustering
 from dtest_config import DTestConfig
 from dtest_setup import DTestSetup, copy_logs
-from distutils.version import LooseVersion
+from packaging.version import Version
 from dtest_setup_overrides import DTestSetupOverrides
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ C1_PREFIX = "value%d"
 C2_PREFIX = "other_value%d"
 
 
-new_command_structure_minimum_version = LooseVersion("3.0")
+new_command_structure_minimum_version = Version("3.0")
 
 
 class ComparableHealthCheckField:
@@ -773,7 +773,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
         cluster_add_cmd = "cluster add --host {host} --name {name}".format(**locals())
         versions, _ = self.version
         client_version = versions[0][0].split()[2]
-        if LooseVersion(client_version) >= LooseVersion('2.0'):
+        if Version(client_version) >= Version('2.0'):
             cluster_add_cmd += " --auth-token {}".format(node.scylla_manager.auth_token)
         res_cluster_add, stderr = self.sctool.run(cmd=cluster_add_cmd)
         if not res_cluster_add or 'Cluster added' not in stderr:

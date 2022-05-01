@@ -8,8 +8,6 @@ import logging
 
 import ccmlib.common as common
 
-from distutils.version import LooseVersion
-
 logger = logging.getLogger(__name__)
 
 JOLOKIA_JAR = os.path.join('lib', 'jolokia-jvm-1.2.3-agent.jar')
