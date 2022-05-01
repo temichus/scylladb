@@ -471,8 +471,8 @@ class TestHintedHandoff(Tester):
     def validate_max_hinted_handoff_concurrency_value(node, expected_value):
         response = requests.get(f'http://{get_ip_from_node(node)}:10000/v2/config/max_hinted_handoff_concurrency')
         assert "No such config entry" not in response.text, f"No 'max_hinted_handoff_concurrency' config entry"
-        assert (response.text == expected_value,
-                f"Expected 'max_hinted_handoff_concurrency' value is {expected_value}, got {response.text}")
+        assert int(response.text) == expected_value, \
+            f"Expected 'max_hinted_handoff_concurrency' value is {expected_value}, got {response.text}"
 
     @pytest.mark.parametrize(argnames=("max_hinted_handoff_concurrency", "jvm_args"),
                              argvalues=[(0, None), (64, None), (128, ['--max-hinted-handoff-concurrency', '128'])])
