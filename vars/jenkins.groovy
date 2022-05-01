@@ -54,7 +54,7 @@ def checkAndTagAwsInstance (String runningUserID) {
 
                 aws ec2 --region \${REGION_NAME} create-tags \
                         --resources \${INSTANCE_ID} \
-                        --tag Key=RunByUser,Value=${runningUserID} Key=JenkinsJobTag,Value=${BUILD_TAG} Key=NodeType,Value=compile-spotfleet Key=keep,Value=5 Key=keep_action,Value=terminate
+                        --tag Key=RunByUser,Value=${runningUserID} Key=JenkinsJobTag,Value=${BUILD_TAG} Key=NodeType,Value=compile-spotfleet Key=keep,Value=${params.TIMEOUT_PARAM} Key=keep_action,Value=terminate
 
                 echo `curl -s http://169.254.169.254/latest/meta-data/instance-type`
             """)

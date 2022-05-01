@@ -14,7 +14,7 @@ def call(Map pipelineParams) {
             string(name: 'PRODUCT_NAME', defaultValue: "${pipelineParams.get('PRODUCT_NAME', 'scylla')}", description: 'Choose: scylla|scylla-enterprise')
 
             //Not mandatory
-            string(name: 'TIMEOUT_PARAM', defaultValue: '4', description: 'hours. This time includes the time needed to wait for local machines. Could be much less for cloud machines.')
+            string(name: 'TIMEOUT_PARAM', defaultValue: "${pipelineParams.get('TIMEOUT_PARAM', '4')}", description: 'hours. This time includes the time needed to wait for local machines. Could be much less for cloud machines.')
             string(name: 'BUILD_MODE', defaultValue: "${pipelineParams.get('BUILD_MODE', 'release')}", description: 'Choose: dev|release|debug, If empty, default to release')
             string(name: 'ARTIFACT_SOURCE_JOB_NAME', defaultValue: '', description: 'Build path to take Relocatable data from')
             string(name: 'ARTIFACT_SOURCE_BUILD_NUM', defaultValue: '', description: 'Build ID to take relocatable package files from. Leave empty to use last success build.')

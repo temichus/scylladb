@@ -7,5 +7,5 @@ dtestPipeline(
     BUILD_MODE: 'debug',
     PRODUCT_NAME: 'scylla',
     BRANCH: 'master',
-    INCLUDE_DTESTS: '-m dtest_debug',
+    TIMEOUT_PARAM: '8',
 )
