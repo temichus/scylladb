@@ -694,7 +694,7 @@ class TestCompaction(Tester):
                     "keyspace": self.primary_ks,
                     "cf": self.primary_table,
                 },
-                "log_expression": "Cleaned \d* sstables to"
+                "log_expression": r"Cleaned \d* sstables to"
             }
         }
 
