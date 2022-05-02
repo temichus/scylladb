@@ -5,6 +5,13 @@ import pytest
 from dtest_config import DTestConfig
 
 
+def scylla_mode(cassandra_dir, scylla_version):
+    dtest_config = DTestConfig()
+    dtest_config.cassandra_dir = cassandra_dir
+    dtest_config.scylla_version = scylla_version
+    return dtest_config.get_scylla_mode()
+
+
 def get_version(cassandra_dir, scylla_version):
     dtest_config = DTestConfig()
     dtest_config.cassandra_dir = cassandra_dir

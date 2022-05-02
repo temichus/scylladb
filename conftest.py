@@ -25,7 +25,7 @@ from dtest_setup_overrides import DTestSetupOverrides
 from tools.keystore import KeyStore
 from tools.log_utils import log_per_process_data, TestNameFilter
 from tools.env import GITHUB_TOKEN, DTEST_REQUIRE
-from tools.marks import get_version, is_enterprise
+from tools.marks import get_version, is_enterprise, scylla_mode
 
 logger = logging.getLogger(__name__)
 
@@ -458,6 +458,15 @@ def pytest_collection_modifyitems(items, config):
     collect_require = config.getoption("--collect-required")
     _is_enterprise = is_enterprise(cassandra_dir, scylla_version)
 
+    if elk_reporter := config.pluginmanager.get_plugin("elk-reporter-runtime"):
+        _scylla_mode = scylla_mode(cassandra_dir, scylla_version)
+        # TEMP: for now we'll look at the build_tag, since we have enough history with that.
+        # once we'll enough infor with
+        if not _scylla_mode == 'debug':
+            elk_reporter.slices_query_fmt = '(name:"{}")  AND (outcome: passed) AND NOT (build_tag: debug)'
+        else:
+            elk_reporter.slices_query_fmt = '(name:"{}")  AND (outcome: passed) AND (build_tag: debug)'
+
     if collect_require:
         print()
         print("List of test with require mark:")
@@ -593,6 +602,7 @@ def configure_es(request: pytest.FixtureRequest, dtest_config):
         extra_data = {
             "SCYLLA_FULL_VERSION": dtest_config.scylla_full_version,
             "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
+            "SCYLLA_MODE": dtest_config.scylla_mode
         }
         elk_reporter.session_data.update(**extra_data)
 
