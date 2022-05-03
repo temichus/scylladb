@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 from ccmlib.common import check_socket_listening
 import docker
@@ -23,15 +22,12 @@ class MinioDocker:
         self.image = image
         self.access_key = "test1"
         self.secret_key = "12345678"
-        self.data_dir = Path(os.getcwd()) / f"minio_data_{name}"
 
     def __enter__(self):
-        self.data_dir.mkdir(exist_ok=True)
         self.create_minio_container()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.clear_data()
         self.remove_container()
 
     def create_minio_container(self):
@@ -46,7 +42,6 @@ class MinioDocker:
                                      image=self.image,
                                      detach=True,
                                      command="server /data",
-                                     volumes={f'{self.data_dir}': {'bind': '/data', 'mode': 'rw'}},
                                      labels=['dtest'], remove=True)
 
         for container in docker_client.containers.list():
@@ -65,9 +60,6 @@ class MinioDocker:
     def remove_container(self):
         self.container.remove(force=True)
         self.container = None
-
-    def clear_data(self):
-        self.container.exec_run("bash -c 'rm -rf /data/* /data/.minio.sys'")
 
     @property
     def endpoint_url(self):
