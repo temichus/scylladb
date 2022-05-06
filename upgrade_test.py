@@ -1,5 +1,6 @@
 import copy
 from concurrent.futures.thread import ThreadPoolExecutor
+from random import randint
 from time import sleep
 import logging
 import yaml
@@ -13,17 +14,18 @@ from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib import scylla_repository
 from ccmlib.scylla_cluster import ScyllaCluster, ScyllaNode
 
-
 from tools.assertions import assert_all
 from tools.cluster import new_node
 from dtest_class import DtestTimeoutError, Tester, create_ks, create_cf
 from dtest_setup import DTestSetup
 from dtest_config import DTestConfig
+from tools.misc import seconds_to_micros
+from tools.data import simulate_write_process_in_minutes
 
 logger = logging.getLogger(__name__)
 
 upgrade_matrix_full_path = ['release:4.0', 'release:4.1', 'release:4.2', 'release:4.3', 'release:4.4', 'release:4.5']
-upgrade_matrix_from_last_release_version = ['release:4.5']
+upgrade_matrix_from_last_release_version = ['release:4.6']
 upgrade_matrix_from_last_enterprise_release_version = ['release:2021.1']
 upgrade_matrix_enterprise_full_path = ['release:2020.1', 'release:2021.1']
 upgrade_matrix_for_raft_experimental = ['release:4.6']
@@ -80,6 +82,15 @@ class UpgradeTester(Tester):
         dtest_config.scylla_version = self.init_version
         yield dtest_config
 
+    def get_timewindow_compaction_settings(self, optimize_enabled: bool = True):
+        optimized_settings = ""
+        if not optimize_enabled:
+            optimized_settings = ",'enable_optimized_twcs_queries': false"
+
+        return f"{{'class': 'TimeWindowCompactionStrategy', \
+                'compaction_window_unit': 'MINUTES', \
+                'compaction_window_size': 5 {optimized_settings}}}"
+
     def clone_upgrade_path(self, dtest_config):
         self.current_upgrade_path = copy.deepcopy(dtest_config.current_upgrade_path)
         logger.debug(f"current_upgrade_path: {self.current_upgrade_path}")
@@ -121,11 +132,42 @@ class UpgradeTester(Tester):
                    cl=ConsistencyLevel.QUORUM,
                    ignore_order=True)
 
+    def validate_twcs_data(self, session: Session, expected_results):
+        current_results = self.get_twcs_data(session)
+        assert current_results == expected_results
+
     def prepare_schema(self, session: Session, keyspace_name: str = 'ks', table_name: str = 'cf', rf: int = 3,
                        row_start_index: int = 1, row_end_index: int = 100):
         create_ks(session=session, name=keyspace_name, rf=rf)
         create_cf(session=session, name=table_name, key_type='int', columns={'val1': 'int', 'val2': 'int'})
+
         self.insert_rows(session=session, start=row_start_index, end=row_end_index)
+
+    def prepare_twcs_schema(self, session: Session, keyspace_name: str = "ks", table_name: str = "cf_twcs", rf: int = 3):
+        create_ks(session=session, name=keyspace_name, rf=rf)
+        create_cf(session=session, name=f"{table_name}", key_name='pk', key_type='int',
+                  compaction=self.get_timewindow_compaction_settings(),
+                  columns={'ck': 'int', 'v': 'blob'}, primary_key='pk, ck')
+        self.tw_pks, _ = simulate_write_process_in_minutes(self.cluster, session, keyspace_name, table_name)
+        self.tw_data = self.get_twcs_data(session)
+
+    def get_twcs_data(self, session: Session, max_time_minute: int = 20):
+        queries = [
+            f"SELECT * FROM ks.cf_twcs WHERE pk = {self.tw_pks[0]} and ck > {(max_time_minute - 5) * 60}",
+            f"SELECT * FROM ks.cf_twcs WHERE pk = {self.tw_pks[-1]} and ck < {(max_time_minute - 15) * 60}",
+            f"SELECT * FROM ks.cf_twcs WHERE pk = {self.tw_pks[len(self.tw_pks) // 2]} and ck > {(max_time_minute -1) * 60}",
+        ]
+        pk_set = ",".join([str(pk) for pk in self.tw_pks[3:7]])
+        queries.append(f"SELECT * FROM ks.cf_twcs WHERE pk in ({pk_set}) and ck > {2 * 60} and ck < {4 * 60}")
+        pk_set = ",".join([str(pk) for pk in self.tw_pks[len(self.tw_pks)-2: len(self.tw_pks)]])
+        queries.append(f"SELECT * FROM ks.cf_twcs WHERE pk in ({pk_set}) and \
+                       ck > {(max_time_minute - 6) * 60} and ck < {(max_time_minute - 5) * 60}")
+
+        result = []
+        for query in queries:
+            res = list(session.execute(query))
+            result.append(res)
+        return result
 
     def insert_rows(self, session: Session, start: int, end: int, keyspace_name: str = 'ks', cf: str = 'cf') -> None:
         logger.info(f"Insert rows from {start} to {end}")
@@ -230,6 +272,65 @@ class BaseTests(UpgradeTester):
 
         session.cluster.shutdown()
 
+    def test_upgrade_cluster_nodes_with_twcs(self, dtest_config):
+        """
+        Test upgrade all nodes in the cluster sequentially.
+        Create schema with table with twcs
+        Prefill the table before upgrade and validate the data is not corrupted
+        during upgarde enable/disable optimized queries for twcs
+        and validate that data no corrupted and returned same results
+        """
+        self.clone_upgrade_path(dtest_config)
+
+        session = self.init_cluster(nodes=3)
+        self.prepare_twcs_schema(session)
+        expected_data = self.get_twcs_data(session)
+        [node1, node2, node3] = self.cluster.nodelist()
+
+        for version in self.current_upgrade_path:
+            logger.info(f"****** START UPGRADE TEST FROM {node1.node_scylla_version} TO {version} ******")
+
+            logger.info(f"Upgrade 1st node to from '{node1.node_scylla_version}' to '{version}' version")
+            node1.upgrade(version)
+
+            logger.info("Disable optimized queries")
+            session.execute(
+                f"ALTER TABLE ks.cf_twcs with compaction = {self.get_timewindow_compaction_settings(optimize_enabled=False)}")
+
+            # Validate existent data
+            self.validate_twcs_data(session, expected_data)
+
+            logger.info(f"Upgrade 2nd node to from '{node2.node_scylla_version}' to '{version}' version")
+            node2.upgrade(version)
+
+            logger.info("Enable optimized queries")
+            session.execute(
+                f"ALTER TABLE ks.cf_twcs with compaction = {self.get_timewindow_compaction_settings(optimize_enabled=True)}")
+
+            # Validate existent data
+            self.validate_twcs_data(session, expected_data)
+
+            logger.info(f"Upgrade 3rd node to from '{node3.node_scylla_version}' to '{version}' version")
+            node3.upgrade(version)
+
+            logger.info("Enable optimized queries")
+            session.execute(
+                f"ALTER TABLE ks.cf_twcs with compaction = {self.get_timewindow_compaction_settings(optimize_enabled=False)}")
+
+            # Validate existent data
+            self.validate_twcs_data(session, expected_data)
+
+            logger.info("Enable optimized queries")
+            session.execute(
+                f"ALTER TABLE ks.cf_twcs with compaction = {self.get_timewindow_compaction_settings(optimize_enabled=True)}")
+
+            # Validate existent data
+            self.validate_twcs_data(session, expected_data)
+
+            logger.info(f"****** FINISHED UPGRADE TO {version} ******")
+
+        session.cluster.shutdown()
+
 
 @pytest.mark.dtest_full
 class TestUpgradeFrom40ToLast(BaseTests):
@@ -242,6 +343,10 @@ class TestUpgradeFrom40ToLast(BaseTests):
     def test_one_node_upgrade(self):
         pass
 
+    @pytest.mark.skip("skip the test for this matrix")
+    def test_upgrade_cluster_nodes_with_twcs(self):
+        pass
+
 
 @pytest.mark.dtest_full
 class TestUpgradeOneNode(BaseTests):
@@ -252,6 +357,26 @@ class TestUpgradeOneNode(BaseTests):
 
     @pytest.mark.skip("skip the test for this matrix")
     def test_cluster_upgrade(self):
+        pass
+
+    @pytest.mark.skip("skip the test for this matrix")
+    def test_upgrade_cluster_nodes_with_twcs(self):
+        pass
+
+
+@pytest.mark.dtest_full
+class TestUpgradeClusterWithEnableDisableTWCSQueries(BaseTests):
+    __test__ = True
+
+    upgrade_path = upgrade_matrix_from_last_release_version
+    init_version = upgrade_path[0]
+
+    @pytest.mark.skip("skip the test for this matrix")
+    def test_cluster_upgrade(self):
+        pass
+
+    @pytest.mark.skip("skip the test for this matrix")
+    def test_one_node_upgrade(self):
         pass
 
 

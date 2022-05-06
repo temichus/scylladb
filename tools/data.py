@@ -1,7 +1,8 @@
 import os
 import datetime
 import subprocess
-from typing import List
+import random
+from typing import List, Tuple
 
 import tabulate
 import time
@@ -14,6 +15,7 @@ from cassandra.concurrent import execute_concurrent_with_args, execute_concurren
 from cassandra.query import SimpleStatement
 
 from tools import assertions
+from tools.misc import seconds_to_micros
 from dtest_class import create_cf
 
 logger = logging.getLogger(__name__)
@@ -504,3 +506,61 @@ def get_node_sstables_compression(node, keyspace: str = 'keyspace1') -> List[str
             compressions.append(stdout.strip())
     logger.info('%s %s got compressions of: %s', node.name, keyspace, compressions)
     return compressions
+
+
+def simulate_write_process_in_minutes(cluster, session, keyspace, table_name, duration_minutes=20, start_from_minute=0,
+                                      flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=10, size=1) -> Tuple[List[int], int]:
+    """Simulate a write process across duration minutes.
+
+    We use `USING TIMESTAMP` to distribute the writes evenly
+    across the entire range, simulating a write every second (to
+    several partitions).
+    flush_period_seconds allow to control how many time windows could be
+    in sstable
+    used schema:
+     pk PRIMARY KEY int
+     ck clustering key int
+     v  int
+
+    Arguments:
+        session {Session} -- opened session to node
+        keyspace {str} -- keyspace name
+        table_name {str} -- table name
+
+    Keyword Arguments:
+        duration_minutes {number} -- how many minutes to simulate (default: {20})
+        flush_period_seconds {number} -- in how many seconds flush memtable (default: {30})
+        start_from_minute {number} -- start minute to write data
+        flushing_nodes {list} -- list of nodes, which should be flushed.
+        flushing_exclude_nodes {list} -- list of nodes where should not be flushed
+        num_ps {Iterable| int} -- if Iterable, then a sequence of primary keys
+                                  if int, number of random generated primary keys
+        size {int} -- size in value in bytes
+
+    """
+    exclude_nodes = flushing_exclude_nodes if flushing_exclude_nodes else []
+    insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?)"
+                                       "USING TIMESTAMP ?".format(keyspace, table_name))
+    v = b"a" * size
+    pk_list = []
+    rand_pks = set()
+
+    if not isinstance(num_pks, list):
+        while len(rand_pks) < num_pks:
+            rand_pks.add(random.randint(-2147483647, 2147483647))
+
+    pk_list = list(rand_pks) or list(num_pks)
+
+    flushing_nodes = [node for node in cluster.nodelist() if node not in exclude_nodes]
+    for t in range(start_from_minute * 60, duration_minutes * 60):
+        execute_concurrent_with_args(
+            session,
+            insert_statement,
+            [(pk, t, v, seconds_to_micros(t)) for pk in pk_list])
+
+        # Flush every flush period in seconds on each node
+        if t % flush_period_seconds == 0:
+            for node in flushing_nodes:
+                node.flush()
+    total_rows = (duration_minutes - start_from_minute) * 60 * len(pk_list)
+    return pk_list, total_rows

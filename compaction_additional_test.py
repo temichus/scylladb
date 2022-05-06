@@ -17,6 +17,7 @@ from functools import reduce
 from pathlib import Path
 from threading import Thread
 from typing import Optional, List, Match, AnyStr, Dict, Tuple, Any
+from cassandra.query import SimpleStatement
 
 import pytest
 import sstable_tools.statistics
@@ -32,7 +33,7 @@ from dtest_setup_overrides import DTestSetupOverrides
 from tools import tables_view_manager
 from tools.assertions import assert_none, assert_all, assert_row_count
 from tools.cluster import new_node
-from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_table
+from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_table, simulate_write_process_in_minutes
 from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables, \
     check_file_lists_are_equal
 from tools.marks import enterprise_only_param
@@ -40,6 +41,7 @@ from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
 from tools.scylla_defines import CompactionStrategy
 from tools.stress import fill_data_by_cs
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +58,7 @@ SpanningSStable = namedtuple("SpanningSStable", ["is_spanning_one_window",
 
 class CompactionAdditionalTester(Tester):
 
-    def prepare(self, nodes, wait_for_binary_proto=True,
+    def prepare(self, nodes: int, wait_for_binary_proto=True,
                 jvm_args=None, configuration_options={}) -> Tuple[List[ScyllaNode], Session]:
         configuration_options.update({'enable_sstable_key_validation': True})
         self.cluster.set_configuration_options(values=configuration_options)
@@ -1332,41 +1334,18 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         flush_period_seconds allow to control how many time windows could be
         in sstable
 
-        Arguments:
-            session {Session} -- opened session to node
-
-        Keyword Arguments:
-            duration_minutes {number} -- how many minutes to simulate (default: {20})
-            flush_period_seconds {number} -- in how many seconds flush memtable (default: {30})
-            start_from_minute {number} -- start minute to write data
-            flushing_nodes {list} -- list of nodes, which should be flushed.
-
         """
-        exclude_nodes = flushing_exclude_nodes if flushing_exclude_nodes else []
-        insert_statement = session.prepare("INSERT INTO {}.{} (pk, ck, v) VALUES (?, ?, ?)"
-                                           "USING TIMESTAMP ?".format(self.keyspace_name, self.table_name))
-        v = b"a" * size
-
-        pks = set()
-        if isinstance(num_pks, int):
-            while len(pks) < num_pks:
-                pks.add(random.randint(-2147483647, 2147483647))
-        else:
-            pks = set(num_pks)
-
-        flushing_nodes = [node for node in self.cluster.nodelist() if node not in exclude_nodes]
-        for t in range(start_from_minute * 60, duration_minutes * 60):
-            concurrent.execute_concurrent_with_args(
-                session,
-                insert_statement,
-                [(pk, t, v, self.seconds_to_micros(t)) for pk in pks])
-
-            # Flush every flush period in seconds on each node
-            if t % flush_period_seconds == 0:
-                for node in flushing_nodes:
-                    node.flush()
-        total_rows = (duration_minutes - start_from_minute) * 60 * len(pks)
-        return pks, total_rows
+        return simulate_write_process_in_minutes(
+            cluster=self.cluster,
+            session=session,
+            keyspace=self.keyspace_name,
+            table_name=self.table_name,
+            duration_minutes=duration_minutes,
+            start_from_minute=start_from_minute,
+            flush_period_seconds=flush_period_seconds,
+            flushing_exclude_nodes=flushing_exclude_nodes,
+            num_pks=num_pks,
+            size=size)
 
     def _list_sstable_timestamps(self, node):
         statistics_files = self._get_list_of_sstables(node)
@@ -1736,8 +1715,6 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             2. Change window size to 64.
             3. Restart node
             4. Validate that reshape process sstables in buckets by size
-
-
         """
         self.window_size = 1
         self.window_unit = "MINUTES"
@@ -1777,8 +1754,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         [node1], session = self.prepare(1, jvm_args=["--smp", "1"])
         self._create_ks_cl_with_twcs(session, 1)
-        pks, total_rows = self._simulate_write_process_in_minutes(session=session, duration_minutes=5,
-                                                                  flush_period_seconds=10, num_pks=total_partitions)
+        pks, _ = self._simulate_write_process_in_minutes(session=session, duration_minutes=5,
+                                                         flush_period_seconds=10, num_pks=total_partitions)
         self._check_sstable_timestamps(node1)
 
         logger.debug("Run major compaction and validate that there is only 1 table per unit")
@@ -2116,6 +2093,46 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         self.run_flow_generate_and_reshape_twcs_sstables()
 
+    def test_enable_disable_optimized_query_for_twcs(self):
+        """
+        Enable/disable optimized algorithimns for timewindow queries
+        and validate that same data return by queries and data are not
+        corrupted
+        """
+        self.window_size = 5
+        self.window_unit = "MINUTES"
+        tw_query_result = {
+            "enabled": [],
+            "disabled": []
+        }
+
+        [node1, node2], session = self.prepare(2)
+        self._create_ks_cl_with_twcs(session, rf=2)
+        pks, _ = self._simulate_write_process_in_minutes(session,
+                                                         duration_minutes=60,
+                                                         flush_period_seconds=15,
+                                                         num_pks=30)
+
+        tw_query_result["enabled"] = self.get_tw_query_results(session, pks)
+
+        logger.info("Disable optimized queries")
+        self._enable_optimized_tw_queries_config(session, enable=False)
+
+        logger.info("Run tw queries with disabled optimized algorithms")
+        tw_query_result["disabled"] = self.get_tw_query_results(session, pks)
+
+        logger.debug("Queries results: \n%s", tw_query_result)
+        self.assert_tw_query_results(tw_query_result["enabled"], tw_query_result["disabled"])
+
+        logger.info("Enable optimized queries")
+        self._enable_optimized_tw_queries_config(session, enable=True)
+
+        logger.info("Run tw queries with disabled optimized algorithms")
+        tw_query_result["enabled"] = self.get_tw_query_results(session, pks)
+
+        logger.debug("Queries results: \n%s", tw_query_result)
+        self.assert_tw_query_results(tw_query_result["enabled"], tw_query_result["disabled"])
+
     def run_flow_generate_and_reshape_twcs_sstables(self):
         [node1], session = self.prepare(1)
         self._create_ks_cl_with_twcs(session, rf=1)
@@ -2174,6 +2191,55 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self._check_sstable_timestamps(node1, window_size=self.new_window_size, window_unit=self.new_window_unit)
         sstables = get_list_of_sstables(node1, self.keyspace_name, self.table_name)
         assert len(sstables) == 1, f"invalid number of sstables {len(sstables)}, Expected 1"
+
+    def get_tw_query_results(self, session: Session, primary_keys: List[Any]) -> List[Dict[str, Any]]:
+        results = []
+        queries = [
+            f"SELECT * FROM {self.keyspace_name}.{self.table_name} WHERE pk = {primary_keys[0]} and ck > {30 * 60}",
+            f"SELECT * FROM {self.keyspace_name}.{self.table_name} WHERE pk = {primary_keys[-1]} and ck > {45 * 60}",
+            f"SELECT * FROM {self.keyspace_name}.{self.table_name} WHERE pk = {primary_keys[30//2]} and ck > {55 * 60}",
+        ]
+        pk_set = ",".join([str(pk) for pk in primary_keys[5:10]])
+        queries.append(
+            f"SELECT * FROM {self.keyspace_name}.{self.table_name} WHERE pk in ({pk_set}) and ck > {2 * 60} and ck < {4 * 60}")
+        pk_set = ",".join([str(pk) for pk in primary_keys[25:27]])
+        queries.append(
+            f"SELECT * FROM {self.keyspace_name}.{self.table_name} WHERE pk in ({pk_set}) and ck > {33 * 60} and ck < {34 * 60}")
+        queries.append(f"SELECT * FROM {self.keyspace_name}.{self.table_name}")
+
+        for query in queries:
+            logger.info(f"Query: {query}")
+            st = time.perf_counter_ns()
+            res = list(session.execute(query))
+            ft = time.perf_counter_ns()
+            results.append({
+                "query": query,
+                "result": res,
+                "time": ft-st
+            })
+        return results
+
+    def _enable_optimized_tw_queries_config(self, session: Session, enable=True):
+        if not enable:
+            config = "'enable_optimized_twcs_queries': false"
+        else:
+            config = "'enable_optimized_twcs_queries': true"
+
+        session.execute(f"ALTER TABLE {self.keyspace_name}.{self.table_name} with compaction = "
+                        "{'class': 'TimeWindowCompactionStrategy', "
+                        f"'compaction_window_unit': '{self.window_unit}',"
+                        f"'compaction_window_size': {self.window_size},"
+                        f"{config} }}")
+
+    @staticmethod
+    def assert_tw_query_results(optimize_enable, optimize_disabled):
+        for results_enabled, results_disabled in zip(optimize_enable, optimize_disabled):
+            assert results_enabled["query"] == results_disabled["query"], \
+                f"Not same queries {results_enabled['query']} != {results_disabled['query']}"
+            assert results_enabled["result"] == results_disabled["result"], \
+                f"Return results are not the same {results_enabled['result']} != {results_disabled['result']}"
+            logger.debug(f"Query's time execution for optimized query {results_enabled['time']} \
+                           and not optimized {results_disabled['time']}")
 
     def simulate_twcs_write_data_per_minute_by_size(self, session, sstable_size_distribution, num_pks):
         prev_min = 0

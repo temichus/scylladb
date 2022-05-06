@@ -320,3 +320,11 @@ def get_free_memory_size_in_mb():
         if pattern.match(line):
             return int(pattern.match(line)[1]) / 1024  # unit: mb
     raise Exception('Failed to get the valid free memory size')
+
+
+def seconds_to_micros(seconds):
+    return seconds * 1000 * 1000
+
+
+def micros_to_seconds(micros):
+    return micros // (1000 * 1000)
