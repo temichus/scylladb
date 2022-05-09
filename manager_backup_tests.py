@@ -943,8 +943,10 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         keyspace_name = "keyspace1"
         new_keyspace_name = f"new_{keyspace_name}"
         keyspace_table_and_key_range = {keyspace_name: {"cf1": (1, 21)}}
+        new_keyspace_table_and_key_range = {new_keyspace_name: {"cf1": (1, 21)}}
         location = "s3:{}".format(DESTINATION_BUCKET)
-        new_location = location.replace(DESTINATION_BUCKET, f"new_{DESTINATION_BUCKET}")
+        new_bucket_name = f"new{DESTINATION_BUCKET}"
+        new_location = location.replace(DESTINATION_BUCKET, new_bucket_name)
         num_retries = 11
         rate_limit_list = 1
         retention = 12
@@ -953,6 +955,14 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
 
         logger.info(f"Creating a new table with following values: '{pformat(keyspace_table_and_key_range)}")
         self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range=keyspace_table_and_key_range)
+        logger.info(f"Creating a new table with following values: '{pformat(new_keyspace_table_and_key_range)}")
+        self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range=new_keyspace_table_and_key_range)
+        logger.info("Creating a new bucket: {}".format(new_bucket_name))
+        try:
+            self.boto_client.create_bucket(Bucket=new_bucket_name)
+        except self.boto_client.exceptions.BucketAlreadyOwnedByYou:
+            # In case the bucket already exists, for running convenience
+            pass
         logger.info(f"Creating a backup task with following values:"
                     f"\nLocation: '{location}"
                     f"\nKeyspace: '{keyspace_name}")
