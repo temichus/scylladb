@@ -2,7 +2,7 @@ import time
 import pytest
 import logging
 
-from dtest_scylla_manager import TaskStatus, ScyllaManagerError
+from dtest_scylla_manager import TaskStatus, ScyllaManagerError, create_cron_list_from_timedelta
 from dtest_class import Tester
 from dtest_scylla_manager import ScyllaManagerMixin
 
@@ -50,28 +50,23 @@ class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
 
     def test_create_scheduled_task_while_suspended(self):
         """
-        When suspended, the manager lets the user scheduled task only at least 8 hours in the future.
-        Otherwise, creation will fail.
+        When suspended, the manager does not allow the user scheduling tasks in the future,
+        not even more than 8 hours in the future (as in prior to version 3.0).
+        This test tries to schedule a task in the future while the manager is suspended, expecting failure
         """
-        self.config_and_create_cluster(3)
+        self.config_and_create_cluster(2)
         mgr_cluster = self._create_mgr_cluster(self.cluster.nodelist()[0], name=CLUSTER_NAME)
 
         mgr_cluster.suspend()
         try:
-            repair_task_too_soon = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, start_date="now+2m")
+            intended_run_time_cron = create_cron_list_from_timedelta(minutes=2, hours=8)
+            mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, cron=intended_run_time_cron)
         except ScyllaManagerError as err:
-            assert "suspended" in err.args[0].lower() and "failed to create task" in err.args[0].lower() \
-                   and "8h" in err.args[0].lower(), \
-                f"Task creation withing the next 8 hours failed, as expected, but not with proper error message: " \
-                f"{err.args[0]}"
+            assert "suspended" in err.args[0].lower() and "scheduling tasks is not allowed" in err.args[0].lower(),\
+                f"Scheduling a task in the future while the manager is suspended failed, as expected, but not with " \
+                f"proper error message: {err.args[0]}"
         else:
-            raise AssertionError("Test creation withing the next 8 hours while the manager is suspended did not fail")
-        try:
-            repair_task_proper_time = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, start_date="now+8h2m")
-        except ScyllaManagerError as err:
-            raise AssertionError(f"Creating a task more than 8 hours in the future failed: {err.args}")
-        except Exception:
-            raise
+            raise AssertionError("Task scheduling withing the next 8 hours while the manager is suspended did not fail")
 
     @pytest.mark.require("scylla-manager/#2496")
     def test_schedule_task_to_run_while_suspended(self):

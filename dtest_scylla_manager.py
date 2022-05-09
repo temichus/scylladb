@@ -9,6 +9,7 @@ from re import findall
 from pprint import pformat
 from ast import literal_eval
 from typing import Union, List, Dict
+from datetime import datetime, timedelta
 
 from cassandra import ConsistencyLevel
 
@@ -1839,3 +1840,9 @@ class ScyllaManagerMixin:
                                 c1_values=[C1_PREFIX % i for i in range(*key_range)],
                                 c2_values=[C2_PREFIX % i for i in range(*key_range)],
                                 ks=keyspace, cf=table)
+
+
+def create_cron_list_from_timedelta(minutes=0, hours=0):
+    destined_time = datetime.now() + timedelta(hours=hours, minutes=minutes)
+    cron_list = [destined_time.minute, destined_time.hour, "*", "*", "*"]
+    return cron_list
