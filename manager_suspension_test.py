@@ -14,14 +14,14 @@ logger = logging.getLogger(__name__)
 class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
 
     def test_create_task_while_suspended(self):
-        self.config_and_create_cluster(3)
+        self.config_and_create_cluster(2)
         mgr_cluster = self._create_mgr_cluster(self.cluster.nodelist()[0], name=CLUSTER_NAME)
 
         mgr_cluster.suspend()
         try:
             mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id)
         except ScyllaManagerError as err:
-            assert "suspended" in err.args[0].lower() and "failed to create task" in err.args[0].lower(), \
+            assert "suspended" in err.args[0].lower() and "scheduling tasks is not allowed" in err.args[0].lower(), \
                 f"Task creation failed, as expected, but not with proper error message: {err.args[0]}"
         else:
             raise AssertionError("Test creation while the manager is suspended did not fail")
