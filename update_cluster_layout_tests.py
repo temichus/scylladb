@@ -325,6 +325,7 @@ class TestUpdateClusterLayout(Tester):
             r'storage_service .* fail to update tokens for .*: exceptions::mutation_write_failure_exception',
             r'Abort bootstrap operation',
             r'Startup failed: seastar::rpc::closed_error',
+            r'Startup failed: streaming::stream_exception \(Stream failed\)',
         ]
 
         sleep_time = random.random() * 0.25
