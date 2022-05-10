@@ -81,19 +81,6 @@ class TestScyllaManagerTask(Tester, ScyllaManagerMixin):
         assert int(list_next_run[0]) in [now.day+1, 1]  # repair starts the next day of the month
         assert list_next_run[5] == '(+7d)'
 
-    def test_aborted_task_has_end_time(self):
-        node1, _ = self.config_and_create_cluster(nodes=2)
-        manager_tool = ScyllaManagerTool(scylla_manager=self.cluster._scylla_manager)
-        mgr_cluster = manager_tool.add_cluster(node=node1, name="cluster1")
-
-        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id)
-        repair_task.wait_for_status(list_status=[TaskStatus.RUNNING], step=1)
-        manager_tool.restart_manager_server(gently=False)
-
-        task_history = repair_task.history_list
-        assert TaskStatus.from_str(task_history[0]["Status"]) == TaskStatus.ABORTED, "Task was not aborted as expected"
-        assert task_history[0]["End time"], "And aborted task did not have an end time"
-
     def test_basic_task_naming(self):
         """
         New in manager 3.0.
