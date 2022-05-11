@@ -307,3 +307,7 @@ class ScyllaClusterTest(DSREntity):
         if self.actions:
             for action in self.actions:
                 action.check_validity()
+
+    def cleanup(self):
+        for loader in self._loaders.values():
+            loader.stop()

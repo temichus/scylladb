@@ -55,11 +55,11 @@ class TestRandomPaxos(Tester):
         if docstring:
             report.nodeid = docstring
 
-    def test_topology_add_decommission_reboot(self):
+    def test_topology_add_decommission_reboot(self, request: pytest.FixtureRequest):
         """
         Test on add, decommission and reboot node
         """
-        self.test_info = ScyllaClusterTest(
+        test_info = ScyllaClusterTest(
             debug=True,
             action_variants=[DecommissionRemoveNode, AddNode(auto_bootstrap=True), RebootNode(gently=True)],
             create_keyspace_stmt="CREATE KEYSPACE ks WITH "
@@ -76,10 +76,11 @@ class TestRandomPaxos(Tester):
                 update="UPDATE ks.test SET v = ? WHERE k=? IF EXISTS"
             ),
         )
-        self.test_info.randomize()
-        self.test_info.execute(tester=self)
+        request.addfinalizer(test_info.cleanup)
+        test_info.randomize()
+        test_info.execute(tester=self)
 
-    def test_topology_grow(self):
+    def test_topology_grow(self, request: pytest.FixtureRequest):
         """
         Test on add nodes to the cluster, covers following cases:
         1. Adding nodes when cluster has RF nodes
@@ -104,7 +105,7 @@ class TestRandomPaxos(Tester):
             initial_actions = []
             consistency_level = choice([ConsistencyLevel.QUORUM, ConsistencyLevel.ALL])
 
-        self.test_info = ScyllaClusterTest(
+        test_info = ScyllaClusterTest(
             debug=True,
             action_variants=[AddNode(auto_bootstrap=True)],
             create_keyspace_stmt="CREATE KEYSPACE ks WITH "
@@ -124,15 +125,16 @@ class TestRandomPaxos(Tester):
             ),
             actions=initial_actions
         )
-        self.test_info.randomize()
-        self.test_info.execute(tester=self)
+        request.addfinalizer(test_info.cleanup)
+        test_info.randomize()
+        test_info.execute(tester=self)
 
-    def test_topology_replace(self):
+    def test_topology_replace(self, request: pytest.FixtureRequest):
         """
         Test on node replacing
         """
         # TBD: To be fixed for seed nodes
-        self.test_info = ScyllaClusterTest(
+        test_info = ScyllaClusterTest(
             debug=True,
             action_variants=[ReplaceNode(is_seed=False)],
             create_keyspace_stmt="CREATE KEYSPACE ks WITH "
@@ -153,12 +155,14 @@ class TestRandomPaxos(Tester):
                 AddNode(node_id=4, auto_bootstrap=True),
             ]
         )
-        self.test_info.randomize()
-        self.test_info.execute(tester=self)
+        request.addfinalizer(test_info.cleanup)
+
+        test_info.randomize()
+        test_info.execute(tester=self)
 
     @pytest.mark.skip('Fails on couple of corner cases. To be fixed.')
-    def test_topology_change_all_random(self):
-        self.test_info = ScyllaClusterTest(
+    def test_topology_change_all_random(self, request: pytest.FixtureRequest):
+        test_info = ScyllaClusterTest(
             debug=True,
             action_variants=[DecommissionRemoveNode, StopNode, StartNode, RemoveNode, AddNode,
                              RebootNode, RepairNode, FlushNode, CompactNode, RebuildNode, DrainNode, DecommissionNode],
@@ -176,5 +180,6 @@ class TestRandomPaxos(Tester):
                 update="UPDATE ks.test SET v = ? WHERE k=? IF EXISTS"
             ),
         )
-        self.test_info.randomize()
-        self.test_info.execute(tester=self)
+        request.addfinalizer(test_info.cleanup)
+        test_info.randomize()
+        test_info.execute(tester=self)
