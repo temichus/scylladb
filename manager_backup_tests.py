@@ -25,7 +25,7 @@ from tools.minio import MinioDocker
 
 CLUSTER_NAME = 'cluster1'
 DESTINATION_BUCKET = 'backup-bucket'
-FALSE_BUCKET = 'nonexistent_bucket'
+FALSE_BUCKET = 'nonexistent-bucket'
 
 logger = logging.getLogger(__name__)
 
