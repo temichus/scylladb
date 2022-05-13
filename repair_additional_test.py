@@ -1969,7 +1969,9 @@ class RepairAdditionalBase(Tester):
         thread1 = executor.submit(repair_thread, ['ks'])
 
         logger.debug("Wait for Repair to start")
-        node3.watch_log_for("Repair 5 out of", timeout=200)
+        # Older scylla reports x out of y ranges is being repaired.
+        # Newer scylla reports m out of n tables is being repaired.
+        node3.watch_log_for("Repair 5 out of|Started to repair 1 out of", timeout=200)
         logger.debug("Repair has started")
 
         logger.debug('Abort repair sessions')
