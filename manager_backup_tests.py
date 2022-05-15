@@ -55,14 +55,17 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         self.boto_client = boto_client
         self.minio_docker = minio_docker
 
+    def configure_agent(self, node):
+        node.update_agent_config(new_settings={'s3': {"endpoint": self.minio_docker.endpoint_url,
+                                                      "access_key_id": self.minio_docker.access_key,
+                                                      "secret_access_key": self.minio_docker.secret_key,
+                                                      "provider": "Minio"}},
+                                 restart_agent_after_change=True)
+
     def config_and_create_cluster(self, *args, **kwargs):
         node_list = super().config_and_create_cluster(*args, **kwargs)
         for node in node_list:
-            node.update_agent_config(new_settings={'s3': {"endpoint": self.minio_docker.endpoint_url,
-                                                          "access_key_id": self.minio_docker.access_key,
-                                                          "secret_access_key": self.minio_docker.secret_key,
-                                                          "provider": "Minio"}},
-                                     restart_agent_after_change=True)
+            self.configure_agent(node)
         return node_list
 
     def _prepare_cluster_with_data(self, keyspace_table_and_key_range, rf=2, number_of_nodes=2):
@@ -489,6 +492,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
 
         backup_task.wait_for_status(list_status=[TaskStatus.ERROR], step=5)
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.configure_agent(node4)
 
         backup_task.start()
         backup_task.wait_and_get_final_status(step=5)
