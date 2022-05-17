@@ -232,7 +232,7 @@ class RepairAdditionalBase(Tester):
         repair_logs = [
             'repair - repair.*: Started to shutdown off-strategy compaction updater',
             'repair - repair.*: Finished to shutdown off-strategy compaction updater',
-            'repair - repair.*: completed successfully',
+            'repair - repair.* completed successfully',
         ]
 
         logger.debug('Start repair on the %s.%s', ks, cf)
