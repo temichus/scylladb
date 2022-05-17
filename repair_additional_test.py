@@ -3157,8 +3157,9 @@ class TestRepairAdditional(RepairAdditionalBase):
         assert rc == 0, f"error during setting log level: {out}"
 
         # start repair on node2 and wait until it finishes
-        node1_2.repair(["ks"])
-        node1_2.watch_log_for(r"repair\[.+\]: completed successfully", timeout=120)
+        from_mark = node1_2.mark_log()
+        RepairAdditionalBase._run_repair_and_check_completed(
+            node=node1_2, more_options=[], ks='ks', cf='cf', from_mark=from_mark)
 
         # verify that first peer node is the one from the same DC
         matchings = node1_2.grep_log(r"Started Row Level Repair .+ peers={(.+)},")
