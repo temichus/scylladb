@@ -128,6 +128,19 @@ authorityKeyIdentifier=keyid:always,issuer:always
                            '-keyfile', os.path.join(base_dir, 'ccm_node.key'),
                            '-out', crl_file,
                            '-config', openssl_ca_conf])
+
+    logger.debug("removing temporary certificates in [{0}]".format(base_dir))
+    for filename in ('ccm_node.p12', 'ccm_node.tmp', 'trust.p12', 'index.txt.attr', 'index.txt.old', 'pulp_crl_number.old'):
+        try:
+            os.remove(os.path.join(base_dir, filename))
+        except OSError as e:
+            if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
+                raise
+
+
+def revoke_certificate(base_dir):
+    crl_file = os.path.join(base_dir, 'ccm_node.crl')
+    openssl_ca_conf = os.path.join(base_dir, 'openssl_ca.conf')
     subprocess.check_call(['openssl', 'ca', '-revoke', os.path.join(base_dir, 'ccm_node.pem'),
                            '-cert', os.path.join(base_dir, 'ccm_node.pem'),
                            '-keyfile', os.path.join(base_dir, 'ccm_node.key'),
@@ -137,14 +150,6 @@ authorityKeyIdentifier=keyid:always,issuer:always
                            '-keyfile', os.path.join(base_dir, 'ccm_node.key'),
                            '-out', crl_file,
                            '-config', openssl_ca_conf])
-
-    logger.debug("removing temporary certificates in [{0}]".format(base_dir))
-    for filename in ('ccm_node.p12', 'ccm_node.tmp', 'trust.p12', 'index.txt', 'pulp_crl_number', 'index.txt.attr', 'index.txt.old', 'pulp_crl_number.old', 'openssl_ca.conf'):
-        try:
-            os.remove(os.path.join(base_dir, filename))
-        except OSError as e:
-            if e.errno != errno.ENOENT:  # ENOENT = no such file or directory
-                raise
 
 
 def is_port_used(port: int, service_name: str) -> bool:

@@ -11,7 +11,7 @@ from cassandra.cluster import NoHostAvailable, Cluster
 
 from dtest_class import Tester, get_ip_from_node, create_ks, create_cf, wait_for
 from tools.files import safe_mkdtemp
-from tools.misc import generate_ssl_stores, is_port_used
+from tools.misc import generate_ssl_stores, is_port_used, revoke_certificate
 from tools.data import putget
 from tools.sslkeygen import wait_for_cert_reload
 from ccmlib import common
@@ -74,10 +74,11 @@ class TestNativeTransportSSL(Tester):
 
     def test_connect_to_ssl_client_auth(self):
         """
-        Connecting to SSL enabled native transport port should only be possible using SSL enabled client
+        Connecting to SSL enabled native transport port should only be possible using SSL enabled client.
+        Also used certificate cannot be revoked to make connection.
         """
 
-        cluster = self._populateCluster(enableSSL=True, requireAuth=True)
+        cluster = self._populateCluster(enableSSL=True, requireAuth=True, useRevocation=True)
         node1 = cluster.nodelist()[0]
 
         cluster.start(jvm_args=['--logger-log-level', 'cql_server=debug'])
@@ -99,17 +100,10 @@ class TestNativeTransportSSL(Tester):
         session = self._create_cluster_session(node1, use_ssl=True, ca_certs=True)
         self._putget(cluster, session)
 
-    def test_connect_to_ssl_client_auth_revocation_list(self):
-        """
-        Connecting to SSL enabled native transport port should not be possible if we are revoked
-        Should be run in concert with test above to verify the connection with these certs as
-        auth and _no_ revoke works.
-        """
-
-        cluster = self._populateCluster(enableSSL=True, requireAuth=True, useRevocation=True)
-        node1 = cluster.nodelist()[0]
-
-        cluster.start(jvm_args=['--logger-log-level', 'cql_server=debug'])
+        # verify connection fails after revoking certificate
+        mark = node1.mark_log()
+        revoke_certificate(self.test_path)
+        wait_for_cert_reload(node1, "cql_server", ["ccm_node.crl"], from_mark=mark)
 
         try:  # hack around assertRaise's lack of msg parameter
             # try to connect with cert in revocation list
