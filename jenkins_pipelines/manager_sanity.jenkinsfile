@@ -85,7 +85,7 @@ pipeline {
                             echo "start test ......."
                             export PYTEST_CAPTURE=" " # make sure capturing is on, so mail would have the full errors in the attachments
                             ./scripts/run_test.sh -m="scylla_manager" manager_*.py --junit-xml="\$HOME/results.xml" --scylla-version=\${SCYLLA_VERSION} --scylla-manager-package=${params.scylla_manager_package} \
-                                --html=report.html --email ${params.email_address} --self-contained-html
+                                --html=report.html --email ${params.email_address} --self-contained-html --delete-logs=passed
 
                             echo "end test ....."
                             """
