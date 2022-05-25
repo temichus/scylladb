@@ -298,10 +298,13 @@ class TestSnapshot(SnapshotTester):
 
         tables_for_snapshot = ','.join(table for table in tables)
 
+        expected_error = 'Only one keyspace allowed when specifying a column family'
+        self.ignore_log_patterns += [expected_error]
+
         with pytest.raises(NodetoolError) as ne:
             make_snapshot(node1, ks='ks,ks1', cf=tables_for_snapshot, name='basic')
 
-        assert 'Only one keyspace allowed when specifying a column family' in ne.value.stdout, ne.tb
+        assert expected_error in ne.value.stdout, ne.tb
 
     def restore_snapshot_with_alter_table(self, drop=False):
         """
