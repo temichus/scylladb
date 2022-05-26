@@ -9,6 +9,7 @@ from itertools import zip_longest
 from datetime import datetime
 from packaging.version import Version
 from pkg_resources import parse_version
+import argparse
 
 import github
 from psutil import virtual_memory
@@ -93,6 +94,9 @@ def pytest_addoption(parser):
 
     parser.addoption("--collect-required", action="store_true", default=False,
                      help="collect a report on require tests")
+
+    parser.addoption("--from-file", action="store", type=argparse.FileType('r', encoding='UTF-8'), default=None,
+                     help='Get list of tests to run from file')
 
 
 def pytest_configure(config):
@@ -457,6 +461,9 @@ def pytest_collection_modifyitems(items, config):
     manager_package = config.getoption('--scylla-manager-package')
     collect_require = config.getoption("--collect-required")
     _is_enterprise = is_enterprise(cassandra_dir, scylla_version)
+    test_list_file = config.getoption("--from-file")
+    if test_list_file:
+        test_list_file = test_list_file.read().splitlines()
 
     if elk_reporter := config.pluginmanager.get_plugin("elk-reporter-runtime"):
         _scylla_mode = scylla_mode(cassandra_dir, scylla_version)
@@ -553,7 +560,9 @@ def pytest_collection_modifyitems(items, config):
 
         if item.get_closest_marker("dtest_enterprise") and not _is_enterprise:
             deselect_test = True
-
+        if not deselect_test and test_list_file:
+            if item.nodeid not in test_list_file:
+                deselect_test = True
         if deselect_test:
             deselected_items.append(item)
         else:

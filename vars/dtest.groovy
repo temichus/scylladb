@@ -294,7 +294,7 @@ def doParallelDtest (Map args) {
                     if (! fileExists(splitFileName)) {
                         error("split file missing - ${splitFileName}")
                     }
-                    String localIncludeTests = sh(returnStdout: true, script: " cat ${splitFileName} | tr '\n' ' '").trim()
+                    String localIncludeTests = " --from-file=$splitFileName"
                     String dtestRunTestSh = "$WORKSPACE/scylla-dtest/scripts/run_test.sh"
                     String dtestParameters = setDtestParams (
                         dryRun: dryRun,
