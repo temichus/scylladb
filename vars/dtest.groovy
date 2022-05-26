@@ -285,6 +285,9 @@ def doParallelDtest (Map args) {
                     def instanceType = sh(returnStdout: true, script: "curl http://169.254.169.254/latest/meta-data/instance-type").trim()
                     echo "instanceType: ${instanceType}"
 
+                    // HACK: avoid getting Argument list too long
+                    sh 'ulimit -s 65536'
+
                     unstash(name: "${dtestType}-dtest-split-files")
                     setupTestEnv(args.dtestMode)
                     String splitFileName = "$WORKSPACE/scylla-dtest/include_${NODE_INDEX}.txt"
