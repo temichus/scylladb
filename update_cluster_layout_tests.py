@@ -966,7 +966,9 @@ class TestUpdateClusterLayout(Tester):
         result = list(session.execute("SELECT * FROM cf"))
         assert len(result) == 1000, "Should have 1000 items in table"
 
-        self.wait_for_nodes_status(node3, ['UN', 'UL', 'UN'])
+        # When node1 stops, the decommission of node2 will fail. We should not
+        # test node2 is still in UL here. Test node2 is in either UL or UN.
+        self.wait_for_nodes_status(node3, [['UN', 'UL', 'UN'], ['UN', 'UN', 'UN']])
 
         node2.stop()
         node2.start(no_wait=True)
