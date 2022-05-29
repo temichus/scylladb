@@ -365,6 +365,8 @@ class TestLimits(Tester):
         logger.info("Trying to send a large request to database (insert a large string into table)...")
         long_string = "scylla" * 5 * 1024 * 1024
         id_value = 17
+        expected_error = f"Could not write mutation test_keyspace:test_table.*std::invalid_argument.*Mutation.*is too large"
+        self.ignore_log_patterns.append(expected_error)
         with pytest.raises(NoHostAvailable):
             session.execute(query=f"insert into test_keyspace.test_table (id, test_string) "
                                   f"values ({id_value}, '{long_string}');")
