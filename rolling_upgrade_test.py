@@ -12,13 +12,8 @@ from upgrade_test import UpgradeTester, upgrade_matrix_from_last_release_version
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.dtest_full
-class TestRollingUpgrade(UpgradeTester):
-    __test__ = True
-    _multiprocess_can_split_ = False
-
-    upgrade_path = upgrade_matrix_from_last_release_version
-    init_version = upgrade_path[0]
+class RollingUpgradeBase(UpgradeTester):
+    __test__ = False
 
     def test_rolling_upgrade(self, dtest_config):
         self.clone_upgrade_path(dtest_config)
@@ -203,3 +198,12 @@ class TestRollingUpgrade(UpgradeTester):
                 data = fdr.read()
 
             assert data, "Failed to create sstable dump"
+
+
+@pytest.mark.dtest_full
+class TestRollingUpgrade(RollingUpgradeBase):
+    __test__ = True
+    _multiprocess_can_split_ = False
+
+    upgrade_path = upgrade_matrix_from_last_release_version
+    init_version = upgrade_path[0]
