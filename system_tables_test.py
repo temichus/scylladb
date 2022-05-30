@@ -747,7 +747,8 @@ class TestRuntimeInfoTable(SystemTableBase):
                     f"The value='{row.value}' is unexpected for item='{row.item}'!"
                 assert int(row.value.replace(" seconds", "")) > 0, "Uptime for a node should be more than 0!"
             elif row.group == "memory" and row.item == "total":
-                assert int(row.value) == 1024 * 1024 * 1024, f"Unexpected memory value: {row.value}"
+                if node.scylla_mode() != 'debug':
+                    assert int(row.value) == 1024 * 1024 * 1024, f"Unexpected memory value: {row.value}"
             else:
                 assert self.is_number(value=row.value),\
                     f"The type of value='{row.value}' for item='{row.item}' is not number (integer or float)!"
