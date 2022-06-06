@@ -14,6 +14,7 @@ import argparse
 import github
 from psutil import virtual_memory
 from botocore.exceptions import ClientError as AwsClientError
+from botocore.exceptions import BotoCoreError
 import netifaces as ni
 from netifaces import AF_INET
 
@@ -594,7 +595,7 @@ def pytest_plugin_registered(plugin, manager):
             plugin.es_password = es_credentials['es_password']
             plugin.es_index_name = 'dtest_test_data'
 
-        except AwsClientError as ex:
+        except (BotoCoreError, AwsClientError) as ex:
             logger.warning("couldn't configure configure_es, results won't be sent out:")
             logger.warning("%s", str(ex))
 
