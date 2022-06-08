@@ -3174,7 +3174,8 @@ class TestRepairAdditional(RepairAdditionalBase):
         self.cluster.flush()
         node2_2.stop(wait_other_notice=True)
         new_node: Node = self.cluster.new_node(5, data_center="dc2", is_seed=False)
-        new_node.start(replace_address=node2_2.address(), no_wait=False)
+        new_node.start(replace_address=node2_2.address(), no_wait=False,
+                       jvm_args=['--logger-log-level', 'repair=debug'])
 
         # verify that new node will get data from the same DC
         new_node.watch_log_for("initialization completed")
