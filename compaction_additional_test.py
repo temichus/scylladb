@@ -1852,7 +1852,7 @@ class TestValidationCompaction(CompactionAdditionalTester):
 class TestLCSSSTablePromotion(CompactionAdditionalTester):
     KS = "ks"
     CF = "cf"
-    TABLE_LEVELS_PATTERN = "SSTables in each level:\s*\[(?P<sstable_list>[\d,\s/]*)\]"
+    TABLE_LEVELS_PATTERN = r"SSTables in each level:\s*\[(?P<sstable_list>[\d,\s/]*)\]"
     LCS = {'class': CompactionStrategy.LEVELED.value, 'sstable_size_in_mb': 1}
     STCS = {'class': CompactionStrategy.SIZE_TIERED.value}
 
@@ -1922,7 +1922,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         self._validate_levels_distribution(regex_match)
 
     def _get_table_levels(self, node: Node) -> Optional[Match[AnyStr]]:
-        """
+        r"""
         Run <nodetool cfstats> command and get the sstable levels
         info from it.
 
