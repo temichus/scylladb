@@ -1365,11 +1365,10 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         # node added with bootstrap enabled
         node2 = new_node(self.cluster)
         node2.start(wait_for_binary_proto=True)
-        shard_count = node2._smp
 
-        # wait for off-strategy compaction to finish
-        node2.watch_log_for(f"Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}",
-                            timeout=300)
+        msg = f"Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}"
+        shard_count = len(node2.grep_log(msg))
+        assert shard_count <= node2._smp, f"Found {shard_count} occurences of '{msg}' in the log, expected up to {node2._smp}"
 
         # After streaming the new node should also have at max one window per sstable.
         self._check_sstable_timestamps(node2)
