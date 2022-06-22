@@ -793,7 +793,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
             by_size = sorted(cf_size_time, key=lambda x: x.size)
             return by_time, by_size
 
-        nodelist, session = self.prepare(nodes=1)
+        nodelist, session = self.prepare(nodes=1, jvm_args=['--smp', '1'])
         node1 = nodelist[0]
         ks_name = "ks"
         cf_names = ["cf_1", "cf_2", "cf_3"]
