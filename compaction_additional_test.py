@@ -775,11 +775,12 @@ class TestCompactionAdditional(CompactionAdditionalTester):
             node1.compact()
             node1.wait_for_compactions()
 
-        def _get_compaction_history() -> list:
+        def _get_compaction_history(major_compaction_time) -> list:
             compaction_history_query = f"SELECT columnfamily_name, compacted_at, keyspace_name " \
                                        f"FROM system.compaction_history"
             compaction_history_result = session.execute(compaction_history_query).all()
-            return [row for row in compaction_history_result if row.keyspace_name == ks_name]
+            return [row for row in compaction_history_result if row.keyspace_name == ks_name
+                    and row.compacted_at >= major_compaction_time]
 
         def _sort_compaction_history(compaction_history: list) -> tuple:
             for item in cf_size_time:
@@ -798,8 +799,10 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         cf_size_time = _prepare_tables_with_data(cf_sizes=cf_sizes)
 
         node1.flush()
+        # get naive datetime at UTC timezone
+        t = dt.utcfromtimestamp(time.time())
         _perform_major_compaction()
-        sorted_by_time, sorted_by_size = _sort_compaction_history(_get_compaction_history())
+        sorted_by_time, sorted_by_size = _sort_compaction_history(_get_compaction_history(t))
 
         assert sorted_by_time == sorted_by_size, "The list of rows sorted by size is not identical" \
                                                  " to the list of rows sorted by compaction time"
