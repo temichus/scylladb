@@ -222,7 +222,8 @@ class TestUpdateClusterLayout(Tester):
         create_ks(session, 'ks', 3)
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        num_keys = 5000
+        num_keys = 100000 if isinstance(cluster, ScyllaCluster) and cluster.scylla_mode != "debug" else 10000
+        logger.debug("Inserting {} keys".format(num_keys))
         insert_c1c2(session, keys=range(num_keys), consistency=ConsistencyLevel.ONE)
 
         node2 = new_node(cluster)
