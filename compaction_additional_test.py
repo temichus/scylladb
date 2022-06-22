@@ -785,8 +785,10 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         def _sort_compaction_history(compaction_history: list) -> tuple:
             for item in cf_size_time:
                 for row in compaction_history:
-                    if item.name == row.columnfamily_name:
+                    if item.name == row.columnfamily_name and \
+                       (not item.compaction_time or row.compacted_at > item.compaction_time):
                         item.compaction_time = row.compacted_at
+                        logger.debug(item)
             by_time = sorted(cf_size_time, key=lambda x: x.compaction_time)
             by_size = sorted(cf_size_time, key=lambda x: x.size)
             return by_time, by_size
