@@ -772,7 +772,6 @@ class TestCompactionAdditional(CompactionAdditionalTester):
             return cf_size_time
 
         def _perform_major_compaction():
-            node1.flush()
             node1.compact()
             node1.wait_for_compactions()
 
@@ -798,6 +797,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         create_ks(session=session, name=ks_name, rf=1)
         cf_size_time = _prepare_tables_with_data(cf_sizes=cf_sizes)
 
+        node1.flush()
         _perform_major_compaction()
         sorted_by_time, sorted_by_size = _sort_compaction_history(_get_compaction_history())
 
