@@ -39,7 +39,7 @@ def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_ce
                                auto_bootstrap=bootstrap,
                                thrift_interface=thrift,
                                storage_interface=storage_interface,
-                               jmx_port=str(7000 + i * 100 + cluster.id),
+                               jmx_port=str(cluster.get_node_jmx_port(i)),
                                remote_debug_port=remote_debug_port,
                                initial_token=token,
                                binary_interface=binary,
