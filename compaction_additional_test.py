@@ -171,7 +171,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         9. check that no deletion marker is left and files have been removed
         """
         logger.debug("Starting node1 with 1 cpu")
-        [node1], session = self.prepare(1)
+        [node1], session = self.prepare(1, jvm_args=['--smp', '1'])
         create_ks(session, 'ks', 1)
 
         gc_grace_seconds = 5
