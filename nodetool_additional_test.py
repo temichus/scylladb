@@ -2032,6 +2032,7 @@ class TestNodetool(Tester):
             "unexpected error happened while sending requests",
             "Write attempt on defunct connection",
             "FAILURE",
+            "Timed out waiting for server response",
         ]
 
     def drain(self, node_to_drain):
