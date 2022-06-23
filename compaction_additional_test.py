@@ -190,10 +190,6 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
 
         session = self.patient_cql_connection(node1, 'ks')
-        logger.debug(f"Deleting {keys} keys")
-        for x in range(0, keys):
-            session.execute(f'delete from cf where key = {x}')
-        node1.flush()
 
         def compactions_count():
             rows = session.execute("select count(*) from system.compaction_history "
@@ -203,6 +199,11 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         compactions_1 = compactions_count()
         compactions_2 = compactions_1
+
+        logger.debug(f"Deleting {keys} keys")
+        for x in range(0, keys):
+            session.execute(f'delete from cf where key = {x}')
+        node1.flush()
 
         logger.debug(f"Waiting gc_grace_seconds={gc_grace_seconds} to pass")
         time.sleep(gc_grace_seconds + 1)
