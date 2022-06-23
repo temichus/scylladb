@@ -199,7 +199,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
             rows = session.execute("select count(*) from system.compaction_history "
                                    "where keyspace_name='ks' and columnfamily_name='cf' "
                                    "allow filtering")
-            return rows[0][0]
+            return rows.one()[0]
 
         compactions_1 = compactions_count()
         compactions_2 = compactions_1
