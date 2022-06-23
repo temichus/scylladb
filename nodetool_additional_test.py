@@ -2098,6 +2098,9 @@ class TestNodetool(Tester):
         if opt:
             cmd += opt
         ret = node.stress_object(cmd)
+        if not expected_errors:
+            expected_errors = []
+        expected_errors.append("Failed to connect over JMX; not collecting these stats")
         if type(ret) == type(str()):
             for line in ret.splitlines():
                 # Ignore Java stacktrace lines
