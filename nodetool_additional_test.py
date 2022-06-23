@@ -2068,7 +2068,7 @@ class TestNodetool(Tester):
         """
         Start a cluster with 2 nodes
         run load
-        call drain
+        restart a node
         """
         node_to_drain = 2
         expected_errors = self.stress_node_down_expected_errors(node_to_drain)
