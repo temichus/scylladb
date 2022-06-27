@@ -1457,7 +1457,9 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                 insert_statement,
                 [(pk, t, 0, self.seconds_to_micros(t * 60)) for pk in rand_pks])
             if t % 60 == 0:
-                node.flush()
+                logger.debug("start flush: t=%d", t)
+                node.flush(timeout=180)
+                logger.debug("done flush: t=%d", t)
 
     def test_twcs_multiple_sstables_during_bootstrap(self):
         synthetic_minutes = 20
