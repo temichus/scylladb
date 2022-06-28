@@ -2987,6 +2987,7 @@ class TestMaterializedViews(CommonUtils):
                 cl=ConsistencyLevel.ONE
             )
 
+    @pytest.mark.next_gating
     def test_base_replica_repair(self):
         self._base_replica_repair_test()
 
