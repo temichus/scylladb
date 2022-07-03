@@ -40,7 +40,8 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         create_ks(session, "ks", n)
         return (node, session)
 
-    def test_single_column_blob_max_size_with_cdc_preimage_full_postimage(self):
+    @pytest.mark.parametrize("prepare_statements", [True, False], ids=["prepared_statements", "unprepared_statements"])
+    def test_single_column_blob_max_size_with_cdc_preimage_full_postimage(self, prepare_statements: bool):
         """Test blob column with max size
 
         Run mutations with blob size close to limit and validate
@@ -52,11 +53,17 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         session.execute(create_table_stmt)
 
         insert_value = bytes("1".encode()) * 7 * MB
-        insert_statement = SimpleStatement("INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
+        if prepare_statements:
+            insert_statement = session.prepare("INSERT INTO ks.cf (pk, ck, v) VALUES (?, ?, ?)")
+        else:
+            insert_statement = SimpleStatement("INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
         insert_parameters = [{"pk": i, "ck": j, "v": insert_value} for i in range(10) for j in range(5)]
 
         update_value = bytes("2".encode()) * 4 * MB
-        update_statement = SimpleStatement("UPDATE ks.cf set v = %(v)s where pk = %(pk)s and ck=%(ck)s")
+        if prepare_statements:
+            update_statement = session.prepare("UPDATE ks.cf set v = ? where pk = ? and ck = ?")
+        else:
+            update_statement = SimpleStatement("UPDATE ks.cf set v = %(v)s where pk = %(pk)s and ck=%(ck)s")
         update_parameters = [{"pk": i, "ck": j, "v": update_value} for i in range(10) for j in range(5)]
 
         self.execute_case(node, session,
@@ -67,9 +74,11 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                           update_data={
                               "update_statement": update_statement,
                               "update_parameters": update_parameters
-                          })
+                          },
+                          check_stalls=prepare_statements)
 
-    def test_row_with_several_columns_of_blobs_with_cdc_preimage_full_postimage(self):
+    @pytest.mark.parametrize("prepare_statements", [True, False], ids=["prepared_statements", "unprepared_statements"])
+    def test_row_with_several_columns_of_blobs_with_cdc_preimage_full_postimage(self, prepare_statements: bool):
         """test row with several columns of blob type
 
         Construct row with several columns of blob type and populate
@@ -90,13 +99,22 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
 
         insert_cells_names = ", ".join([f"v_{i}" for i in range(NUM_CELLS)])
         insert_cells_values = ", ".join([f"%(v_{i})s" for i in range(NUM_CELLS)])
-        insert_statement = SimpleStatement(f"INSERT INTO ks.cf (pk, ck, {insert_cells_names}) \
-                                             VALUES (%(pk)s, %(ck)s, {insert_cells_values})")
+        insert_cells_place_holders = ", ".join(['?'] * NUM_CELLS)
+        if prepare_statements:
+            insert_statement = session.prepare(f"INSERT INTO ks.cf (pk, ck, {insert_cells_names}) \
+                                               VALUES (?, ?, {insert_cells_place_holders})")
+        else:
+            insert_statement = SimpleStatement(f"INSERT INTO ks.cf (pk, ck, {insert_cells_names}) \
+                                               VALUES (%(pk)s, %(ck)s, {insert_cells_values})")
         blob_columns = {f"v_{i}": VALUE for i in range(NUM_CELLS)}
         insert_parameters = [{**{"pk": i, "ck": j}, **blob_columns} for i in range(10) for j in range(10)]
 
-        update_cells = ", ".join([f"v_{i} = %(v_{i})s" for i in range(NUM_CELLS)])
-        update_statement = SimpleStatement(f"UPDATE ks.cf SET {update_cells} WHERE pk = %(pk)s and ck = %(ck)s")
+        if prepare_statements:
+            update_cells = ", ".join([f"v_{i} = ?" for i in range(NUM_CELLS)])
+            update_statement = session.prepare(f"UPDATE ks.cf SET {update_cells} WHERE pk = ? and ck = ?")
+        else:
+            update_cells = ", ".join([f"v_{i} = %(v_{i})s" for i in range(NUM_CELLS)])
+            update_statement = SimpleStatement(f"UPDATE ks.cf SET {update_cells} WHERE pk = %(pk)s and ck = %(ck)s")
         update_parameters = [{**{"pk": i, "ck": j}, **blob_columns} for i in range(10) for j in range(10)]
 
         self.execute_case(node, session,
@@ -107,9 +125,11 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                           update_data={
                               "update_statement": update_statement,
                               "update_parameters": update_parameters
-                          })
+                          },
+                          check_stalls=prepare_statements)
 
-    def test_large_blob_in_map_delta_preimage_full(self):
+    @pytest.mark.parametrize("prepare_statements", [True, False], ids=["prepared_statements", "unprepared_statements"])
+    def test_large_blob_in_map_delta_preimage_full(self, prepare_statements: bool):
         """test map type with large blob
 
         Test column with map type where one of the field
@@ -122,11 +142,17 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                 WITH cdc={'enabled': true, 'preimage': 'full', 'postimage': true}")
 
         insert_value = bytes("1".encode()) * 1 * MB
-        insert_statement = SimpleStatement("INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
+        if prepare_statements:
+            insert_statement = session.prepare("INSERT INTO ks.cf (pk, ck, v) VALUES (?, ?, ?)")
+        else:
+            insert_statement = SimpleStatement("INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
         insert_parameters = [{"pk": i, "ck": j, "v": {"key": insert_value}} for i in range(10) for j in range(5)]
 
         update_value = bytes("2".encode()) * 1 * MB
-        update_statement = SimpleStatement("UPDATE ks.cf SET v = v + %(v)s WHERE pk=%(pk)s and ck=%(ck)s")
+        if prepare_statements:
+            update_statement = SimpleStatement("UPDATE ks.cf SET v = v + ? WHERE pk=? and ck=?")
+        else:
+            update_statement = SimpleStatement("UPDATE ks.cf SET v = v + %(v)s WHERE pk=%(pk)s and ck=%(ck)s")
         update_parameters = [{"pk": i, "ck": j, "v": {f"key{k}": update_value}}
                              for i in range(10) for j in range(5) for k in range(5)]
 
@@ -138,10 +164,12 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                           update_data={
                               "update_statement": update_statement,
                               "update_parameters": update_parameters
-                          })
+                          },
+                          check_stalls=prepare_statements)
 
     def execute_case(self, node: ScyllaNode, session: Session,
-                     insert_data: Dict[str, Any], update_data: Dict[str, Any]):
+                     insert_data: Dict[str, Any], update_data: Dict[str, Any],
+                     check_stalls: bool = False):
 
         select_statement = SimpleStatement("SELECT * FROM ks.cf WHERE pk = %(pk)s and ck = %(ck)s")
         select_parameters = [{"pk": i, "ck": j} for i in range(10) for j in range(5)]
@@ -149,9 +177,11 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         cdc_select_statement = SimpleStatement("SELECT * FROM ks.cf_scylla_cdc_log LIMIT 10")
 
         mark = node.mark_log()
+        LOGGER.debug(f"Insert {insert_data['insert_statement']}")
         self.execute_query(session, insert_data["insert_statement"], insert_data["insert_parameters"])
-        found = node.grep_log("Reactor stall", from_mark=mark)
-        assert not found, f"{found}"
+        if check_stalls:
+            found = node.grep_log("Reactor stall", from_mark=mark)
+            assert not found, f"{found}"
 
         mark = node.mark_log()
 
@@ -173,8 +203,9 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                     print(str(exc))
                     raise exc
 
-        found = node.grep_log("Reactor stall", from_mark=mark)
-        assert not found, f"Next Reactor stalls were found: {found}"
+        if check_stalls:
+            found = node.grep_log("Reactor stall", from_mark=mark)
+            assert not found, f"Next Reactor stalls were found: {found}"
 
         found = node.grep_log("oversized allocation", from_mark=mark)
         assert not found, f"Next oversized allocation were found: {found}"
