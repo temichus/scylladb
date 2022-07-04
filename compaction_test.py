@@ -644,7 +644,6 @@ class TestCompaction(Tester):
         self.assert_table_compacted(session, self.secondary_table, since_timestamp=timestamp)
 
     @pytest.mark.require("#scylladb/scylla-dtest#10378")
-    @pytest.mark.timeout(300)
     @pytest.mark.parametrize(argnames=["compaction_type"],
                              argvalues=[
                                  ["CLEANUP"],

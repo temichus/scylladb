@@ -389,6 +389,7 @@ class TestMaterializedViews(CommonUtils):
         logger.debug(f"Truncating table '{ks}.{table}' done in {delta:.1f} seconds")
 
     @pytest.mark.require('#5459')
+    @pytest.mark.timeout(3500)
     def test_add_dc_during_mv_insert(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during inserts into base
@@ -533,6 +534,7 @@ class TestMaterializedViews(CommonUtils):
         """
         self._parallel_updates_inserts(records=2000, nodes=3, rf=3, mvs_amount=100)
 
+    @pytest.mark.timeout(4500)
     def test_small_concurrent(self):
         """
         This test is same as "hundreds_mvs_on_table_test" test, just small.

@@ -546,6 +546,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
             self._smoke_test(key_provider=KeyProviderEnum.local, compression=i)
             self.cleanup()
 
+    @pytest.mark.timeout(4700)
     def test_wrong_cipher_algorithm(self):
         errors = []
         # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
@@ -569,6 +570,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
 
         assert not errors, errors
 
+    @pytest.mark.timeout(4000)
     def test_supported_cipher_algorithms(self):
         errors = []
         for cipher_key_string, key_sizes in supported_cipher_algorithms.items():

@@ -2750,6 +2750,7 @@ class TestRepairAdditional(RepairAdditionalBase):
         return self._repair_option_pr_dc_host_test()
 
     @pytest.mark.dtest_debug
+    @pytest.mark.timeout(3600)
     def test_repair_option_pr_multi_dc(self):
         return self._repair_option_pr_multi_dc_test()
 
@@ -2782,6 +2783,7 @@ class TestRepairAdditional(RepairAdditionalBase):
         return self._repair_kill_3_test()
 
     @pytest.mark.next_gating
+    @pytest.mark.timeout(3000)
     def test_repair_during_update(self, more_options=[]):
         return self._repair_during_update_test(more_options)
 

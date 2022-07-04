@@ -2218,6 +2218,7 @@ class TestLargeScaleCluster(Tester):
             assert len(result) == i * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" % \
                 (len(cluster.nodelist()), i * 100 + 1000, len(result))
 
+    @pytest.mark.timeout(4200)
     def test_add_50_nodes(self):
         """
         Test large scale cluster (50 nodes cluster).

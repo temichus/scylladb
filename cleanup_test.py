@@ -79,6 +79,7 @@ class TestCleanup(Tester):
         rows = session.execute("select count(*) from ks.cf0;", timeout=timeout)
         assert rows[0][0] == num_keys
 
+    @pytest.mark.timeout(3000)
     def test_cleanup_space_amplification(self):
         num_keys = 100000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != "debug" else 10000
         timeout = self.cql_timeout(300)
