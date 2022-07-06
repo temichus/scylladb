@@ -1685,9 +1685,16 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                 assert span_info.is_spanning_one_window, msg
 
 
+pytest.mark.dtest_full
 class TestGarabageCollected(CompactionAdditionalTester):
 
-    def test_garbage_collected_sstable(self):
+    @pytest.mark.parametrize('strategy', [
+        'LeveledCompactionStrategy',
+        'SizeTieredCompactionStrategy',
+        'TimeWindowCompactionStrategy',
+        enterprise_only_param('IncrementalCompactionStrategy')
+    ])
+    def test_garbage_collected_sstable(self, strategy):
         """
         Test garbage collected SSTables
         Related issue: https://github.com/scylladb/scylla/issues/6275
@@ -1698,7 +1705,7 @@ class TestGarabageCollected(CompactionAdditionalTester):
         # Use IncrementalCompactionStrategy for Enterprise
         session.execute(
             "CREATE TABLE ks.cf (key varchar PRIMARY KEY, c1 text, c2 text) "
-            "WITH compaction = {'class': 'LeveledCompactionStrategy'}")
+            f"WITH compaction = {{'class': '{strategy}'}}")
 
         insert_c1c2(session, n=3)
         node1.flush()
