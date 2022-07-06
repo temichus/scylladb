@@ -1863,6 +1863,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
     LCS = {'class': CompactionStrategy.LEVELED.value, 'sstable_size_in_mb': 1}
     STCS = {'class': CompactionStrategy.SIZE_TIERED.value}
 
+    @pytest.mark.dtest_full
     def test_lcs_sstable_promotion(self):
         """
         This test validates that LCS adheres to the restrictions
