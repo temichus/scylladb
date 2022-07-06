@@ -1962,18 +1962,15 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         assert levels_regex
 
         # Get the sstable_list from the Match object and parse it into a list of integers
-        levels = [levels_regex.groupdict().get("sstable_list").split(",")][0]
+        raw_levels = [levels_regex.groupdict().get("sstable_list").split(",")][0]
 
-        if "/" in levels[-1]:
-            levels[-1] = levels[-1].split("/")[0]
-
-        levels = [int(item) for item in levels]
+        levels = [int(item.split('/')[0] if '/' in item else item) for item in raw_levels]
         assert levels[-1] != sum(levels), "Expected sstables to not be promoted solely to the " \
-                                          "top level, but found all in the top level: %s" % levels
+                                          "top level, but found all in the top level: %s" % raw_levels
 
         level_count_validation = reduce(lambda x, y: y >= (x * 10), levels)
         assert level_count_validation, "Expected each LCS level to be at least 10x of the previous " \
-                                       "level, but they were not: %s" % levels
+                                       "level, but they were not: %s" % raw_levels
 
     def _prepare(self):
         [node], session = self.prepare(1)
