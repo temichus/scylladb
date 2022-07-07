@@ -363,6 +363,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         assert actual_rows_after_flush == expected_row_after_flush, \
             f"Expected {expected_row_after_flush} rows after flush, but actually got {actual_rows_after_flush}"
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     @pytest.mark.parametrize("timestamp_resolution", ["MILLISECONDS"])
     def test_compact_data_by_time_window(self, timestamp_resolution):
