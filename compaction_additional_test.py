@@ -1686,7 +1686,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                 assert span_info.is_spanning_one_window, msg
 
 
-pytest.mark.dtest_full
+@pytest.mark.dtest_full
 class TestGarabageCollected(CompactionAdditionalTester):
 
     @pytest.mark.parametrize('strategy', [
