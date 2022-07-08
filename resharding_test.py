@@ -14,6 +14,7 @@ from tools.tables_view_manager import TableManager, MaterializedViewManager
 from tools.files import get_sstables_files, get_node_cf_dir
 from tools.assertions import assert_one, assert_two_queries_equal, assert_none
 from cassandra import ConsistencyLevel
+from cassandra.query import SimpleStatement
 from tools.marks import enterprise_only_param
 
 logger = logging.getLogger(__name__)
@@ -132,9 +133,10 @@ class ReshardingBase(Tester):
         assert res['total errors'] == 0
         assert res['total partitions'] >= op_cnt
 
-    def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1'):
+    def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1', consistency_level=ConsistencyLevel.QUORUM, timeout=120):
         session = self.patient_cql_connection(self.node)
-        resp = session.execute('SELECT count(*) FROM {0}.{1};'.format(keyspace, cf), timeout=120)
+        q = SimpleStatement(f"SELECT count(*) FROM {keyspace}.{cf}", consistency_level=consistency_level)
+        resp = session.execute(q, timeout=timeout)
         row_number = rows_to_list(resp)[0][0]
         logger.debug('number of rows: {}'.format(row_number))
         assert row_number == expected_row_num
