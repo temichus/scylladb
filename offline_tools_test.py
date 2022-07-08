@@ -73,6 +73,7 @@ class TestOfflineTools(Tester):
         node1.stress(['write', 'n=100', '-schema', 'replication(factor=1)'])
         cluster.stop(gently=False)
 
+        self.ignore_log_patterns.append("ColumnFamily not found: keyspace1/standard1")
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         self.verify_nodetool_stderr(error)
         assert "Found no sstables, did you give the correct keyspace" in output, "Message was not found in stdout"
