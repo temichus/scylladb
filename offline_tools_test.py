@@ -231,8 +231,9 @@ class TestOfflineTools(Tester):
         assert "Unknown keyspace/table keyspace1.standard1" in err, f"Message was not found in stderr:\nstdout:\n{out}\nstderr:\n{err}"
         assert_rc(rc, 1, out, err)
 
-        # test on nonexistent sstables:
+        # test on existing sstables:
         node1.stress(['write', 'n=100', '-schema', 'replication(factor=1)'])
+        node1.flush()
         (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
         assert_rc(rc, 0, out, err)
 
