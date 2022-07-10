@@ -63,6 +63,7 @@ class TestOfflineTools(Tester):
 
         # test by trying to run on nonexistent keyspace
         cluster.stop(gently=False)
+        logger.debug("run sstablelevelreset on non-exitent keyspace")
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         assert "ColumnFamily not found: keyspace1/standard1" in error, "Message was not found in stderr"
         # this should return exit code 1
@@ -70,9 +71,11 @@ class TestOfflineTools(Tester):
 
         # now test by generating keyspace but not flushing sstables
         cluster.start(wait_for_binary_proto=True)
-        node1.stress(['write', 'n=100', '-schema', 'replication(factor=1)'])
+        node1.stress(['write', 'n=0', '-schema', 'replication(factor=1)'])
+        node1.flush()
         cluster.stop(gently=False)
 
+        logger.debug("run sstablelevelreset on empty table")
         self.ignore_log_patterns.append("ColumnFamily not found: keyspace1/standard1")
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         self.verify_nodetool_stderr(error)
@@ -84,10 +87,12 @@ class TestOfflineTools(Tester):
         session = self.patient_cql_connection(node1)
         session.execute(
             "ALTER TABLE keyspace1.standard1 with compaction={'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb':1};")
+        logger.debug("Populating table")
         node1.stress(['write', 'n=1K', '-schema', 'replication(factor=1)'])
         node1.flush()
         cluster.stop(gently=False)
 
+        logger.debug("run sstablelevelreset on populated table")
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         self.verify_nodetool_stderr(error)
         assert "since it is already on level 0" in output, "Message was not found in stdout"
@@ -95,11 +100,13 @@ class TestOfflineTools(Tester):
 
         # test by loading large amount data so we have multiple levels and checking all levels are 0 at end
         cluster.start(wait_for_binary_proto=True)
+        logger.debug("Adding data to table")
         node1.stress(['write', 'n=50K', '-rate', 'threads=20', '-schema', 'replication(factor=1)'])
         cluster.flush()
         self.wait_for_compactions(node1)
         cluster.stop()
 
+        logger.debug("run sstablelevelreset on table with sstables in multiple levels")
         initial_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
         final_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
