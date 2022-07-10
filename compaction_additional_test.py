@@ -1536,9 +1536,17 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         executor = ThreadPoolExecutor(max_workers=1)
         thread1 = executor.submit(do_run_nodetool_decommission)
 
-        time_now = time.time()
-        res = node1.run_sstablemetadata(keyspace=self.keyspace_name)
+        sstable_files = sorted(node1.get_sstables(keyspace=self.keyspace_name, column_family=None),
+                               key=lambda x: int(os.path.basename(x).split('-')[1]))
+
+        res = []
+        # check the 10 first and 10 last sstables only
+        for i in sstable_files[:10] + sstable_files[-10:]:
+            res += node1.run_sstablemetadata(datafiles=[i], keyspace=self.keyspace_name,
+                                             column_families=[self.table_name])
+
         min_timestamp = max_timestamp = 0
+        expected_max_timestamp = self.seconds_to_micros((synthetic_minutes - 1) * 60 * 60)
         try:
             min_timestamp = min([int(min_compile.search(out).group(1)) for out, err, rc in res if out])
             max_timestamp = max([int(max_compile.search(out).group(1)) for out, err, rc in res if out])
@@ -1546,8 +1554,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             errors = [stderr for stdout, stderr, rc in res if not stdout][:10]
             pytest.fail(f'\nsstablemetadata failed with the following:\n\n{"".join(errors)}')
 
-        assert min_timestamp < int(time_now) < max_timestamp,\
-            f'New sstables timestamp must be between {min_timestamp} and {max_timestamp}, but it was {int(time_now)}'
+        assert max_timestamp == expected_max_timestamp
+        assert min_timestamp == 0
 
         while not thread1.done():
             time.sleep(1)
