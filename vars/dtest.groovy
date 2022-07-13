@@ -198,9 +198,7 @@ def splitAndCopyDtestJobs (Map args) {
 
     dir ("$WORKSPACE/scylla-dtest") {
         sh "env"
-        def status = sh(script: "./scripts/run_test.sh ${includeTests} ${excludeTests} --scylla-version=${env.SCYLLA_VERSION} --collect-only -q --es-slices --es-max-splice-time=${splitTimeTarget} --es-default-test-time=${defaultTestTimeSec}", returnStatus: true)
-        // TODO: stop ignoring status once all test are collectable
-        echo "$status, ignoring it for now"
+        sh(script: "./scripts/run_test.sh ${includeTests} ${excludeTests} --scylla-version=${env.SCYLLA_VERSION} --collect-only -q --es-slices --es-max-splice-time=${splitTimeTarget} --es-default-test-time=${defaultTestTimeSec}")
     }
     int numOfSplitFiles = sh(returnStdout: true, script: "ls $WORKSPACE/scylla-dtest/include_* -1 | wc -l") as Integer
 
