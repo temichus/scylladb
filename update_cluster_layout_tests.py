@@ -688,6 +688,11 @@ class TestUpdateClusterLayout(Tester):
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
+
+        self.ignore_log_patterns += [
+            rf"ks=ks, cf=cf, .*no_such_column_family",
+        ]
+
         t = executor.submit(run)
 
         if enable_repair_based_node_ops:
