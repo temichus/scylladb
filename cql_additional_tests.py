@@ -4692,6 +4692,7 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test", [[0, 1, None, 1], [0, 2, None, 2]])
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_static_columns_cas(self):
         session = self.prepare()
 
@@ -4710,7 +4711,7 @@ class TestCQL(Tester):
         session.execute("INSERT INTO test(id, k, v) VALUES (1, 'foo', 'foo')")
         assert_one(session, "INSERT INTO test(id, k, version) VALUES (1, 'foo', 1) IF NOT EXISTS",
                    [False, 1, 'foo', None, 'foo'])
-        assert_one(session, "INSERT INTO test(id, version) VALUES (1, 1) IF NOT EXISTS", [True, 1, 'foo', None, 'foo'])
+        assert_one(session, "INSERT INTO test(id, version) VALUES (1, 1) IF NOT EXISTS", [True, 1, None, None, None])
         assert_one(session, "SELECT * FROM test", [1, 'foo', 1, 'foo'])
         session.execute("DELETE FROM test WHERE id = 1")
 
@@ -4733,7 +4734,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='barfoo' WHERE id=0 AND k='k2';
                        UPDATE test SET version=3 WHERE id=0 IF version=1;
                      APPLY BATCH
-                   """, [[False, 0, 'k1', 2], [False, None, None, None], [False, 0, 'k1', 2]])
+                   """, [[False, 0, 'k1', 2], [False, 0, None, 2], [False, 0, None, 2]])
 
         assert_all(session,
                    """
@@ -4742,7 +4743,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='barfoo' WHERE id=0 AND k='k2';
                        UPDATE test SET version=3 WHERE id=0 IF version=2;
                      APPLY BATCH
-                   """, [[True, 0, 'k1', 2], [True, None, None, None], [True, 0, 'k1', 2]])
+                   """, [[True, 0, 'k1', 2], [True, 0, None, 2], [True, 0, None, 2]])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 3, 'foobar'], [0, 'k2', 3, 'barfoo']])
 
         assert_all(session,
@@ -4752,7 +4753,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='row1' WHERE id=0 AND k='k1' IF v='foo';
                        UPDATE test SET v='row2' WHERE id=0 AND k='k2' IF v='bar';
                    APPLY BATCH
-                   """, [[False, 0, 'k1', 3, 'foobar'], [False, 0, 'k1', 3, 'foobar'], [False, 0, 'k2', 3, 'barfoo']])
+                   """, [[False, 0, None, 3, None], [False, 0, 'k1', 3, 'foobar'], [False, 0, 'k2', 3, 'barfoo']])
 
         assert_all(session,
                    """
@@ -4761,7 +4762,7 @@ class TestCQL(Tester):
                        UPDATE test SET v='row1' WHERE id=0 AND k='k1' IF v='foobar';
                        UPDATE test SET v='row2' WHERE id=0 AND k='k2' IF v='barfoo';
                      APPLY BATCH
-                   """, [[True, 0, 'k1', 3, 'foobar'], [True, 0, 'k1', 3, 'foobar'], [True, 0, 'k2', 3, 'barfoo']])
+                   """, [[True, 0, None, 3, None], [True, 0, 'k1', 3, 'foobar'], [True, 0, 'k2', 3, 'barfoo']])
         assert_all(session, "SELECT * FROM test", [[0, 'k1', 4, 'row1'], [0, 'k2', 4, 'row2']])
 
         assert_invalid(session,
