@@ -547,6 +547,7 @@ class DTestSetup:
                      r'Timer callback failed: seastar::gate_closed_exception',
                      ]
         patterns += ["rpc - client .*({})".format('|'.join(expected_rpc_errors))]
+        patterns += [" raft_rpc - Failed to send "]
         # We see benign rpc errors when nodes start/stop.
         # If they cause system malfunction, it should be detected using higher-level tests.
         patterns += [r'rpc::unknown_verb_error']

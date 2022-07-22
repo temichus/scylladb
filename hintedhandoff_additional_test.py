@@ -15,6 +15,8 @@ from ccmlib.node import NodeError
 from dtest_class import Tester, wait_for, create_ks, get_ip_from_node
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
 from tools.metrics import get_node_metrics
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.misc import ImmutableMapping
 
 
 logger = logging.getLogger(__file__)
@@ -22,6 +24,13 @@ logger = logging.getLogger(__file__)
 
 @pytest.mark.dtest_full
 class TestHintedHandoff(Tester):
+
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_dtest_setup_overrides(self, dtest_config):
+        dtest_setup_overrides = DTestSetupOverrides()
+        if dtest_config.is_scylla:
+            dtest_setup_overrides.cluster_options = ImmutableMapping({"experimental_features": ["raft"]})
+        return dtest_setup_overrides
 
     @pytest.mark.dtest_debug
     def test_hintedhandoff_rebalance(self):
@@ -267,7 +276,7 @@ class TestHintedHandoff(Tester):
         node1.start(wait_for_binary_proto=True, jvm_args=self.__jvm_args(hh_enabled_value='true'))
 
         logger.info("Waiting for hints to be sent...")
-        self.__wait_until_hints_are_sent_from(node_from=node1, count=len(expected_values))
+        self.__wait_until_hints_are_sent_from(nodes_from=[node1], count=len(expected_values))
 
         # We want to check that hints for counters are sent correctly.
         # At this point, there should be 100 hints sent from node1 and node2.
@@ -487,20 +496,21 @@ class TestHintedHandoff(Tester):
                                                                "max_hinted_handoff_concurrency":
                                                                max_hinted_handoff_concurrency})
 
-        self.cluster.populate(2).start(wait_other_notice=True, wait_for_binary_proto=True, jvm_args=jvm_args)
-        node1, node2 = self.cluster.nodelist()
+        self.cluster.populate(3).start(wait_other_notice=True, wait_for_binary_proto=True, jvm_args=jvm_args)
+        node1, node2, node3 = self.cluster.nodelist()
 
         self.validate_max_hinted_handoff_concurrency_value(node=node1, expected_value=max_hinted_handoff_concurrency)
         self.validate_max_hinted_handoff_concurrency_value(node=node2, expected_value=max_hinted_handoff_concurrency)
+        self.validate_max_hinted_handoff_concurrency_value(node=node3, expected_value=max_hinted_handoff_concurrency)
 
         logger.info("Stop node1 to create a hints on node2")
         node1.stop(wait_other_notice=True)
         rows = 100
-        node2.stress(['write', f'n={rows}', '-schema', 'replication(factor=2)'])
+        node2.stress(['write', f'n={rows}', '-schema', 'replication(factor=3)'])
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         logger.info("Waiting for hints to be sent...")
-        self.__wait_until_hints_are_sent_from(node_from=node2, count=rows)
+        self.__wait_until_hints_are_sent_from(nodes_from=[node2, node3], count=rows)
 
         logger.info("Stop node2 and validate that all data was sent to node1")
         node2.stop(wait_other_notice=True)
@@ -657,7 +667,7 @@ class TestHintedHandoff(Tester):
         hh_enabled_updater(node1, "true")
 
         logger.info("Waiting for hints to be sent...")
-        self.__wait_until_hints_are_sent_from(node_from=node1, count=expected_hints_count)
+        self.__wait_until_hints_are_sent_from(nodes_from=[node1], count=expected_hints_count)
 
         # Check rows on node2, should only have keys from keys1
 
@@ -954,13 +964,21 @@ class TestHintedHandoff(Tester):
 
         self.__start_all(nodes, hh_enabled_value=hh_enabled_value, extra_jvm_args=custom_args)
 
-    def __wait_until_hints_are_sent_from(self, node_from, count):
+    def __wait_until_hints_are_sent_from(self, nodes_from, count):
+        def hints_sent_from(n):
+            metrics = get_node_metrics(get_ip_from_node(n), metrics=["scylla_hints_manager_sent"])
+            result = metrics["scylla_hints_manager_sent"]
+            logger.info("There were {} hints sent from {}".format(result, n.name))
+            return result
+
         def check():
-            res = get_node_metrics(get_ip_from_node(node_from), metrics=["scylla_hints_manager_sent"])
-            sent_count = res["scylla_hints_manager_sent"]
-            logger.info("There were {} hints sent".format(sent_count))
-            return sent_count >= count
-        wait_for(check, timeout=60, text="Waiting until there are {} hints sent from {}...".format(count, node_from.name))
+            result = sum(hints_sent_from(n) for n in nodes_from)
+            logger.info("There were {} hints sent in total".format(result))
+            return result >= count
+        nodes_desc = ','.join(n.name for n in nodes_from)
+        wait_for(check,
+                 timeout=60,
+                 text="Waiting until there are {} hints sent from {}...".format(count, nodes_desc))
 
     def __check_hints_dir_present(self, node_from, node_to, must_be_present=True, shard=None):
         dir_name = ""
