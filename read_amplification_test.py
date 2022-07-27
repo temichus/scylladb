@@ -235,6 +235,7 @@ class TestReadAmplification(Tester):
         self.read_amplification(SCAN_READ, KBYTE * KBYTE * 20)
 
 
+@pytest.mark.dtest_full
 class TestMultiShardReader(Tester):
     """
     This class holds the test that covers the issue that cause to read amplification
@@ -264,7 +265,7 @@ class TestMultiShardReader(Tester):
 
         session = self.patient_cql_connection(node1, protocol_version=protocol_version)
         if create_keyspace:
-            self.create_ks(session, 'ks', rf)
+            create_ks(session, 'ks', rf)
             session.execute("USE ks")
         return session, node1
 
@@ -284,15 +285,14 @@ class TestMultiShardReader(Tester):
     @retry_with_func_attempts
     def run_query_and_get_its_session_id(node: ScyllaNode, session: Session, query: str, num_attempts: int = 5) -> str:
         logger.debug("Run query: %s", query)
-        node.run_cqlsh(f"TRACING ON; %s", query)
-
+        session.execute(query=query, trace=True)
         logger.debug("Get session_id of the query: {query}")
         sessions = list(session.execute("select session_id, parameters from system_traces.sessions"))
         # Row(session_id=UUID('d1a0fa80-1c67-11ec-aea3-3a3e0d08d0b2'),
         # parameters=OrderedMapSerializedKey([('consistency_level', 'ONE'), ('page_size', '5000'),
         # ('query', 'select token(key) from ks.cf where token(key) = -4307320966523859'),
         # ('serial_consistency_level', 'SERIAL'), ('user_timestamp', '1632399276584071')]))
-        session_id = [ses.session_id for ses in sessions if ses.parameters['query'] == f"{query};"]
+        session_id = [ses.session_id for ses in sessions if ses.parameters['query'] == f"{query}"]
         assert session_id, "Not found session for tested query"
         return session_id[0]
 
@@ -348,7 +348,7 @@ class TestMultiShardReader(Tester):
         logger.debug("Start cluster with SMP %d", smp)
         session1, node1 = self.prepare(nodes=nodes, rf=rf, jvm_args=['--smp', str(smp),
                                                                      '--memory', '{}M'.format(512 * int(smp))])
-        self.create_cf(session1, name='cf', columns={'c1': 'blob', 'c2': 'blob', 'c3': 'blob', 'c4': 'blob'})
+        create_cf(session1, name='cf', columns={'c1': 'blob', 'c2': 'blob', 'c3': 'blob', 'c4': 'blob'})
 
         logger.debug("Insert 10 row")
         self.insert_rows_with_blob(session1, n=10)
