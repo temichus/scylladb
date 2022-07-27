@@ -2126,6 +2126,47 @@ class TestUpdateClusterLayout(Tester):
         query_c1c2_concurrent(session, keys=range(
             750, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
+    def test_change_node_ip(self):
+        """
+        Start 3 nodes
+        Stop node 3
+        Change IP address of node3
+        Start node 3 again
+        Verify all nodes in the cluster notice node3 uses the new ip address
+        """
+        cluster = self.cluster
+
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        create_ks(session, 'ks', 2)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+
+        logger.debug("Stop node3")
+        node3.stop()
+
+        logger.debug("Change IP address for node3")
+        ip_prefix = cluster.get_ipprefix()
+        ip3 = f'{ip_prefix}33'
+        node3.set_configuration_options(values={'listen_address': ip3, 'rpc_address': ip3, 'api_address': ip3})
+        node3.network_interfaces = {k: (ip3, v[1]) for k, v in node3.network_interfaces.items()}
+        logger.debug(f"Start node3 again with ip address {ip3}")
+
+        node3.start(wait_for_binary_proto=True, wait_other_notice=False)
+        logger.debug("Node3 is now up")
+        hostid3 = node3.hostid()
+        # Verify all nodes in the cluster see node3 is using the new ip address
+        for node in [node1, node2, node3]:
+            status = self.nodetool_status(node)
+            logger.debug("nodetool status from {}: {}".format(node.name, status))
+            for n in status['nodes']:
+                if n['address'] == ip3:
+                    assert n['host id'] == hostid3
+
 
 @pytest.mark.dtest_full
 class TestStopNodeEarly(Tester):
