@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.scylla_cdc
+@pytest.mark.dtest_full
 class TestCDCTTLFunctionality(Tester, CDCInitializeHelper):
 
     keyspace = "ks"

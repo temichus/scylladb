@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.single_node
 @pytest.mark.scylla_cdc
+@pytest.mark.dtest_full
 class TestCDCTraceInfo(Tester, CDCInitializeHelper):
     keyspace = "ks"
     table = "cf"
