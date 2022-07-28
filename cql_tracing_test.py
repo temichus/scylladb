@@ -5,8 +5,6 @@
 import logging
 
 import pytest
-import requests
-from ccmlib.scylla_node import ScyllaNode
 
 from dtest_setup import DTestSetup
 from tools.assertions import assert_none, assert_row_count_not_zero
@@ -271,6 +269,7 @@ class TestCqlTracing(PrepareClusterHelper):
         return 0
 
 
+@pytest.mark.dtest_full
 class TestSlowQueryTracing(PrepareClusterHelper):
     """
     This class represents tests for Slow Query Logging tracing type.
