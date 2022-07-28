@@ -16,8 +16,9 @@ from dtest_class import Tester, wait_for
 
 logger = logging.getLogger(__name__)
 
-CDC_GENERATIONS_TABLE = 'system_distributed.cdc_generation_descriptions'
-CDC_STREAMS_TABLE = 'system_distributed.cdc_streams_descriptions'
+CDC_GENERATIONS_TABLE = 'system_distributed_everywhere.cdc_generation_descriptions_v2'
+CDC_STREAMS_TABLE = 'system_distributed.cdc_streams_descriptions_v2'
+CDC_TIMESTAMPS_TABLE = 'system_distributed.cdc_generation_timestamps'
 
 CDC_TESTER_TYPE = Union[Tester, "CDCInitializeHelper"]  # pylint: disable=unsubscriptable-object)
 

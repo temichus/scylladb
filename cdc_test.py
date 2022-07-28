@@ -30,13 +30,9 @@ from dtest_class import Tester, wait_for
 from dtest_setup import DTestSetup
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
-
+from tools.cdc_utils import CDC_GENERATIONS_TABLE, CDC_STREAMS_TABLE, CDC_TIMESTAMPS_TABLE
 
 TOKENS_PER_NODE = 256
-
-CDC_GENERATIONS_TABLE = 'system_distributed_everywhere.cdc_generation_descriptions_v2'
-CDC_STREAMS_TABLE = 'system_distributed.cdc_streams_descriptions_v2'
-CDC_TIMESTAMPS_TABLE = 'system_distributed.cdc_generation_timestamps'
 
 logger = logging.getLogger(__name__)
 
