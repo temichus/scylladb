@@ -524,6 +524,7 @@ class TestReversedQueriesWithOverlappingRangeTombstones(Tester, ConcurrentExecut
         assert list(response) == [{'ck': ck, 'v': 42}]
 
 
+@pytest.mark.dtest_full
 class TestReversedQueriesSelectorsDuringUpgrade(UpgradeTester, BaseReversedQuerySelector):
     __test__ = True
     upgrade_path = upgrade_test.upgrade_matrix_from_last_release_version
