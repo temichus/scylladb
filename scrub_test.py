@@ -165,6 +165,8 @@ class TestHelper(Tester):
         logger.debug(f'sstables after increment {str(sstables)}')
 
 
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestScrubIndexes(TestHelper):
     """
     Test that we scrub indexes as well as their parent tables
@@ -322,6 +324,8 @@ class TestScrubIndexes(TestHelper):
         assert initial_users == users, "List of users before and after scrub are different"
 
 
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestScrub(TestHelper):
     """
     Generic tests for scrubbing
