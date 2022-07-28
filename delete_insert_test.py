@@ -14,6 +14,7 @@ from dtest_class import Tester, create_ks
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.dtest_full
 class TestDeleteInsert(Tester):
     """
     Examines scenarios around deleting data and adding data back with the same key
