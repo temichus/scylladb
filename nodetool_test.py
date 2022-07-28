@@ -11,6 +11,7 @@ from dtest_class import Tester
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.dtest_full
 class TestNodetool(Tester):
 
     def test_decommission_after_drain_is_invalid(self):
