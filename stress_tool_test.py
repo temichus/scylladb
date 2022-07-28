@@ -4,6 +4,8 @@ from dtest_class import Tester
 from tools.data import rows_to_list
 
 
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestStressSparsenessRatio(Tester):
     """
     @jira_ticket CASSANDRA-9522
