@@ -10,10 +10,13 @@ from dtest_class import Tester, create_ks
 @pytest.mark.dtest_debug
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class TestSimple(Tester):
+class TestSimpleDriver(Tester):
 
-    __test__ = False
-    __scylla_args__ = []
+    @pytest.fixture(params=(['--smp', '1'], ['--smp', '2']),
+                    ids=['SMP=1', 'SMP=2'],
+                    autouse=True)
+    def fixture_scylla_args(self, request):
+        self.__scylla_args__ = request.param
 
     def prepare(self):
         """
@@ -157,10 +160,3 @@ class TestSimple(Tester):
         assert len(list(res)) == 0, list(res)
 
         time.sleep(1)
-
-
-options = {'Single': ['--smp', '1'], 'SMP': ['--smp', '2']}
-
-for option in options.keys():
-    cls_name = ('SimpleDriverTest_with_' + option)
-    vars()[cls_name] = type(cls_name, (TestSimple,), {'__scylla_args__': options[option], '__test__': True})
