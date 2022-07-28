@@ -113,7 +113,7 @@ def copy_logs(request, dtest_config, directory=None, name=None, cores=None):
     if not os.path.exists(directory):
         os.mkdir(directory)
 
-    basedir = str(int(time.time() * 1000)) + '_' + request.node.nodeid
+    basedir = str(int(time.time() * 1000)) + '_' + request.node.nodeid.replace('/', '_')
     # figure out the system max filename length (since test full name might be bigger than it)
     # if it's bigger we just truncate to the system max
     name_max = os.pathconf(directory, "PC_NAME_MAX")
