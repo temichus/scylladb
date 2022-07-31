@@ -26,6 +26,8 @@ function usage {
   echo "    --repeat=<num>            How many times to repeat the tests. Default is 1"
   echo "    --dry_run                 Print commands instead of running them"
   echo "    --manager-package=<url>   Url to the scylla-manager relocatable package"
+  echo "    --driver-version=<ver>    driver version to install before tests start, ex. scylla-driver==3.25.4"
+
   exit 1
 }
 
@@ -168,6 +170,9 @@ case $i in
     --manager-package*)
     manager_package="${i#*=}"
     ;;
+    --driver-version*)
+    driver_version="${i#*=}"
+    ;;
     *)
     echo "Error: unknown command line option: |$i|"
     usage
@@ -194,6 +199,7 @@ echo "   --scylla_ext_opts = \"$scylla_ext_opts_param\""
 echo "   --scylla_ext_env  = \"$scylla_ext_env_param\""
 echo "   --dtest_type      = \"$dtest_type\""
 echo "   --manager-package = \"$manager_package\""
+echo "   --driver-version  = \"$driver_version\""
 echo "=================="
 
 # Script is called on with workspace as the current directory, which contains the scylla, scylla-ccm, scylla-dtest, and other directories.
@@ -224,6 +230,10 @@ fi
 
 if [ ! -z $manager_package ]; then
   export INSTALL_CASSANDRA="$INSTALL_CASSANDRA --scylla-manager-package=$manager_package"
+fi
+
+if [ ! -z $driver_version ]; then
+  export INSTALL_CASSANDRA="$INSTALL_CASSANDRA ; pip3 install $driver_version"
 fi
 
 RUN_TEST_CMD="./scripts/run_test.sh"

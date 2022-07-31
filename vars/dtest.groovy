@@ -32,6 +32,7 @@ String setDtestParams (Map args) {
 	String dtestRepeats = args.dtestRepeats ?: "1"
     String dtestType = args.dtestType ?: "full"
     String managerPackage = args.managerPackage ?: ""
+    String driverVersion = args.driverVersion ?: ""
 
 	String dtestParameters = "--home=${WORKSPACE}/${params.PRODUCT_NAME}"
 	dtestParameters += " --mode=$args.dtestMode"
@@ -70,6 +71,10 @@ String setDtestParams (Map args) {
 
     if (managerPackage) {
         dtestParameters = dtestParameters + " --manager-package=\"$managerPackage\""
+    }
+
+    if (driverVersion) {
+        dtestParameters = dtestParameters + " --driver-version=\"$driverVersion\""
     }
 
 	setupTestEnv(args.dtestMode)
@@ -254,6 +259,7 @@ def doParallelDtest (Map args) {
 	String cloudUrl = args.cloudUrl ?: "latest"
     String dtestType = args.dtestType ?: "full"
     String managerPackage = args.managerPackage ?: ""
+    String driverVersion = args.driverVersion ?: ""
 
 	def branches = [:]
 	def runnersLabel =  args.splitFleetLabal ?: generalProperties.targetDtestStrongBuilder
@@ -303,7 +309,8 @@ def doParallelDtest (Map args) {
                         extOpts: extOpts,
                         extEnv: extEnv,
                         dtestType: dtestType,
-                        managerPackage: managerPackage)
+                        managerPackage: managerPackage,
+                        driverVersion: driverVersion)
 
                     String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
                     echo "dtestParameters: |${dtestParameters}|"
@@ -368,6 +375,7 @@ def doDtest (Map args) {
 	String architecture = args.architecture ?: ""
     String dtestType = args.dtestType ?: "full"
     String managerPackage = args.managerPackage ?: ""
+    String driverVersion = args.driverVersion ?: ""
 
 	echo "Calling dtest in docker toolchain"
 	String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
@@ -384,7 +392,8 @@ def doDtest (Map args) {
 			randomDtestsSeed: randomDtestsSeed,
 			dtestRepeats: dtestRepeats,
 			dtestType: args.dtestType,
-			managerPackage: managerPackage
+			managerPackage: managerPackage,
+			driverVersion: driverVersion
 		)
 
 	boolean dtestFailed = false

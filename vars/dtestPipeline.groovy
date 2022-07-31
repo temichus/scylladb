@@ -35,6 +35,8 @@ def call(Map pipelineParams) {
             string(name: 'SCYLLA_CCM_BRANCH', defaultValue: '', description: '')
             booleanParam(name: 'PRESERVE_WORKSPACE', defaultValue: false, description: 'Check this if you need the workspace to remain (for debug)')
             booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Check this to check pipeline syntax. will not perform anything.')
+
+            string(name: 'DRIVER_VERSION', defaultValue: "", description: 'driver version to use during the tests, ex. scylla-driver==3.25.4')
         }
 
         agent {
@@ -163,5 +165,6 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         ccmRepo: params.SCYLLA_CCM_REPO,
         splitFleetLabal: splitFleetLabal,
         dtestType: dtestType,
+        driverVersion: params.DRIVER_VERSION,
     )
 }
