@@ -108,7 +108,6 @@ mkdir -p ${HOME}/.ccm
 mkdir -p ${HOME}/.certs
 chmod 0700 ${HOME}/.certs
 mkdir -p ${HOME}/.config
-mkdir -p ${HOME}/.local/lib
 mkdir -p ${HOME}/.cassandra
 mkdir -p ${HOME}/.cache/pre-commit
 
@@ -214,7 +213,7 @@ done
 if [[ ${subcommand} == *'bash'* ]] || [[ ${subcommand} == *'python'* ]]; then
     CMD=${subcommand}
 else
-    CMD="bash -c $'sudo rsyslogd; pip3 install --user ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m pytest -v ${PYTEST_CAPTURE} ${subcommand}'"
+    CMD="bash -c $'sudo rsyslogd; pip3 install ${CCM_DIR} ; export PATH=\$PATH:\${HOME}/.local/bin ; cp -a /.ccm/repo* \${HOME}/.ccm/ ; bash -c \"${INSTALL_CASSANDRA}\"; python3 -m pytest -v ${PYTEST_CAPTURE} ${subcommand}'"
 fi
 
 docker_cmd="docker run --init --detach=true \
@@ -250,8 +249,8 @@ docker_cmd="docker run --init --detach=true \
     -u $(id -u ${USER}):$(id -g ${USER}) \
     ${group_args[@]} \
     --tmpfs ${HOME}/.cache \
+    --tmpfs ${HOME}/.local:exec,uid=$(id -u ${USER}),gid=$(id -g ${USER}) \
     -v ${HOME}/.cache/pre-commit:${HOME}/.cache/pre-commit \
-    -v ${HOME}/.local:${HOME}/.local \
     -v ${HOME}/.dtest:${HOME}/.dtest \
     -v ${HOME}/.ccm:${HOME}/.ccm \
     -v ${HOME}/.certs:${HOME}/.certs \
