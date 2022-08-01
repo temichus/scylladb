@@ -523,6 +523,7 @@ class TestLWTSchemaModification(Tester):
                             BatchInserts(node=1)],
                            smp=8, nodes=8, loops=1, run_s=10)
 
+    @pytest.mark.next_gating
     def test_index_drop_add(self):
         self._test_combine([LWTLoad(row_start=1001, row_end=9999),
                             ReadRows(row_end=1000),
