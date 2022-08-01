@@ -24,7 +24,7 @@ def call(Map pipelineParams) {
             booleanParam(name: 'DTEST_DEBUG_INFO', defaultValue: false, description: 'Check this to print debug to stdout when running dtest')
             booleanParam(name: 'DTEST_KEEP_LOGS', defaultValue: false, description: 'Check this, to keep dtest logs')
             string(name: 'INCLUDE_DTESTS', defaultValue: "${pipelineParams.get('INCLUDE_DTESTS', '')}" , description: """Specify which dtests to run. default for release:
-                                                                 -m 'dtest_full and not dtest_heavy and not dtest_long',
+                                                                 -m 'not skip and dtest_full and not dtest_heavy and not dtest_long',
                                                                  for debug: -m dtest_debug """)
             string(name: 'EXCLUDE_DTESTS', defaultValue: '', description: 'Specify dtests to exclude.')
             string(name: 'SCYLLA_EXT_OPTS_EXTRA_SETTINGS', defaultValue: '--abort-on-seastar-bad-alloc --abort-on-lsa-bad-alloc=1', description: 'Anything you put here will be added to any default settings of SCYLLA_EXT_OPTS env var sent to nose.')
@@ -55,7 +55,7 @@ def call(Map pipelineParams) {
                         baseRelocJob = params.RELOC_JOB_NAME ?: "next"
                         buildMode = params.BUILD_MODE
                         excludeTests = params.EXCLUDE_DTESTS ?: ""
-                        includeDtests = params.INCLUDE_DTESTS ?: "-m 'dtest_full and not dtest_heavy and not dtest_long'"
+                        includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and dtest_full and not dtest_heavy and not dtest_long'"
 
                         splitMaxNodesForHeavyAndLong = "10"
 
@@ -89,7 +89,7 @@ def call(Map pipelineParams) {
                         steps {
                             script {
                                 node(generalProperties.targetDtestBuilder) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, "-m 'dtest_heavy and not dtest_long'",
+                                    runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_heavy and not dtest_long'",
                                         "heavy", generalProperties.targetDtestStrongBuilder, "240")
                                 }
                             }
@@ -102,7 +102,7 @@ def call(Map pipelineParams) {
                         steps {
                             script {
                                 node(generalProperties.targetDtestBuilder) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, "-m dtest_long",
+                                    runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_long",
                                         "long", generalProperties.targetDtestStrongBuilder, "240")
                                 }
                             }
