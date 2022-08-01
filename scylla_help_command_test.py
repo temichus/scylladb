@@ -33,7 +33,11 @@ class TestScyllaHelpCommand(Tester):
             container.wait(timeout=5)
             help_text = container.logs().decode()
         else:
-            cli_args = [Path(self.cluster.get_install_dir()) / "scylla" / "bin" / "scylla", "--help"]
+            if self.dtest_config.cassandra_dir:
+                cli_args = [Path(self.cluster.get_install_dir()) / "build" /
+                            self.dtest_config.scylla_mode / "scylla", "--help"]
+            else:
+                cli_args = [Path(self.cluster.get_install_dir()) / "scylla" / "bin" / "scylla", "--help"]
             logger.debug(f"running command: {' '.join([str(a) for a in cli_args])}")
             help_text = subprocess.run(cli_args, capture_output=True, universal_newlines=True).stdout
         assert "Scylla options:" in help_text, f"Scylla help text is wrong: {help_text}"
