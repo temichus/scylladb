@@ -22,6 +22,8 @@ class TestScyllaHelpCommand(Tester):
         self.args_list_should_not_contain_duplicates(args_list)
 
     def get_scylla_help_text(self):
+        self.cluster.populate(1)
+        node1 = self.cluster.nodelist()[0]
         docker_image = getattr(self.cluster, "docker_image", None)
         if docker_image is not None:
             client = docker.from_env()
@@ -33,13 +35,10 @@ class TestScyllaHelpCommand(Tester):
             container.wait(timeout=5)
             help_text = container.logs().decode()
         else:
-            if self.dtest_config.cassandra_dir:
-                cli_args = [Path(self.cluster.get_install_dir()) / "build" /
-                            self.dtest_config.scylla_mode / "scylla", "--help"]
-            else:
-                cli_args = [Path(self.cluster.get_install_dir()) / "scylla" / "bin" / "scylla", "--help"]
+            cli_args = [Path(node1.get_bin_dir()) / "scylla", "--help"]
             logger.debug(f"running command: {' '.join([str(a) for a in cli_args])}")
-            help_text = subprocess.run(cli_args, capture_output=True, universal_newlines=True).stdout
+            help_text = subprocess.run(cli_args, capture_output=True,
+                                       universal_newlines=True, env=node1._launch_env).stdout
         assert "Scylla options:" in help_text, f"Scylla help text is wrong: {help_text}"
         return help_text
 
