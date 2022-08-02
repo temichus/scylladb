@@ -212,7 +212,7 @@ class TestScrubIndexes(TestHelper):
 
     def test_scrub_static_table(self):
         cluster = self.cluster
-        cluster.populate(1).start()
+        cluster.populate(1).start(jvm_args=['--smp', '1'])
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
