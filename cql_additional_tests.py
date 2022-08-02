@@ -6091,7 +6091,7 @@ class TestCQL(Tester):
 
     @pytest.mark.single_node
     def test_cql_versions_collections(self):
-        for p in range(1, 3):
+        for p in range(2, 5):
             session = self.prepare(protocol_version=p)
 
             session.execute("""
