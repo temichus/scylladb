@@ -419,21 +419,17 @@ class TestConcurrentSchemaChanges(Tester):
         """
         logger.debug("changes_while_node_down_test()")
         cluster = self.cluster
-        cluster.populate(2).start()
+        cluster.populate(2).start(wait_other_notice=True, wait_for_binary_proto=True)
         node1, node2 = cluster.nodelist()
-        wait(2)
-        session = self.patient_cql_connection(node2)
+        session = self.patient_exclusive_cql_connection(node1)
 
-        self.prepare_for_changes(session, namespace='ns2')
-        node1.stop()
-        wait(2)
+        node2.stop(wait_other_notice=True)
         fixture_dtest_setup.ignore_log_patterns += [r'Column .* in view .* was not found in the base table']
-        self.make_schema_changes(session, namespace='ns2')
-        wait(2)
-        node2.stop()
-        wait(2)
-        cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
-        self.validate_schema_consistent(node1)
+        self.prepare_for_changes(session, namespace='ns1')
+        self.make_schema_changes(session, namespace='ns1')
+
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        self.validate_schema_consistent(node2)
 
     def test_changes_while_node_toggle(self, fixture_dtest_setup):
         """
