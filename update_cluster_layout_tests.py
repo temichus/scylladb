@@ -2130,6 +2130,70 @@ class TestUpdateClusterLayout(Tester):
                 if n['address'] == ip3:
                     assert n['host id'] == hostid3
 
+    def test_change_node_ip_full_cluster_down(self):
+        """
+        Start 3 nodes
+        Stop node 1 2 3
+        Change IP address of node 1 2 3
+        Start node 1 2 3 again
+        Verify all nodes in the cluster notice other nodes use the new ip address
+        """
+        cluster = self.cluster
+
+        cluster.set_configuration_options(
+            values=self.default_config_options(), batch_commitlog=True)
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        create_ks(session, 'ks', 2)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+
+        origin_hostid1 = node1.hostid()
+        origin_hostid2 = node2.hostid()
+        origin_hostid3 = node3.hostid()
+
+        cluster.stop()
+
+        ip_prefix = cluster.get_ipprefix()
+        for node in cluster.nodelist():
+            old_ip = node.address()
+            lower_ip = int(old_ip.split('.')[-1]) + 10
+            assert lower_ip < 255
+            last = str(lower_ip)
+            ip = f'{ip_prefix}{last}'
+            logger.debug(f"Change IP address for {node.name} from {old_ip} to {ip}")
+            node.set_configuration_options(values={'listen_address': ip, 'rpc_address': ip, 'api_address': ip})
+            node.network_interfaces = {k: (ip, v[1]) for k, v in node.network_interfaces.items()}
+
+        for node in cluster.nodelist():
+            logger.debug(f"Start {node.name} again with ip address {node.address()}")
+            node.start(wait_for_binary_proto=True, wait_other_notice=False)
+
+        # Verify all nodes in the cluster see node3 is using the new ip address
+        hostid1 = node1.hostid()
+        hostid2 = node2.hostid()
+        hostid3 = node3.hostid()
+        ip1 = node1.address()
+        ip2 = node2.address()
+        ip3 = node3.address()
+
+        for node in [node1, node2, node3]:
+            status = nodetool_status(node)
+            logger.debug("nodetool status from {}: {}".format(node.name, status))
+            for n in status['nodes']:
+                logger.debug(f"n={n}")
+                if n['address'] == ip3:
+                    assert n['host id'] == hostid3
+                    assert origin_hostid3 == hostid3
+                if n['address'] == ip2:
+                    assert n['host id'] == hostid2
+                    assert origin_hostid2 == hostid2
+                if n['address'] == ip1:
+                    assert n['host id'] == hostid1
+                    assert origin_hostid1 == hostid1
+
 
 @pytest.mark.dtest_full
 class TestStopNodeEarly(Tester):
