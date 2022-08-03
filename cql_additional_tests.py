@@ -7927,7 +7927,7 @@ class TestLWTWithCQL(Tester):
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, d) values (2, 2, 'a');
                 UPDATE {table_name} SET s = 2 WHERE a = 2 IF s = null;
-            APPLY BATCH""".format(table_name=table_name), [[True, 2, 2, None], [True, 2, 2, None]])
+            APPLY BATCH""".format(table_name=table_name), [[True, 2, 2, None], [True, 2, None, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 2".format(table_name=table_name), [2, 2, 2, "a"])
 
@@ -7935,7 +7935,7 @@ class TestLWTWithCQL(Tester):
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, s, d) values (4, 4, 4, 'a')
                 UPDATE {table_name} SET s = 5 WHERE a = 4 IF s = null;
-            APPLY BATCH""".format(table_name=table_name), [[True, 4, 4, None], [True, 4, 4, None]])
+            APPLY BATCH""".format(table_name=table_name), [[True, 4, 4, None], [True, 4, None, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 4".format(table_name=table_name), [4, 4, 5, "a"])
 
@@ -7943,7 +7943,7 @@ class TestLWTWithCQL(Tester):
             BEGIN BATCH
                 INSERT INTO {table_name} (a, b, s, d) values (5, 5, 5, 'a')
                 UPDATE {table_name} SET s = 6 WHERE a = 5 IF s IN (1,2,null)
-            APPLY BATCH""".format(table_name=table_name), [[True, 5, 5, None], [True, 5, 5, None]])
+            APPLY BATCH""".format(table_name=table_name), [[True, 5, 5, None], [True, 5, None, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 5".format(table_name=table_name), [5, 5, 6, "a"])
 
@@ -7973,7 +7973,7 @@ class TestLWTWithCQL(Tester):
                 BEGIN BATCH
                     INSERT INTO {table_name} (a, b, s, d) values (3, 3, 40, 'a')
                     UPDATE {table_name} SET s = 30 WHERE a = 3 IF s {operator} 5;
-                APPLY BATCH""".format(table_name=table_name, operator=operator), [[False, 3, 3, None], [False, 3, 3, None]])
+                APPLY BATCH""".format(table_name=table_name, operator=operator), [[False, 3, 3, None], [False, 3, None, None]])
 
             assert_one(
                 session, "SELECT * FROM {table_name} WHERE a = 3".format(table_name=table_name), [3, 3, None, None])
@@ -7982,7 +7982,7 @@ class TestLWTWithCQL(Tester):
                 BEGIN BATCH
                     INSERT INTO {table_name} (a, b, s, d) values (6, 6, 70, 'a')
                     UPDATE {table_name} SET s = 60 WHERE a = 6 IF s IN (1,2,3)
-                APPLY BATCH""".format(table_name=table_name), [[False, 6, 6, None], [False, 6, 6, None]])
+                APPLY BATCH""".format(table_name=table_name), [[False, 6, 6, None], [False, 6, None, None]])
 
         assert_one(session, "SELECT * FROM {table_name} WHERE a = 6".format(table_name=table_name), [6, 6, None, None])
 
