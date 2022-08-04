@@ -24,6 +24,7 @@ from dtest_class import Tester, create_ks, create_cf
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, query_c1c2_concurrent, insert_c1cn
 from tools.cluster import new_node
 from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status
+from tools.data import rows_to_list
 
 
 logger = logging.getLogger(__name__)
@@ -2089,6 +2090,24 @@ class TestUpdateClusterLayout(Tester):
         query_c1c2_concurrent(session, keys=range(
             750, 1000), consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
+    def check_peer_and_local_table(self, nodes):
+        peers_and_local = []
+        for node in nodes:
+            status = nodetool_status(node)
+            logger.debug("nodetool status from {}: {}".format(node.name, status))
+            s = self.patient_exclusive_cql_connection(node)
+            peers = rows_to_list(s.execute("SELECT host_id, peer FROM system.peers"))
+            local = rows_to_list(s.execute("SELECT host_id, broadcast_address FROM system.local"))
+            peers_and_local.append(str(sorted(peers + local)))
+            assert len(peers) == 2, "There are more peers than expected."
+            assert len(local) == 1, "There are more local than expected."
+            logger.debug(f"Check peer table for {node.name} with ip address {node.address()} : peers={peers} ")
+            logger.debug(f"Check peer table for {node.name} with ip address {node.address()} : local={local} ")
+            assert str(local[0][0]) == node.hostid()
+            assert str(local[0][1]) == node.address()
+        logger.debug(f"peers_and_local={peers_and_local}")
+        assert len(set(peers_and_local)) == 1
+
     def test_change_node_ip(self):
         """
         Start 3 nodes
@@ -2105,9 +2124,18 @@ class TestUpdateClusterLayout(Tester):
         node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 2)
+
+        create_ks(session, 'ks1', 1)
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-        insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, ks='ks1', keys=range(1000), consistency=ConsistencyLevel.ONE)
+
+        create_ks(session, 'ks2', 2)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, ks='ks2', keys=range(1000), consistency=ConsistencyLevel.TWO)
+
+        create_ks(session, 'ks3', 3)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, ks='ks3', keys=range(1000), consistency=ConsistencyLevel.THREE)
 
         logger.debug("Stop node3")
         node3.stop()
@@ -2123,12 +2151,21 @@ class TestUpdateClusterLayout(Tester):
         logger.debug("Node3 is now up")
         hostid3 = node3.hostid()
         # Verify all nodes in the cluster see node3 is using the new ip address
-        for node in [node1, node2, node3]:
+        for node in cluster.nodelist():
             status = nodetool_status(node)
             logger.debug("nodetool status from {}: {}".format(node.name, status))
             for n in status['nodes']:
                 if n['address'] == ip3:
                     assert n['host id'] == hostid3
+
+        # Verify peers and local table are valid
+        self.check_peer_and_local_table(cluster.nodelist())
+
+        # Verify data returned is still valid after ip change
+        for k in range(1000):
+            query_c1c2(session, k, ConsistencyLevel.ONE, ks='ks1')
+            query_c1c2(session, k, ConsistencyLevel.TWO, ks='ks2')
+            query_c1c2(session, k, ConsistencyLevel.THREE, ks='ks3')
 
     def test_change_node_ip_full_cluster_down(self):
         """
