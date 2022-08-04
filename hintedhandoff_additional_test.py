@@ -15,8 +15,6 @@ from ccmlib.node import NodeError
 from dtest_class import Tester, wait_for, create_ks, get_ip_from_node
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
 from tools.metrics import get_node_metrics
-from dtest_setup_overrides import DTestSetupOverrides
-from tools.misc import ImmutableMapping
 
 
 logger = logging.getLogger(__file__)
@@ -24,13 +22,6 @@ logger = logging.getLogger(__file__)
 
 @pytest.mark.dtest_full
 class TestHintedHandoff(Tester):
-
-    @pytest.fixture(scope='function', autouse=True)
-    def fixture_dtest_setup_overrides(self, dtest_config):
-        dtest_setup_overrides = DTestSetupOverrides()
-        if dtest_config.is_scylla:
-            dtest_setup_overrides.cluster_options = ImmutableMapping({"experimental_features": ["raft"]})
-        return dtest_setup_overrides
 
     @pytest.mark.dtest_debug
     def test_hintedhandoff_rebalance(self):
