@@ -13,6 +13,17 @@ logger = logging.getLogger(__name__)
 class TestPartitioner(Tester):
 
     def run_cluster(self, partitioner_name, data_dir, deprecated=False):
+        # The test starts Scylla using work directories created by Cassandra.
+        # This is not a supported scenario; it's like upgrading Scylla from a
+        # very old version, when the documentation only allows upgrading
+        # between consecutive versions or compatible OSS/enterprise versions.
+        # In this scenario, Scylla may try to insert CDC cluster metadata into
+        # a table which is no longer created in new Scylla versions. This will
+        # cause an ERROR to appear in the logs (the cluster will boot and
+        # function, just without CDC). Ignore this pattern so the test can
+        # pass.
+        self.ignore_log_patterns.append('expected system_distributed.cdc_generation_descriptions to exist')
+
         cluster = self.cluster
         if deprecated:
             cluster.set_configuration_options(values={'enable_deprecated_partitioners': True})
