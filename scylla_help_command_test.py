@@ -38,7 +38,7 @@ class TestScyllaHelpCommand(Tester):
             cli_args = [Path(node1.get_bin_dir()) / "scylla", "--help"]
             logger.debug(f"running command: {' '.join([str(a) for a in cli_args])}")
             help_text = subprocess.run(cli_args, capture_output=True,
-                                       universal_newlines=True, env=node1._launch_env).stdout
+                                       universal_newlines=True, env=getattr(node1, '_launch_env', {})).stdout
         assert "Scylla options:" in help_text, f"Scylla help text is wrong: {help_text}"
         return help_text
 
