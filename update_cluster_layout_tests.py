@@ -1336,6 +1336,11 @@ class TestUpdateClusterLayout(Tester):
         executor = ThreadPoolExecutor(max_workers=1)
         t = executor.submit(kill_node_thread, kill_coordinator, node1, node2, node3, node4, node5)
 
+        self.ignore_log_patterns += [
+            'connection dropped',
+            'Failed to handle STREAM_MUTATION_FRAGMENTS',
+        ]
+
         api_cmd = f"http://{node1.address()}:10000/storage_service/remove_node/?host_id={node2_hostid}"
         logger.debug("Send restful api: " + api_cmd)
         try:
