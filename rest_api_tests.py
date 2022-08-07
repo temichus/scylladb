@@ -31,7 +31,7 @@ class TestScyllaARestApi(Tester):
         sleep(10)
         current_node1_uptime = self.request_uptime(node1)
         logger.debug(current_node1_uptime - previous_node1_uptime)
-        assert 10000 < current_node1_uptime - previous_node1_uptime < 11000, \
+        assert 10000 <= current_node1_uptime - previous_node1_uptime < 11000, \
             "The uptime received from scylla does not match the expected uptime"
 
     @pytest.mark.single_node
