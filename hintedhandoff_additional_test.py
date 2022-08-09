@@ -15,6 +15,7 @@ from ccmlib.node import NodeError
 from dtest_class import Tester, wait_for, create_ks, get_ip_from_node
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
 from tools.metrics import get_node_metrics
+from tools.status import wait_for_nodes_status
 
 
 logger = logging.getLogger(__file__)
@@ -496,6 +497,11 @@ class TestHintedHandoff(Tester):
 
         logger.info("Stop node1 to create a hints on node2")
         node1.stop(wait_other_notice=True)
+
+        logger.info("Waiting for node1 status to become DN")
+        wait_for_nodes_status(node2, ['DN', 'UN', 'UN'])
+
+        logger.info("Starting stress")
         rows = 100
         node2.stress(['write', f'n={rows}', '-schema', 'replication(factor=3)'])
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
