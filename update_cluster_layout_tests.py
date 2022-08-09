@@ -23,6 +23,7 @@ from tools.assertions import assert_invalid
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, query_c1c2_concurrent, insert_c1cn
 from tools.cluster import new_node
+from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status
 
 
 logger = logging.getLogger(__name__)
@@ -391,7 +392,7 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
             # UJ  127.0.0.4  ?          256     ?       637edd3f-8888-48ab-b0ea-3ea81f8e9865  rack1
-            self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN', 'UJ'])
+            wait_for_nodes_status(node1, ['UN', 'UN', 'UN', 'UJ'])
 
             # Sleep 30 seconds to make sure other nodes removed the new node
             time.sleep(30)
@@ -404,7 +405,7 @@ class TestUpdateClusterLayout(Tester):
             # UN  127.0.0.1  99823      256     ?       a7498138-1878-421d-8f11-cc98b204090a  rack1
             # UN  127.0.0.2  37278      256     ?       f118383c-c569-49d1-9aa6-223d3b224caa  rack1
             # UN  127.0.0.3  24834      256     ?       78b7e6ba-3039-4fc6-a875-a71661f8cd04  rack1
-            self.wait_for_nodes_status(node1, ['UN', 'UN', 'UN'])
+            wait_for_nodes_status(node1, ['UN', 'UN', 'UN'])
 
         result = list(session.execute("SELECT * FROM cf"))
         assert len(result) == 1000
@@ -488,13 +489,13 @@ class TestUpdateClusterLayout(Tester):
             logger.debug("Stop Node %d" % i)
             new_node.stop(gently=False, wait_other_notice=True)
             for node in [node1, node2, node3]:
-                self.wait_for_nodes_status(node, [['UN', 'UN', 'UN'], ['UN', 'UN', 'UN', 'DN']])
+                wait_for_nodes_status(node, [['UN', 'UN', 'UN'], ['UN', 'UN', 'UN', 'DN']])
             stop_writing = True
             t.result()
             assert failed is None
 
             for node in [node1, node2, node3]:
-                status = self.nodetool_status(node, 'ks')
+                status = nodetool_status(node, 'ks')
                 logger.debug("nodetool status from {}: {}".format(node.name, status))
 
             logger.debug("Query Again")
@@ -576,13 +577,13 @@ class TestUpdateClusterLayout(Tester):
         ])
         logger.debug("Stop Node")
         a_new_node.stop(gently=False, wait_other_notice=True)
-        self.wait_for_nodes_status(node1, [['UN', 'UN'], ['UN', 'DN', 'UN']])
+        wait_for_nodes_status(node1, [['UN', 'UN'], ['UN', 'DN', 'UN']])
         stop_writing = True
         t.result()
         assert failed is None
 
         for node in [node1, node2]:
-            status = self.nodetool_status(node, 'ks')
+            status = nodetool_status(node, 'ks')
             logger.debug("nodetool status from {}: {}".format(node.name, status))
 
         logger.debug("Query Again")
@@ -926,7 +927,7 @@ class TestUpdateClusterLayout(Tester):
         result = list(session2.execute("SELECT * FROM ks.cf"))
         assert len(result) == 10000
 
-        self.verify_nodes_status(node1, ['UN', 'UN', 'UN'])
+        verify_nodes_status(node1, ['UN', 'UN', 'UN'])
 
     def test_simple_kill_remained_node_while_decommissioning(self):
         """
@@ -974,55 +975,12 @@ class TestUpdateClusterLayout(Tester):
 
         # When node1 stops, the decommission of node2 will fail. We should not
         # test node2 is still in UL here. Test node2 is in either UL or UN.
-        self.wait_for_nodes_status(node3, [['UN', 'UL', 'UN'], ['UN', 'UN', 'UN']])
+        wait_for_nodes_status(node3, [['UN', 'UL', 'UN'], ['UN', 'UN', 'UN']])
 
         node2.stop()
         node2.start(no_wait=True)
 
-        self.wait_for_nodes_status(node3, ['UN', 'UN', 'UN'])
-
-    def verify_nodes_status(self, node, exp_statuses_list, keyspace=""):
-        if exp_statuses_list and not isinstance(exp_statuses_list[0], list):
-            exp_statuses_list = [exp_statuses_list]
-        status = self.nodetool_status(node, keyspace)
-        statuses = [s['status'] for s in status['nodes']]
-        find_expected_status = False
-        for exp_statuses in exp_statuses_list:
-            if exp_statuses == statuses:
-                find_expected_status = True
-        assert find_expected_status, "found statuses: %s" % statuses
-
-    def wait_for_nodes_status(self, node, exp_statuses, keyspace="", timeout=30):
-        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
-            timeout *= 3
-        timeout = time.time() + timeout
-        while True:
-            try:
-                self.verify_nodes_status(node, exp_statuses, keyspace=keyspace)
-                break
-            except AssertionError:
-                time.sleep(1)
-                if time.time() > timeout:
-                    self.verify_nodes_status(node, exp_statuses, keyspace=keyspace)
-
-    def nodetool_status(self, node, keyspace=""):
-        res = {}
-        out = node.nodetool("status " + keyspace, True)[0]
-        m = re.findall(r'Datacenter: ([^\s]+)', out, re.MULTILINE)
-        if m:
-            res['Datacenter'] = m[0]
-        m = re.findall(
-            r'^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*', out, re.MULTILINE)
-        res["nodes"] = [self._list2status(s) for s in m]
-        return res
-
-    @staticmethod
-    def _list2status(lst):
-        heads = ["status", "address", "load", "tokens", "owns", "host id", "rack"]
-        res = {}
-        for i in range(len(heads)):
-            res[heads[i]] = lst[i]
-        return res
+        wait_for_nodes_status(node3, ['UN', 'UN', 'UN'])
 
     def _simple_decommission_node_while_adding_info(self, rf):
         """
@@ -2166,7 +2124,7 @@ class TestUpdateClusterLayout(Tester):
         hostid3 = node3.hostid()
         # Verify all nodes in the cluster see node3 is using the new ip address
         for node in [node1, node2, node3]:
-            status = self.nodetool_status(node)
+            status = nodetool_status(node)
             logger.debug("nodetool status from {}: {}".format(node.name, status))
             for n in status['nodes']:
                 if n['address'] == ip3:
