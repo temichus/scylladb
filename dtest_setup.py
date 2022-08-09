@@ -686,6 +686,12 @@ class DTestSetup:
         if self.dtest_config.use_off_heap_memtables:
             self.cluster.set_configuration_options(values={'memtable_allocation_type': 'offheap_objects'})
 
+        if self.dtest_config.experimental_features:
+            experimental_features = values.setdefault('experimental_features', [])
+            for f in self.dtest_config.experimental_features:
+                if f not in experimental_features:
+                    experimental_features.append(f)
+
         self.cluster.set_configuration_options(values)
         logger.debug("Done setting configuration options:\n" + pprint.pformat(self.cluster._config_options, indent=4))
 
