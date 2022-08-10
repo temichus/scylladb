@@ -8,8 +8,10 @@ import time
 from typing import Dict
 
 import pytest
+from cassandra import ConsistencyLevel
 from pkg_resources import parse_version
 
+from ccmlib.node import NodetoolError
 from dtest_class import Tester, create_ks, is_autocompaction_enabled, retry_till_success
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.assertions import assert_none, assert_one
@@ -33,6 +35,9 @@ logger = logging.getLogger(__file__)
 ])
 class TestCompaction(Tester):
     strategy = None
+    PROPAGATION_DELAY_IN_SECONDS = 5
+    KEYSPACE_NAME = 'ks'
+    FULL_TABLE_NAME = f"{KEYSPACE_NAME}.cf"
 
     @pytest.fixture(scope='function', autouse=True)
     def fixture_compaction_strategy(self, strategy):
@@ -140,8 +145,21 @@ class TestCompaction(Tester):
 
         assert numfound == 0, "Error: expected {} deleted partitions but found {}:\n{}".format(0, numfound, jsoninfo)
 
-    def verify_deleted(self, session, node, n):
-        session.execute('insert into ks.cf (key, val) values (99,1);')
+    def verify_deleted(self, session, node, num_deleted_rows):
+        """
+            This method verifies there are <num_deleted_rows> deleted rows (tombstones) on node.
+        """
+        count, jsoninfo = self.count_deleted(session=session, node=node)
+        assert count == num_deleted_rows, "Error: expected {} deleted partitions but found {}:\n{}".format(
+            0, count, len(jsoninfo))
+
+    def count_deleted(self, session, node):
+        """
+            Count number of tombstones on node.
+            Return count nuber and json-info of node sstables.
+        """
+        session.execute(f'insert into {self.FULL_TABLE_NAME} (key, val) values (99,1);')
+        logger.debug(f"Run nodetool flush and compact on node: {node.name}")
         node.flush()
         node.compact()
 
@@ -155,22 +173,24 @@ class TestCompaction(Tester):
 
         numfound = jsoninfo.count("marked_deleted")
 
-        assert numfound == n, "Error: expected {} deleted partitions but found {}:\n{}".format(
-            0, numfound, len(jsoninfo))
+        logger.debug(f'Number of tombstones found on node {node.name}: {numfound}')
+        return numfound, jsoninfo
 
-    def _test_compaction_delete_tombstone_gc(self, tombstone_gc_mode='repair'):
+    def _test_compaction_delete_tombstone_gc(self, tombstone_gc_mode='repair', node_num: int = 2,
+                                             r_factor: int = None, delete_keys: bool = True, partition_num: int = 100):
         """
-        Start 2 nodes
-        Create table with RF 2 and tombstone_gc_mode option
-        Insert 100 rows
-        Delete 10 rows
+        Start all cluster nodes.
+        Create table with RF and tombstone_gc_mode option
+        Insert partition_num (100) rows
+        Delete 10 rows by default
         """
         cluster = self.cluster
-        cluster.populate(2).start(wait_for_binary_proto=True)
-        node1, node2 = cluster.nodelist()
+        cluster.populate(node_num).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 2)
+        r_factor = r_factor or node_num
+        create_ks(session, self.KEYSPACE_NAME, rf=r_factor)
 
         if tombstone_gc_mode == 'timeout':
             gc_grace_seconds = 60
@@ -178,23 +198,30 @@ class TestCompaction(Tester):
             gc_grace_seconds = 5
 
         logger.debug(f'Create table with tombstone_gc = mode ={tombstone_gc_mode}')
-        session.execute("create table ks.cf (key int PRIMARY KEY, val int) "
-                        "with tombstone_gc = {{'mode':'{}', 'propagation_delay_in_seconds':'5'}} "
-                        "and compaction = {{'class':'{}'}} and gc_grace_seconds = {};".format(tombstone_gc_mode, self.strategy, gc_grace_seconds))
+        session.execute(f"create table {self.FULL_TABLE_NAME} (key int PRIMARY KEY, val int) "
+                        f"with tombstone_gc = {{'mode':'{tombstone_gc_mode}', 'propagation_delay_in_seconds':'{self.PROPAGATION_DELAY_IN_SECONDS}'}} "
+                        f"and compaction = {{'class':'{self.strategy}'}} and gc_grace_seconds = {gc_grace_seconds};")
 
-        for x in range(0, 100):
-            session.execute('insert into cf (key, val) values (' + str(x) + ',1)')
+        for x in range(0, partition_num):
+            session.execute(f'insert into {self.FULL_TABLE_NAME} (key, val) values ({x},1)')
 
-        node1.flush()
-        node2.flush()
+        for node in cluster.nodelist():
+            node.flush()
         self.tombstone_expiry_time = time.time() + gc_grace_seconds
-        for x in range(0, 10):
-            session.execute('delete from cf where key = ' + str(x))
+        if delete_keys:
+            self._delete_keys()
 
-        node1.flush()
-        node2.flush()
-        for x in range(0, 10):
-            assert_none(session, 'select * from cf where key = ' + str(x))
+    def _delete_keys(self, verify_deleted: bool = True, num: int = 10):
+        session = self.patient_cql_connection(self.cluster.nodelist()[0])
+
+        for idx in range(0, num):
+            session.execute(f'delete from {self.FULL_TABLE_NAME} where key = {idx}')
+
+        if verify_deleted:
+            for node in self.cluster.nodelist():
+                node.flush()
+            for idx in range(0, num):
+                assert_none(session, f'select * from {self.FULL_TABLE_NAME} where key = {idx}')
 
     @pytest.mark.parametrize("tombstone_gc_mode", ['repair', 'timeout', 'disabled', 'immediate'])
     def test_compaction_delete_tombstone_gc(self, tombstone_gc_mode):
@@ -245,6 +272,77 @@ class TestCompaction(Tester):
                 f"Check with tombstone_gc_mode = {tombstone_gc_mode}, after repair there are still 10 tombstones")
             self.verify_deleted(session, node1, 10)
             self.verify_deleted(session, node2, 10)
+
+    @staticmethod
+    def repair_and_wait_for_off_strategy(node, table: str = FULL_TABLE_NAME):
+        log_mark = node.mark_log()
+        node.repair()
+        node.watch_log_for(f"Done with off-strategy compaction for {table}", timeout=300, from_mark=log_mark,
+                           verbose=True)
+
+    def test_delete_tombstone_gc_node_down(self):
+        """
+        Test compaction drop tombstones correctly in 'repair' tombstone_gc_mode mode
+        And a node that is temporarily down.
+        1. Create 4 nodes cluster + RF = 3.
+        2. Write some keys.
+        3. Stop node4
+        4. Delete data on other nodes and flush.
+        5. Run a repair on node1 where some repaired rows succeed (the repair eventually fails).
+        6. Run major compaction as well.
+        7. Verify node1 now has same tombstones as before the repair.
+        8. Start node4.
+        9. Count node4 tombstones and verify no tombstones after repairing the nodes + compact.
+        """
+        partition_num = 10
+        self._test_compaction_delete_tombstone_gc('repair', node_num=4, r_factor=3, delete_keys=False,
+                                                  partition_num=partition_num)
+        node1, node2, node3, node4 = self.cluster.nodelist()
+
+        logger.debug("Stopping node4")
+        node4.stop(wait_other_notice=True, gently=False)
+
+        self._delete_keys(verify_deleted=False, num=partition_num // 2)
+        node1.flush()
+        node2.flush()
+        node3.flush()
+
+        with self.patient_exclusive_cql_connection(node1) as session:
+            total_tombstones_num_before_repair = 0
+            for node in [node1, node2, node3]:
+                numfound, _ = self.count_deleted(session=session, node=node)
+                total_tombstones_num_before_repair += numfound
+            logger.debug("Run a partially-failing repair on node1")
+            with pytest.raises(NodetoolError):
+                node1.repair(['ks cf'])
+
+            logger.debug(
+                f"Check, when node4 is down, the number of tombstones on nodes 1,2,3 is unchanged following a repair")
+            total_tombstones_num_after_repair = 0
+            for node in [node1, node2, node3]:
+                numfound, _ = self.count_deleted(session=session, node=node)
+                total_tombstones_num_after_repair += numfound
+            assert total_tombstones_num_after_repair == total_tombstones_num_before_repair
+
+        logger.debug("Starting node4")
+        log_mark = node4.mark_log()
+        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node4.watch_log_for(f"Done with off-strategy compaction for {self.FULL_TABLE_NAME}", timeout=300,
+                            from_mark=log_mark, verbose=True)
+        with self.patient_cql_connection(node4, consistency_level=ConsistencyLevel.QUORUM) as session:
+            logger.debug("Running a repair on all nodes")
+            self.repair_and_wait_for_off_strategy(node=node4)
+            repair_history = list(session.execute("SELECT table_name from system.repair_history"))
+            assert any("cf" in repair for repair in repair_history)
+            node1.repair()
+            node2.repair()
+            node3.repair()
+            logger.debug(
+                f"Check with tombstone_gc_mode = repair, after a full successful repair there are no tombstones")
+            self.verify_deleted(session=session, node=node1, num_deleted_rows=0)
+            self.verify_deleted(session=session, node=node2, num_deleted_rows=0)
+            self.verify_deleted(session=session, node=node3, num_deleted_rows=0)
+            self.verify_deleted(session=session, node=node4, num_deleted_rows=0)
 
     def test_data_size(self):
         """
