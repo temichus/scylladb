@@ -328,7 +328,7 @@ class RepairAdditionalBase(Tester):
 
     def _repair_schema_test(self):
         """
-        In a keyspace with two replicas, insert a new column family on one
+        In a keyspace with three replicas, insert a new column family on one
         replica only (while the other node is down), and initiate repair from
         the node with the data. Verify that the data (and its schema) have been
         correctly replicated to the second node.
@@ -337,10 +337,10 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2.
         # Do *not* create a table yet - we'll do that with one node down
         self.cluster.set_configuration_options(values=self.default_config_options())
-        self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
-        node1, node2 = self.cluster.nodelist()
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2, node3 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 3)
 
         # Take node2 down, and create a new table and data on node1 only.
         logger.debug("Creating table and data only on node 1...")
@@ -369,7 +369,7 @@ class RepairAdditionalBase(Tester):
 
     def _repair_schema_2_test(self):
         """
-        In a keyspace with two replicas, insert a new column family on one
+        In a keyspace with three replicas, insert a new column family on one
         replica only (while the other node is down), and initiate repair from
         the node *without* the data. Verify that the data (and its schema) have been
         correctly replicated to this node.
@@ -382,10 +382,10 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2.
         # Do *not* create a table yet - we'll do that with one node down
         self.cluster.set_configuration_options(values=self.default_config_options())
-        self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
-        node1, node2 = self.cluster.nodelist()
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2, node3 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 3)
 
         # Take node2 down, and create a new table and data on node1 only.
         logger.debug("Creating table and data only on node 1...")
@@ -2865,7 +2865,7 @@ class TestRepairAdditional(RepairAdditionalBase):
         """
         This test tries to drop table when parallel repair is executing, scylla will ignore the error, and repair won't fail.
 
-        1. Create a cluster of 2 nodes with rf=2
+        1. Create a cluster of 3 nodes with rf=3
         2. Stop node 2
         3. Insert data
         4. Start node 2
@@ -2875,14 +2875,14 @@ class TestRepairAdditional(RepairAdditionalBase):
         8. Read verify after repair
         """
         logger.debug("Starting cluster...")
-        # Start a cluster of two nodes, and create a keyspace with RF=2.
+        # Start a cluster of three nodes, and create a keyspace with RF=3.
         config_options = self.default_config_options().update({'enable_repair_based_node_ops': True})
         self.cluster.set_configuration_options(values=config_options,
                                                batch_commitlog=True)
-        self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
-        node1, node2 = self.cluster.nodelist()
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2, node3 = self.cluster.nodelist()
         session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 3)
 
         # Take node2 down, and create a new table and data on node1 only.
         logger.debug("Creating table and data only on node 1...")
