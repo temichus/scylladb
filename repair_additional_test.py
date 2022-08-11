@@ -328,10 +328,10 @@ class RepairAdditionalBase(Tester):
 
     def _repair_schema_test(self):
         """
-        In a keyspace with three replicas, insert a new column family on one
-        replica only (while the other node is down), and initiate repair from
+        In a keyspace with three replicas, insert a new column family on two
+        replicas only (while the third node is down), and initiate repair from
         the node with the data. Verify that the data (and its schema) have been
-        correctly replicated to the second node.
+        correctly replicated to the third node.
         """
         logger.debug("Starting cluster...")
         # Start a cluster of two nodes, and create a keyspace with RF=2.
@@ -343,11 +343,11 @@ class RepairAdditionalBase(Tester):
         create_ks(session, 'ks', 3)
 
         # Take node2 down, and create a new table and data on node1 only.
-        logger.debug("Creating table and data only on node 1...")
+        logger.debug("Creating table and data only on node 1 and 3...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.QUORUM)
 
         # At this point node2 is not only missing some data, it is actually
         # missing an entire table. Let's bring node2 back up, start repair on
@@ -364,13 +364,15 @@ class RepairAdditionalBase(Tester):
         self.check_rows_on_node(node1, 1000)
         logger.debug("checking data on node2...")
         self.check_rows_on_node(node2, 1000)
+        logger.debug("checking data on node3...")
+        self.check_rows_on_node(node3, 1000)
 
         self.ignore_log_patterns.append(r'.*migration_task - Can\'t send migration request.*')
 
     def _repair_schema_2_test(self):
         """
-        In a keyspace with three replicas, insert a new column family on one
-        replica only (while the other node is down), and initiate repair from
+        In a keyspace with three replicas, insert a new column family on two
+        replicas only (while the third node is down), and initiate repair from
         the node *without* the data. Verify that the data (and its schema) have been
         correctly replicated to this node.
         The difference between this test and repair_schema_test is that this one
@@ -387,12 +389,12 @@ class RepairAdditionalBase(Tester):
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 3)
 
-        # Take node2 down, and create a new table and data on node1 only.
+        # Take node2 down, and create a new table and data on node1 and node3 only.
         logger.debug("Creating table and data only on node 1...")
         node2.flush()
         node2.stop(wait_other_notice=True)
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.ONE)
+        insert_c1c2(session, keys=range(1000, 2000), consistency=ConsistencyLevel.QUORUM)
 
         # At this point node2 is not only missing some data, it is actually
         # missing an entire table. Let's bring node2 back up, start repair on
@@ -409,6 +411,8 @@ class RepairAdditionalBase(Tester):
         self.check_rows_on_node(node1, 1000)
         logger.debug("checking data on node2...")
         self.check_rows_on_node(node2, 1000)
+        logger.debug("checking data on node3...")
+        self.check_rows_on_node(node3, 1000)
 
         self.ignore_log_patterns.append(r'.*migration_task - Can\'t send migration request.*')
 
@@ -2890,13 +2894,13 @@ class TestRepairAdditional(RepairAdditionalBase):
         node2.stop(wait_other_notice=True)
 
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-        insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.ONE, cf='cf')
+        insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.QUORUM, cf='cf')
 
         delete_table_num = 8
         for i in range(delete_table_num):
             cf = f'cf_del{i}'
             create_cf(session, cf, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
-            insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.ONE, cf=cf)
+            insert_c1c2(session, keys=range(2000), consistency=ConsistencyLevel.QUORUM, cf=cf)
 
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
