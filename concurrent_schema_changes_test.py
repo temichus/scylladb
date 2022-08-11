@@ -31,13 +31,13 @@ class TestConcurrentSchemaChanges(Tester):
     def fixture_set_cluster_settings(self, fixture_dtest_setup):
         fixture_dtest_setup.cluster.set_configuration_options({'start_rpc': 'true'})
 
-    def prepare_for_changes(self, session, namespace='ns1'):
+    def prepare_for_changes(self, session, namespace='ns1', rf=2):
         """
         prepares for schema changes by creating a keyspace and column family.
         """
         logger.debug("prepare_for_changes() " + str(namespace))
         # create a keyspace that will be used
-        create_ks(session, "ks_%s" % namespace, 2)
+        create_ks(session, "ks_%s" % namespace, rf)
         session.execute('USE ks_%s' % namespace)
 
         # create a column family with an index and a row of data
@@ -67,9 +67,9 @@ class TestConcurrentSchemaChanges(Tester):
         session.execute(query)
 
         # make a keyspace that can be deleted
-        create_ks(session, "ks2_%s" % namespace, 2)
+        create_ks(session, "ks2_%s" % namespace, rf)
 
-    def make_schema_changes(self, session, namespace='ns1'):
+    def make_schema_changes(self, session, namespace='ns1', rf=2):
         """
         makes a heap of changes.
 
@@ -90,7 +90,7 @@ class TestConcurrentSchemaChanges(Tester):
         wait(2)
 
         # create keyspace
-        create_ks(session, "ks3_%s" % namespace, 2)
+        create_ks(session, "ks3_%s" % namespace, rf)
         session.execute('USE ks_%s' % namespace)
 
         wait(2)
@@ -419,14 +419,14 @@ class TestConcurrentSchemaChanges(Tester):
         """
         logger.debug("changes_while_node_down_test()")
         cluster = self.cluster
-        cluster.populate(2).start(wait_other_notice=True, wait_for_binary_proto=True)
-        node1, node2 = cluster.nodelist()
+        cluster.populate(3).start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1, node2, node3 = cluster.nodelist()
         session = self.patient_exclusive_cql_connection(node1)
 
         node2.stop(wait_other_notice=True)
         fixture_dtest_setup.ignore_log_patterns += [r'Column .* in view .* was not found in the base table']
-        self.prepare_for_changes(session, namespace='ns1')
-        self.make_schema_changes(session, namespace='ns1')
+        self.prepare_for_changes(session, namespace='ns1', rf=3)
+        self.make_schema_changes(session, namespace='ns1', rf=3)
 
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.validate_schema_consistent(node2)
@@ -442,20 +442,22 @@ class TestConcurrentSchemaChanges(Tester):
         logger.debug("changes_while_node_toggle_test()")
         cluster = self.cluster
 
-        cluster.populate(2).start(wait_other_notice=True, wait_for_binary_proto=True)
-        node1, node2 = cluster.nodelist()
+        cluster.populate(3).start(wait_other_notice=True, wait_for_binary_proto=True)
+        node1, node2, node3 = cluster.nodelist()
         session = self.patient_exclusive_cql_connection(node2)
 
-        self.prepare_for_changes(session, namespace='ns2')
+        self.prepare_for_changes(session, namespace='ns2', rf=3)
         node1.stop(wait_other_notice=True)
 
         fixture_dtest_setup.ignore_log_patterns += [r'Column .* in view .* was not found in the base table']
-        self.make_schema_changes(session, namespace='ns2')
+        self.make_schema_changes(session, namespace='ns2', rf=3)
 
         node2.stop(wait_other_notice=True)
+        node3.stop(wait_other_notice=True)
 
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.validate_schema_consistent(node1)
 
     @pytest.mark.next_gating
