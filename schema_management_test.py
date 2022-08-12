@@ -209,15 +209,15 @@ class TestSchemaManagement(Tester):
 
     def test_reads_schema_recreated_while_node_down(self):
         self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
-        self.cluster.populate(2)
+        self.cluster.populate(3)
         self.cluster.start(wait_other_notice=True)
 
-        [node1, node2] = self.cluster.nodelist()
+        [node1, node2, node3] = self.cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
 
         logger.debug('Creating schema')
-        create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 3)
         session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
 
         logger.debug('Populating')
@@ -241,15 +241,15 @@ class TestSchemaManagement(Tester):
     @pytest.mark.dtest_debug
     def test_writes_schema_recreated_while_node_down(self):
         self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
-        self.cluster.populate(2)
+        self.cluster.populate(3)
         self.cluster.start(wait_other_notice=True)
 
-        [node1, node2] = self.cluster.nodelist()
+        [node1, node2, node3] = self.cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
 
         logger.debug('Creating schema')
-        create_ks(session, 'ks', 2)
+        create_ks(session, 'ks', 3)
         session.execute("CREATE TABLE cf (p int PRIMARY KEY, v text);")
 
         logger.debug('Populating')
