@@ -1,5 +1,4 @@
 #!groovy
-def lib = library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
 
 def pullRequestSetResult(String status, String context, String description){
     if (env.CHANGE_ID) {
@@ -22,6 +21,13 @@ def pullRequestContainsLabels(String labels){
         }
     }
     return result
+}
+
+if (env.CHANGE_ID && pullRequestContainsLabels("test/Jenkinsfile")) {
+    // this is for test local changes in PRs
+    library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
+} else {
+    def lib = library identifier: 'dtest'
 }
 
 pipeline {
