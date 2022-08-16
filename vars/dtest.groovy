@@ -17,6 +17,7 @@ String setDtestParams (Map args) {
 	// String (default null) randomDtestsSeed:
 	// String (default null) dtestRepeats: How many times to repeat the dtests.
 	// String (mandatory) dtestMode release|debug
+	// String (default null) pyTestExtraCLIOptions: string with extra options for pytest
 
 	jenkins.traceFunctionParams ("test.setDtestParams", args)
 
@@ -33,6 +34,7 @@ String setDtestParams (Map args) {
     String dtestType = args.dtestType ?: "full"
     String managerPackage = args.managerPackage ?: ""
     String driverVersion = args.driverVersion ?: ""
+    String pyTestExtraCLIOptions = args.pyTestExtraCLIOptions ?: ""
 
 	String dtestParameters = "--home=${WORKSPACE}/${params.PRODUCT_NAME}"
 	dtestParameters += " --mode=$args.dtestMode"
@@ -75,6 +77,10 @@ String setDtestParams (Map args) {
 
     if (driverVersion) {
         dtestParameters = dtestParameters + " --driver-version=\"$driverVersion\""
+    }
+
+    if (pyTestExtraCLIOptions) {
+    	dtestParameters = dtestParameters + " --pytest-ext-opts=\"$pyTestExtraCLIOptions\""
     }
 
 	setupTestEnv(args.dtestMode)
@@ -249,6 +255,7 @@ def doParallelDtest (Map args) {
 	// String (default stableBranch): relengBranch
 	// String (default stableBranch): ccmBranch
 	// String (default stableBranch): dtestBranch
+	// String (default null): pyTestExtraCLIOptions: string with experimental features
 
 	boolean dryRun = args.dryRun ?: false
 	boolean dtestDebugInfoFlag = args.dtestDebugInfoFlag ?: false
@@ -260,6 +267,7 @@ def doParallelDtest (Map args) {
     String dtestType = args.dtestType ?: "full"
     String managerPackage = args.managerPackage ?: ""
     String driverVersion = args.driverVersion ?: ""
+    String pyTestExtraCLIOptions = args.pyTestExtraCLIOptions ?: ""
 
 	def branches = [:]
 	def runnersLabel =  args.splitFleetLabal ?: generalProperties.targetDtestStrongBuilder
@@ -310,7 +318,8 @@ def doParallelDtest (Map args) {
                         extEnv: extEnv,
                         dtestType: dtestType,
                         managerPackage: managerPackage,
-                        driverVersion: driverVersion)
+                        driverVersion: driverVersion,
+                        pyTestExtraCLIOptions: pyTestExtraCLIOptions)
 
                     String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
                     echo "dtestParameters: |${dtestParameters}|"
@@ -359,6 +368,8 @@ def doDtest (Map args) {
 	// String (default null) randomDtestsSeed:
 	// String (default null) dtestRepeats: How many times to repeat the dtests.
 	// String (mandatory) dtestMode release|debug
+	// String (default null): pyTestExtraCLIOptions: string with experimental features
+
 	jenkins.traceFunctionParams ("test.doDtest", args)
 
 	boolean dryRun = args.dryRun ?: false
@@ -376,6 +387,7 @@ def doDtest (Map args) {
     String dtestType = args.dtestType ?: "full"
     String managerPackage = args.managerPackage ?: ""
     String driverVersion = args.driverVersion ?: ""
+    String pyTestExtraCLIOptions = args.pyTestExtraCLIOptions ?: ""
 
 	echo "Calling dtest in docker toolchain"
 	String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
@@ -393,7 +405,8 @@ def doDtest (Map args) {
 			dtestRepeats: dtestRepeats,
 			dtestType: args.dtestType,
 			managerPackage: managerPackage,
-			driverVersion: driverVersion
+			driverVersion: driverVersion,
+			pyTestExtraCLIOptions: pyTestExtraCLIOptions
 		)
 
 	boolean dtestFailed = false

@@ -1,0 +1,11 @@
+#!groovy
+
+// trick from https://github.com/jenkinsci/workflow-cps-global-lib-plugin/pull/43
+def lib = library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
+
+dtestPipeline(
+    BUILD_MODE: 'release',
+    PRODUCT_NAME: 'scylla',
+    BRANCH: 'master',
+    PYTEST_EXTRA_COMMANDLINE_OPTIONS: '--experimental-features=raft'
+)

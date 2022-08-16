@@ -26,6 +26,8 @@ def call(Map pipelineParams) {
             string(name: 'INCLUDE_DTESTS', defaultValue: "${pipelineParams.get('INCLUDE_DTESTS', '')}" , description: """Specify which dtests to run. default for release:
                                                                  -m 'not skip and dtest_full and not dtest_heavy and not dtest_long',
                                                                  for debug: -m dtest_debug """)
+            string(name: 'PYTEST_EXTRA_COMMANDLINE_OPTIONS', defaultValue: "${pipelineParams.get('PYTEST_EXTRA_COMMANDLINE_OPTIONS', '')}" , description: """ String
+                with pytest extra CLI parameters, ex: --experimental-features=raft,cdc """)
             string(name: 'EXCLUDE_DTESTS', defaultValue: '', description: 'Specify dtests to exclude.')
             string(name: 'SCYLLA_EXT_OPTS_EXTRA_SETTINGS', defaultValue: '--abort-on-seastar-bad-alloc --abort-on-lsa-bad-alloc=1', description: 'Anything you put here will be added to any default settings of SCYLLA_EXT_OPTS env var sent to nose.')
             string(name: 'SCYLLA_EXT_ENV_EXTRA_SETTINGS', defaultValue: 'ASAN_OPTIONS=disable_coredump=0:abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no', description: 'Anything you put here will be added to any default settings of SCYLLA_EXT_ENV env var sent to nose.')
@@ -166,5 +168,6 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         splitFleetLabal: splitFleetLabal,
         dtestType: dtestType,
         driverVersion: params.DRIVER_VERSION,
+        pyTestExtraCLIOptions: params.PYTEST_EXTRA_COMMANDLINE_OPTIONS,
     )
 }
