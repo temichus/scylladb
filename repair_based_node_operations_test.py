@@ -341,7 +341,7 @@ class TestRepairBasedNodeOperations(Tester):
         If this option is not set, replace operation will fail because one node is down.
         """
         enable_repair_based_node_ops = True
-        self.prepare_cluster(nodes=5, enable_repair_based_node_ops=enable_repair_based_node_ops)
+        self.prepare_cluster(nodes=7, enable_repair_based_node_ops=enable_repair_based_node_ops)
         self.prepare_schema(node=self.cluster.nodelist()[0])
 
         rbnos = RepairBasedNodeOperationsScenarios(tester=self)
