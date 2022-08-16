@@ -893,9 +893,6 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         logger.info("starting init cluster")
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
-        logger.info("stopping node1")
-        node1.stop(wait_other_notice=True, gently=True)
-
         def add_and_start_a_node(node_idx):
             """add a new node to cluster, and start it"""
             logger.info("adding node%d", node_idx)
@@ -904,28 +901,34 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             node.start(wait_other_notice=True)
             return node
 
+        add_and_start_a_node(3)
+
+        logger.info("stopping node1")
+        node1.stop(wait_other_notice=True, gently=True)
+
         self.ignore_log_patterns += ['Startup failed']
         # can't add a new node to cluster if a node stop
         with pytest.raises(RuntimeError, match='The process is dead'):
-            node3 = cluster.new_node(3)
-            node3.start(wait_other_notice=True)
+            node4 = cluster.new_node(4)
+            node4.start(wait_other_notice=True)
 
         logger.info("starting node1 again")
         node1.start(wait_other_notice=True)
 
-        ip3 = get_ip_from_node(node=node3)
-        node2.watch_log_for(f"{ip3} gossip quarantine over")
+        ip4 = get_ip_from_node(node=node4)
+        node2.watch_log_for(f"{ip4} gossip quarantine over")
 
-        logger.debug("starting node3")
-        node3.start(wait_other_notice=True)
-        logger.info('removing node1 and node2, `node3` will be on duty')
+        logger.debug("starting node4")
+        node4.start(wait_other_notice=True)
+        add_and_start_a_node(5)
+        logger.info('removing node1 and node2, `node3, node4, node5` will be on duty')
         node1.decommission()
         node2.decommission()
 
-        add_and_start_a_node(4)
-        logger.info('removing node3, `node4` will be on duty')
-        node3.decommission()
-        add_and_start_a_node(5)
+        add_and_start_a_node(6)
+        logger.info('removing node3, `node4, node5, node6` will be on duty')
+        node4.decommission()
+        add_and_start_a_node(7)
 
     @staticmethod
     def _cleanup(node):
