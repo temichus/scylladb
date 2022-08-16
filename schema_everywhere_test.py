@@ -56,17 +56,21 @@ class TestSchemaReplicationEverywhereStrategy(Tester):
         replicated to new nodes
         """
         cluster: ScyllaCluster = self.cluster
-        cluster.populate(nodes=1).start(wait_for_binary_proto=True)
+        cluster.populate(nodes=2).start(wait_for_binary_proto=True)
         node1: ScyllaNode = cluster.nodelist()[0]
+        node2: ScyllaNode = cluster.nodelist()[1]
         self.create_and_fill_user_table(node1)
-        node2 = cluster.new_node(2, auto_bootstrap=True)
-        node2.start(wait_for_binary_proto=True)
+        node3 = cluster.new_node(3, auto_bootstrap=True)
+        node3.start(wait_for_binary_proto=True)
         node1.stop(wait_other_notice=True)
-        self.verify_data_in_user_table(node2)
-        node3 = cluster.new_node(3, auto_bootstrap=True, initial_token=None, is_seed=False)
-        node3.start(wait_for_binary_proto=True, replace_address=node1.address())
-        node2.stop()
+        node2.stop(wait_other_notice=True)
         self.verify_data_in_user_table(node3)
+        node2.start()
+        node4 = cluster.new_node(4, auto_bootstrap=True, initial_token=None, is_seed=False)
+        node4.start(wait_for_binary_proto=True, replace_address=node1.address())
+        node2.stop()
+        node3.stop()
+        self.verify_data_in_user_table(node4)
 
     def test_replicating_user_table_in_mutlidc(self):
         """
