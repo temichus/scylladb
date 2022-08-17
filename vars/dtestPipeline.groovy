@@ -104,7 +104,7 @@ def call(Map pipelineParams) {
                         steps {
                             script {
                                 node(generalProperties.targetDtestBuilder) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_long",
+                                    runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_long'",
                                         "long", generalProperties.targetDtestStrongBuilder, "240")
                                 }
                             }
