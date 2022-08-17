@@ -2001,14 +2001,14 @@ class TestNodetool(Tester):
         call rebuild
         """
         expected_errors = ["No schema agreement from live replicas after"]
-        tst = [{"operations": [{"func": self.run_cluster, "args": [[2, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [[2, 3]]}],
+        tst = [{"operations": [{"func": self.run_cluster, "args": [[3, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [[3, 4]]}],
                 "recurrent":[{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 15,
                                 "args": [None, {"cl": "ONE", "duration": "1m",
                                                 "opt": ["-schema", "replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)", "-rate", "threads=10"],
                                                 "expected_errors": expected_errors}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
-               {"operations": [{"func": self.start, "delay": 5, "args": [[2, 3], {"wait_for_binary_proto": True}]}],
+               {"operations": [{"func": self.start, "delay": 5, "args": [[3, 4], {"wait_for_binary_proto": True}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.rebuild, "time": 300, "args": [2, "dc1"]}],
                 "recurrent":self.multi_dc_queries_method_list}]
