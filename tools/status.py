@@ -36,15 +36,22 @@ def nodetool_status(node, keyspace=""):
     m = re.findall(r'Datacenter: ([^\s]+)', out, re.MULTILINE)
     if m:
         res['Datacenter'] = m[0]
-    m = re.findall(
-        r'^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*', out, re.MULTILINE)
 
-    def _list2status(lst):
-        heads = ["status", "address", "load", "tokens", "owns", "host id", "rack"]
-        res = {}
-        for i in range(len(heads)):
-            res[heads[i]] = lst[i]
-        return res
+    # example of nodetool output to parse:
+    # DN  127.0.0.2  ?          256          ?       7c073ba1-ceac-447a-a098-c89c1dd379de  rack1
+    # UN  127.0.0.1  1.08 MB    256          ?       7e496720-2bf4-4ece-89ad-af7dba3d7d6b  rack1
 
-    res["nodes"] = [_list2status(s) for s in m]
+    m = re.finditer(
+        r'^(?P<status>[UDNLJM]+)\s+'
+        r'(?P<address>[\d\.]+)\s+'
+        r'(?P<load>\?|[^\s]+\s+[^\s]+)\s+'
+        r'(?P<tokens>[^\s]+)\s+'
+        r'(?P<owns>[^\s]+)'
+        r'(?:\s[^\s]{2})?\s+'
+        r'(?P<host_id>[^\s]+)\s+'
+        r'(?P<rack>[^\s]+)\s*',
+        out, re.MULTILINE)
+
+    # replace host_id with 'host id' so user of this function doesn't need to change
+    res["nodes"] = [{k.replace('_', ' '): v for k, v in s.groupdict().items()} for s in m]
     return res
