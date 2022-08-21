@@ -457,9 +457,9 @@ class TestReplaceAddress(Tester):
 
         See https://github.com/scylladb/scylla/issues/5449 for details.
         """
-        logger.info("Starting cluster with 2 nodes.")
-        self.init_cluster(2)
-        node1, node2 = self.cluster.nodelist()
+        logger.info("Starting cluster with 3 nodes.")
+        self.init_cluster(3)
+        node1, node2, node3 = self.cluster.nodelist()
         logger.info(f"Node 1 address is {self.cluster.get_node_ip(1)}")
 
         node2_address = self.cluster.get_node_ip(2)
@@ -468,55 +468,58 @@ class TestReplaceAddress(Tester):
         tokens = self.get_sorted_tokens(node2)
         logger.info(f"Detected number of tokens: {len(tokens)}")
 
+        node3_address = self.cluster.get_node_ip(3)
+        logger.info(f"Node 3 address is {node3_address}")
+
         logger.info("Inserting Data...")
         node1.stress(["write", "n=10000", "-schema", "replication(factor=2)"])
 
         session = self.patient_cql_connection(node1)
         stress_table = "keyspace1.standard1"
-        query = SimpleStatement(f"SELECT * FROM {stress_table} LIMIT 1", consistency_level=ConsistencyLevel.TWO)
+        query = SimpleStatement(f"SELECT * FROM {stress_table} LIMIT 1", consistency_level=ConsistencyLevel.ALL)
         initial_data = list(session.execute(query))
 
         logger.info("Stopping node 2.")
         node2.stop()
 
-        logger.info("Starting node 3 to replace node 2, but stop it in the middle of the replace.")
-        node3 = self.cluster.new_node(3, auto_bootstrap=True, is_seed=False)
-        node3.start(replace_address=node2_address, no_wait=True)
+        logger.info("Starting node 4 to replace node 2, but stop it in the middle of the replace.")
+        node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
+        node4.start(replace_address=node2_address, no_wait=True)
 
-        node3_address = self.cluster.get_node_ip(3)
-        logger.info(f"Node 3 address is {node3_address}")
+        node4_address = self.cluster.get_node_ip(4)
+        logger.info(f"Node 4 address is {node4_address}")
 
         self.ignore_log_patterns += ['Startup failed']
-        node3.stop()
+        node4.stop()
 
         status1, err1 = node1.nodetool("gossipinfo")
         logger.info(f"gossipinfo:\n{status1}")
         assert "STATUS:hibernate,true" not in status1, "There is a node in HIBERNATE status."
 
-        logger.info("Starting node 4 to replace node 2.")
-        node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
-        node4.start(replace_address=node2_address, wait_for_binary_proto=True, wait_other_notice=True)
+        logger.info("Starting node 5 to replace node 2.")
+        node5 = self.cluster.new_node(5, auto_bootstrap=True, is_seed=False)
+        node5.start(replace_address=node2_address, wait_for_binary_proto=True, wait_other_notice=True)
 
-        node4_address = self.cluster.get_node_ip(4)
-        logger.info(f"Node 4 address is {node4_address}")
+        node5_address = self.cluster.get_node_ip(5)
+        logger.info(f"Node 4 address is {node5_address}")
 
         status2, err2 = node1.nodetool("gossipinfo")
         logger.info(f"gossipinfo:\n{status2}")
         assert "STATUS:hibernate,true" not in status2, "There is a node in HIBERNATE status."
-        assert f"/{node3_address}\n" not in status2, "Node 3 stays in gossip."
+        assert f"/{node4_address}\n" not in status2, "Node 4 stays in gossip."
 
         logger.info("Verifying querying works.")
         final_data = list(session.execute(query))
         assert_lists_equal_ignoring_order(initial_data, final_data)
 
         logger.info("Verifying tokens migrated successfully.")
-        moved_tokens_list = self.get_sorted_tokens(node4)
+        moved_tokens_list = self.get_sorted_tokens(node5)
         logger.info(len(moved_tokens_list))
         assert moved_tokens_list == tokens
 
         logger.info("Verifying system.peers table.")
         peers = rows_to_list(session.execute("SELECT * FROM system.peers"))
-        assert len(peers) == 1, "There are more peers than expected."
+        assert len(peers) == 2, "Unexpected number of peers."
 
     def test_replace_with_background_workload(self):
         """
