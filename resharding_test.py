@@ -6,6 +6,7 @@ import logging
 
 import pytest
 
+from ccmlib.scylla_cluster import ScyllaCluster
 from ccmlib.scylla_node import ScyllaNode
 from ccmlib.scylla_cluster import ScyllaCluster
 from cassandra.cluster import Session
@@ -151,6 +152,10 @@ class ReshardingBase(Tester):
     def _resharding_basic(self, reshard_to, rows, murmur3):
         self.prepare()
         logger.debug('Run stress test on node1')
+
+        debug_mode = isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug"
+        if debug_mode and rows > 1000:
+            rows = 1000
         op_cnt = rows
         stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup',
                       '-schema', 'replication(factor={})'.format(self.rf), 'compaction(strategy={})'.format(self.compaction_strategy)]
