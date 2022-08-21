@@ -152,7 +152,7 @@ class ReshardingBase(Tester):
         self.prepare()
         logger.debug('Run stress test on node1')
         op_cnt = rows
-        stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16',
+        stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup',
                       '-schema', 'replication(factor={})'.format(self.rf), 'compaction(strategy={})'.format(self.compaction_strategy)]
         self._run_stress(op_cnt, stress_cmd)
 
@@ -176,7 +176,7 @@ class ReshardingBase(Tester):
         # Verify data files number after resharding and compaction
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to)
 
-        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=4', '-errors ignore']
+        stress_cmd = ['read', 'n={}'.format(op_cnt), 'no-warmup', '-errors ignore']
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('standard1', op_cnt)
 
@@ -426,7 +426,7 @@ class TestReshardingVariants(ReshardingBase):
 
         logger.debug('Run counter_write stress test on node1')
         op_cnt = 10000
-        stress_cmd = ['counter_write', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16',
+        stress_cmd = ['counter_write', 'n={}'.format(op_cnt), 'no-warmup',
                       '-schema', 'replication(factor={})'.format(self.rf),
                       'compaction(strategy={})'.format(self.compaction_strategy)]
 
@@ -444,7 +444,7 @@ class TestReshardingVariants(ReshardingBase):
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=self.SMP_FOR_INCREASE)
         self.check_errors_all_nodes()
 
-        stress_cmd = ['counter_read', 'n={}'.format(op_cnt), 'no-warmup', '-rate', 'threads=16']
+        stress_cmd = ['counter_read', 'n={}'.format(op_cnt), 'no-warmup']
         self._verify_data(op_cnt, stress_cmd)
         self._verify_row_number('counter1', op_cnt)
 
