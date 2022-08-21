@@ -135,7 +135,7 @@ class ReshardingBase(Tester):
         assert res['total errors'] == 0
         assert res['total partitions'] >= op_cnt
 
-    def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1', consistency_level=ConsistencyLevel.QUORUM):
+    def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1', consistency_level=ConsistencyLevel.ONE):
         session = self.patient_cql_connection(self.node)
         q = SimpleStatement(f"SELECT count(*) FROM {keyspace}.{cf}", consistency_level=consistency_level)
         resp = session.execute(q)
