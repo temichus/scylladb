@@ -193,6 +193,7 @@ class TestLimits(Tester):
     @pytest.mark.scylla_mode('!debug')  # client times out in debug mode
     def test_max_columns_and_query_parameters(self):
         cluster = self.prepare()
+        cluster.set_configuration_options(values={'query_tombstone_page_limit': 9999999})
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
 
@@ -314,6 +315,7 @@ class TestLimits(Tester):
     @pytest.mark.scylla_mode('!debug')  # client times out in debug mode
     def test_max_cells(self):
         cluster = self.prepare()
+        cluster.set_configuration_options(values={'query_tombstone_page_limit': 9999999})
         cluster.populate(1).start()
         node = cluster.nodelist()[0]
 
