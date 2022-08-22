@@ -63,7 +63,7 @@ class TestLwt(Tester):
         # there will be some bounce-to-shard messages.
         # XXX: when python driver supports shard-aware calls, this should be
         # 0.
-        assert after[name] - before[name] <= 16, "{}:{}".format(before, after)
+        assert after.get(name, 0) - before.get(name, 0) <= 16, "{}:{}".format(before, after)
         before = after
         # Test direct execution as well as failing condition
         cql = "INSERT INTO t (a, b) VALUES ({}, {}) IF NOT EXISTS"
@@ -74,7 +74,7 @@ class TestLwt(Tester):
         # optimization switching to the right shard before starting
         # Paxos
         after = get_node_metrics(get_ip_from_node(node), metrics=[name])
-        assert after[name] - before[name] <= 16, "{}:{}".format(before, after)
+        assert after.get(name, 0) - before.get(name, 0) <= 16, "{}:{}".format(before, after)
         cql = "DROP TABLE IF EXISTS t"
         session.execute(cql)
 
@@ -94,7 +94,7 @@ class TestLwt(Tester):
             before = get_node_metrics(get_ip_from_node(node), metrics=[name])
             session.execute(cql)
             after = get_node_metrics(get_ip_from_node(node), metrics=[name])
-            assert after[name] - before[name] == expect, "{} {}".format(before, after)
+            assert after.get(name, 0) - before.get(name, 0) == expect, "{} {}".format(before, after)
 
         name = "scylla_storage_proxy_coordinator_cas_write_condition_not_met"
         cql = "INSERT INTO t (a, b) VALUES (1, 1) IF NOT EXISTS"
@@ -171,7 +171,7 @@ class TestLwt(Tester):
         for i in range(10):
             session.execute(stmt, (i + 1, i))
         after = get_node_metrics(get_ip_from_node(node), metrics=[name])
-        assert after[name] - before[name] == 0, "{} {}".format(before, after)
+        assert after.get(name, 0) - before.get(name, 0) == 0, "{} {}".format(before, after)
         cql = "DROP TABLE t"
         session.execute(cql)
         #
@@ -202,7 +202,7 @@ class TestLwt(Tester):
         for i in range(key_count):
             session.execute(paxos_stmt, (i,))
         after = get_node_metrics(get_ip_from_node(node), metrics=[name])
-        assert after[name] - before[name] == key_count, "{} {}".format(before, after)
+        assert after.get(name, 0) - before.get(name, 0) == key_count, "{} {}".format(before, after)
 
     def test_basic_distributed(self):  # pylint: disable=too-many-statements
         """Basic distributed tests (3.1 - 3.4 from the test plan). """
