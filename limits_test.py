@@ -157,7 +157,7 @@ class TestLimits(Tester):
             size <<= 1
             self._do_test_blob_size(session, node, size - 1)
 
-    def _do_test_max_columns(self, session, count, expect_failure=False):
+    def _do_test_max_columns(self, session, count, expect_failure=None):
         print("Testing maximum numbers of columns with count {}.{}".format(
             count, " Expected failure..." if expect_failure else ""))
 
@@ -176,10 +176,9 @@ class TestLimits(Tester):
 
         c = """CREATE TABLE test1 (%s blub int PRIMARY KEY,)""" % keys_create
         if expect_failure:
-            expected_error = r"Mutation of \d+ bytes is too large for the maximum size of 16777216"
-            self.ignore_log_patterns += [expected_error]
+            self.ignore_log_patterns += [expect_failure]
             with pytest.raises(Exception,
-                               match=expected_error):
+                               match=expect_failure):
                 session.execute(c)
             return
 
@@ -201,9 +200,13 @@ class TestLimits(Tester):
         create_ks(session, 'ks', 1)
 
         count = 1
+        is_raft = node.grep_log("starting Raft Group Registry service")
+        limit = MAX_COLUMNS / 2 if is_raft else MAX_COLUMNS
+        expect_failure = r"Command size \d+ is greater than the configured limit \d+" if is_raft else \
+            r"Mutation of \d+ bytes is too large for the maximum size of \d+"
         for i in range(int(math.log(MAX_COLUMNS, 2))):
             count <<= 1
-            self._do_test_max_columns(session, count - 1, expect_failure=(count == MAX_COLUMNS))
+            self._do_test_max_columns(session, count - 1, expect_failure=expect_failure if count >= limit else None)
 
     def _do_test_max_tuples(self, session, node, count):
         print("Testing max tuples for %i" % count)
