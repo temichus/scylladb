@@ -3566,23 +3566,23 @@ class TestMaterializedViews(CommonUtils):
         Test that virtual columns in materialized views are correctly
         propagated between nodes as part of the schema. Reproduces issue #4339.
         """
-        # Create a cluster of two nodes.
+        # Create a cluster of three nodes.
         cluster = self.cluster
-        cluster.populate([2, 0])
+        cluster.populate([3, 0])
         cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
-        [node1, node2] = self.cluster.nodelist()
-        # Create a keyspace and base table, while the two nodes are alive
+        [node1, node2, node3] = self.cluster.nodelist()
+        # Create a keyspace and base table, while the three nodes are alive
         session = self.patient_cql_connection(node1)
-        self.rf = 2
+        self.rf = 3
         create_ks(session, 'ks', self.rf)
         session.execute(
             ("CREATE TABLE tab (a INT, b INT, c INT,"
              "PRIMARY KEY (a));")
         )
-        # Wait for both nodes to know about the base table
+        # Wait for all nodes to know about the base table
         session.cluster.control_connection.wait_for_schema_agreement()
         # stop the second node, and create a materialized view which only
-        # the first node will know about:
+        # the first and third node will know about:
         node2.stop(wait_other_notice=True)
         session.execute(
             ("CREATE MATERIALIZED VIEW mv AS "
