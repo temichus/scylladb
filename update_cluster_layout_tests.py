@@ -1,6 +1,5 @@
 import time
 import os
-import re
 import logging
 import collections
 import random
@@ -20,7 +19,7 @@ from ccmlib.scylla_node import ScyllaNode
 
 from tools.assertions import assert_invalid
 
-from dtest_class import Tester, create_ks, create_cf
+from dtest_class import Tester, create_ks, create_cf, retry_till_success
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, query_c1c2_concurrent, insert_c1cn
 from tools.cluster import new_node
 from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status
@@ -2187,6 +2186,36 @@ class TestUpdateClusterLayout(Tester):
             query_c1c2(session, k, ConsistencyLevel.ONE, ks='ks1')
             query_c1c2(session, k, ConsistencyLevel.TWO, ks='ks2')
             query_c1c2(session, k, ConsistencyLevel.THREE, ks='ks3')
+
+    @pytest.mark.require("#11355")
+    def test_decommission_after_changing_node_ip(self):
+        """ Changes to cluster topology after node ip changed"""
+
+        cluster = self.cluster
+        logger.info("starting cluster")
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        logger.info("stopping node3")
+        node1, node2, node3 = cluster.nodelist()
+        node3.stop(gently=True)
+
+        logger.info("replace node3 address")
+        ip_prefix = cluster.get_ipprefix()
+        ip3 = f'{ip_prefix}33'
+        node3.set_configuration_options(values={'listen_address': ip3, 'rpc_address': ip3, 'api_address': ip3})
+        node3.network_interfaces = {k: (ip3, v[1]) for k, v in node3.network_interfaces.items()}
+
+        logger.info("decommission node3")
+        node3.start(wait_for_binary_proto=False, wait_other_notice=False)
+        retry_till_success(node3.decommission, timeout=120)
+
+        for node in cluster.nodelist():
+            node.nodetool('gossipinfo', capture_output=False)
+
+        logger.info("add new node4")
+        node4 = cluster.new_node(4)
+        node4.start(wait_for_binary_proto=True)
+        logger.info("done")
 
     def test_change_node_ip_full_cluster_down(self):
         """
