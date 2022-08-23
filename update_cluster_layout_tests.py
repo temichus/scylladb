@@ -1125,7 +1125,7 @@ class TestUpdateClusterLayout(Tester):
     def test_simple_removenode_2(self):
         """
         Test removenode when rf=1 (data will be lost)
-        1. Create a cluster with a two node with rf=1, insert data
+        1. Create a cluster with a three node with rf=1, insert data
         2. stop and remove a node
         3. Check that the data is accesible
         """
@@ -1135,8 +1135,8 @@ class TestUpdateClusterLayout(Tester):
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(
             values=self.default_config_options(), batch_commitlog=True)
-        cluster.populate(2).start()
-        node1, node2 = cluster.nodelist()
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 1)
