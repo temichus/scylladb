@@ -1211,8 +1211,8 @@ class TestUpdateClusterLayout(Tester):
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False}, batch_commitlog=True)
-        cluster.populate(5).start()
-        node1, node2, node3, node4, node5 = cluster.nodelist()
+        cluster.populate(7).start()
+        node1, node2, node3, node4, node5, node6, node7 = cluster.nodelist()
 
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', 3)
