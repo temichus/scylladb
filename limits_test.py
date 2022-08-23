@@ -198,6 +198,7 @@ class TestLimits(Tester):
 
         session = self.patient_cql_connection(node)
         create_ks(session, 'ks', 1)
+        session.execute("UPDATE system.config SET value='100000' WHERE name='query_tombstone_page_limit'")
 
         count = 1
         is_raft = node.grep_log("starting Raft Group Registry service")
