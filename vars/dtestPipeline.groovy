@@ -36,7 +36,7 @@ def call(Map pipelineParams) {
             booleanParam(name: 'PRESERVE_WORKSPACE', defaultValue: false, description: 'Check this if you need the workspace to remain (for debug)')
             booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Check this to check pipeline syntax. will not perform anything.')
 
-            string(name: 'DRIVER_VERSION', defaultValue: "", description: 'driver version to use during the tests, ex. scylla-driver==3.25.4')
+            string(name: 'DRIVER_VERSION', defaultValue: "${pipelineParams.get('DRIVER_VERSION', '')}", description: 'driver version to use during the tests, ex. scylla-driver==3.25.4')
         }
 
         agent {
