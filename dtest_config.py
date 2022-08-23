@@ -2,6 +2,8 @@ import subprocess
 import os
 from pkg_resources import parse_version
 
+from cassandra.connection import DRIVER_NAME, DRIVER_VERSION
+
 import ccmlib.repository
 import ccmlib.scylla_repository
 from ccmlib.common import is_win, get_version_from_build, get_scylla_full_version, scylla_extract_install_dir_and_mode, \
@@ -97,6 +99,13 @@ class DTestConfig:
     def is_enterprise(self):
         version = self.get_version_from_build()
         return parse_version(version) > parse_version("2018.1") if version else False
+
+    @property
+    def driver_version(self):
+        if 'scylla' in DRIVER_NAME.lower():
+            return f'scylla-driver=={DRIVER_VERSION}'
+        else:
+            return f'cassandra-driver=={DRIVER_VERSION}'
 
 # Determine the location of the libjemalloc jar so that we can specify it
 # through environment variables when start Cassandra.  This reduces startup

@@ -540,7 +540,8 @@ def configure_es(request: pytest.FixtureRequest, dtest_config):
         extra_data = {
             "SCYLLA_FULL_VERSION": dtest_config.scylla_full_version,
             "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
-            "SCYLLA_MODE": dtest_config.scylla_mode
+            "SCYLLA_MODE": dtest_config.scylla_mode,
+            "CQL_DRIVER_VERSION": dtest_config.driver_version
         }
         elk_reporter.session_data.update(**extra_data)
 
