@@ -798,7 +798,7 @@ class TestWideRows(Tester):
         columns_num = 15
         extra_rows = 0
 
-        session = self.prepare_cluster(nodes=2, rf=2,
+        session = self.prepare_cluster(nodes=3, rf=2,
                                        options_dict={'compaction_large_row_warning_threshold_mb': 1})
 
         node2 = self.cluster.nodelist()[1]
