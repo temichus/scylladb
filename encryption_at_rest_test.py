@@ -67,9 +67,10 @@ class TestInMemory(Tester):
         self.cluster.flush()
         node1.stress(['read', 'n=100000', 'cl=QUORUM', '-rate', 'threads=8'])
 
+# remove "default", as this is same as None, and gives us a replicated provider
+
 
 class KeyProviderEnum(Enum):
-    default = ''
     local = 'LocalFileSystemKeyProviderFactory'
     replicated = 'ReplicatedKeyProviderFactory'
     kmip = 'KmipKeyProviderFactory'
@@ -307,7 +308,7 @@ class EncryptionAtRestBase(Tester):
             ret = ReplicatedKeyProviderFactory(self)
         elif key_provider == KeyProviderEnum.kmip:
             ret = KmipKeyProviderFactory(self)
-        elif key_provider == KeyProviderEnum.default or key_provider is None:
+        elif key_provider is None:
             ret = DefaultKeyProviderFactory(self)
         else:
             raise Exception('Unknown key_provider: %s' % key_provider)
@@ -374,8 +375,8 @@ class EncryptionAtRestBase(Tester):
         logger.debug('re-enable encryption at-rest: %s' % options)
         session.execute(query % options)
         table_desc = get_table_description(node1, "ks", "cf")
-        if key_provider == KeyProviderEnum.default:
-            assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
+        if key_provider == None:
+            assert "key_provider" not in table_desc, f"key_provider isn't unspecified, schema:\n {table_desc}"
         else:
             err_msg = f"key_provider isn't changed to {key_provider.value}, schema: \n {table_desc}"
             assert f"'key_provider': '{key_provider.value}'" in table_desc, err_msg
