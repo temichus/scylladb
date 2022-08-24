@@ -118,9 +118,6 @@ class BaseKeyProviderFactory:
     def prepare_conf(self):
         pass
 
-    def prepare(self, node_num=2):
-        self.cluster.populate(node_num).start(wait_for_binary_proto=True, wait_other_notice=True)
-
     def prepare_system_key(self, dirname='./resources/system_keys/', keyfile='system_key', cipher_algorithm='AES/CBC/PKCS5Padding', secret_key_strength=128):
         if not os.path.exists(dirname):
             os.mkdir(dirname)
