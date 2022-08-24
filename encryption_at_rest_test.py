@@ -259,10 +259,17 @@ class EncryptionAtRestBase(Tester):
         self.create_ks(kss=kss, n=n)
         return session
 
-    def cleanup(self, kss=['ks']):
+    def drop_keyspace(self, kss=['ks']):
         session = self.get_session()
         for ks in kss:
             session.execute('DROP KEYSPACE IF EXISTS %s' % ks)
+
+    def drop_cf(self, name='ks.cf'):
+        session = self.get_session()
+        session.execute('DROP TABLE IF EXISTS %s' % name)
+
+    def cleanup(self, kss=['ks']):
+        self.drop_keyspace(kss=kss)
 
     def rolling_restart(self, user=None, password=None, allow_start_failure=False):
         logger.debug(f'Restart nodes one by one ...{" (start failures allowed)" if allow_start_failure else ""}')
