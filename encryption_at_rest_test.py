@@ -234,22 +234,29 @@ class KmipKeyProviderFactory(BaseKeyProviderFactory):
 class EncryptionAtRestBase(Tester):
     multiple_num = 3
     default_node_num = 2
+    system_key_dir = './resources/system_keys/'
 
     def get_session(self, node_idx=0, user=None, password=None):
         node = self.cluster.nodelist()[node_idx]
         conn = self.patient_cql_connection(node, user=user, password=password)
         return conn
 
-    def prepare(self, n=default_node_num, kss=['ks'], restart=False):
-        if not self.cluster.nodelist():
-            self.cluster.populate(n).start(wait_for_binary_proto=True, wait_other_notice=True)
-        elif restart:
-            self.rolling_restart()
+    def create_ks(self, kss=['ks'], n=default_node_num):
         session = self.get_session()
         for ks in kss:
             session.execute(
                 f"CREATE KEYSPACE IF NOT EXISTS {ks} WITH REPLICATION = {{'class' : 'SimpleStrategy', "
                 f"'replication_factor' : {n} }}")
+
+    def prepare(self, n=default_node_num, kss=['ks'], restart=False):
+        self.cluster.set_configuration_options({'system_key_directory': EncryptionAtRestBase.system_key_dir})
+        logger.debug('set system_key_directory to %s', EncryptionAtRestBase.system_key_dir)
+        if not self.cluster.nodelist():
+            self.cluster.populate(n).start(wait_for_binary_proto=True, wait_other_notice=True)
+        elif restart:
+            self.rolling_restart()
+        session = self.get_session()
+        self.create_ks(kss=kss, n=n)
         return session
 
     def cleanup(self, kss=['ks']):
