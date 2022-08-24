@@ -108,6 +108,9 @@ class BaseKeyProviderFactory:
     def __exit__(self, exception_type, exception_value, exception_traceback):
         pass
 
+    def supported_cipher(self, cipher_algorithm, secret_key_strength):
+        return True
+
     def prepare_conf(self):
         pass
 
@@ -218,6 +221,12 @@ class KmipKeyProviderFactory(BaseKeyProviderFactory):
         self.cluster.set_configuration_options({'kmip_hosts': {'kmip_test': options}})
         self.kmip_host = 'kmip_test'
 
+    def supported_cipher(self, cipher_algorithm, secret_key_strength):
+        # Our KMIP server is not configured to support this configuration.
+        # Test fails with error: Invalid key data length 80 for RC2/CBC and kmip.
+        # Decided (Roy) don't test it
+        return not ('RC2' in cipher_algorithm and secret_key_strength == 80)
+
 
 class EncryptionAtRestBase(Tester):
     multiple_num = 3
@@ -303,6 +312,18 @@ class EncryptionAtRestBase(Tester):
         else:
             raise Exception('Unknown key_provider: %s' % key_provider)
         return ret
+
+    def _filter_cipher(self, kp, cipher_algorithm, secret_key_strength):
+        if not kp.supported_cipher(cipher_algorithm, secret_key_strength):
+            logger.debug("%s does not support configuration %s.%d. The test will not be run with this configuration".format(
+                kp, cipher_algorithm, secret_key_strength))
+            return False
+        return True
+
+    def filter_ciphers(self, kp, ciphers=None):
+        if not ciphers:
+            return [(None, None)]
+        return [(cipher, len) for cipher in ciphers for len in ciphers[cipher] if self._filter_cipher(kp, cipher, len)]
 
     def _smoke_test(self, key_provider=KeyProviderEnum.local, cipher_algorithm=None, secret_key_strength=None,
                     compression=None):
