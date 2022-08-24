@@ -160,6 +160,7 @@ class BaseKeyProviderFactory:
         assert not os.path.exists(keyfile), 'Default system_key is generated unexpectedly'
 
     def verify_secret_key(self, cipher_algorithm=None, secret_key_strength=None):
+        logger.debug('Verify that local key is generated automatically')
         logger.debug('Verify that system key is generated automatically')
         keyfile = os.path.join(self.Tester.test_path, 'test/node1/conf/data_encryption_keys')
         assert os.path.exists(keyfile), 'Default system_key is not generated'
@@ -174,7 +175,7 @@ class BaseKeyProviderFactory:
                 if line.startswith('%s:%d:' % (cipher_algorithm, secret_key_strength)):
                     logger.debug('Found system key: %s' % line)
                     found = True
-        assert found, 'Did not found specific system key in %s' % keyfile
+        assert found, 'Did not find specific local key in %s' % keyfile
 
 
 class DefaultKeyProviderFactory(BaseKeyProviderFactory):
