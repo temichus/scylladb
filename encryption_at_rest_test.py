@@ -112,6 +112,9 @@ class BaseKeyProviderFactory:
     def supported_cipher(self, cipher_algorithm, secret_key_strength):
         return True
 
+    def require_restart(self):
+        return False
+
     def prepare_conf(self):
         pass
 
@@ -221,7 +224,9 @@ class KmipKeyProviderFactory(BaseKeyProviderFactory):
                        'priority_string': 'SECURE128:+RSA:-VERS-TLS1.0:-ECDHE-ECDSA',
                        }
         self.cluster.set_configuration_options({'kmip_hosts': {'kmip_test': options}})
-        self.kmip_host = 'kmip_test'
+
+    def require_restart(self):
+        return True
 
     def supported_cipher(self, cipher_algorithm, secret_key_strength):
         # Our KMIP server is not configured to support this configuration.
@@ -339,7 +344,7 @@ class EncryptionAtRestBase(Tester):
 
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(restart=key_provider == KeyProviderEnum.kmip, n=self.default_node_num)
+        session = self.prepare(restart=kp.require_restart(), n=self.default_node_num)
         if cipher_algorithm and secret_key_strength:
             kp.create_encrypted_cf(session, name='ks.cf', cipher_algorithm=cipher_algorithm,
                                    secret_key_strength=secret_key_strength, compression=compression)
@@ -359,7 +364,7 @@ class EncryptionAtRestBase(Tester):
     def _alter_test(self, key_provider=KeyProviderEnum.local):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(restart=key_provider == KeyProviderEnum.kmip)
+        session = self.prepare(restart=kp.require_restart())
         node1 = self.cluster.nodelist()[0]
         options = kp.create_encrypted_cf(session, name='ks.cf')
         query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
@@ -389,7 +394,7 @@ class EncryptionAtRestBase(Tester):
         kss = ['mks_%s' % i for i in range(self.multiple_num)]
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(kss=kss, restart=key_provider == KeyProviderEnum.kmip)
+        session = self.prepare(kss=kss, restart=kp.require_restart())
         secret_key_file = None
         system_key_file = None
         for ks in kss:
@@ -410,7 +415,7 @@ class EncryptionAtRestBase(Tester):
         cfs = ['cf_%d' % i for i in range(self.multiple_num)]
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        session = self.prepare(restart=key_provider == KeyProviderEnum.kmip)
+        session = self.prepare(restart=kp.require_restart())
         secret_key_file = None
         system_key_file = None
         for cf in cfs:
@@ -428,7 +433,7 @@ class EncryptionAtRestBase(Tester):
     def _reboot_test(self, key_provider=KeyProviderEnum.local):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
-        self.prepare(n=3, restart=key_provider == KeyProviderEnum.kmip)
+        self.prepare(n=3, restart=kp.require_restart())
 
         session = self.get_session()
         kp.create_encrypted_cf(session, name='ks.cf')
