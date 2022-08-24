@@ -93,7 +93,7 @@ supported_cipher_algorithms = {'': [],
                                }
 
 
-class BaseKeyProviderFactory(Tester):
+class BaseKeyProviderFactory:
     def __init__(self, key_provider, Tester):
         self.key_provider = key_provider
         self.system_keyfile = None
