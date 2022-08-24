@@ -390,6 +390,8 @@ def pytest_collection_modifyitems(items, config):
     collect_require = config.getoption("--collect-required")
     _is_enterprise = is_enterprise(cassandra_dir, scylla_version)
     test_list_file = config.getoption("--from-file")
+    experimental_features = config.getoption("--experimental-features") or []
+
     if test_list_file:
         test_list_file = test_list_file.read().splitlines()
 
@@ -488,6 +490,12 @@ def pytest_collection_modifyitems(items, config):
 
         if item.get_closest_marker("dtest_enterprise") and not _is_enterprise:
             deselect_test = True
+
+        if item.get_closest_marker("gossip_only"):
+            scylla_ext_opt = os.environ["SCYLLA_EXT_OPTS"]
+            if "raft" in scylla_ext_opt or "raft" in experimental_features:
+                deselect_test = True
+
         if not deselect_test and test_list_file:
             if item.nodeid not in test_list_file:
                 deselect_test = True
