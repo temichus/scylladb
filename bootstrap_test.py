@@ -847,6 +847,11 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         for k in range(1000):
             query_c1c2(session, k)
 
+    # The test is disabled in Raft mode since it's checking what happens
+    # if one of the nodes listed in seed list is not available at boot time.
+    # With Raft on, the entire cluster simply doesn't boot,
+    # so it's impossible to observe the effects observed in the test.
+    @pytest.mark.gossip_only
     def test_smallest_ip_join_late(self):
         """
         The first node has smallest ip in seeds list, it always skips the bootstrap.
