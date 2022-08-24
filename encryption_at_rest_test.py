@@ -98,7 +98,6 @@ class BaseKeyProviderFactory:
     def __init__(self, key_provider, tester):
         self.key_provider = key_provider
         self.system_keyfile = None
-        self.kmip_host = None
         self.tester = tester
         self.cluster = tester.cluster
 
@@ -118,52 +117,32 @@ class BaseKeyProviderFactory:
     def prepare_conf(self):
         pass
 
-    def prepare_system_key(self, dirname='./resources/system_keys/', keyfile='system_key', cipher_algorithm='AES/CBC/PKCS5Padding', secret_key_strength=128):
-        if not os.path.exists(dirname):
-            os.mkdir(dirname)
-        dirname = os.path.realpath(dirname)
-        dest = os.path.join(dirname, keyfile)
-        # use saved key in dtest repo, generate it in future
-        # the key can also be created by `dsetool createsystemkey $cipher_algorithm $strength`
-        src = './resources/system_keys/system_key'  # AES/ECB/PKCS5Padding:128
-        if not os.path.exists(dest) or not os.path.samefile(src, dest):
-            shutil.copy(src, dest)
-
-        self.cluster.set_configuration_options({'system_key_directory': dirname})
-        self.system_keyfile = dest
-        logger.debug('set system_key_directory to %s' % dirname)
-
-    def create_encrypted_cf(self, session, name='cf', columns={'c1': 'text', 'c2': 'text'},
-                            cipher_algorithm=None, secret_key_strength=None,
-                            compression=None, system_key_file=None, secret_key_file=None,
-                            kmip_host=None):
-        options = {}
+    def additional_cf_options(self, ks=None):
         if self.key_provider:
-            options.update({'key_provider': self.key_provider.value})
-        if cipher_algorithm:
-            options.update({'cipher_algorithm': cipher_algorithm})
-        if secret_key_strength:
-            options.update({'secret_key_strength': secret_key_strength})
-        if kmip_host or self.kmip_host:
-            options.update({'kmip_host': kmip_host if kmip_host else self.kmip_host})
-        if system_key_file:
-            options.update({'system_key_file': system_key_file})
-            self.prepare_system_key(dirname='./resources/system_keys', keyfile=system_key_file)
-        if secret_key_file:
-            options.update({'secret_key_file': secret_key_file})
-        create_cf(session, name, columns=columns, scylla_encryption_options=options, compression=compression)
-        return options
+            return {'key_provider': self.key_provider.value}
+        return {}
 
-    def verify_no_secret_key(self):
-        logger.debug('Verify that system key is not generated automatically')
-        keyfile = os.path.join(self.tester.test_path, 'test/node1/conf/data_encryption_keys')
-        assert not os.path.exists(keyfile), 'Default system_key is generated unexpectedly'
+    def verify_secret_key(self, cipher_algorithm=None, secret_key_strength=None):
+        pass
+
+
+class DefaultKeyProviderFactory(BaseKeyProviderFactory):
+    def __init__(self, tester):
+        BaseKeyProviderFactory.__init__(self, None, tester)
+
+
+class LocalFileSystemKeyProviderFactory(BaseKeyProviderFactory):
+    def __init__(self, tester):
+        self.secret_file = os.path.join(tester.test_path, 'test/node1/conf/data_encryption_keys')
+        BaseKeyProviderFactory.__init__(self, KeyProviderEnum.local, tester)
+
+    def additional_cf_options(self, ks=None):
+        return super().additional_cf_options() | {'secret_key_file': os.path.join(self.tester.test_path, 'test/node1/conf/secret_key_file_' + ks) if ks else self.secret_file}
 
     def verify_secret_key(self, cipher_algorithm=None, secret_key_strength=None):
         logger.debug('Verify that local key is generated automatically')
-        logger.debug('Verify that system key is generated automatically')
         keyfile = os.path.join(self.tester.test_path, 'test/node1/conf/data_encryption_keys')
-        assert os.path.exists(keyfile), 'Default system_key is not generated'
+        assert os.path.exists(keyfile), 'Default local key is not generated'
 
         if cipher_algorithm is None:
             cipher_algorithm = 'AES/CBC/PKCS5Padding'
@@ -178,31 +157,22 @@ class BaseKeyProviderFactory:
         assert found, 'Did not find specific local key in %s' % keyfile
 
 
-class DefaultKeyProviderFactory(BaseKeyProviderFactory):
-    def __init__(self, Tester):
-        BaseKeyProviderFactory.__init__(self, None, Tester)
-
-
-class LocalFileSystemKeyProviderFactory(BaseKeyProviderFactory):
-    def __init__(self, Tester):
-        self.secret_file = os.path.join(Tester.test_path, 'test/node1/conf/data_encryption_keys')
-        BaseKeyProviderFactory.__init__(self, KeyProviderEnum.local, Tester)
-
-
 class ReplicatedKeyProviderFactory(BaseKeyProviderFactory):
-    def __init__(self, Tester):
-        self.system_keyfile = os.path.realpath('./resources/system_keys/system_key')
-        self.system_table_keyfile = os.path.realpath('./resources/system_keys/system/system_table_systab')
-        BaseKeyProviderFactory.__init__(self, KeyProviderEnum.replicated, Tester)
+    def __init__(self, tester):
+        BaseKeyProviderFactory.__init__(self, KeyProviderEnum.replicated, tester)
 
     def prepare_conf(self):
         # prepare_secret_key(self)
         pass
 
+    def additional_cf_options(self, ks=None):
+        return super().additional_cf_options(ks) | {'system_key': 'system_key_' + ks if ks else 'system_key'}
+
 
 class KmipKeyProviderFactory(BaseKeyProviderFactory):
-    def __init__(self, Tester):
-        BaseKeyProviderFactory.__init__(self, KeyProviderEnum.kmip, Tester)
+    def __init__(self, tester):
+        self.kmip_host = 'kmip_test'
+        BaseKeyProviderFactory.__init__(self, KeyProviderEnum.kmip, tester)
 
     def prepare_conf(self, use_scylla_kmip_server=True):
         # restart is request to make change effective
@@ -221,6 +191,9 @@ class KmipKeyProviderFactory(BaseKeyProviderFactory):
                        'priority_string': 'SECURE128:+RSA:-VERS-TLS1.0:-ECDHE-ECDSA',
                        }
         self.cluster.set_configuration_options({'kmip_hosts': {'kmip_test': options}})
+
+    def additional_cf_options(self, ks=None):
+        return super().additional_cf_options(ks) | {'kmip_host': self.kmip_host}
 
     def require_restart(self):
         return True
@@ -271,6 +244,30 @@ class EncryptionAtRestBase(Tester):
 
     def cleanup(self, kss=['ks']):
         self.drop_keyspace(kss=kss)
+
+    def prepare_system_key(self, keyfile='system_key', cipher_algorithm='AES/CBC/PKCS5Padding', secret_key_strength=128):
+        dest = os.path.join(EncryptionAtRestBase.system_key_dir, keyfile)
+        # use saved key in dtest repo, generate it in future
+        # the key can also be created by `dsetool createsystemkey $cipher_algorithm $strength`
+        src = os.path.join(EncryptionAtRestBase.system_key_dir, 'system_key')  # AES/ECB/PKCS5Padding:128
+        if not os.path.exists(dest) or not os.path.samefile(src, dest):
+            shutil.copy(src, dest)
+
+    def create_encrypted_cf(self, session, name='ks.cf', columns={'c1': 'text', 'c2': 'text'},
+                            cipher_algorithm=None, secret_key_strength=None,
+                            compression=None, additional_options={}):
+        options = {}
+        if additional_options:
+            options.update(additional_options)
+        if cipher_algorithm:
+            options.update({'cipher_algorithm': cipher_algorithm})
+        if secret_key_strength:
+            options.update({'secret_key_strength': secret_key_strength})
+        if 'system_key_file' in options:
+            self.prepare_system_key(keyfile=options['system_key_file'])
+        logger.debug("Create encrypted cf: %s (%s)", name, options)
+        create_cf(session, name, columns=columns, scylla_encryption_options=options, compression=compression)
+        return options
 
     def read_verify_workload(self, session, ks='ks', cf='cf'):
         logger.debug('Verify data by read stress: %s.%s', ks, cf)
@@ -342,14 +339,11 @@ class EncryptionAtRestBase(Tester):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
         session = self.prepare(restart=kp.require_restart(), n=self.default_node_num)
-        if cipher_algorithm and secret_key_strength:
-            kp.create_encrypted_cf(session, name='ks.cf', cipher_algorithm=cipher_algorithm,
-                                   secret_key_strength=secret_key_strength, compression=compression)
-        else:
-            kp.create_encrypted_cf(session, name='ks.cf', compression=compression)
+        self.create_encrypted_cf(session, name='ks.cf', cipher_algorithm=cipher_algorithm,
+                                 secret_key_strength=secret_key_strength, compression=compression,
+                                 additional_options=kp.additional_cf_options())
         self.prepare_write_workload(session)
-        if key_provider == KeyProviderEnum.local:
-            kp.verify_secret_key(cipher_algorithm, secret_key_strength)
+        kp.verify_secret_key(cipher_algorithm, secret_key_strength)
         # restart the cluster
         session = self.rolling_restart()
         self.read_verify_workload(session)
@@ -363,7 +357,7 @@ class EncryptionAtRestBase(Tester):
         kp.prepare_conf()
         session = self.prepare(restart=kp.require_restart())
         node1 = self.cluster.nodelist()[0]
-        options = kp.create_encrypted_cf(session, name='ks.cf')
+        options = self.create_encrypted_cf(session, name='ks.cf', additional_options=kp.additional_cf_options())
         query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
 
         self.prepare_write_workload(session)
@@ -392,16 +386,8 @@ class EncryptionAtRestBase(Tester):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
         session = self.prepare(kss=kss, restart=kp.require_restart())
-        secret_key_file = None
-        system_key_file = None
         for ks in kss:
-            if key_provider == KeyProviderEnum.local:
-                secret_key_file = './resources/secret_key_file_' + ks
-            elif key_provider == KeyProviderEnum.replicated:
-                system_key_file = 'system_key_' + ks
-
-            kp.create_encrypted_cf(session, name=ks + '.cf', system_key_file=system_key_file,
-                                   secret_key_file=secret_key_file)
+            self.create_encrypted_cf(session, name=ks + '.cf', additional_options=kp.additional_cf_options(ks=ks))
             self.prepare_write_workload(session, ks=ks)
         session = self.rolling_restart()
         for ks in kss:
@@ -413,15 +399,8 @@ class EncryptionAtRestBase(Tester):
         kp = self.get_key_provider(key_provider)
         kp.prepare_conf()
         session = self.prepare(restart=kp.require_restart())
-        secret_key_file = None
-        system_key_file = None
         for cf in cfs:
-            if key_provider == KeyProviderEnum.local:
-                secret_key_file = './resources/secret_key_file_' + cf
-            elif key_provider == KeyProviderEnum.replicated:
-                system_key_file = 'system_key_' + cf
-            kp.create_encrypted_cf(session, name='ks.' + cf, system_key_file=system_key_file,
-                                   secret_key_file=secret_key_file)
+            self.create_encrypted_cf(session, name='ks.' + cf, additional_options=kp.additional_cf_options())
             self.prepare_write_workload(session, cf=cf)
         session = self.rolling_restart()
         for cf in cfs:
@@ -433,7 +412,7 @@ class EncryptionAtRestBase(Tester):
         self.prepare(n=3, restart=kp.require_restart())
 
         session = self.get_session()
-        kp.create_encrypted_cf(session, name='ks.cf')
+        self.create_encrypted_cf(session, name='ks.cf', additional_options=kp.additional_cf_options())
         self.prepare_write_workload(session, flush=False)
 
         for node in self.cluster.nodelist()[1:]:
@@ -700,7 +679,7 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
         logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
         session = self.rolling_restart()
 
-        kp.create_encrypted_cf(session, name='ks.cf')
+        self.create_encrypted_cf(session, name='ks.cf', additional_options=kp.additional_cf_options())
         self.prepare_write_workload(session, flush=False)
 
         for node in self.cluster.nodelist()[1:]:
