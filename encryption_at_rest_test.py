@@ -326,174 +326,169 @@ class EncryptionAtRestBase(Tester):
             return [(None, None)]
         return [(cipher, len) for cipher in ciphers for len in ciphers[cipher] if self._filter_cipher(kp, cipher, len)]
 
-    def _smoke_test(self, key_provider=KeyProviderEnum.local, cipher_algorithm=None, secret_key_strength=None,
-                    compression=None):
-        # Our KMIP server is not configured to support this configuration.
-        # Test fails with error: Invalid key data length 80 for RC2/CBC and kmip.
-        # Decided (Roy) don't test it
-        if key_provider == KeyProviderEnum.kmip and 'RC2' in cipher_algorithm and secret_key_strength == 80:
-            logger.debug("Our KMIP server is not configured to support this configuration. "
-                         "The test will not be run with this configuration")
-            return
+    def _smoke_test(self, key_provider=KeyProviderEnum.local, ciphers=None,
+                    compression=None, exception_handler=None):
+        with self.get_key_provider(key_provider) as kp:
+            session = self.prepare(restart=kp.require_restart(), kss=[], n=self.default_node_num)
+            cfs = []
+            cfnum = 0
+            try:
+                self.create_ks(n=self.default_node_num)
+                # to reduce test time, create one cf for every alg/len combo we test.
+                # avoids rebooting cluster for every check.
+                for cipher_algorithm, secret_key_strength in self.filter_ciphers(kp, ciphers):
+                    try:
+                        cf = 'cf' + str(cfnum)
+                        cfnum += 1
+                        self.create_encrypted_cf(session, name='ks.' + cf, cipher_algorithm=cipher_algorithm,
+                                                 secret_key_strength=secret_key_strength, compression=compression,
+                                                 additional_options=kp.additional_cf_options())
+                        self.prepare_write_workload(session, cf=cf)
+                        kp.verify_secret_key(cipher_algorithm, secret_key_strength)
+                        cfs.append(cf)
+                    except Exception as e:
+                        if exception_handler:
+                            exception_handler(e, cipher_algorithm, secret_key_strength)
+                            continue
+                        raise e
 
-        kp = self.get_key_provider(key_provider)
-        kp.prepare_conf()
-        session = self.prepare(restart=kp.require_restart(), n=self.default_node_num)
-        self.create_encrypted_cf(session, name='ks.cf', cipher_algorithm=cipher_algorithm,
-                                 secret_key_strength=secret_key_strength, compression=compression,
-                                 additional_options=kp.additional_cf_options())
-        self.prepare_write_workload(session)
-        kp.verify_secret_key(cipher_algorithm, secret_key_strength)
-        # restart the cluster
-        session = self.rolling_restart()
-        self.read_verify_workload(session)
+                # restart the cluster
+                session = self.rolling_restart()
+                for cf in cfs:
+                    self.read_verify_workload(session, cf=cf)
+                    self.drop_cf(name='ks.' + cf)
+            finally:
+                self.cleanup()
 
     def _upgrade_sstables(self):
         for node in self.cluster.nodelist():
             out, err = node.nodetool('upgradesstables')
 
     def _alter_test(self, key_provider=KeyProviderEnum.local):
-        kp = self.get_key_provider(key_provider)
-        kp.prepare_conf()
-        session = self.prepare(restart=kp.require_restart())
-        node1 = self.cluster.nodelist()[0]
-        options = self.create_encrypted_cf(session, name='ks.cf', additional_options=kp.additional_cf_options())
-        query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
+        with self.get_key_provider(key_provider) as kp:
+            session = self.prepare(restart=kp.require_restart())
+            try:
+                node1 = self.cluster.nodelist()[0]
+                options = self.create_encrypted_cf(session, name='ks.cf', additional_options=kp.additional_cf_options())
+                query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
 
-        self.prepare_write_workload(session)
-        logger.debug('disable encryption at-rest')
-        session.execute(query % "{'key_provider': 'none'}")
-        table_desc = get_table_description(node1, "ks", "cf")
-        assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
-        self._upgrade_sstables()
-        session = self.rolling_restart()
-        self.read_verify_workload(session)
+                self.prepare_write_workload(session)
+                logger.debug('disable encryption at-rest')
+                session.execute(query % "{'key_provider': 'none'}")
+                table_desc = get_table_description(node1, "ks", "cf")
+                assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
+                self._upgrade_sstables()
+                session = self.rolling_restart()
+                self.read_verify_workload(session)
 
-        logger.debug('re-enable encryption at-rest: %s' % options)
-        session.execute(query % options)
-        table_desc = get_table_description(node1, "ks", "cf")
-        if key_provider == None:
-            assert "key_provider" not in table_desc, f"key_provider isn't unspecified, schema:\n {table_desc}"
-        else:
-            err_msg = f"key_provider isn't changed to {key_provider.value}, schema: \n {table_desc}"
-            assert f"'key_provider': '{key_provider.value}'" in table_desc, err_msg
-        self._upgrade_sstables()
-        session = self.rolling_restart()
-        self.read_verify_workload(session)
+                logger.debug('re-enable encryption at-rest: %s' % options)
+                session.execute(query % options)
+                table_desc = get_table_description(node1, "ks", "cf")
+                if key_provider == None:
+                    assert "key_provider" not in table_desc, f"key_provider isn't unspecified, schema:\n {table_desc}"
+                else:
+                    err_msg = f"key_provider isn't changed to {key_provider.value}, schema: \n {table_desc}"
+                    assert f"'key_provider': '{key_provider.value}'" in table_desc, err_msg
+                self._upgrade_sstables()
+                session = self.rolling_restart()
+                self.read_verify_workload(session)
+            finally:
+                self.cleanup()
 
     def _multiple_ks_test(self, key_provider=KeyProviderEnum.local):
         kss = ['mks_%s' % i for i in range(self.multiple_num)]
-        kp = self.get_key_provider(key_provider)
-        kp.prepare_conf()
-        session = self.prepare(kss=kss, restart=kp.require_restart())
-        for ks in kss:
-            self.create_encrypted_cf(session, name=ks + '.cf', additional_options=kp.additional_cf_options(ks=ks))
-            self.prepare_write_workload(session, ks=ks)
-        session = self.rolling_restart()
-        for ks in kss:
-            self.read_verify_workload(session, ks=ks)
-        return kss
+        with self.get_key_provider(key_provider) as kp:
+            session = self.prepare(kss=kss, restart=kp.require_restart())
+            try:
+                for ks in kss:
+                    self.create_encrypted_cf(session, name=ks + '.cf', additional_options=kp.additional_cf_options(ks))
+                    self.prepare_write_workload(session, ks=ks)
+                session = self.rolling_restart()
+                for ks in kss:
+                    self.read_verify_workload(session, ks=ks)
+                return kss
+            finally:
+                self.cleanup(kss=kss)
 
     def _multiple_cf_test(self, key_provider=KeyProviderEnum.local):
         cfs = ['cf_%d' % i for i in range(self.multiple_num)]
-        kp = self.get_key_provider(key_provider)
-        kp.prepare_conf()
-        session = self.prepare(restart=kp.require_restart())
-        for cf in cfs:
-            self.create_encrypted_cf(session, name='ks.' + cf, additional_options=kp.additional_cf_options())
-            self.prepare_write_workload(session, cf=cf)
-        session = self.rolling_restart()
-        for cf in cfs:
-            self.read_verify_workload(session, cf=cf)
+        with self.get_key_provider(key_provider) as kp:
+            session = self.prepare(restart=kp.require_restart())
+            try:
+                for cf in cfs:
+                    self.create_encrypted_cf(session, name='ks.' + cf, additional_options=kp.additional_cf_options())
+                    self.prepare_write_workload(session, cf=cf)
+                session = self.rolling_restart()
+                for cf in cfs:
+                    self.read_verify_workload(session, cf=cf)
+            finally:
+                self.cleanup()
 
     def _reboot_test(self, key_provider=KeyProviderEnum.local):
-        kp = self.get_key_provider(key_provider)
-        kp.prepare_conf()
-        self.prepare(n=3, restart=kp.require_restart())
+        with self.get_key_provider(key_provider) as kp:
+            self.prepare(n=3, restart=kp.require_restart())
+            try:
+                session = self.get_session()
+                self.create_encrypted_cf(session, name='ks.cf', additional_options=kp.additional_cf_options())
+                self.prepare_write_workload(session, flush=False)
 
-        session = self.get_session()
-        self.create_encrypted_cf(session, name='ks.cf', additional_options=kp.additional_cf_options())
-        self.prepare_write_workload(session, flush=False)
-
-        for node in self.cluster.nodelist()[1:]:
-            for i in range(3):
-                logger.debug('Kill node {}, and restart'.format(node.name))
-                node.stop(gently=False)
-                node.start(wait_for_binary_proto=True, wait_other_notice=False)
-            self.read_verify_workload(self.get_session())
+                for node in self.cluster.nodelist()[1:]:
+                    for i in range(3):
+                        logger.debug('Kill node {}, and restart'.format(node.name))
+                        node.stop(gently=False)
+                        node.start(wait_for_binary_proto=True, wait_other_notice=False)
+                    self.read_verify_workload(self.get_session())
+            finally:
+                self.cleanup()
 
 
 @pytest.mark.dtest_enterprise
 class TestEncryptionAtRest(EncryptionAtRestBase):
     default_node_num = 1
 
-    def _test_one_cipher_mode(self, tested_cipher_key_string: str, key_size: int, value: KeyProviderEnum) -> str:
-        logger.debug(f'---- Test with {tested_cipher_key_string} , length {key_size}, key provider {value} ----')
-        try:
-            self._smoke_test(key_provider=value,
-                             cipher_algorithm=tested_cipher_key_string,
-                             secret_key_strength=key_size)
-            # Our KMIP server is not configured to support this configuration.
-            # Test fails with error: Invalid key data length 80 for RC2/CBC and kmip.
-            # Decided (Roy) don't test it
-            # TODO: In case of wrong block mode Scylla silently falls back to no block mode if openssl does
-            # TODO: not like the input. Next validation should be uncomment when issue
-            #  https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
-            # if not (value == KeyProviderEnum.kmip and 'RC2' in tested_cipher_key_string and key_size == 80):
-            #   unexpected_success.append(f"Encryption option: 'key_provider': '{value}', "
-            #                               f"'cipher_algorithm': '{tested_cipher_key_string}', "
-            #                               f"'secret_key_strength': {key_size}")
-
-        except NoHostAvailable as exc_details:
-            error_message_to_str = str(exc_details)
-            logger.debug(error_message_to_str)
-            assert (f"Invalid algorithm string: {tested_cipher_key_string}" in error_message_to_str
-                    or (f"Invalid algorithm" in error_message_to_str and
-                        tested_cipher_key_string in error_message_to_str)
-                    or 'Could not write key file' in error_message_to_str
-                    or ('[Server error] message=' in error_message_to_str and 'abc' in error_message_to_str)
-                    or 'non-supported padding option' in error_message_to_str
-                    # TODO: There are a few cases when we have nested exceptions that "hide" the original message
-                    # TODO: once it reaches cql layer. So the error message is returned empty
-                    # TODO: Issue: https://github.com/scylladb/scylla/issues/9497
-                    #  TODO: Remove next condition when the issue will be resolved
-                    or error_message_to_str == "('Unable to complete the operation against any hosts', {})"
-                    ), error_message_to_str
-
-        except Exception as exc:
-            return (f"Unexpected exception: {exc}. "
-                    f"Encryption option: 'key_provider': '{value}', "
-                    f"'cipher_algorithm': '{tested_cipher_key_string}', "
-                    f"'secret_key_strength': {key_size}")
-
-        self.cleanup()
-
-        return ''
-
     def test_encryption_table_compression(self):
         for i in [None, 'LZ4', 'Snappy', 'Deflate']:
             logger.debug('---- Test with compression: %s -----' % i)
-            self._smoke_test(key_provider=KeyProviderEnum.local, compression=i)
-            self.cleanup()
+            self._smoke_test(key_provider=KeyProviderEnum.local, ciphers={'AES/CBC/PKCS5Padding': [128]}, compression=i)
 
     @pytest.mark.timeout(4700)
     def test_wrong_cipher_algorithm(self):
         errors = []
         # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
         # unexpected_success = []
-        for cipher_key_string, key_sizes in supported_cipher_algorithms.items():
-            for key_size in key_sizes:
-                for value in KeyProviderEnum:
-                    for additional_str in ['Abc/', '/Abc', 'Abc']:
-                        tested_cipher_key_string = f'{cipher_key_string}{additional_str}'  # suffix
-                        error = self._test_one_cipher_mode(tested_cipher_key_string, key_size, value)
-                        if error:
-                            errors.append(error)
 
-                        tested_cipher_key_string = f'{additional_str}{cipher_key_string}'  # prefix
-                        error = self._test_one_cipher_mode(tested_cipher_key_string, key_size, value)
-                        if error:
-                            errors.append(error)
+        broken_ciphers = {c: l for oc in supported_cipher_algorithms if oc
+                          for l in [supported_cipher_algorithms[oc][:1]]
+                          for a in ['Abc/', '/Abc', 'Abc']
+                          for c in [oc + a, a + oc]
+                          }
+        for value in KeyProviderEnum:
+            def handler(e, cipher, length):
+                try:
+                    raise e
+                except NoHostAvailable as exc_details:
+                    error_message_to_str = str(exc_details)
+                    logger.debug(error_message_to_str)
+                    assert (f"Invalid algorithm string: {cipher}" in error_message_to_str
+                            or (f"Invalid algorithm" in error_message_to_str and
+                                cipher in error_message_to_str)
+                            or 'Could not write key file' in error_message_to_str
+                            or ('[Server error] message=' in error_message_to_str and 'abc' in error_message_to_str)
+                            or 'non-supported padding option' in error_message_to_str
+                            # TODO: There are a few cases when we have nested exceptions that "hide" the original message
+                            # TODO: once it reaches cql layer. So the error message is returned empty
+                            # TODO: Issue: https://github.com/scylladb/scylla/issues/9497
+                            #  TODO: Remove next condition when the issue will be resolved
+                            or error_message_to_str == "('Unable to complete the operation against any hosts', {})"
+                            ), error_message_to_str
+
+                except Exception as exc:
+                    errors.append((f"Unexpected exception: {exc}. "
+                                   f"Encryption option: 'key_provider': '{value}', "
+                                   f"'cipher_algorithm': '{cipher}', "
+                                   f"'secret_key_strength': {length}"))
+
+            self._smoke_test(key_provider=value, ciphers=broken_ciphers, exception_handler=handler)
 
         # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
         # assert not unexpected_success, "Negative tests succeeded unexpectedly: %s" % '\n'.join(unexpected_success)
@@ -503,63 +498,48 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
     @pytest.mark.timeout(4000)
     def test_supported_cipher_algorithms(self):
         errors = []
-        for cipher_key_string, key_sizes in supported_cipher_algorithms.items():
-            for key_size in key_sizes:
-                for value in KeyProviderEnum:
-                    logger.debug(f'---- Test with {cipher_key_string} , length {key_size}, key provider {value} ----')
-                    try:
-                        self._smoke_test(key_provider=value,
-                                         cipher_algorithm=cipher_key_string,
-                                         secret_key_strength=key_size)
-                    except Exception as e:
-                        logger.debug(str(e))
-                        errors.append(f"Test with configuration '{cipher_key_string}, length {key_size}, "
-                                      f"key provider {value}' failed. Error {e}")
 
-                    self.cleanup()
+        for value in KeyProviderEnum:
+            def handler(e, cipher, length):
+                logger.debug(str(e))
+                errors.append(f"Test with configuration '{cipher}', length {length}, "
+                              f"key provider {value}' failed. Error {e}")
+
+            self._smoke_test(key_provider=value, ciphers=supported_cipher_algorithms, exception_handler=handler)
 
         assert len(errors) == 0, errors
 
     def test_abbreviated_supported_cipher_algorithms(self):
-        tested = set()
-        for k, v in supported_cipher_algorithms.items():
-            if not v:
-                continue
-            k = k.split('/')[0]
-            if k in tested or not k:
-                continue
-            tested.add(k)
-            i = v[0]
-            logger.debug('---- Test with %s , length %s ----' % (k, i))
-            for value in KeyProviderEnum:
-                try:
-                    self._smoke_test(key_provider=value,
-                                     cipher_algorithm=k, secret_key_strength=i)
-                except Exception as e:
-                    logger.debug(str(e))
-                finally:
-                    self.cleanup()
+        errors = []
+        abbreviated = {c: l for c in supported_cipher_algorithms if c
+                       for l in [supported_cipher_algorithms[c][:1]]
+                       }
+
+        for value in KeyProviderEnum:
+            def handler(e, cipher, length):
+                logger.debug(str(e))
+                errors.append(f"Test with configuration '{cipher}', length {length}, "
+                              f"key provider {value}' failed. Error {e}")
+
+            self._smoke_test(key_provider=value, ciphers=abbreviated, exception_handler=handler)
+
+        assert len(errors) == 0, errors
 
     def test_multiple_ks(self):
         for value in KeyProviderEnum:
-            kss = self._multiple_ks_test(key_provider=value)
-            self.cleanup(kss=kss)
+            self._multiple_ks_test(key_provider=value)
 
     def test_multiple_cf(self):
         for value in KeyProviderEnum:
             self._multiple_cf_test(key_provider=value)
-            self.cleanup()
 
     def test_reboot(self):
         for value in KeyProviderEnum:
             self._reboot_test(key_provider=value)
-            self.cleanup()
 
-    @pytest.mark.require('scylladb/scylla-enterprise#1787')
     def test_alter(self):
         for value in KeyProviderEnum:
             self._alter_test(key_provider=value)
-            self.cleanup()
 
 
 @pytest.mark.dtest_enterprise
@@ -655,36 +635,41 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
         session.execute("ALTER KEYSPACE system_auth "
                         "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};")
         self.cluster.repair()
-        kp = self.get_key_provider(key_provider)
-        self.verify_system_info(session, kp, ks_suffix='orig', expect=True)
 
-        options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
-        self.cluster.set_configuration_options(options)
-        logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
-        session = self.rolling_restart(user='cassandra', password='cassandra')
-        logger.debug("Re-verify system info after system_info_encryption is enabled")
-        self.verify_system_info(session, kp, ks_suffix='encrypt', expect=False)
+        with self.get_key_provider(key_provider) as kp:
+            self.verify_system_info(session, kp, ks_suffix='orig', expect=True)
+
+            options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
+            self.cluster.set_configuration_options(options)
+            logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
+            session = self.rolling_restart(user='cassandra', password='cassandra')
+            logger.debug("Re-verify system info after system_info_encryption is enabled")
+            self.verify_system_info(session, kp, ks_suffix='encrypt', expect=False)
 
     def test_reboot(self):
         """
         The test is used to reproduce a scylla crash, enable commitlog encryption and reboot.
         https://github.com/scylladb/scylla-enterprise/issues/1332
         """
-        kp = self.get_key_provider(key_provider=None)
-        kp.prepare_conf()
 
-        self.prepare(n=3, restart=False)
-        options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
-        self.cluster.set_configuration_options(options)
-        logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
-        session = self.rolling_restart()
+        with self.get_key_provider(key_provider=None) as kp:
+            self.prepare(n=3, restart=False)
+            options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
+            self.cluster.set_configuration_options(options)
+            logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
+            session = self.rolling_restart()
 
-        self.create_encrypted_cf(session, name='ks.cf', additional_options=kp.additional_cf_options())
-        self.prepare_write_workload(session, flush=False)
+            self.create_encrypted_cf(session, name='ks.cf')
+            self.prepare_write_workload(session, flush=False)
 
-        for node in self.cluster.nodelist()[1:]:
-            for i in range(3):
+            # restarting nodes once is "enough". Since commit log is replayed
+            # on first kill+start, unless we add more data, subsequent restarts
+            # would not add anything
+            for node in self.cluster.nodelist()[1:]:
                 logger.debug('Kill node {}, and restart'.format(node.name))
                 node.stop(gently=False)
-                node.start(wait_for_binary_proto=True)
-            self.read_verify_workload(self.get_session())
+                # ugh, disable wait_other_notice to avoid 120s timeout.
+                # restarting w. dirty commitlog can be somewhat tardy now.
+                # because of schema commitlog?
+                node.start(wait_for_binary_proto=True, wait_other_notice=False)
+                self.read_verify_workload(self.get_session())
