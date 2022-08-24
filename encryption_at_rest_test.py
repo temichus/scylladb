@@ -111,16 +111,6 @@ class BaseKeyProviderFactory:
     def prepare_conf(self):
         pass
 
-    def break_key(self, filename):
-        logger.debug('Break key : %s' % filename)
-        logger.debug(subprocess.getoutput('head %s*' % filename))
-        os.rename(filename, filename + '.break_backup')
-
-    def restore_key(self, filename):
-        logger.debug('Restore key : %s' % filename)
-        logger.debug(subprocess.getoutput('head %s*' % filename))
-        os.rename(filename + '.break_backup', filename)
-
     def prepare(self, node_num=2):
         self.cluster.populate(node_num).start(wait_for_binary_proto=True, wait_other_notice=True)
 
@@ -383,66 +373,6 @@ class EncryptionAtRestBase(Tester):
         session = self.rolling_restart()
         kp.read_verify_workload(session)
 
-    def _key_break_test(self, key_provider=KeyProviderEnum.local, cipher_algorithm=None, secret_key_strength=None, compression=None):
-        kp = self.get_key_provider(key_provider)
-        kp.prepare_conf()
-        session = self.prepare(1)
-        if cipher_algorithm and secret_key_strength:
-            kp.create_encrypted_cf(session, name='ks.cf', cipher_algorithm=cipher_algorithm,
-                                   secret_key_strength=secret_key_strength, compression=compression)
-        else:
-            kp.create_encrypted_cf(session, name='ks.cf', compression=compression)
-        kp.prepare_write_workload(session)
-        if key_provider == KeyProviderEnum.local:
-            kp.verify_secret_key(cipher_algorithm, secret_key_strength)
-        session = self.rolling_restart()
-        kp.read_verify_workload(session)
-        if KeyProviderEnum.local:
-            key_file = os.path.join(self.test_path, 'test/node1/conf/data_encryption_keys')
-        else:
-            key_file = './resources/system_keys/system_key'
-        node1 = self.cluster.nodelist()[0]
-        mark = node1.mark_log()
-        kp.break_key(key_file)
-        kp.read_verify_workload(session)
-        kp.prepare_write_workload(session)
-        scylla_ext_opt = None
-        try:
-            scylla_ext_opt = os.environ['SCYLLA_EXT_OPTS']
-            new_scylla_ext_opt = re.sub(r'--abort-on-seastar-bad-alloc', '', scylla_ext_opt)
-            os.environ['SCYLLA_EXT_OPTS'] = new_scylla_ext_opt
-        except:
-            pass
-        session = self.rolling_restart(allow_start_failure=True)
-        if session:
-            kp.prepare_write_workload(session)
-            try:
-                kp.read_verify_workload(session)
-            except ReadFailure as e:
-                logger.debug(str(e))
-        errors = [
-            'SSTable reader found an exception when reading sstable',
-            'Exception while populating keyspace',
-            'malformed_sstable_exception'
-        ]
-        errors_pat = '|'.join(errors)
-        node1.watch_log_for(errors_pat, from_mark=mark)
-        self.check_errors(node1, errors, search_str='ERROR')
-        kp.restore_key(key_file)
-
-        if scylla_ext_opt:
-            os.environ['SCYLLA_EXT_OPTS'] = scylla_ext_opt
-        logger.debug('Restart to trigger the read error')
-        # https://github.com/scylladb/scylla-enterprise/issues/755
-        # secret_key_file missing can only be identified by read workload after restart #755
-        session = self.cluster_restart()
-
-        kp.prepare_write_workload(session)
-        try:
-            kp.read_verify_workload(session)
-        except ReadFailure as e:
-            logger.debug('Encryption key has been re-generated, expect to fail. %s' % str(e))
-
     def _multiple_ks_test(self, key_provider=KeyProviderEnum.local):
         kss = ['mks_%s' % i for i in range(self.multiple_num)]
         kp = self.get_key_provider(key_provider)
@@ -637,9 +567,6 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
         for value in KeyProviderEnum:
             self._alter_test(key_provider=value)
             self.cleanup()
-
-    def test_key_break(self):
-        self._key_break_test(key_provider=KeyProviderEnum.local)
 
 
 @pytest.mark.dtest_enterprise
