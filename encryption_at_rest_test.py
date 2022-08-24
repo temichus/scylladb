@@ -184,31 +184,6 @@ class BaseKeyProviderFactory:
                     found = True
         assert found, 'Did not found specific system key in %s' % keyfile
 
-    def _grep_database_files(self, pattern, path, expect=None, skip=False, debug_detail=False):
-        """
-        skip: skip check in topdir and result assert for avoiding dead loop
-        """
-        grep_commitlog_cmd = "grep -r '%s' %s" % (pattern, os.path.join(self.Tester.test_path, 'test/node*/', path))
-        output = subprocess.getoutput(grep_commitlog_cmd)
-        logger.debug('\tExpect: %s, Result: %s' % (expect, len(output) > 0))
-        if debug_detail:
-            logger.debug('\tCMD: %s' % grep_commitlog_cmd)
-            logger.debug(output)
-        if skip:
-            return len(output) != 0
-        if expect is not False and (len(output) == 0):
-            # try to search pattern in top directory (contains both data & commitlogs) for trouble shooting.
-            # such as, data isn't flush from commitlogs to disk,
-            logger.warning('%s does not exist in %s!!' % (pattern, path))
-            self._grep_database_files(pattern, '', skip=True)
-        if expect is not None:
-            assert expect ^ (len(output) == 0), "Grep result isn't expected"
-        return len(output) != 0
-
-    def _generate_rand_unique_str(self, prefix=''):
-        time.sleep(0.1)
-        return prefix + md5(str(time.time()).encode('utf-8')).hexdigest()
-
 
 class DefaultKeyProviderFactory(BaseKeyProviderFactory):
     def __init__(self, Tester):
@@ -571,13 +546,37 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
 
 @pytest.mark.dtest_enterprise
 class TestSystemInfoEncryption(EncryptionAtRestBase):
+    def _grep_database_files(self, pattern, path, expect=None, skip=False, debug_detail=True):
+        """
+        skip: skip check in topdir and result assert for avoiding dead loop
+        """
+        grep_commitlog_cmd = "grep -r '%s' %s" % (pattern, os.path.join(self.test_path, 'test/node*/', path))
+        output = subprocess.getoutput(grep_commitlog_cmd)
+        logger.debug('\tExpect: %s, Result: %s' % (expect, len(output) > 0))
+        if debug_detail:
+            logger.debug('\tCMD: %s' % grep_commitlog_cmd)
+            logger.debug(output)
+        if skip:
+            return len(output) != 0
+        if expect is not False and (len(output) == 0):
+            # try to search pattern in top directory (contains both data & commitlogs) for trouble shooting.
+            # such as, data isn't flush from commitlogs to disk,
+            logger.warning('%s does not exist in %s!!' % (pattern, path))
+            self._grep_database_files(pattern, '', skip=True)
+        if expect is not None:
+            assert expect ^ (len(output) == 0), "Grep result isn't expected"
+        return len(output) != 0
+
+    def _generate_rand_unique_str(self, prefix=''):
+        time.sleep(0.1)
+        return prefix + md5(str(time.time()).encode('utf-8')).hexdigest()
 
     def verify_system_info(self, session, key_provider, ks_suffix='', expect=True):
         table_num = 10
         user_num = 5
-        rand_user_prefix = key_provider._generate_rand_unique_str('user_')
-        rand_password = key_provider._generate_rand_unique_str('pwd_')
-        rand_comment = key_provider._generate_rand_unique_str('comment_')
+        rand_user_prefix = self._generate_rand_unique_str('user_')
+        rand_password = self._generate_rand_unique_str('pwd_')
+        rand_comment = self._generate_rand_unique_str('comment_')
         flush_by_node(self.cluster)
         logger.debug('Add %d users for updating system_auth.roles' % user_num)
         for i in range(user_num):
@@ -590,7 +589,7 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
         logger.debug('Verify PART 1: check commitlogs -------------')
         time.sleep(10)  # sleep to wait data to be wrote into commitlogs
         logger.debug('GREP_DB_FILES: Check original password in commitlogs .... Original password should never be saved')
-        key_provider._grep_database_files(rand_password, 'commitlogs/', expect=False)
+        self._grep_database_files(rand_password, 'commitlogs/', expect=False)
         res = session.execute("SELECT salted_hash FROM system_auth.roles WHERE role='%s'" % rand_user)
         salted_hash = rows_to_list(res)[0][0]
         logger.debug('Original salted_hash in system_auth.roles:\n%s' % salted_hash)
@@ -598,9 +597,9 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
         # skip fixed prefix `$6$`, one more byte, and 2 chars suffix
         salted_hash = salted_hash[4:-2].replace('/', r'\/')
         logger.debug('GREP_DB_FILES: Check PM key user in commitlogs ....')
-        key_provider._grep_database_files(rand_user, 'commitlogs/', expect=expect)
+        self._grep_database_files(rand_user, 'commitlogs/', expect=expect)
         logger.debug('GREP_DB_FILES: Check salted_hash of password in commitlogs ....')
-        key_provider._grep_database_files(salted_hash, 'commitlogs/', expect=expect)
+        self._grep_database_files(salted_hash, 'commitlogs/', expect=expect)
 
         ks_name = 'ks_' + ks_suffix
         create_ks(session, ks_name, 3)
@@ -609,7 +608,7 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
             create_cf(session, table_name)
             session.execute("ALTER TABLE %s WITH comment = '%s'" % (table_name, rand_comment))
         logger.debug('GREP_DB_FILES: Check table comment in commitlogs ....')
-        key_provider._grep_database_files(rand_comment, 'commitlogs/', expect=expect)
+        self._grep_database_files(rand_comment, 'commitlogs/', expect=expect)
 
         logger.debug('Flushing cluster ......')
         self.cluster.flush()
@@ -617,13 +616,13 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
         logger.debug(
             "Verify PART 2: check sstable files -------------\n`system_info_encryption` won't encrypt sstable files on disk")
         logger.debug('GREP_DB_FILES: Check PM key user in sstable file ....')
-        key_provider._grep_database_files(rand_user, 'data/system_auth/', expect=True)
+        self._grep_database_files(rand_user, 'data/system_auth/', expect=True)
         logger.debug('GREP_DB_FILES: Check original password in commitlogs .... Original password should never be saved')
-        key_provider._grep_database_files(rand_password, 'data/system_auth/', expect=False)
+        self._grep_database_files(rand_password, 'data/system_auth/', expect=False)
         logger.debug("GREP_DB_FILES: Check salted_hash of password in sstable file ....")
-        key_provider._grep_database_files(salted_hash, 'data/system_auth/', expect=True)
+        self._grep_database_files(salted_hash, 'data/system_auth/', expect=True)
         logger.debug('GREP_DB_FILES: Check table comment in sstable file ....')
-        key_provider._grep_database_files(rand_comment.replace('comment_', ''), 'data/system_schema/', expect=True)
+        self._grep_database_files(rand_comment.replace('comment_', ''), 'data/system_schema/', expect=True)
 
     def test_system_auth_encryption(self, key_provider=KeyProviderEnum.local):
         options = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
