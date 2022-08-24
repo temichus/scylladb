@@ -95,12 +95,12 @@ supported_cipher_algorithms = {'': [],
 
 
 class BaseKeyProviderFactory:
-    def __init__(self, key_provider, Tester):
+    def __init__(self, key_provider, tester):
         self.key_provider = key_provider
         self.system_keyfile = None
         self.kmip_host = None
-        self.Tester = Tester
-        self.cluster = Tester.cluster
+        self.tester = tester
+        self.cluster = tester.cluster
 
     def __enter__(self):
         self.prepare_conf()
@@ -156,13 +156,13 @@ class BaseKeyProviderFactory:
 
     def verify_no_secret_key(self):
         logger.debug('Verify that system key is not generated automatically')
-        keyfile = os.path.join(self.Tester.test_path, 'test/node1/conf/data_encryption_keys')
+        keyfile = os.path.join(self.tester.test_path, 'test/node1/conf/data_encryption_keys')
         assert not os.path.exists(keyfile), 'Default system_key is generated unexpectedly'
 
     def verify_secret_key(self, cipher_algorithm=None, secret_key_strength=None):
         logger.debug('Verify that local key is generated automatically')
         logger.debug('Verify that system key is generated automatically')
-        keyfile = os.path.join(self.Tester.test_path, 'test/node1/conf/data_encryption_keys')
+        keyfile = os.path.join(self.tester.test_path, 'test/node1/conf/data_encryption_keys')
         assert os.path.exists(keyfile), 'Default system_key is not generated'
 
         if cipher_algorithm is None:
