@@ -150,18 +150,6 @@ class BaseKeyProviderFactory:
         create_cf(session, name, columns=columns, scylla_encryption_options=options, compression=compression)
         return options
 
-    def read_verify_workload(self, session, ks='ks', cf='cf'):
-        logger.debug('Verify data by read stress: %s.%s' % (ks, cf))
-        for i in range(100):
-            query_c1c2(session, i, ConsistencyLevel.QUORUM, ks=ks, cf=cf)
-
-    def prepare_write_workload(self, session, ks='ks', cf='cf', flush=True):
-        logger.debug('Insert data to encrypted table: %s.%s' % (ks, cf))
-        insert_c1c2(session, keys=list(range(100)), consistency=ConsistencyLevel.ALL, ks=ks, cf=cf)
-        if flush:
-            logger.debug('flush cluster')
-            self.cluster.flush()
-
     def verify_no_secret_key(self):
         logger.debug('Verify that system key is not generated automatically')
         keyfile = os.path.join(self.Tester.test_path, 'test/node1/conf/data_encryption_keys')
@@ -271,6 +259,18 @@ class EncryptionAtRestBase(Tester):
     def cleanup(self, kss=['ks']):
         self.drop_keyspace(kss=kss)
 
+    def read_verify_workload(self, session, ks='ks', cf='cf'):
+        logger.debug('Verify data by read stress: %s.%s', ks, cf)
+        for i in range(100):
+            query_c1c2(session, i, ConsistencyLevel.QUORUM, ks=ks, cf=cf)
+
+    def prepare_write_workload(self, session, ks='ks', cf='cf', flush=True):
+        logger.debug('Insert data to encrypted table: %s.%s', ks, cf)
+        insert_c1c2(session, keys=list(range(100)), consistency=ConsistencyLevel.ALL, ks=ks, cf=cf)
+        if flush:
+            logger.debug('flush cluster')
+            self.cluster.flush()
+
     def rolling_restart(self, user=None, password=None, allow_start_failure=False):
         logger.debug(f'Restart nodes one by one ...{" (start failures allowed)" if allow_start_failure else ""}')
         errors = []
@@ -322,12 +322,12 @@ class EncryptionAtRestBase(Tester):
                                    secret_key_strength=secret_key_strength, compression=compression)
         else:
             kp.create_encrypted_cf(session, name='ks.cf', compression=compression)
-        kp.prepare_write_workload(session)
+        self.prepare_write_workload(session)
         if key_provider == KeyProviderEnum.local:
             kp.verify_secret_key(cipher_algorithm, secret_key_strength)
         # restart the cluster
         session = self.rolling_restart()
-        kp.read_verify_workload(session)
+        self.read_verify_workload(session)
 
     def _upgrade_sstables(self):
         for node in self.cluster.nodelist():
@@ -341,14 +341,14 @@ class EncryptionAtRestBase(Tester):
         options = kp.create_encrypted_cf(session, name='ks.cf')
         query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
 
-        kp.prepare_write_workload(session)
+        self.prepare_write_workload(session)
         logger.debug('disable encryption at-rest')
         session.execute(query % "{'key_provider': 'none'}")
         table_desc = get_table_description(node1, "ks", "cf")
         assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
         self._upgrade_sstables()
         session = self.rolling_restart()
-        kp.read_verify_workload(session)
+        self.read_verify_workload(session)
 
         logger.debug('re-enable encryption at-rest: %s' % options)
         session.execute(query % options)
@@ -360,7 +360,7 @@ class EncryptionAtRestBase(Tester):
             assert f"'key_provider': '{key_provider.value}'" in table_desc, err_msg
         self._upgrade_sstables()
         session = self.rolling_restart()
-        kp.read_verify_workload(session)
+        self.read_verify_workload(session)
 
     def _multiple_ks_test(self, key_provider=KeyProviderEnum.local):
         kss = ['mks_%s' % i for i in range(self.multiple_num)]
@@ -377,10 +377,10 @@ class EncryptionAtRestBase(Tester):
 
             kp.create_encrypted_cf(session, name=ks + '.cf', system_key_file=system_key_file,
                                    secret_key_file=secret_key_file)
-            kp.prepare_write_workload(session, ks=ks)
+            self.prepare_write_workload(session, ks=ks)
         session = self.rolling_restart()
         for ks in kss:
-            kp.read_verify_workload(session, ks=ks)
+            self.read_verify_workload(session, ks=ks)
         return kss
 
     def _multiple_cf_test(self, key_provider=KeyProviderEnum.local):
@@ -397,10 +397,10 @@ class EncryptionAtRestBase(Tester):
                 system_key_file = 'system_key_' + cf
             kp.create_encrypted_cf(session, name='ks.' + cf, system_key_file=system_key_file,
                                    secret_key_file=secret_key_file)
-            kp.prepare_write_workload(session, cf=cf)
+            self.prepare_write_workload(session, cf=cf)
         session = self.rolling_restart()
         for cf in cfs:
-            kp.read_verify_workload(session, cf=cf)
+            self.read_verify_workload(session, cf=cf)
 
     def _reboot_test(self, key_provider=KeyProviderEnum.local):
         kp = self.get_key_provider(key_provider)
@@ -409,14 +409,14 @@ class EncryptionAtRestBase(Tester):
 
         session = self.get_session()
         kp.create_encrypted_cf(session, name='ks.cf')
-        kp.prepare_write_workload(session, flush=False)
+        self.prepare_write_workload(session, flush=False)
 
         for node in self.cluster.nodelist()[1:]:
             for i in range(3):
                 logger.debug('Kill node {}, and restart'.format(node.name))
                 node.stop(gently=False)
                 node.start(wait_for_binary_proto=True, wait_other_notice=False)
-            kp.read_verify_workload(self.get_session())
+            self.read_verify_workload(self.get_session())
 
 
 @pytest.mark.dtest_enterprise
@@ -676,11 +676,11 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
         session = self.rolling_restart()
 
         kp.create_encrypted_cf(session, name='ks.cf')
-        kp.prepare_write_workload(session, flush=False)
+        self.prepare_write_workload(session, flush=False)
 
         for node in self.cluster.nodelist()[1:]:
             for i in range(3):
                 logger.debug('Kill node {}, and restart'.format(node.name))
                 node.stop(gently=False)
                 node.start(wait_for_binary_proto=True)
-            kp.read_verify_workload(self.get_session())
+            self.read_verify_workload(self.get_session())
