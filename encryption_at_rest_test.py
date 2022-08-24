@@ -101,6 +101,13 @@ class BaseKeyProviderFactory:
         self.Tester = Tester
         self.cluster = Tester.cluster
 
+    def __enter__(self):
+        self.prepare_conf()
+        return self
+
+    def __exit__(self, exception_type, exception_value, exception_traceback):
+        pass
+
     def prepare_conf(self):
         pass
 
