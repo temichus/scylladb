@@ -122,7 +122,7 @@ pipeline {
                         if ((!groovyFiles.isEmpty() | !jenkinsFiles.isEmpty()) | (env.CHANGE_ID && pullRequestContainsLabels("test/pipelines"))) {
                             sh '''
                             chmod 777 -R pipelines
-                            docker run -u gradle -v `pwd`:/dtest -w /dtest/pipelines gradle:7.3.3-jdk11-alpine gradle clean test -i
+                            docker run --rm=true -u gradle -v `pwd`:/dtest -w /dtest/pipelines gradle:7.3.3-jdk11-alpine gradle clean test -i
                             '''
                         }
                     }
