@@ -67,35 +67,48 @@ def getRelocArtifacts (String cloudUrl, String buildMode) {
 	// Parameters:
 	def artifactsTargets = [:]
     String url = getRelocatableLink(cloudUrl)
-    String architecture = ""
+    String architecture = generalProperties.x86ArchName
 
     // normalize the url to make sure it's a vaild s3 url
     url = url.replaceFirst("http://", "")
     if (! url.contains("s3://")) {
 		url = "s3://$url"
     }
+    downloadArtifactFromS3(artifact: generalProperties.buildMetadataFile, targetPath: WORKSPACE, sourceUrl: url)
 
-    String packageName = relocPackageName (
+    releaseFromMetadata = fetchMetadataValue (
+        downloadFromCloud: true,
+        fieldName: "scylla-release:",
+    )
+
+    versionFromMetadata = fetchMetadataValue (
+        downloadFromCloud: true,
+        fieldName: "scylla-version:",
+    )
+
+    scyllaPackageName = relocPackageName (
 		checkLocal: false,
 		mustExist: true,
 		urlOrPath: url,
 		packagePrefix: params.PRODUCT_NAME,
 		buildMode: buildMode,
 		architecture: architecture,
+		version: versionFromMetadata,
+		release: releaseFromMetadata,
 	)
-    artifactsTargets.scyllaReloc = [artifact: packageName,
-                                    target: "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"]
-    artifactsTargets.jmxReloc = [artifact: "${params.PRODUCT_NAME}-jmx-package.tar.gz",
-                                 target: "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"]
-    artifactsTargets.toolsJavaReloc = [artifact: "${params.PRODUCT_NAME}-tools-package.tar.gz",
-                                       target: "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"]
-	artifactsTargets.metadataFile = [artifact: generalProperties.buildMetadataFile, target: WORKSPACE]
+	jmxPackageName = "${params.PRODUCT_NAME}-jmx-${versionFromMetadata}-${releaseFromMetadata}.noarch.tar.gz"
+	toolsPackageName = "${params.PRODUCT_NAME}-tools-${versionFromMetadata}-${releaseFromMetadata}.noarch.tar.gz"
+	target = "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"
+    artifactsTargets.scyllaReloc = [artifact: scyllaPackageName, target: target]
+    artifactsTargets.jmxReloc = [artifact: jmxPackageName, target: target]
+    artifactsTargets.toolsJavaReloc = [artifact: toolsPackageName, target: target]
 
 	artifactsTargets.each { key, val ->
 		downloadArtifactFromS3(artifact: val.artifact,
 			targetPath: val.target,
 			sourceUrl: url)
 	}
+	return [scyllaPackageName, jmxPackageName, toolsPackageName]
 }
 
 boolean fileExistsOnPath(String file, String path=WORKSPACE) {
@@ -120,6 +133,8 @@ String relocPackageName (Map args) {
 	// String (default local): urlOrPath - From where to download the artifacts - local path or a URL.
 	// String (default: none): buildMode (release | debug | dev)
 	// String (default null): architecture Which architecture to publish x86_64|aarch64 Default null is for backwards competability
+	// String (mandatory): version: reloc package version
+	// String (mandatory): release: reloc package release
 
 	jenkins.traceFunctionParams("artifact.relocPackageName", args)
 
@@ -130,40 +145,22 @@ String relocPackageName (Map args) {
 		mustExist = false
 	}
 	String buildMode = args.buildMode ?: ""
-	String architecture = args.architecture ?: ""
-	if (architecture){
-		architecture += "-"
-	}
-	String packageName = "${args.packagePrefix}-${architecture}package.tar.gz"
-	String packageNameNoArch = "${args.packagePrefix}-package.tar.gz"
-	String packageNameX86 = "${args.packagePrefix}-${generalProperties.x86ArchName}-package.tar.gz"
+	String architecture = args.architecture ?: generalProperties.x86ArchName
+
+	String packageName = "${args.packagePrefix}-${args.version}-${args.release}.${architecture}.tar.gz"
 	String lsOutput = ""
 	if (buildMode.contains("debug") && args.packagePrefix == params.PRODUCT_NAME) {
-		packageName = "${args.packagePrefix}-${buildMode}-${architecture}package.tar.gz"
-		packageNameNoArch = "${args.packagePrefix}-${buildMode}-package.tar.gz"
-		packageNameX86 = "${args.packagePrefix}-${buildMode}-${generalProperties.x86ArchName}-package.tar.gz"
+		packageName = "${args.packagePrefix}-${buildMode}-${args.version}-${args.release}.${architecture}.tar.gz"
 	}
 
 	if ((checkLocal && fileExistsOnPath(packageName, args.urlOrPath)) ||
 			(! checkLocal && fileExistsOnCloud("${args.urlOrPath}/${packageName}"))) {
-		echo "Found package $packageName with architecture if given, or with no architecture if not given"
+		echo "Found package $packageName"
 		return packageName
 	}
-	echo "Could not find package with architecture if given, or no arch if not given. Trying another way."
 
-	String packageNameToReturn = ""
-	if (architecture) {
-		packageNameToReturn = packageNameNoArch
-	} else {
-		packageNameToReturn = packageNameX86
-	}
-	if ((checkLocal && fileExistsOnPath(packageNameToReturn, args.urlOrPath)) ||
-			(! checkLocal && fileExistsOnCloud("${args.urlOrPath}/${packageNameToReturn}"))) {
-		echo "Found package $packageNameToReturn with architecture"
-		return packageNameToReturn
-	}
 	if (mustExist) {
-		error ("No package (with or without architecture) found")
+		error ("No package found")
 	} else {
 		echo "Didn't find any package"
 		return ""
@@ -199,4 +196,32 @@ boolean fileExistsOnCloud(String url) {
         echo "URL: |$url| does not exist."
         return false
     }
+}
+
+String fetchMetadataValue (Map args) {
+    // get a value from metadata file as artifact from jenkins or cloud
+    // Download the file if does not exist locally
+    //
+    // Parameters:
+    // boolean (default false): downloadFromCloud - Whether to publish to cloud storage (S3) or not.
+    // String (mandatory if downloadFromCloud is false): artifactSourceJob - From where to download the artifacts.
+    // String (default: last success run): artifactSourceJobNum (number) to download from
+    // String (mandatory if downloadFromCloud): cloudUrl - From where to download the artifacts.
+    // String (mandatory): fieldName - Name of field to take value from.
+
+    boolean downloadFromCloud = args.downloadFromCloud ?: false
+    String cloudUrl = args.cloudUrl ?: ""
+    boolean local = args.local ?: false
+
+    // FixMe: We should improve this in the future to return a Metadata object that the callers can query.
+    String metaDataFileName=generalProperties.buildMetadataFile
+
+    String metaDataFilePath="$WORKSPACE/${metaDataFileName}"
+
+    fieldValue = sh(script: "grep '$args.fieldName' $metaDataFilePath | awk '{print \$2}'", returnStdout: true).trim()
+    echo "Value of field |$args.fieldName| from metadatafile: |$fieldValue|"
+    if (! fieldValue) {
+        error ("Could not get $args.fieldName from relocatable metadata file")
+    }
+    return fieldValue
 }

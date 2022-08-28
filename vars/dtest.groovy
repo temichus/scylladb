@@ -83,7 +83,7 @@ String setDtestParams (Map args) {
     	dtestParameters = dtestParameters + " --pytest-ext-opts=\"$pyTestExtraCLIOptions\""
     }
 
-	setupTestEnv(args.dtestMode)
+	setupTestEnv(args.dtestMode, args.cloudUrl)
 
 	echo "dtestParameters: |$dtestParameters|"
 	return "$dtestParameters"
@@ -100,31 +100,11 @@ def artifactScyllaVersion() {
 	return scyllaSha
 }
 
-def setupTestEnv(String buildMode, String architecture="", boolean dryRun=false) {
+def setupTestEnv(String buildMode, String relocWebUrl = "latest", architecture = generalProperties.x86ArchName, boolean dryRun=false) {
 	// This override of HOME as an empty dir is needed by ccm
 	echo "Setting test environment, mode: |$buildMode|"
-	// First look for local built package
-	String scyllaPackageName = artifact.relocPackageName (
-		dryRun: dryRun,
-		checkLocal: true,
-		mustExist: false,
-		urlOrPath: "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar",
-		packagePrefix: params.PRODUCT_NAME,
-		buildMode: buildMode,
-		architecture: architecture,
-	)
-	// If not found - look where artifacts are downloaded
-	if (! scyllaPackageName) {
-		scyllaPackageName = artifact.relocPackageName (
-			dryRun: dryRun,
-			checkLocal: true,
-			mustExist: true,
-			urlOrPath: WORKSPACE,
-			packagePrefix: params.PRODUCT_NAME,
-			buildMode: buildMode,
-			architecture: architecture,
-		)
-	}
+	(scyllaPackageName, jmxPackageName, toolsPackageName) = artifact.getRelocArtifacts(relocWebUrl, buildMode)
+
     String scyllaRelocPkgFile = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${scyllaPackageName}"
 
 	boolean pkgFileExists = fileExists scyllaRelocPkgFile
@@ -133,8 +113,8 @@ def setupTestEnv(String buildMode, String architecture="", boolean dryRun=false)
 		env.SCYLLA_VERSION = artifactScyllaVersion()
 		env.SCYLLA_CORE_PACKAGE_NAME = scyllaPackageName
 		env.SCYLLA_CORE_PACKAGE = scyllaRelocPkgFile
-		env.SCYLLA_JAVA_TOOLS_PACKAGE = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${params.PRODUCT_NAME}-tools-package.tar.gz"
-		env.SCYLLA_JMX_PACKAGE = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${params.PRODUCT_NAME}-jmx-package.tar.gz"
+		env.SCYLLA_JAVA_TOOLS_PACKAGE = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/$toolsPackageName"
+		env.SCYLLA_JMX_PACKAGE = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/$jmxPackageName"
 		env.CASSANDRA_DIR = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode"
 	} else {
 		echo "Reloc pkg file does not exist. Skipping set testing env vars."
@@ -179,13 +159,11 @@ def prepareDtestLocalTree (Map args) {
                 branch: ccmBranch)
         }
     }
-	artifact.getRelocArtifacts(relocWebUrl, buildMode)
 
+	setupTestEnv(buildMode, relocWebUrl)
 	echo "dtest will run based on relocatable package. Info: ============="
 	sh "cat ${generalProperties.buildMetadataFile}"
 	echo "============================"
-
-	setupTestEnv(buildMode)
 }
 
 def splitAndCopyDtestJobs (Map args) {
@@ -301,7 +279,7 @@ def doParallelDtest (Map args) {
                     sh 'ulimit -s 65536'
 
                     unstash(name: "${dtestType}-dtest-split-files")
-                    setupTestEnv(args.dtestMode)
+                    setupTestEnv(args.dtestMode, cloudUrl)
                     String splitFileName = "$WORKSPACE/scylla-dtest/include_${NODE_INDEX}.txt"
                     if (! fileExists(splitFileName)) {
                         error("split file missing - ${splitFileName}")
@@ -318,6 +296,7 @@ def doParallelDtest (Map args) {
                         extEnv: extEnv,
                         dtestType: dtestType,
                         managerPackage: managerPackage,
+                        cloudUrl: cloudUrl,
                         driverVersion: driverVersion,
                         pyTestExtraCLIOptions: pyTestExtraCLIOptions)
 
