@@ -42,6 +42,13 @@ MIGRATION_WAIT = 5
 
 
 class CommonUtils(Tester):
+    def setup(self):
+        if not 'debug_mode' in self.__dict__.keys():
+            self.debug_mode = isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug"
+            self.session_timeout = 120
+            if self.debug_mode:
+                self.session_timeout *= 3
+
     @staticmethod
     def eventually(fun, trials=64):
         """
@@ -78,6 +85,7 @@ class CommonUtils(Tester):
 
     def prepare(self, user_table: bool = False, rf: str = 1, options: dict = None, nodes: int = 3,
                 fetch_size: int = None, jvm_args: list = None, **kwargs):
+        self.setup()
         cluster = self.cluster
         populate = nodes if isinstance(nodes, list) else [nodes, 0]
         cluster.populate(populate)
@@ -87,11 +95,6 @@ class CommonUtils(Tester):
             cluster.set_configuration_options(values=options)
         cluster.start(jvm_args=jvm_args, wait_other_notice=True, wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
-
-        self.session_timeout = 120
-        self.debug_mode = isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug"
-        if self.debug_mode:
-            self.session_timeout *= 3
 
         session = self.patient_cql_connection(node1, **kwargs)
         if fetch_size:
@@ -2793,10 +2796,13 @@ class TestMaterializedViews(CommonUtils):
             cl=ConsistencyLevel.ONE
         )
 
-    def _setup_for_viewbuildstatus(self, num_of_rows):
+    def _setup_for_viewbuildstatus(self, num_of_rows=None):
         """ this function creates a materialized view for viewbildstatus nodetool command tests
             Returns a list of [TableManager, MaterializedViewManager] objects
         """
+        self.setup()
+        if not num_of_rows:
+            num_of_rows = 10000 if self.debug_mode else 100000
         session = self.prepare(rf=3, nodes=3, fetch_size=num_of_rows * 2)
         table_manager = TableManager(session, self.cluster,
                                      columns={
@@ -2813,12 +2819,12 @@ class TestMaterializedViews(CommonUtils):
     def test_viewbuildstatus_progress_success_flow(self):
         """" test viewbuildstatus nodetool command output correctness during the creation of a materialized view"""
 
-        table_manager, mv = self._setup_for_viewbuildstatus(num_of_rows=100000)
+        table_manager, mv = self._setup_for_viewbuildstatus()
         number_of_nodes = len(self.cluster.nodelist())
 
         in_progress_str = output = "has not finished building; node status is below."
         success_str = "has finished building"
-        max_retries = 20
+        max_retries = 60 if self.debug_mode else 20
         current_retry = 0
 
         """
@@ -2856,6 +2862,7 @@ class TestMaterializedViews(CommonUtils):
                     assert (host_status == "SUCCESS" or host_status == "STARTED"), \
                         f'Wrong output of viewbuildstatus command: host {host_ip} state is not "STARTED" or ' \
                         f'"SUCCESS" '
+            time.sleep(1)
 
         assert (success_str in output[0]), \
             f'viewbuildstatus command exceeded {max_retries} retries without receiving {success_str} string in output'
