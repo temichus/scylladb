@@ -88,6 +88,11 @@ class CommonUtils(Tester):
         cluster.start(jvm_args=jvm_args, wait_other_notice=True, wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
 
+        self.session_timeout = 120
+        self.debug_mode = isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug"
+        if self.debug_mode:
+            self.session_timeout *= 3
+
         session = self.patient_cql_connection(node1, **kwargs)
         if fetch_size:
             session.default_fetch_size = fetch_size
@@ -453,7 +458,7 @@ class TestMaterializedViews(CommonUtils):
                                                                               tbl=tm.table_name, where='', f='')
         act_query = query.format(tbl=mv.mv_name, where='', f='')
         assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.QUORUM,
-                                 session_timeout=120,
+                                 session_timeout=self.session_timeout,
                                  group=True, groupby_column1=tm.column_names_list[-1],
                                  groupby_column2=tm.column_names_list[-1],
                                  restrict_column1=list(mv.mv_where_restriction.keys())[0],
@@ -475,7 +480,7 @@ class TestMaterializedViews(CommonUtils):
             if node.data_center == 'dc2':
                 session = self.patient_exclusive_cql_connection(node, keyspace=tm.keyspace)
                 assert_two_queries_equal(session, exp_query, session, act_query, consistency_level=ConsistencyLevel.ALL,
-                                         session_timeout=120,
+                                         session_timeout=self.session_timeout,
                                          group=True, groupby_column1=tm.column_names_list[-1],
                                          groupby_column2=tm.column_names_list[-1],
                                          restrict_column1=list(mv.mv_where_restriction.keys())[0],
@@ -600,7 +605,7 @@ class TestMaterializedViews(CommonUtils):
             logger.debug('Compare: {0} AND {1}'.format(exp_query, act_query))
             self.eventually(lambda: assert_two_queries_equal(session, exp_query, session, act_query,
                                                              consistency_level=ConsistencyLevel.QUORUM,
-                                                             session_timeout=120,
+                                                             session_timeout=self.session_timeout,
                                                              group=True, groupby_column1=mv.mv_columns_list[-1],
                                                              groupby_column2=mv.mv_columns_list[-1]))
 
@@ -676,7 +681,7 @@ class TestMaterializedViews(CommonUtils):
             exp_query = query.format(clmn=mv.mv_columns_list[0], tbl=tm.table_name)
             self.eventually(lambda: assert_two_queries_equal(session, exp_query, session, act_query,
                                                              consistency_level=ConsistencyLevel.QUORUM,
-                                                             session_timeout=120,
+                                                             session_timeout=self.session_timeout,
                                                              group=True, groupby_column1=mv.mv_columns_list[0],
                                                              groupby_column2=mv.mv_columns_list[0],
                                                              restrict_column1=list(mv.mv_where_restriction.keys())[0],
@@ -831,7 +836,7 @@ class TestMaterializedViews(CommonUtils):
             self.eventually(lambda: assert_two_queries_equal(session, query.format(tm.table_name),
                                                              session, query.format(mv_name),
                                                              consistency_level=consistency_level,
-                                                             session_timeout=120, group=True,
+                                                             session_timeout=self.session_timeout, group=True,
                                                              groupby_column1=mv.mv_columns_list[grouby_column_index],
                                                              groupby_column2=mv.mv_columns_list[grouby_column_index]))
 
@@ -864,7 +869,7 @@ class TestMaterializedViews(CommonUtils):
         self.eventually(lambda: assert_two_queries_equal(session, 'select * from {}'.format(tm.table_name),
                                                          session, 'select * from {}'.format(mv_name),
                                                          consistency_level=ConsistencyLevel.QUORUM,
-                                                         session_timeout=120, group=True,
+                                                         session_timeout=self.session_timeout, group=True,
                                                          groupby_column1=mv.mv_columns_list[-1],
                                                          groupby_column2=mv.mv_columns_list[-1]))
 
@@ -1119,7 +1124,7 @@ class TestMaterializedViews(CommonUtils):
         query = 'select * from {}'
         assert_two_queries_equal_ignore_order(session, query.format(tm.table_name),
                                               session, query.format(mv.mv_name),
-                                              consistency_level=ConsistencyLevel.ALL, session_timeout=120)
+                                              consistency_level=ConsistencyLevel.ALL, session_timeout=self.session_timeout)
         logger.debug("Drop materialized view and create another with the same name")
         mv.drop_mv()
         mv = MaterializedViewManager(tm)
@@ -1127,7 +1132,7 @@ class TestMaterializedViews(CommonUtils):
 
         assert_two_queries_equal_ignore_order(session, query.format(tm.table_name),
                                               session, query.format(mv.mv_name),
-                                              consistency_level=ConsistencyLevel.ALL, session_timeout=120)
+                                              consistency_level=ConsistencyLevel.ALL, session_timeout=self.session_timeout)
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -2900,7 +2905,7 @@ class TestMaterializedViews(CommonUtils):
         table_statement = 'select * from {}'.format(tm.table_name)
         mv_statement = 'select * from {}'.format(mv.mv_name)
         assert_two_queries_equal(session, table_statement, session, mv_statement,
-                                 session_timeout=120)
+                                 session_timeout=self.session_timeout)
 
         node2.stop(wait_other_notice=True)
 
@@ -2910,7 +2915,7 @@ class TestMaterializedViews(CommonUtils):
                             consistency_level=ConsistencyLevel.ONE)
 
         assert_two_queries_equal(session, table_statement,
-                                 session, mv_statement, session_timeout=120)
+                                 session, mv_statement, session_timeout=self.session_timeout)
 
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
 
@@ -3169,14 +3174,14 @@ class TestMaterializedViews(CommonUtils):
         mv_statement = 'SELECT * FROM ks.t_by_v'
         logger.debug('Read data from MV at quorum (new data should be returned after repair)')
         assert_two_queries_equal(session, table_statement, session, mv_statement,
-                                 consistency_level=ConsistencyLevel.QUORUM, session_timeout=120)
+                                 consistency_level=ConsistencyLevel.QUORUM, session_timeout=self.session_timeout)
 
         self._start_nodes([node2, node3])
         self._stop_nodes([node1, node4, node5])
 
         logger.debug('Read data from MV at quorum (new data should be returned after repair)')
         assert_two_queries_equal(session2, table_statement, session2, mv_statement,
-                                 consistency_level=ConsistencyLevel.ONE, session_timeout=120)
+                                 consistency_level=ConsistencyLevel.ONE, session_timeout=self.session_timeout)
 
     def test_really_complex_repair(self):
         """
