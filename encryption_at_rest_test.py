@@ -6,6 +6,7 @@ import shutil
 import re
 from enum import Enum
 import logging
+import docker
 
 import pytest
 from cassandra import ReadFailure, ConsistencyLevel
@@ -17,6 +18,10 @@ from tools.snapshots import get_table_description
 from tools.misc import flush_by_node
 from tools.assertions import assert_one
 from tools.log_utils import wait_for_any_log
+
+import boto3
+from botocore.exceptions import ClientError
+from tools.ldap_docker import running_in_docker
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +80,7 @@ class KeyProviderEnum(Enum):
     local = 'LocalFileSystemKeyProviderFactory'
     replicated = 'ReplicatedKeyProviderFactory'
     kmip = 'KmipKeyProviderFactory'
+    kms = 'KmsKeyProviderFactory'
 
 
 # default: 'AES/CBC/PKCS5Padding', length 128
@@ -206,6 +212,72 @@ class KmipKeyProviderFactory(BaseKeyProviderFactory):
         return not ('RC2' in cipher_algorithm and secret_key_strength == 80)
 
 
+class KMSKeyProviderFactory(BaseKeyProviderFactory):
+    def __init__(self, tester):
+        BaseKeyProviderFactory.__init__(self, KeyProviderEnum.kms, tester)
+        self.container = None
+        self.master_key = "alias/Scylla-test"
+        self.kms_host = 'kms_test'
+        self.endpoint_url = None
+        self.client = docker.from_env()
+
+    def prepare_conf(self):
+        local_kms_image = "nsmithuk/local-kms:3"
+        if running_in_docker():
+            # not using same recipie as ldap_docker, etc, because this does not work for me in my container.
+            # instead, just don't map ports, but tell container to run in current containers network.
+            id = None
+            with open('/etc/hostname', 'r') as file:
+                id = file.read().rstrip()
+            self.container = self.client.containers.run(
+                local_kms_image, detach=True, network_mode="container:" + id)
+            self.endpoint_url = 'http://localhost:8080'
+        else:
+            # normal. not running in docket container, can run container as intended.
+            self.container = self.client.containers.run(local_kms_image, detach=True, ports={8080: None})
+            self.container.reload()
+            ports = self.container.attrs['NetworkSettings']['Ports']
+            port = ports['8080/tcp'][0]['HostPort']
+            self.endpoint_url = 'http://localhost:' + port
+
+        try:
+            # create master key
+            kms_client = boto3.client("kms", endpoint_url=self.endpoint_url, region_name='None')
+            response = kms_client.create_key(Description='dtest',
+                                             Tags=[{
+                                                 'TagKey': 'Name',
+                                                 'TagValue': 'dtest'
+                                             }])
+            key_id = response['KeyMetadata']['KeyId']
+            kms_client.create_alias(AliasName=self.master_key, TargetKeyId=key_id)
+
+            options = {'endpoint': self.endpoint_url,
+                       'master_key': self.master_key
+                       }
+            self.cluster.set_configuration_options({'kms_hosts': {self.kms_host: options}})
+        except:
+            self.container.stop()
+            raise
+
+    def __enter__(self):
+        self.prepare_conf()
+        return self
+
+    def __exit__(self, exception_type, exception_value, exception_traceback):
+        self.container.stop()
+        self.container.remove()
+
+    def additional_cf_options(self, ks=None):
+        self.container.reload()
+        return super().additional_cf_options(ks) | {'kms_host': self.kms_host}
+
+    def supported_cipher(self, cipher_algorithm, secret_key_strength):
+        return secret_key_strength >= 128
+
+    def require_restart(self):
+        return True
+
+
 class EncryptionAtRestBase(Tester):
     multiple_num = 3
     default_node_num = 2
@@ -309,6 +381,8 @@ class EncryptionAtRestBase(Tester):
             ret = ReplicatedKeyProviderFactory(self)
         elif key_provider == KeyProviderEnum.kmip:
             ret = KmipKeyProviderFactory(self)
+        elif key_provider == KeyProviderEnum.kms:
+            ret = KMSKeyProviderFactory(self)
         elif key_provider is None:
             ret = DefaultKeyProviderFactory(self)
         else:
