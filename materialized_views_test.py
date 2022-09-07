@@ -29,6 +29,7 @@ from tools.tables_view_manager import wait_for_view_build_start, wait_for_view, 
 from cassandra.cluster import NoHostAvailable
 from ccmlib.scylla_cluster import ScyllaCluster
 from ccmlib.node import NodetoolError
+from tools.stress import format_cs_output, assert_cs_success
 
 import logging
 
@@ -237,11 +238,12 @@ class TestMaterializedViews(CommonUtils):
 
         node1 = self.cluster.nodelist()[0]
         n = 10000
-        stdout, stderr = node1.stress(stress_options=['write', 'cl=QUORUM', 'n={}'.format(n),
-                                                      "-schema replication(factor=3)", "-mode cql3 native",
-                                                      "-rate threads=10", "-pop seq=1..{}".format(n)],
-                                      capture_output=True)
-        assert not stderr, 'Run c-s failed: {}'.format(stderr)
+        results = node1.stress(stress_options=['write', 'cl=QUORUM', 'n={}'.format(n),
+                                               "-schema replication(factor=3)", "-mode cql3 native",
+                                               "-rate threads=10", "-pop seq=1..{}".format(n)],
+                               capture_output=True)
+        logger.debug(format_cs_output(results))
+        assert_cs_success(results)
 
         self.fixture_dtest_setup.ignore_log_patterns += [
             r'view - Error applying view update to .*: seastar::broken_promise']

@@ -11,6 +11,7 @@ from dtest_class import Tester, create_ks, create_cf, wait_for
 from tools.scylla_defines import TABLE_NAME, KEYSPACE_NAME, CompactionStrategy, FULL_TABLE_NAME, KB, MB
 from tools.files import get_sstables_files, get_node_cf_dir
 from tools.snapshots import make_snapshot, restore_snapshot_with_refresh, restore_snapshot_with_sstableloader
+from tools.stress import format_cs_output, assert_cs_success
 
 NUM_OF_NODES = 2
 RF = NUM_OF_NODES
@@ -224,9 +225,9 @@ class TestIcsCompaction(Tester):
                              "size=fixed({})".format(write_size),
                              "-rate", "threads=1"]
             logger.debug(f"stress node1 #{idx}: ( {stress_params} )")
-            results, errors = node1.stress(stress_params, capture_output=True)
-            logger.debug('Stress results:\n' + ''.join(results + errors))
-            assert not errors, "Some errors during stress %s" % errors
+            results = node1.stress(stress_params, capture_output=True)
+            logger.debug('Stress results:\n' + format_cs_output(results))
+            assert_cs_success(results)
             if not read_only:
                 logger.debug("flush #{}".format(idx))
                 node1.flush()

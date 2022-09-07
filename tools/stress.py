@@ -52,3 +52,17 @@ def fill_data_by_cs(node, n_range=[500, 550, 600, 650], start=0, duration_range=
         if flush:
             logger.debug("Flush after writing data .....")
             node.flush()
+
+
+def format_cs_output(output: tuple):
+    if output.__class__.__name__ == 'Subprocess_Return':
+        return f'stderr:\n{output.stderr}\n\nstdout:\n{output.stdout}'
+    elif isinstance(output, tuple):
+        return "\n".join(output)
+    else:
+        return NotImplementedError()
+
+
+def assert_cs_success(output: tuple):
+    stdout = output.stdout if output.__class__.__name__ == 'Subprocess_Return' else output[0]
+    assert stdout.strip().endswith(("END", "DONE")), f"Run c-s failed: {format_cs_output(output)}"

@@ -7,6 +7,7 @@ import pytest
 from ccmlib.node import NodetoolError
 
 from dtest_class import Tester
+from tools.stress import format_cs_output, assert_cs_success
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +69,12 @@ class TestNodetool(Tester):
     @staticmethod
     def _background_workload(node):
         logger.info('start write workload in background...')
-        cs_result, cs_err = node.stress(
+        cs_result = node.stress(
             ['write', 'duration=180s', 'no-warmup', '-schema', 'replication(factor=3)', '-rate', 'threads=10', '-log',
              'interval=10'],
             capture_output=True)
         logger.info('background workload finished')
-        logger.info(cs_result)
-        logger.info(cs_err)
+        logger.info(format_cs_output(cs_result))
         return cs_result
 
     def _remove_seed(self, method='kill'):
@@ -103,8 +103,7 @@ class TestNodetool(Tester):
         out = node2.nodetool('status', capture_output=True)[0]
         logger.info(out)
         cs_result = thread.result()
-
-        assert 'END' in cs_result.split()[-1], "Stress doesn't complete successfully"
+        assert_cs_success(cs_result)
 
     @pytest.mark.parametrize('method', ['decommission', 'kill'])
     def test_seed(self, method):

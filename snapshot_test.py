@@ -29,6 +29,7 @@ from tools.snapshots import make_snapshot, get_cf_snapshot_saved_dir, restore_sn
     restore_snapshot_with_sstableloader, get_table_description
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
+from tools.stress import format_cs_output, assert_cs_success
 
 logger = logging.getLogger(__name__)
 
@@ -359,10 +360,10 @@ class TestSnapshot(SnapshotTester):
         # Cover Issue #4051 https://github.com/scylladb/scylla/issues/4051
         def run_stress(node):
             logger.info('Start stress command')
-            results, errors = node.stress(['write', 'duration=5m', '-mode', 'cql3', 'native', '-rate', 'threads=100', '-pop', 'seq=1..100000000', '-log', 'interval=5'],
-                                          capture_output=True)
-            logger.info('Stress results:\n' + ''.join(results + errors))
-            assert not errors, "Some errors during stress %s" % errors
+            results = node.stress(['write', 'duration=5m', '-mode', 'cql3', 'native', '-rate',
+                                  'threads=100', '-pop', 'seq=1..100000000', '-log', 'interval=5'], capture_output=True)
+            logger.info('Stress results:\n' + format_cs_output(results))
+            assert_cs_success(results)
 
         cluster = self.cluster
         cluster.populate(1).start()
@@ -394,10 +395,9 @@ class TestSnapshot(SnapshotTester):
         node1 = cluster.nodelist()[0]
 
         logger.info('Run stress command')
-        results, errors = node1.stress(['write', 'n=10000', '-rate', 'threads=10'],
-                                       capture_output=True)
-        logger.info('Stress results:\n' + ''.join(results + errors))
-        assert not errors, "Some errors during stress %s" % errors
+        results = node1.stress(['write', 'n=10000', '-rate', 'threads=10'], capture_output=True)
+        logger.info('Stress results:\n' + format_cs_output(results))
+        assert_cs_success(results)
 
         logger.info('Stoping node..')
         node1.stop()
@@ -410,7 +410,7 @@ class TestSnapshot(SnapshotTester):
         logger.info('Create snapshot right after start')
         result, errors = node1.nodetool(f'snapshot -t {uuid.uuid4()}')
         logger.info(result + errors)
-        assert 'failed: filesystem error: link failed: No such file or directory' not in ' '.join(results + errors)
+        assert 'failed: filesystem error: link failed: No such file or directory' not in ' '.join(result + errors)
         # Check that no other errors occured during snapshot command
         assert not errors, "Some errors in creating snapshot: %s" % errors
 
@@ -426,10 +426,9 @@ class TestSnapshot(SnapshotTester):
         node1 = cluster.nodelist()[0]
 
         logger.info('Run stress command')
-        results, errors = node1.stress(['write', 'n=1000000', '-rate', 'threads=10'],
-                                       capture_output=True)
-        logger.info('Stress results:\n' + ''.join(results + errors))
-        assert not errors, "Some errors during stress %s" % errors
+        results = node1.stress(['write', 'n=1000000', '-rate', 'threads=10'], capture_output=True)
+        logger.info('Stress results:\n' + format_cs_output(results))
+        assert_cs_success(results)
         assert node1.is_live()
 
         compaction_thread = Thread(target=run_compaction, args=(node1, ))
@@ -438,7 +437,7 @@ class TestSnapshot(SnapshotTester):
         logger.info('Create snapshot right after start')
         result, errors = node1.nodetool('snapshot')
         logger.info(result + errors)
-        assert 'failed: filesystem error: link failed: No such file or directory' not in ' '.join(results + errors)
+        assert 'failed: filesystem error: link failed: No such file or directory' not in ' '.join(result + errors)
         # Check that no other errors occured during snapshot command
         assert not errors, "Some errors in creating snapshot: %s" % errors
 

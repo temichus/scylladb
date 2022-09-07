@@ -40,7 +40,7 @@ from tools.data import rows_to_list, create_index, create_local_index, get_rows_
 from tools.metrics import get_node_metrics
 from tools.misc import require
 from tools.metrics import get_node_metrics
-
+from tools.stress import format_cs_output
 
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
@@ -6618,9 +6618,9 @@ class TestCQL(Tester):
         """
         def run_stress(node):
             logger.debug('Start stress command')
-            results, errors = node.stress(['write', 'duration=15s', '-mode', 'cql3', 'native', '-rate', 'threads=50', '-pop', 'seq=1..100000000', '-log', 'interval=5'],
-                                          capture_output=True)
-            logger.debug('Stress results:\n' + ''.join(results + errors))
+            result = node.stress(['write', 'duration=15s', '-mode', 'cql3', 'native', '-rate', 'threads=50', '-pop', 'seq=1..100000000', '-log', 'interval=5'],
+                                 capture_output=True)
+            logger.debug('Stress results:\n' + format_cs_output(result))
 
         cluster = self.cluster
         cluster.populate(1).start()

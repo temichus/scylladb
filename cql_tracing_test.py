@@ -21,6 +21,7 @@ import re
 
 from dtest_class import Tester, create_ks, create_cf
 from tools.queries import enable_slow_query_tracing, validate_slow_query_tracing_is_enabled
+from tools.stress import format_cs_output
 
 logger = logging.getLogger(__name__)
 
@@ -296,13 +297,14 @@ class TestSlowQueryTracing(PrepareClusterHelper):
         node1 = self.cluster.nodelist()[0]
 
         logger.debug("Run cassandra-stress write load")
-        stdout, stderr = node1.stress(stress_options=['write', 'cl=ONE', 'n=10000',
-                                                      "-schema replication(factor=1)", "-mode cql3 native",
-                                                      "-rate threads=10"],
-                                      capture_output=True)
-        if stderr:
-            # Sometimes the stress is passed, but there are 'Failed to connect over JMX' errors in stderr
-            assert stdout.strip().endswith(("END", "DONE")), f"Run c-s failed: {stderr}"
+        cs_result = node1.stress(stress_options=['write', 'cl=ONE', 'n=10000',
+                                                 "-schema replication(factor=1)", "-mode cql3 native",
+                                                 "-rate threads=10"],
+                                 capture_output=True)
+        stdout = cs_result[0] if cs_result.__class__.__name__ == 'tuple' else cs_result.stdout
+
+        # Sometimes the stress is passed, but there are 'Failed to connect over JMX' errors in stderr
+        assert stdout.strip().endswith(("END", "DONE")), f"Run c-s failed: {format_cs_output(cs_result)}"
 
         if fast:
             assert_none(session, query="select * from system_traces.events")
