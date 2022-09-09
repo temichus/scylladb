@@ -738,6 +738,7 @@ class TestMigration(MigrationTestBase):
         dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
         return dtest_setup_overrides
 
+    @pytest.mark.gossip_only
     @pytest.mark.vnode
     def test_migrate_sstable_with_schema_change(self):
         # Content of Cassandra dir generated with following cql commands:

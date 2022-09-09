@@ -65,6 +65,7 @@ class TestPartitioner(Tester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
+    @pytest.mark.gossip_only
     def test_murmur3_partitioner(self):
         self.run_cluster("org.apache.cassandra.dht.Murmur3Partitioner",
                          "cassandra.3.nodes.30.rows.256.murmur3.partitioner")

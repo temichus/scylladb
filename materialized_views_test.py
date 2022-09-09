@@ -3402,6 +3402,7 @@ class TestMaterializedViews(CommonUtils):
             session.execute("DROP MATERIALIZED VIEW mv")
             session.execute("DROP TABLE test")
 
+    @pytest.mark.gossip_only
     def test_propagate_view_creation_over_non_existing_table(self):
         """
         The internal addition of a view over a non existing table should be ignored
