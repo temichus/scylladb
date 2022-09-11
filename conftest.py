@@ -215,6 +215,9 @@ def fixture_maybe_skip_tests_requiring_novnodes(request):
     the no_vnodes annotation but the tests were started with a configuration that
     has vnodes enabled. This should always be a no-op as we explicitly deselect tests
     in pytest_collection_modifyitems that match this configuration -- but this is explicit :)
+
+
+
     """
     if request.node.get_closest_marker('no_vnodes'):
         if request.config.getoption("--use-vnodes"):
