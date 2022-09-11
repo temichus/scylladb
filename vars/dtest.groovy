@@ -356,6 +356,7 @@ def doDtest (Map args) {
 	boolean dtestKeepLogsFlag = args.dtestKeepLogsFlag ?: false
 	String excludeTests = args.excludeTests ?: ""
 	String includeTests = args.includeTests ?: ""
+	String cloudUrl = args.cloudUrl ?: "latest"
 	String extOpts = args.extOpts ?: ""
 	String extEnv = args.extEnv ?: ""
 	String randomDtests = args.randomDtests ?: ""
@@ -385,6 +386,7 @@ def doDtest (Map args) {
 			dtestType: args.dtestType,
 			managerPackage: managerPackage,
 			driverVersion: driverVersion,
+			cloudUrl: cloudUrl,
 			pyTestExtraCLIOptions: pyTestExtraCLIOptions
 		)
 

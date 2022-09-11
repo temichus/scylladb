@@ -202,7 +202,8 @@ pipeline {
                                     relocBuildID: params.RELOC_BUILD_ID,
                                     buildMode: BUILD_MODE,
                                 )
-                                dtest.doDtest(dryRun: params.DRY_RUN, dtestMode: BUILD_MODE, includeTests: "-m dtest_smoke bootstrap_test.py", dtestType: "PR")
+                                dtest.doDtest(dryRun: params.DRY_RUN, dtestMode: BUILD_MODE, includeTests: "-m dtest_smoke bootstrap_test.py", dtestType: "PR",
+                                              cloudUrl: params.ARTIFACT_WEB_URL)
                             }
                         }
                     }
