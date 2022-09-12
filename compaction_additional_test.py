@@ -1093,7 +1093,7 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
 
     @pytest.fixture(params=['LeveledCompactionStrategy',
                             'SizeTieredCompactionStrategy',
-                            'DateTieredCompactionStrategy',
+                            # DateTieredCompactionStrategy has been deprecated by https://github.com/scylladb/scylladb/pull/11458
                             'TimeWindowCompactionStrategy',
                             enterprise_only_param('IncrementalCompactionStrategy')], autouse=True)
     def fixture_set_cs(self, request):
