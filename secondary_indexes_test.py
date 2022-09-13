@@ -42,7 +42,8 @@ class SecondaryIndexesHelpers:
     @pytest.fixture(autouse=True)
     def random_compaction_strategy(self, dtest_config):
         if not SecondaryIndexesHelpers.compaction_strategy:
-            strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'DateTieredCompactionStrategy',
+            # NOTE: DateTieredCompactionStrategy is forbidden since https://github.com/scylladb/scylladb/pull/11458, so removed from list below
+            strategies = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy',
                           'TimeWindowCompactionStrategy']
 
             if dtest_config.is_enterprise:
