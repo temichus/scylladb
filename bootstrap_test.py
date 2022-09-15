@@ -23,6 +23,7 @@ from tools.cluster import new_node
 from tools.data import query_c1c2, insert_c1c2, create_c1c2_table
 from tools.intervention import InterruptBootstrap, KillOnBootstrap
 from tools.misc import ImmutableMapping, require
+from tools.stress import format_cs_output, assert_cs_success
 
 logger = logging.getLogger(__name__)
 
@@ -748,9 +749,6 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         stress_duration_minutes = 3
         replication_factor = 2
         cluster_size = 2
-        cassandra_err_msg = f"com.datastax.driver.core.exceptions.WriteTimeoutException: Cassandra timeout during" \
-            f" SIMPLE write query at consistency {consistency_level_key} ({replication_factor + 1}" \
-            f" replica were required but only {replication_factor} acknowledged the write)"
 
         cluster = self.cluster
         logger.info("Creating new cluster with '%s' nodes", cluster_size)
@@ -789,12 +787,9 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         assert kill_node_err_msg.format(1 if is_gracefully else -9) == str(start_new_node_thread.exception()), \
             f"The node '{node3.name}' should be killed by SIGKILL signal"
         logger.info("Waiting until stress thread will finish running")
-        stdout, stderr = stress_thread.result()
-        if stderr:
-            logger.info("The output from stdout is:\n%s", stdout)
-            logger.info("The following errors occurred during the run:\n%s", stderr)
-            assert cassandra_err_msg not in stderr, \
-                f"The following message '{cassandra_err_msg}' found in stderr"
+        results = stress_thread.result()
+        logger.debug(format_cs_output(results))
+        assert_cs_success(results)
 
     @require("#4488")
     def test_cluster_become_unavailable_when_force_kill_node_during_bootstrap(self):

@@ -7,6 +7,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 import pytest
 from ccmlib.scylla_node import ScyllaNode
 
+from tools.stress import format_cs_output, assert_cs_success
 from upgrade_test import UpgradeTester, upgrade_matrix_from_last_release_version
 
 logger = logging.getLogger(__name__)
@@ -37,8 +38,7 @@ class RollingUpgradeBase(UpgradeTester):
             self.run_upgrade(node_index=0, upgrade_to_version=version, upgrade_type='upgrade')
 
             # Validate write stress
-            self.validate_stress(stress_thread=write_thread, stress_type='write',
-                                 ignore_msgs="Timed out waiting for server response Connection refused")
+            self.validate_stress(stress_thread=write_thread, stress_type='write')
 
             # Start read stress load
             read_thread = self.run_stress(node=self.cluster.nodelist()[0],
@@ -65,8 +65,7 @@ class RollingUpgradeBase(UpgradeTester):
             self.insert_data_and_validate(session=session, row_end_index=row_end_index, flush=True)
 
             # Validate read stress
-            self.validate_stress(stress_thread=read_thread, stress_type='read',
-                                 ignore_msgs=" Timed out waiting for server response Connection refused")
+            self.validate_stress(stress_thread=read_thread, stress_type='read')
 
             # Start read stress load
             read_thread = self.run_stress(node=self.cluster.nodelist()[0],
@@ -81,8 +80,7 @@ class RollingUpgradeBase(UpgradeTester):
             self.insert_data_and_validate(session=session, row_end_index=row_end_index, flush=True)
 
             # Validate read stress
-            self.validate_stress(stress_thread=read_thread, stress_type='read',
-                                 ignore_msgs=" Timed out waiting for server response Connection refused")
+            self.validate_stress(stress_thread=read_thread, stress_type='read')
 
             # Upgrade 2d and 3th nodes
             self.run_upgrade(node_index=1, upgrade_to_version=version, upgrade_type='upgrade')
@@ -127,14 +125,11 @@ class RollingUpgradeBase(UpgradeTester):
         else:
             raise ValueError(f"Unsupported upgrade type value '{upgrade_type}'")
 
-    def validate_stress(self, stress_thread: Future, stress_type: str, ignore_msgs: str = '') -> None:
-        ignore_err_msg = "com.datastax.driver.core.exceptions.WriteTimeoutException: Cassandra timeout during" \
-                         " SIMPLE write query at consistency" \
-                         f" replica were required but only{f' {ignore_msgs}' if ignore_msgs else ''}"
-
+    def validate_stress(self, stress_thread: Future, stress_type: str) -> None:
         logger.debug(f"Waiting until {stress_type} stress thread will finish running")
-        stdout, stderr = stress_thread.result()
-        assert ignore_err_msg not in stderr, f"The following message '{ignore_err_msg}' found in stderr"
+        results = stress_thread.result()
+        logger.debug(format_cs_output(results))
+        assert_cs_success(results)
 
     def get_highest_supported_sstable_version(self):
         """
