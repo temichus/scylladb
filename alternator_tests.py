@@ -1,5 +1,4 @@
 import logging
-import json
 import operator
 import os
 import random
@@ -9,11 +8,9 @@ import tempfile
 import time
 from ast import literal_eval
 from contextlib import ExitStack
-from copy import deepcopy
 from concurrent.futures.thread import ThreadPoolExecutor
 from distutils import dir_util
 from pathlib import Path
-from threading import Thread
 from copy import deepcopy
 
 import requests

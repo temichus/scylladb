@@ -165,9 +165,7 @@ class BaseAlternator(Tester):
     keyspace_name_template = "alternator_{}"
     _table_primary_key = schemas.HASH_KEY_NAME
     _table_primary_key_format = "test{}"
-    _dynamo_params = \
-        dict(aws_access_key_id="None", aws_secret_access_key="None", region_name="None", verify=False,
-             config=GLOBAL_CONFIG)
+
     alternator_urls = {}
     alternator_apis = {}
     clear_resources_methods = []
@@ -177,6 +175,14 @@ class BaseAlternator(Tester):
         yield
         for resource_method in self.clear_resources_methods:
             resource_method()
+
+    @property
+    def dynamo_params(self):
+        p = dict(aws_access_key_id="None", aws_secret_access_key="None", region_name="None", verify=False,
+                 config=GLOBAL_CONFIG)
+        if self.is_encrypted:
+            p['verify'] = self.cert_file
+        return p
 
     def _get_alternator_api_url(self, node: ScyllaNode) -> None:
         if self.is_encrypted:
@@ -226,8 +232,8 @@ class BaseAlternator(Tester):
         node_alternator_address = self.get_alternator_api_url(node=node)
         self.alternator_apis[node.name] = AlternatorApi(
             resource=boto3.resource(
-                service_name="dynamodb", endpoint_url=node_alternator_address, **self._dynamo_params),
-            client=boto3.client(service_name="dynamodb", endpoint_url=node_alternator_address, **self._dynamo_params)
+                service_name="dynamodb", endpoint_url=node_alternator_address, **self.dynamo_params),
+            client=boto3.client(service_name="dynamodb", endpoint_url=node_alternator_address, **self.dynamo_params)
         )
 
     def get_dynamodb_api(self, node: ScyllaNode, timeout: int = 300) -> AlternatorApi:
@@ -246,9 +252,11 @@ class BaseAlternator(Tester):
         logger.debug(f"Populating a cluster with {num_of_nodes} nodes for {cluster_type}..")
         self.is_encrypted = is_encrypted
         if is_encrypted:
-            cert_file, key_file = create_self_signed_x509_certificate(test_path=self.cluster.get_path())
+            ip_list = [f'{self.cluster.get_ipprefix()}{n}' for n in range(1, num_of_nodes+1)]
+            self.cert_file, key_file = create_self_signed_x509_certificate(
+                test_path=self.cluster.get_path(), ip_list=ip_list)
             cluster_config['alternator_encryption_options'] = {
-                'certificate': cert_file,
+                'certificate': self.cert_file,
                 'keyfile': key_file,
             }
             cluster_config.pop('alternator_port')
@@ -837,7 +845,7 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
         super(BaseAlternatorStream, self)._add_api_for_node(node=node, timeout=timeout)
         node_stream_address = self.get_alternator_api_url(node=node)
         self.alternator_apis[node.name].stream = boto3.client(
-            service_name='dynamodbstreams', endpoint_url=node_stream_address, **self._dynamo_params)
+            service_name='dynamodbstreams', endpoint_url=node_stream_address, **self.dynamo_params)
 
     def wait_for_active_stream(self, node: ScyllaNode, table_name: str = TABLE_NAME, timeout: int = 60):
         dynamodb_api = self.get_dynamodb_api(node=node)

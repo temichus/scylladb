@@ -5,6 +5,7 @@ import os.path
 import tempfile
 import subprocess
 from socket import gethostname
+import ipaddress
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -107,7 +108,9 @@ class SecurityCredentials():
                self.keystore, self.cert, self.cakeystore, self.cacert)
 
 
-def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_file='scylla.key'):
+def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_file='scylla.key', ip_list=None):
+    ip_list = ip_list or []
+
     cert_file = os.path.join(test_path, cert_file)
     key_file = os.path.join(test_path, key_file)
 
@@ -130,7 +133,6 @@ def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_f
         x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, u"None"),
         x509.NameAttribute(NameOID.SERIAL_NUMBER, u"1000"),
         x509.NameAttribute(NameOID.COMMON_NAME, gethostname()),
-
     ])
     builder = builder.subject_name(subject)
     builder = builder.issuer_name(issuer)
@@ -138,12 +140,13 @@ def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_f
     builder = builder.not_valid_after(datetime.datetime.today() + (one_day * 30))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(public_key)
-    builder = builder.add_extension(
-        x509.SubjectAlternativeName(
-            [x509.DNSName(gethostname())]
-        ),
-        critical=False
-    )
+    for ip in ip_list:
+        builder = builder.add_extension(
+            x509.SubjectAlternativeName(
+                [x509.IPAddress(ipaddress.IPv4Address(ip))]
+            ),
+            critical=False
+        )
     builder = builder.add_extension(
         x509.BasicConstraints(ca=False, path_length=None), critical=True,
     )
