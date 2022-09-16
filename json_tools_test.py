@@ -1,9 +1,12 @@
 import os
 import tempfile
 import logging
+import pytest
 
-from dtest_class import Tester
+from dtest_class import Tester, create_ks
 from tools.data import rows_to_list
+from tools.assertions import assert_lists_equal_ignoring_order
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +27,7 @@ class TestJson(Tester):
         session = self.patient_cql_connection(node1)
 
         logger.debug("Inserting data...")
-        self.create_ks(session, 'Test', 1)
+        create_ks(session, 'Test', 1)
 
         session.execute("""
             CREATE TABLE users (
@@ -37,15 +40,15 @@ class TestJson(Tester):
         """)
 
         session.execute(
-            "INSERT INTO Test. users (user_name, password, gender, state, birth_year) VALUES('frodo', 'pass@', 'male', 'CA', 1985);")
+            "INSERT INTO Test.users (user_name, password, gender, state, birth_year) VALUES('frodo', 'pass@', 'male', 'CA', 1985);")
         session.execute(
-            "INSERT INTO Test. users (user_name, password, gender, state, birth_year) VALUES('sam', '@pass', 'male', 'NY', 1980);")
+            "INSERT INTO Test.users (user_name, password, gender, state, birth_year) VALUES('sam', '@pass', 'male', 'NY', 1980);")
 
         res = session.execute("SELECT * FROM Test. users")
 
-        self.assertItemsEqual(rows_to_list(res),
-                              [[u'frodo', 1985, u'male', u'pass@', u'CA'],
-                               [u'sam', 1980, u'male', u'@pass', u'NY']])
+        assert_lists_equal_ignoring_order(rows_to_list(res),
+                                          [[u'frodo', 1985, u'male', u'pass@', u'CA'],
+                                           [u'sam', 1980, u'male', u'@pass', u'NY']])
 
         logger.debug("Flushing and stopping cluster...")
         node1.flush()
@@ -68,7 +71,7 @@ class TestJson(Tester):
 
         logger.debug("Inserting data...")
         session = self.patient_cql_connection(node1)
-        self.create_ks(session, 'Test', 1)
+        create_ks(session, 'Test', 1)
 
         session.execute("""
             CREATE TABLE users (
@@ -99,7 +102,7 @@ class TestJson(Tester):
 
         logger.debug("data: " + str(res))
 
-        assert rows_to_list(res) == \
-            [[u'frodo', 1985, u'male', u'pass@', u'CA'],
-             [u'sam', 1980, u'male', u'@pass', u'NY'],
-             [u'gandalf', 1955, u'male', u'p@$$', u'WA']]
+        assert_lists_equal_ignoring_order(rows_to_list(res),
+                                          [[u'frodo', 1985, u'male', u'pass@', u'CA'],
+                                           [u'sam', 1980, u'male', u'@pass', u'NY'],
+                                           [u'gandalf', 1955, u'male', u'p@$$', u'WA']])
