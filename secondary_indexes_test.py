@@ -1736,14 +1736,16 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
         with pytest.raises(expected_exception=InvalidRequest) as err:
             create_index(session, table_name, index_column, index_name, compaction=self.compaction_strategy)
 
-        assert str(err) == regexp_matches(r'.*Cannot create index on index_values of frozen.*'), 'Not expected error'
+        assert str(err) == regexp_matches(
+            r'.*Cannot create index on (index_values|value) of frozen.*'), 'Not expected error'
 
         # try to create local index
         with pytest.raises(expected_exception=InvalidRequest) as err:
             create_local_index(session, table_name, 'key', index_column, index_name,
                                compaction=self.compaction_strategy)
 
-        assert str(err) == regexp_matches(r'.*Cannot create index on index_values of frozen.*'), 'Not expected error'
+        assert str(err) == regexp_matches(
+            r'.*Cannot create index on (index_values|value) of frozen.*'), 'Not expected error'
 
 
 @pytest.mark.skip('Not relevant for Scylla')
