@@ -26,6 +26,9 @@ def _normcase_all(files):
     return [os.path.normcase(file) for file in files]
 
 
+@pytest.mark.require("scylladb/scylla-tools-java#309")
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestSSTableUtil(Tester):
 
     @staticmethod
@@ -58,7 +61,7 @@ class TestSSTableUtil(Tester):
         Check we can list the sstable files after aborted compaction (temporary sstable files)
         Then perform a cleanup and verify the temporary files are gone
         """
-        log_file_name = 'debug.log'
+        log_file_name = 'system.log'
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
@@ -163,6 +166,7 @@ class TestSSTableUtil(Tester):
             args.append('--cleanup')
 
         args.extend([ks, table])
+        logger.info("All parameters %s", args)
 
         p_open_result = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
