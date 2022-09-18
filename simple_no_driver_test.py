@@ -7,16 +7,23 @@ import pytest
 from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester
+from dtest_setup_overrides import DTestSetupOverrides
+from tools.misc import ImmutableMapping
 
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 @pytest.mark.parametrize('smp_options', [['--smp', '1'], ['--smp', '2']], ids=['SMP=1', 'SMP=2'])
 class TestSimple(Tester):
 
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config, smp_options):
+        dtest_setup_overrides = DTestSetupOverrides()
+        dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
         self.scylla_args = smp_options
+        return dtest_setup_overrides
 
     def prepare(self):
         """
@@ -29,7 +36,7 @@ class TestSimple(Tester):
         """
         Writes data via stress. Should write exact data expected by stress_read()
         """
-        node.stress(['write', 'n=100000', '-mode', 'cql3', 'simplenative',
+        node.stress(['write', 'n=100000', '-mode', 'simplenative', 'cql3',
                      '-rate', 'threads=1', '-pop', 'seq=1..100000'])
 
     def stress_read(self, node):
