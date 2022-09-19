@@ -196,7 +196,7 @@ class DTestSetup:
         self.ignore_cores_log_patterns = []
         self.ignore_cores = []
         self.cluster = None
-        self.cluster_options = []
+        self.cluster_options = {}
         self.replacement_node = None
         self.allow_log_errors = False
         self.connections = []
