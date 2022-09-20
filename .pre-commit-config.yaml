@@ -170,7 +170,8 @@ repos:
                 paging_additional_test.py|
                 nodetool_additional_test.py|
                 global_row_key_cache_test.py|
-                cql_additional_tests.py
+                cql_additional_tests.py|
+                throughput_limits_test.py
             )$
         language: system
         types: [python]

@@ -9,7 +9,8 @@ from ccmlib.scylla_node import ScyllaNode
 logger = logging.getLogger(__name__)
 
 
-def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None, ipformat=None, use_single_interface=False):
+def new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None, ipformat=None, use_single_interface=False
+             ) -> ScyllaNode:
     i = len(cluster.nodes) + 1
 
     ipprefix = cluster.ipprefix or ''
