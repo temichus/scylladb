@@ -622,7 +622,7 @@ class DTestSetup:
                 # shutil.rmtree over os.rmdir (or OSError: [Errno 39] Directory not empty might occur)
                 shutil.rmtree(self.test_path)
                 self.cleanup_last_test_dir()
-                cluster_id_allocator.free(self.cluster.id)
+            cluster_id_allocator.free(self.cluster.id)
 
     def cleanup_and_replace_cluster(self):
         for con in self.connections:
