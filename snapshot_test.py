@@ -150,7 +150,7 @@ class SnapshotTester(Tester):
     def validate_rows_count_in_all_tables(self, session, tables, expected_rows_count):
         for table in tables:
             rows = session.execute(f'SELECT count(*) from ks.{table}')
-            assert rows[0][0] == expected_rows_count
+            assert rows.one()[0] == expected_rows_count
 
     def clear_snapshot_per_keyspace_per_table(self, ip, tag, ks, cf):
         requests.delete("http://{}:10000/storage_service/snapshots?tag={}&kn={}&cf={}".format(ip, tag, ks, cf))
@@ -615,7 +615,7 @@ class TestArchiveCommitlog(SnapshotTester):
 
             rows = session.execute('SELECT count(*) from ks.cf')
             # Make sure we have the same amount of rows as when we snapshotted:
-            assert rows[0][0] == 65000
+            assert rows.one()[0] == 65000
 
             # Check that there are at least one commit log backed up that
             # is not one of the active commit logs:
@@ -670,7 +670,7 @@ class TestArchiveCommitlog(SnapshotTester):
 
             rows = session.execute('SELECT count(*) from ks.cf')
             # Make sure we have the same amount of rows as when we snapshotted:
-            assert rows[0][0] == 30000
+            assert rows.one()[0] == 30000
 
             # Edit commitlog_archiving.properties. Remove the archive
             # command  and set a restore command and restore_directories:
@@ -698,11 +698,11 @@ class TestArchiveCommitlog(SnapshotTester):
             # Now we should have 30000 rows from the snapshot + 30000 rows
             # from the commitlog backups:
             if not restore_archived_commitlog:
-                assert rows[0][0] == 30000
+                assert rows.one()[0] == 30000
             elif restore_point_in_time:
-                assert rows[0][0] == 60000
+                assert rows.one()[0] == 60000
             else:
-                assert rows[0][0] == 65000
+                assert rows.one()[0] == 65000
 
         finally:
             # clean up
@@ -1510,11 +1510,11 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
     def check_rows_number_in_table(self, session, ks, cf, number):
         rows = session.execute(f'SELECT count(*) from {ks}.{cf}')
-        assert rows[0][0] == number
+        assert rows.one()[0] == number
 
     def check_rows_number_in_index(self, session, ks, cf, number, index_column, value):
         rows = session.execute(f'SELECT count(*) from {ks}.{cf} WHERE {index_column} = {value}')
-        assert rows[0][0], number
+        assert rows.one()[0] == number
 
     def init_cluster_and_create_schema(self, ks, cf, mv=False, si=False, lsi=False):
         node, session = self.init_cluster()
