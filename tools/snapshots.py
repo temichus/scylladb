@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def make_snapshot(node: ScyllaNode,
                   ks: str = None,
-                  cf: str = None,
+                  cf: str = '',
                   cf_param_name: str = '-cf',
                   name: str = None,
                   additional_options: Optional[List[str]] = None) -> str:
@@ -47,7 +47,13 @@ def make_snapshot(node: ScyllaNode,
     :rtype: {str}
     """
     def _add_snapshot_dirs_to_list(_ks: Optional[str] = None):
-        tables = [f"{t}-*/" for t in cf.split(',')] if cf else ['*/']
+        tables = []
+        for t in cf.split(','):
+            tables.append(f"{t}-*/")
+            if glob.glob(f"{t}_*-*"):
+                tables.append(f"{t}_*-*")
+        else:
+            tables = ['*/']
 
         for table in tables:
             snapshot_dir_pattern = f"{node_dir}/data/"
