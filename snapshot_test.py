@@ -941,7 +941,6 @@ class TestParallelSnapshotOperations(Tester, SnapshotOperations):
         self.verify_stderr_empty(results)
 
 
-@pytest.mark.skip('Failing on scylla due to the schema.cql issue, https://github.com/scylladb/scylla/issues/7980')
 @pytest.mark.dtest_full
 @pytest.mark.single_node
 class TestSchemaFileInSnapshot(SnapshotTester):
