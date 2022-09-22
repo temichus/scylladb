@@ -1186,11 +1186,22 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.insert_rows(session, 0, 100)
 
+        if multiple_tables:
+            create_cf(session, name="cf1", key_type="int", columns={"val": "text"})
+            self.insert_rows(session, 0, 100, cf="cf1")
+
         # create snapshot for keyspace
         if not multiple_tables:
             snapshot_dir_base_table = make_snapshot(node1, ks='ks')
         else:
-            snapshot_dir_base_table = make_snapshot(node1, ks='ks', cf='cf,cf_mv')
+            snapshot_dir_base_table = make_snapshot(node1, ks='ks', cf='cf,cf1')
+
+        # expect explcit snapshot of view to fail
+        logger.debug("Taking snapshot of mv. Expected to fail...")
+        expected_error = 'take_snapshot failed'
+        self.ignore_log_patterns.append(expected_error)
+        with pytest.raises(NodetoolError) as ne:
+            make_snapshot(node1, ks='ks', cf='cf_mv', name='expected_to_fail')
 
         # get schema.cql files for base table and mv
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf')
@@ -1241,6 +1252,10 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
         self.insert_rows(session, 0, 100)
 
+        if multiple_tables:
+            create_cf(session, name="cf1", key_type="int", columns={"val": "text"})
+            self.insert_rows(session, 0, 100, cf="cf1")
+
         self.check_rows_number_in_table(session, 'ks', 'cf', 100)
         # check secondary index
         self.check_rows_number_in_index(session, 'ks', 'cf', 100, "val", "'asdf'")
@@ -1248,7 +1263,16 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         if not multiple_tables:
             snapshot_dir = make_snapshot(node1, ks='ks')
         else:
-            snapshot_dir = make_snapshot(node1, ks='ks', cf='cf,cf_ind_index')
+            snapshot_dir = make_snapshot(node1, ks='ks', cf='cf,cf1')
+
+        # expect explcit snapshot of view to fail
+        logger.debug("Taking snapshot of index. Expected to fail...")
+        expected_error = 'take_snapshot failed'
+        self.ignore_log_patterns.append(expected_error)
+        with pytest.raises(NodetoolError) as ne:
+            make_snapshot(node1, ks='ks', cf='cf_ind', name='expected_to_fail')
+        with pytest.raises(NodetoolError) as ne:
+            make_snapshot(node1, ks='ks', cf='cf_ind_index', name='expected_to_fail')
 
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir, 'ks', 'cf')
         base_table_desc = get_table_description(node1, 'ks', 'cf')
@@ -1300,10 +1324,23 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         self.insert_rows(session, 0, 100)
         self.check_rows_number_in_table(session, "ks", "cf", 100)
 
+        if multiple_tables:
+            create_cf(session, name="cf1", key_type="int", columns={"val": "text"})
+            self.insert_rows(session, 0, 100, cf="cf1")
+
         if not multiple_tables:
             snapshot_dir_base_table = make_snapshot(node1, ks='ks')
         else:
-            snapshot_dir_base_table = make_snapshot(node1, ks='ks', cf='cf,cf_val_index')
+            snapshot_dir_base_table = make_snapshot(node1, ks='ks', cf='cf,cf1')
+
+        # expect explcit snapshot of view to fail
+        logger.debug("Taking snapshot of index. Expected to fail...")
+        expected_error = 'take_snapshot failed'
+        self.ignore_log_patterns.append(expected_error)
+        with pytest.raises(NodetoolError) as ne:
+            make_snapshot(node1, ks='ks', cf='cf_val', name='expected_to_fail')
+        with pytest.raises(NodetoolError) as ne:
+            make_snapshot(node1, ks='ks', cf='cf_val_index', name='expected_to_fail')
 
         schema_cql_file_basic_table = self.get_schema_file_from_snapshot(snapshot_dir_base_table, 'ks', 'cf')
         table_desc = get_table_description(node1, "ks", "cf")
