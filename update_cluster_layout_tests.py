@@ -1324,6 +1324,27 @@ class TestUpdateClusterLayout(Tester):
     def test_simple_removenode_5(self):
         self._do_simple_removenode(kill_coordinator=False)
 
+    def test_removenode_rejoin(self):
+        """
+        Start node1,2,3
+        Stop node3
+        Run nodetool removenode $host_id_of_node3
+        Restart node3
+        Test node3 can not join the cluster after removenode
+        """
+        cluster = self.cluster
+        cluster.populate(3).start()
+        node1, node2, node3 = cluster.nodelist()
+        node3_hostid = node3.hostid()
+        node3.stop(wait_other_notice=True)
+        node1.nodetool("removenode %s" % node3_hostid)
+        self.ignore_log_patterns += [
+            'gossip - is_safe_for_restart:',
+            'Startup failed: std::runtime_error',
+        ]
+        node3.start(no_wait=True)
+        node3.watch_log_for("Can not restart the removed node to join the cluster again")
+
     def _add_new_node_while_add_new_table(self, when):
         """
         Test bootstrapped node get data in the new table
