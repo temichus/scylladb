@@ -394,7 +394,8 @@ CREATE TABLE processes (
     usersid text,
     userstring text,
     PRIMARY KEY (sessionguid, createtimestamp, processguid)) WITH CLUSTERING ORDER BY (createtimestamp DESC)
-        AND compaction = { 'class' : 'DateTieredCompactionStrategy' };
+        AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
+        AND default_time_to_live = 86400;
 
 // Enough info to look up a process
 CREATE TABLE sessionprocessinfo (
@@ -410,7 +411,8 @@ CREATE TABLE sessionprocessinfo (
     imagehash text, // ProcessCreate
     commandline text, // ProcessCreate
     PRIMARY KEY (processguid))
-        WITH compaction = { 'class' : 'DateTieredCompactionStrategy' };
+        WITH compaction = { 'class' : 'TimeWindowCompactionStrategy' }
+        AND default_time_to_live = 86400;
 
 // ALL process opens
 CREATE TABLE processopens (
@@ -434,7 +436,7 @@ CREATE TABLE processopens (
 	certissuer text, // From binary_global
 	certsubject text, // From binary_global
 	PRIMARY KEY (targetbasename, tstamp, targetprocessguid)) WITH CLUSTERING ORDER BY (tstamp DESC)
-        AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+        AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
         AND default_time_to_live = 86400
         AND gc_grace_seconds = 864000;
 
@@ -451,7 +453,7 @@ CREATE TABLE binaryloads (
     processbasename text,
     processguid uuid,
     PRIMARY KEY ((customerid, imagehash), processstarttime)) WITH CLUSTERING ORDER BY (processstarttime DESC)
-        AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+        AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
         AND default_time_to_live = 7776000
         AND gc_grace_seconds = 864000;
 
@@ -503,7 +505,7 @@ CREATE TABLE thread_injection (
 	modulenearestexport text,
     commandline text,
     PRIMARY KEY (sessionguid, tstamp)) WITH CLUSTERING ORDER BY (tstamp DESC)
-        AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+        AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
         AND default_time_to_live = 86400
         AND gc_grace_seconds = 864000;
 
@@ -542,7 +544,7 @@ CREATE TABLE tokenchange (
     parenttokenenabledprivilege int, // ProcessCreate
     parentusersid text, // ProcessCreate
     PRIMARY KEY (sessionguid, tstamp)) WITH CLUSTERING ORDER BY (tstamp DESC)
-        AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+        AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
         AND default_time_to_live = 86400
         AND gc_grace_seconds = 864000;
 
@@ -564,7 +566,7 @@ CREATE TABLE filechange (
     processguid uuid, // FileChange
     systemguid uuid, // FileChange
     PRIMARY KEY (sessionguid, tstamp)) WITH CLUSTERING ORDER BY (tstamp DESC)
-        AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+        AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
         AND default_time_to_live = 86400
         AND gc_grace_seconds = 864000;
 
@@ -822,7 +824,7 @@ CREATE TABLE registry_activity (
     status bigint,
     PRIMARY KEY ((customerguid, systemguid, sessionguid), processguid, tstamp))
     WITH CLUSTERING ORDER BY (processguid DESC, tstamp DESC)
-    AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+    AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
     AND default_time_to_live = 86400
     AND gc_grace_seconds = 864000;
 
@@ -851,7 +853,7 @@ CREATE TABLE network_connections3 (
     datalengthout bigint,
     PRIMARY KEY ((customerguid, hostid), starttstamp))
     WITH CLUSTERING ORDER BY (starttstamp DESC)
-        AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+        AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
         AND default_time_to_live = 864000
         AND gc_grace_seconds = 30;
 
@@ -885,7 +887,7 @@ CREATE TABLE network_connections2 (
     hostname text,
     PRIMARY KEY (customerguid, systemguid, sessionguid, protopid, tstamp))
       WITH CLUSTERING ORDER BY (systemguid DESC, sessionguid DESC, protopid DESC, tstamp DESC)
-        AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+        AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
         AND default_time_to_live = 864000
         AND gc_grace_seconds = 30;
 
@@ -916,7 +918,7 @@ CREATE TABLE network_connections (
 	duration bigint,
 	PRIMARY KEY ((customerguid, systemguid, processguid, connectiontype, flowid, bindid), tstamp))
 	  WITH CLUSTERING ORDER BY (tstamp DESC)
-      AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+      AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
       AND default_time_to_live = 86400
       AND gc_grace_seconds = 30;
 
@@ -1091,7 +1093,7 @@ CREATE TABLE ml_smbsessions_detect (
    userflags_user boolean,
    userflags_guest boolean,
    PRIMARY KEY (partitionid, tstamp)) WITH CLUSTERING ORDER BY (tstamp DESC)
-              AND compaction = { 'class' : 'DateTieredCompactionStrategy' }
+              AND compaction = { 'class' : 'TimeWindowCompactionStrategy' }
               AND default_time_to_live = 691200
               AND gc_grace_seconds = 0;
 

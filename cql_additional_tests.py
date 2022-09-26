@@ -7117,18 +7117,23 @@ class TestsCQLAdditional(Tester):
 
         Create 100 tables, and try to restart the scylla-server of two nodes
         """
-        self.cluster.populate(3).start()
+        jvm_args = [
+            '--twcs-max-window-count', '100',
+        ]
+        self.cluster.populate(3).start(jvm_args=jvm_args)
         nodes = self.cluster.nodelist()
         schema_file = "test_data/c-s-profiles/create_100tables.cql"
         assert os.path.exists(schema_file), "schema file doesn't exist"
 
         logger.debug("Create 100+ tables by simple_test_100tables.cql")
 
-        nodes[0].run_cqlsh(cmds="SOURCE '%s'" % schema_file, show_output=True, return_output=True)
+        out, err = nodes[0].run_cqlsh(cmds="SOURCE '%s'" % schema_file, show_output=True, return_output=True)
+        assert not err, err
 
         logger.debug("Check created tables in KEYSPACE `veraminetest`")
         out, err = nodes[0].run_cqlsh(cmds='USE veraminetest; DESCRIBE TABLES', show_output=True, return_output=True)
-        assert len(out.split()) == 112, 'created 100+ tables'
+        assert not err, err
+        assert len(out.split()) == 112, out
 
         logger.debug("Drain node1")
         resp = nodes[0].drain()
