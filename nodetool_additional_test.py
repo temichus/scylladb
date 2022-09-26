@@ -1289,9 +1289,9 @@ class TestNodetool(Tester):
         logger.debug("Schema version has been recalculated")
 
     # TODO: This test should be removed when issue #7811 will be fixed
-    def test_resetlocalschema_api_issue_7811(self):
-        self.ignore_log_patterns += ['Invalid window unit NOPE for compaction_window_unit',
-                                     'find a column family with UUID']
+    @pytest.mark.parametrize("strategy", ['TimeWindowCompactionStrategy', 'SizeTieredCompactionStrategy'])
+    def test_resetlocalschema_api_issue_7811(self, strategy):
+        self.ignore_log_patterns += ['find a column family with UUID']
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
         node1, node2 = cluster.nodelist()
@@ -1299,23 +1299,49 @@ class TestNodetool(Tester):
 
         create_ks(session=session, name='ks', rf=2)
 
+        compaction_class = {'class': strategy}
+        if strategy == 'TimeWindowCompactionStrategy':
+            invalid_compaction_option = 'compaction_window_unit'
+            expected_error = 'Invalid window unit NOPE for compaction_window_unit'
+        elif strategy == 'SizeTieredCompactionStrategy':
+            invalid_compaction_option = 'min_sstable_size'
+            expected_error = "Invalid long value NOPE for 'min_sstable_size'"
+        self.ignore_log_patterns.append(expected_error)
+
+        compaction_options = compaction_class | {invalid_compaction_option: 'NOPE'}
+        logger.debug(f"Creating ks.cf with invalid compaction_options: {compaction_options}")
         try:
             create_cf(session=session, name='cf',
-                      compaction={'class': 'TimeWindowCompactionStrategy', 'compaction_window_unit': 'NOPE'})
-        except Exception:
-            pass
-
-        self._verify_nodes_schema_versions(node1, 1)
-
-        try:
-            create_cf(session=session, name='cf', compaction={'class': 'TimeWindowCompactionStrategy'})
+                      compaction=compaction_options)
+            pytest.fail("Creating ks.cf with invalid compaction option was expected to fail")
         except Exception as exc:
-            # Issue https://github.com/scylladb/scylla/issues/7811
+            logger.debug(f"Got exception: {exc}")
+            assert expected_error in str(exc), f"Got unexpected exception: {exc}"
             pass
 
         self._verify_nodes_schema_versions(node1, 1)
 
         log_position = node2.mark_log()
+        logger.debug("Recreating ks.cf")
+        recreate_failed = False
+        try:
+            create_cf(session=session, name='cf', compaction=compaction_class)
+            logger.debug(f"Creating ks.cf succeeded. Issue #7811 might have been fixed.")
+        except Exception as exc:
+            # Issue https://github.com/scylladb/scylla/issues/7811
+            logger.debug(f"Got exception: {exc}")
+            assert "Can't find a column family with UUID" in str(exc), f"Got unexpected exception: {exc}"
+            recreate_failed = True
+            pass
+
+        if not recreate_failed:
+            assert node2.watch_log_for("schema_tables - Schema version changed to", from_mark=log_position, timeout=10), \
+                "Schema recalculation was not performed"
+
+        self._verify_nodes_schema_versions(node1, 1)
+
+        log_position = node2.mark_log()
+        logger.debug("Calling relocal_schema api")
         self.send_storage_restful_api(node2, 'relocal_schema')
 
         assert node2.watch_log_for("schema_tables - Schema version changed to", from_mark=log_position, timeout=10), \
@@ -1323,14 +1349,17 @@ class TestNodetool(Tester):
 
         # After schema recalculation the node, where nodetool was run, will get new schema version,
         # different from another node
-        self._verify_nodes_schema_versions(node1, 2)
+        if recreate_failed:
+            self._verify_nodes_schema_versions(node1, 2)
 
-        # By Tomasz's explanation: after 60 sec. the other node should pull and have the same schema version
-        logger.debug("Sleep for 60 sec: the other node should pull new version")
-        time.sleep(60)
-        self._verify_nodes_schema_versions(node1, 1)
+            # By Tomasz's explanation: after 60 sec. the other node should pull and have the same schema version
+            logger.debug("Sleep for 60 sec: the other node should pull new version")
+            time.sleep(60)
+            self._verify_nodes_schema_versions(node1, 1)
 
-        logger.debug("Schema version has been recalculated")
+            logger.debug("Schema version has been recalculated")
+        else:
+            self._verify_nodes_schema_versions(node1, 1)
 
     @pytest.mark.require("scylla-tools-java:#226")
     def test_resetlocalschema_nodetool(self):
