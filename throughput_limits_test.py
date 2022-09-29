@@ -1,21 +1,24 @@
 """Tests for limiting streaming/repair/compaction and other throughput limits"""
+import signal
+
 import pytest
-from cassandra.cluster import Session
 from ccmlib.scylla_node import ScyllaNode
 
 from dtest_class import Tester
 from tools.cluster import new_node
 
 
-@pytest.mark.dtest_full
-class TestStreamingLimitThroughput(Tester):
-    """Testing https://github.com/scylladb/scylladb/commit/1f21c1ecc8e90d2bced38c019b1de0b3f651ddf1"""
-
+class ThroughputLimitTester(Tester):
     def prepare(self, nodes, wait_for_binary_proto=True,
                 jvm_args=None, configuration_options=None) -> ScyllaNode:
         self.cluster.set_configuration_options(values=configuration_options)
         self.cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
         return self.cluster.nodelist()[0]
+
+
+@pytest.mark.dtest_full
+class TestStreamingLimitThroughput(ThroughputLimitTester):
+    """Testing https://github.com/scylladb/scylladb/commit/1f21c1ecc8e90d2bced38c019b1de0b3f651ddf1"""
 
     def test_limit_streaming_throughput(self):
         """Verifies streaming throughput can be limited using configuration option."""
@@ -62,3 +65,36 @@ class TestStreamingLimitThroughput(Tester):
         for line, match in rbno_succeeded_lines:
             # asserting 2MB instead 1MB due limited precision of throughput limiter - usually around 1.5MB/s
             assert float(match.group(1)) < 2, "Failed to limit bandwidth for repair based bootstrap keyspace1"
+
+
+@pytest.mark.dtest_full
+class TestCompactionLimitThroughput(ThroughputLimitTester):
+    """Verifies compaction throughput limit for automatic compactions.
+
+    Testing https://github.com/scylladb/scylladb/commit/bfc521ee9c2ba16fc4a15e68c21f68300658f530
+    """
+    @pytest.mark.single_node
+    def test_can_limit_compaction_throughput(self):
+        node1 = self.prepare(1)
+        # set compaction_throughput_mb_per_sec setting in runtime
+        node1.set_configuration_options(values={'compaction_throughput_mb_per_sec': 5})
+        # send SIGHUP to reread configuration
+        node1.kill(signal.SIGHUP)
+        node1.watch_log_for(r"Set compaction bandwidth to 5MB/s", timeout=180)
+
+        # populate data to have something to compact
+        mark = node1.mark_log()
+        node1.stress(['write', 'n=200000', 'no-warmup', '-schema', 'replication(factor=1)', '-rate', 'threads=3',
+                      '-col', 'size=FIXED(64)'])
+        node1.flush()
+
+        # wait for compaction to finish and validate throughput
+        node1.watch_log_for(r"Compact keyspace1\.standard1 .+ Compacted", from_mark=mark, timeout=240)
+        compaction_lines = node1.grep_log(
+            r"Compact keyspace1\.standard1 .+ Compacted [\d]+ sstables to .+ in .+= ([\d]+)MB"
+        )
+        assert compaction_lines, "Failed to find compaction finished lines in logs"
+        for line, match in compaction_lines[-1:]:
+            # asserting 4MB instead 3MB due limited precision of throughput limiter
+            assert float(match.group(1)) <= 6, \
+                f"Failed to limit compaction bandwidth ({match.group(1)}MB/s<=6)"
