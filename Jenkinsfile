@@ -49,6 +49,7 @@ pipeline {
         booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Check this to check pipeline syntax. will not perform anything.')
         booleanParam(name: 'PRESERVE_WORKSPACE', defaultValue: false, description: 'Check this if you need the workspace to remain (for debug)')
         string(name: 'SPLIT_TIME_TARGET', defaultValue: '240', description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
+        string(name: 'TIMEOUT_PARAM', defaultValue: "2", description: 'hours. This time includes the time needed to wait for local machines. Could be much less for cloud machines.')
     }
     stages {
         stage("precommit") {
