@@ -39,6 +39,7 @@ class TestWideRows(Tester):
     BLOB_SIZE_1MB = 1024 * 1024
     KEYSPACE_NAME = 'wide_row'
     TABLE_NAME = 'user_events'
+    date = datetime.datetime.now()
 
     @pytest.fixture(autouse=True)
     def setup_compaction_strategy(self, strategy):
@@ -92,13 +93,12 @@ class TestWideRows(Tester):
         expected_row_size = (one_blob_size + 8 + 8) * partition_rows  # aproximately partition size
         expected_rows = {}
 
-        date = datetime.datetime.now()
         logger.debug(
             'Prefill table {} with {} partition(s), {} row(s) each'.format(table_name, partitions_num, partition_rows))
         for k in range(start_partition_index, start_partition_index + partitions_num):
             user = 'user%d' % k
             for i in range(partition_rows):
-                date_str = (date + datetime.timedelta(i)).strftime("%Y-%m-%d")
+                date_str = (self.date + datetime.timedelta(i)).strftime("%Y-%m-%d")
                 value = 'a' * one_blob_size  # 1K value in the blob column
                 session.execute("UPDATE %s SET value = textAsBlob('%s') WHERE userid='%s' and event='%s'"
                                 % (table_name, value, user, date_str))
@@ -123,18 +123,16 @@ class TestWideRows(Tester):
                                                                                              self.compaction_option)
         session.execute(create_table_query)
 
-    @staticmethod
-    def create_large_row_static_data(session, table_name, rows_num):
+    def create_large_row_static_data(self, session, table_name, rows_num):
         """
         This will generate varied MB-size data and insert it to requested number of rows.
         The size ranges from 1mb to 10mb since it assumed to be a threshold to trigger large partition detector.
         """
         large_data_1_mb = 'x' * 1024 * 1024
-        date = datetime.datetime.now()
         logger.debug(f'Prefill table {table_name} with {rows_num} rows')
         for index in range(1, rows_num+1):
             userid = f'user{index}'
-            event = (date + datetime.timedelta(index)).strftime("%Y-%m-%d")
+            event = (self.date + datetime.timedelta(index)).strftime("%Y-%m-%d")
             # Default large data threshold for cells is 1 mb, for rows it is 10 mb.
             large_data = large_data_1_mb * random.choice(range(1, 11))
             query = f"INSERT INTO {table_name} (userid, event, static_value) VALUES ('{userid}', '{event}', '{large_data}')"
@@ -144,12 +142,11 @@ class TestWideRows(Tester):
         expected_rows = {}
         expected_row_size = columns_num * one_blob_size  # approximately row size
 
-        date = datetime.datetime.now()
         logger.debug(f'Prefill table {table_name} with {rows_num} rows')
         for k in range(start_row_index, start_row_index + rows_num):
             user = 'user%d' % k
             value = 'a' * int(one_blob_size)
-            event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
+            event = (self.date + datetime.timedelta(k)).strftime("%Y-%m-%d")
             for i in range(columns_num):
                 out = session.execute(
                     "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
@@ -162,12 +159,11 @@ class TestWideRows(Tester):
         expected_rows = {}
         expected_row_size = columns_num * one_blob_size  # approximately row size
 
-        date = datetime.datetime.now()
         logger.debug(f'Prefill table {table_name} with {rows_num} rows')
         for k in range(start_row_index, start_row_index + rows_num):
             user = f"user{partition_index}"
             value = 'a' * int(one_blob_size)
-            event = (date + datetime.timedelta(k)).strftime("%Y-%m-%d")
+            event = (self.date + datetime.timedelta(k)).strftime("%Y-%m-%d")
             for i in range(columns_num):
                 session.execute(
                     "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
@@ -426,12 +422,11 @@ class TestWideRows(Tester):
         logger.debug('Create Table....')
         session.execute('CREATE TABLE user_events (userid text, event timestamp, value text, '
                         'PRIMARY KEY (userid, event)) WITH %s' % self.compaction_option)
-        date = datetime.datetime.now()
         # Create a large timeline for each of a group of users:
         for user in ('ryan', 'cathy', 'mallen', 'joaquin', 'erin', 'ham'):
             logger.debug("Writing values for: %s" % user)
             for day in range(5000):
-                date_str = (date + datetime.timedelta(day)).strftime("%Y-%m-%d")
+                date_str = (self.date + datetime.timedelta(day)).strftime("%Y-%m-%d")
                 client = random.choice(clients)
                 msg = random.choice(status_messages)
                 query = "UPDATE user_events SET value = '{msg:%s, client:%s}' WHERE userid='%s' and event='%s';" \
@@ -441,7 +436,7 @@ class TestWideRows(Tester):
 
         # Pick out an update for a specific date:
         query = "SELECT value FROM user_events WHERE userid='ryan' and event='%s'" % \
-                (date + datetime.timedelta(10)).strftime("%Y-%m-%d")
+                (self.date + datetime.timedelta(10)).strftime("%Y-%m-%d")
         rows = session.execute(query)
         for value in rows:
             logger.debug(value)
