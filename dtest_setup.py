@@ -364,7 +364,7 @@ class DTestSetup:
 
     def _create_session(self, node, keyspace, user, password, compression, protocol_version,
                         port=None, ssl_opts=None, execution_profiles=None, topology_event_refresh_window=10,
-                        request_timeout=None, keep_session=True, ssl_context=None, **kwargs):
+                        request_timeout=None, keep_session=True, ssl_context=None, load_balancing_policy=None, **kwargs):
         nodes = []
         if type(node) is list:
             nodes = node
@@ -386,7 +386,10 @@ class DTestSetup:
         if request_timeout is None:
             request_timeout = self.cql_request_timeout
 
-        profiles = {EXEC_PROFILE_DEFAULT: make_execution_profile(request_timeout=request_timeout, **kwargs)
+        if load_balancing_policy is None:
+            load_balancing_policy = default_lbp_factory()
+
+        profiles = {EXEC_PROFILE_DEFAULT: make_execution_profile(request_timeout=request_timeout, load_balancing_policy=load_balancing_policy, **kwargs)
                     } if not execution_profiles else execution_profiles
 
         cluster = PyCluster(node_ips,
