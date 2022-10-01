@@ -1117,6 +1117,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=view_name)
 
+    @pytest.mark.single_node
     def test_large_cell_detector_with_small_cells(self):
         """
         Create table with one large cell and few small cells. Validate that just large cell is reported in the
@@ -1125,7 +1126,7 @@ class TestWideRows(Tester):
         rows_number = 10
         columns_num = 3
         entity_type = 'cell'
-        session = self.prepare_cluster(nodes=3, rf=3)
+        session = self.prepare_cluster()
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
                                     entity_type=entity_type)
@@ -1159,6 +1160,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
+    @pytest.mark.single_node
     def test_multiple_rows_with_large_cells_detector(self):
         """
         Create table with 10 large cells. Validate that it's reported in the
@@ -1168,7 +1170,7 @@ class TestWideRows(Tester):
         rows_number = 10
         entity_type = 'cell'
 
-        session = self.prepare_cluster(nodes=3, rf=3)
+        session = self.prepare_cluster()
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
                                     entity_type=entity_type)
@@ -1190,6 +1192,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
+    @pytest.mark.single_node
     def test_multiple_columns_with_large_cells_detector(self):
         """
         Create table with 10 large cells and 5 rows (total of 50 large cell warnings). Validate that they are
@@ -1199,7 +1202,7 @@ class TestWideRows(Tester):
         rows_number = 5
         entity_type = 'cell'
 
-        session = self.prepare_cluster(nodes=3, rf=3)
+        session = self.prepare_cluster()
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
                                     entity_type=entity_type)
@@ -1221,6 +1224,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
+    @pytest.mark.single_node
     def test_multiple_rows_and_columns_with_large_cells_detector(self):
         """
         Create table with 5 large cells on 10 rows. Validate that it's reported in the
@@ -1230,7 +1234,7 @@ class TestWideRows(Tester):
         rows_number = 10
         entity_type = 'cell'
 
-        session = self.prepare_cluster(nodes=3, rf=3)
+        session = self.prepare_cluster()
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
                                     entity_type=entity_type)
@@ -1301,6 +1305,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=view_name)
 
+    @pytest.mark.single_node
     def test_large_cell_detector_with_ttl_on_row(self):
         """
         Create table with large cells. Validate that it's reported in the
@@ -1313,7 +1318,7 @@ class TestWideRows(Tester):
         extra_rows = 0
         entity_type = 'cell'
 
-        session = self.prepare_cluster(nodes=3, rf=3)
+        session = self.prepare_cluster()
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
                                     entity_type=entity_type)
@@ -1356,6 +1361,7 @@ class TestWideRows(Tester):
                                    marked_logs_dict=mark_logs,
                                    expect_warning=False)
 
+    @pytest.mark.single_node
     def test_large_cell_after_threshold_change(self):
         """
         Create table with ten large cells and few smaller cells after threshold changing. Validate that just cell
@@ -1366,7 +1372,7 @@ class TestWideRows(Tester):
         columns_num = 3
         extra_rows = 0
         entity_type = 'cell'
-        session = self.prepare_cluster(nodes=3, rf=3, options_dict={'compaction_large_cell_warning_threshold_mb': 2})
+        session = self.prepare_cluster(options_dict={'compaction_large_cell_warning_threshold_mb': 2})
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
                                     entity_type=entity_type)
@@ -1421,6 +1427,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
+    @pytest.mark.single_node
     def test_large_cell_and_then_increase_threshold(self):
         """
         Create table with one large cell and few smaller cells after threshold changing. Validate that just cell
@@ -1431,7 +1438,7 @@ class TestWideRows(Tester):
         columns_num = 3
         extra_rows = 0
         entity_type = 'cell'
-        session = self.prepare_cluster(nodes=3, rf=3)
+        session = self.prepare_cluster()
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
                                     entity_type=entity_type)
@@ -1467,6 +1474,9 @@ class TestWideRows(Tester):
             node.stop()
             node.start(wait_other_notice=True, wait_for_binary_proto=True)
 
+        # reconnect after single node restart to prevent NoHostAvailable
+        session = self.patient_cql_connection(self.cluster.nodelist(), keyspace=self.KEYSPACE_NAME)
+
         self.cluster.flush()
         extra_rows += self.trigger_compaction_by_data_write_and_flush(session, entity_type, rows_number + extra_rows)
 
@@ -1489,6 +1499,7 @@ class TestWideRows(Tester):
                                    expected_entity_data_size=0,
                                    pk_max_index=0)
 
+    @pytest.mark.single_node
     def test_large_cell_detector_with_full_compaction(self):
         """
         Create table with one large cell and few small cells. Validate that just large cell is reported in the
@@ -1497,7 +1508,7 @@ class TestWideRows(Tester):
         rows_num = 10
         columns_num = 10
         entity_type = 'cell'
-        session = self.prepare_cluster(nodes=3, rf=3)
+        session = self.prepare_cluster()
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num,
                                     entity_type=entity_type)
@@ -1530,6 +1541,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
+    @pytest.mark.single_node
     def test_large_row_detector_with_full_compaction(self):
         """
         Create table with one large row and small rows. Validate that just large row is reported in the
@@ -1540,8 +1552,7 @@ class TestWideRows(Tester):
         small_row_num = 10
         entity_type = 'row'
 
-        session = self.prepare_cluster(nodes=3, rf=3,
-                                       options_dict={'compaction_large_row_warning_threshold_mb': 1})
+        session = self.prepare_cluster(options_dict={'compaction_large_row_warning_threshold_mb': 1})
 
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
         # Insert large row
@@ -1573,6 +1584,7 @@ class TestWideRows(Tester):
                                    keyspace_name=self.KEYSPACE_NAME,
                                    table_name=self.TABLE_NAME)
 
+    @pytest.mark.single_node
     def test_large_partition_detector_with_full_compaction(self):
         """
         Create table with one large partition and one small partition and validate that partition is reported in
@@ -1582,8 +1594,7 @@ class TestWideRows(Tester):
         partition_num = 1
         entity_type = 'partition'
 
-        session = self.prepare_cluster(nodes=4, rf=3,
-                                       options_dict={'compaction_large_partition_warning_threshold_mb': 4})
+        session = self.prepare_cluster(options_dict={'compaction_large_partition_warning_threshold_mb': 4})
 
         self.create_large_partition_table(session=session, table_name=self.TABLE_NAME)
         expected_partition_data_size = self.create_large_partition_data(session=session,
