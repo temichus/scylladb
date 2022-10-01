@@ -123,6 +123,13 @@ class TestWideRows(Tester):
                                                                                              self.compaction_option)
         session.execute(create_table_query)
 
+    def create_too_many_collection_elements_table(self, session, table_name):
+        logger.debug('Create table {} with too many collection items'.format(table_name))
+        create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, value0 blob, kvmap map<text, text>, ' \
+                             'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
+                                                                                             self.compaction_option)
+        session.execute(create_table_query)
+
     def create_large_row_static_data(self, session, table_name, rows_num):
         """
         This will generate varied MB-size data and insert it to requested number of rows.
@@ -155,7 +162,7 @@ class TestWideRows(Tester):
 
         return expected_rows
 
-    def create_too_many_rows_data(self, session, table_name, rows_num, columns_num, one_blob_size, partition_index, start_row_index):
+    def create_too_many_rows_data(self, session, table_name, rows_num, columns_num, one_blob_size, partition_index, start_row_index, collection_elements=0, start_collection_element_index=0):
         expected_rows = {}
         expected_row_size = columns_num * one_blob_size  # approximately row size
 
@@ -168,9 +175,29 @@ class TestWideRows(Tester):
                 session.execute(
                     "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
                     .format(**locals()))
+            if collection_elements:
+                for i in range(start_collection_element_index, start_collection_element_index + collection_elements):
+                    session.execute(
+                        f"UPDATE {table_name} SET kvmap['key{i}'] = 'val{i}' WHERE userid='{user}' and event='{event}'")
             expected_rows['{}.{}'.format(user, event)] = expected_row_size
 
         return expected_rows
+
+    def delete_too_many_rows_data(self, session, table_name, rows_num, columns_num, start_col_index, partition_index, start_row_index, collection_elements=0, start_collection_element_index=0):
+        logger.debug(
+            f'Delete from table {table_name} with {rows_num} rows, {columns_num} columns, and {collection_elements} collection items')
+        for k in range(start_row_index, start_row_index + rows_num):
+            user = f"user{partition_index}"
+            event = (self.date + datetime.timedelta(k)).strftime("%Y-%m-%d")
+            if columns_num:
+                for i in range(start_col_index, start_col_index + columns_num):
+                    session.execute(f"DELETE value{i} FROM {table_name} WHERE userid='{user}' and event='{event}'")
+            elif collection_elements:
+                for i in range(start_collection_element_index, start_collection_element_index + collection_elements):
+                    session.execute(
+                        f"DELETE kvmap['key{i}'] FROM {table_name} WHERE userid='{user}' and event='{event}'")
+            else:
+                session.execute(f"DELETE FROM {table_name} WHERE userid='{user}' and event='{event}'")
 
     def search_warning(self, node, warning_text, marked_logs_dict, expect_warning=True):
         from_mark = marked_logs_dict.get(node.name) or 0
@@ -185,7 +212,7 @@ class TestWideRows(Tester):
         else:
             assert not res, f'Non expect warning {warning_text} was found in the log of node {node.name}'
 
-    def get_cluster_system_state(self, entity_type, keyspace_name, table_name):
+    def get_cluster_system_state(self, entity_type, keyspace_name, table_name, with_collection=False):
         cluster_state = {}
         for node in self.cluster.nodelist():
             entity_info = defaultdict(int)
@@ -198,10 +225,13 @@ class TestWideRows(Tester):
                 session = self.patient_exclusive_cql_connection(node=node, keyspace=keyspace_name)
                 # Get large partition/row details from system.large_partitions/large_rows tables
                 clustering_key = 'clustering_key, ' if entity_type in ('row', 'cell') else ''
-                query = 'select sstable_name, partition_key, {clustering_key}{entity_type}_size ' \
+                collection_elements = ', collection_elements' if with_collection and entity_type == 'cell' else ''
+                query = 'select sstable_name, partition_key, {clustering_key}{entity_type}_size{collection_elements} ' \
                         'from system.large_{entity_type}s ' \
                         'where keyspace_name=\'{keyspace_name}\' and table_name=\'{table_name}\''.format(**locals())
+                logger.debug(query)
                 result = list(session.execute(query))
+                logger.debug(f"result: {result}")
 
                 for row in result:
                     key = row[1] if len(row) == 3 else '{}.{}'.format(row[1], row[2])
@@ -262,8 +292,10 @@ class TestWideRows(Tester):
         # system.large_row_size/system.large_partition_size
         row_size_threshold = 3
         for node_info in cluster_state.values():
+            logger.debug(f"info_from_system_table[{data_column}]: {node_info['info_from_system_table'][data_column]}")
             for pk, size in node_info['info_from_system_table'][data_column].items():
-                expected_size = expected_entity_data_size.get(pk)
+                expected_size = expected_entity_data_size if type(
+                    expected_entity_data_size) is int else expected_entity_data_size.get(pk)
                 msg = f'The {entity_type} with primary key "{pk}" is not reported as large {entity_type}'
                 assert expected_size is not None, msg
                 assert_equal_more_with_deviation(size, expected_size, row_size_threshold)
@@ -281,9 +313,11 @@ class TestWideRows(Tester):
                                         'Actual sstables: {sstables_from_system}'.format(**locals()))
 
     def validate_system_table(self, entity_type, keyspace_name, table_name, expected_entity_number,
-                              expected_entity_data_size, pk_max_index=None, data_column='partition_size'):
+                              expected_entity_data_size, pk_max_index=None, data_column='partition_size',
+                              with_collection=False):
         cluster_state = self.get_cluster_system_state(entity_type=entity_type,
-                                                      keyspace_name=keyspace_name, table_name=table_name)
+                                                      keyspace_name=keyspace_name, table_name=table_name,
+                                                      with_collection=with_collection)
         self.validate_entities_recognized_as_large(entity_type=entity_type, cluster_state=cluster_state,
                                                    expected_count=expected_entity_number)
         # In case there are small partitions/rows - verify the they didn't recognized as large
@@ -488,6 +522,97 @@ class TestWideRows(Tester):
                                    expected_entity_data_size=(initial_rows_number + additional_rows_number))
 
     @pytest.mark.single_node
+    def test_too_many_collection_elements(self):
+        """
+        Test the sstables holding a collection with number of items over the threshold
+        is recorded in system.large_cells
+        Starting 5.2 (See https://github.com/scylladb/scylladb/issues/11449)
+        """
+        columns_num = 1
+        initial_collection_elements_number = 10
+        additional_collection_elements_number = 1
+        entity_type = 'cell'
+
+        session = self.prepare_cluster(nodes=1, rf=1,
+                                       options_dict={'compaction_collection_elements_count_warning_threshold': initial_collection_elements_number})
+        node1 = self.cluster.nodelist()[0]
+
+        self.create_too_many_collection_elements_table(session=session, table_name=self.TABLE_NAME)
+        gc_grace_seconds = 1
+        session.execute(f"ALTER TABLE {self.TABLE_NAME} WITH gc_grace_seconds = {gc_grace_seconds}")
+
+        logger.debug("Populating table")
+        self.create_too_many_rows_data(session=session,
+                                       table_name=self.TABLE_NAME,
+                                       columns_num=columns_num,
+                                       rows_num=1,
+                                       one_blob_size=128,
+                                       partition_index=0,
+                                       start_row_index=0,
+                                       collection_elements=initial_collection_elements_number)
+
+        self.cluster.flush()
+        self.cluster.wait_for_compactions()
+
+        logger.debug("No large cells expected")
+        self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME,
+                                   expected_entity_number=0,
+                                   expected_entity_data_size=initial_collection_elements_number,
+                                   with_collection=True)
+
+        logger.debug("Adding collection item")
+        self.create_too_many_rows_data(session=session,
+                                       table_name=self.TABLE_NAME,
+                                       columns_num=columns_num,
+                                       rows_num=1,
+                                       one_blob_size=128,
+                                       partition_index=0,
+                                       start_row_index=0,
+                                       collection_elements=additional_collection_elements_number,
+                                       start_collection_element_index=initial_collection_elements_number)
+
+        self.cluster.flush()
+        self.cluster.compact()
+
+        logger.debug(f"1 large cell(s) expected")
+        self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME,
+                                   expected_entity_number=1,
+                                   expected_entity_data_size=(initial_collection_elements_number +
+                                                              additional_collection_elements_number),
+                                   with_collection=True)
+
+        node1.nodetool("snapshot")
+
+        logger.debug("Deleting 1 colection item")
+        self.delete_too_many_rows_data(session=session,
+                                       table_name=self.TABLE_NAME,
+                                       partition_index=0,
+                                       rows_num=1,
+                                       start_row_index=0,
+                                       columns_num=0,
+                                       start_col_index=0,
+                                       collection_elements=1,
+                                       start_collection_element_index=random.randint(0, initial_collection_elements_number + additional_collection_elements_number))
+
+        self.cluster.flush()
+
+        logger.debug(f"Sleeping for {gc_grace_seconds + 1} seconds for gc_grace_seconds to expire")
+        time.sleep(gc_grace_seconds + 1)
+
+        logger.debug(f"Compacting {self.TABLE_NAME}")
+        self.cluster.compact()
+        node1.wait_for_compactions()
+
+        logger.debug("No large cells expected")
+        self.validate_system_table(entity_type=entity_type, keyspace_name=self.KEYSPACE_NAME,
+                                   table_name=self.TABLE_NAME,
+                                   expected_entity_number=0,
+                                   expected_entity_data_size=initial_collection_elements_number,
+                                   with_collection=True)
+
+    @pytest.mark.single_node
     def test_column_index_stress(self):
         """Write a large number of columns to a single row and set
         'column_index_size_in_kb' to a sufficiently low value to force
@@ -532,7 +657,7 @@ class TestWideRows(Tester):
         """
 
         self.prepare_cluster(nodes=4, rf=3,
-                                       options_dict={'compaction_large_partition_warning_threshold_mb': 1})
+                             options_dict={'compaction_large_partition_warning_threshold_mb': 1})
         node1, node2 = self.cluster.nodelist()[0:2]
         logger.debug(f'Stop {node2.name}')
         node2.stop(wait_other_notice=True)
@@ -561,7 +686,7 @@ class TestWideRows(Tester):
         extra_partitions = 0
 
         self.prepare_cluster(nodes=4, rf=3,
-                                       options_dict={'compaction_large_partition_warning_threshold_mb': 1})
+                             options_dict={'compaction_large_partition_warning_threshold_mb': 1})
 
         node1, node2 = self.cluster.nodelist()[0:2]
         logger.debug('Stop {}'.format(node2.name))
@@ -795,7 +920,7 @@ class TestWideRows(Tester):
         extra_rows = 0
 
         self.prepare_cluster(nodes=3, rf=2,
-                                       options_dict={'compaction_large_row_warning_threshold_mb': 1})
+                             options_dict={'compaction_large_row_warning_threshold_mb': 1})
 
         node1, node2 = self.cluster.nodelist()[0:2]
         logger.debug('Stop {}'.format(node2.name))
