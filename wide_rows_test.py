@@ -537,12 +537,13 @@ class TestWideRows(Tester):
         3. run a major compaction on nodes.
         """
 
-        session = self.prepare_cluster(nodes=4, rf=3,
+        self.prepare_cluster(nodes=4, rf=3,
                                        options_dict={'compaction_large_partition_warning_threshold_mb': 1})
-        node2 = self.cluster.nodelist()[1]
+        node1, node2 = self.cluster.nodelist()[0:2]
         logger.debug(f'Stop {node2.name}')
         node2.stop(wait_other_notice=True)
 
+        session = self.patient_cql_connection(node1, keyspace=self.KEYSPACE_NAME)
         self.create_large_partition_table(session=session, table_name=self.TABLE_NAME, with_static_column=True)
         logger.debug('Create large rows with static cell content and flush multiple times')
         for _ in range(10):
@@ -565,13 +566,14 @@ class TestWideRows(Tester):
         partition_num = 1
         extra_partitions = 0
 
-        session = self.prepare_cluster(nodes=4, rf=3,
+        self.prepare_cluster(nodes=4, rf=3,
                                        options_dict={'compaction_large_partition_warning_threshold_mb': 1})
 
-        node2 = self.cluster.nodelist()[1]
+        node1, node2 = self.cluster.nodelist()[0:2]
         logger.debug('Stop {}'.format(node2.name))
         node2.stop(wait_other_notice=True)
 
+        session = self.patient_cql_connection(node1, keyspace=self.KEYSPACE_NAME)
         self.create_large_partition_table(session=session, table_name=self.TABLE_NAME)
         expected_partition_data_size = self.create_large_partition_data(session=session,
                                                                         table_name=self.TABLE_NAME,
@@ -798,13 +800,14 @@ class TestWideRows(Tester):
         columns_num = 15
         extra_rows = 0
 
-        session = self.prepare_cluster(nodes=3, rf=2,
+        self.prepare_cluster(nodes=3, rf=2,
                                        options_dict={'compaction_large_row_warning_threshold_mb': 1})
 
-        node2 = self.cluster.nodelist()[1]
+        node1, node2 = self.cluster.nodelist()[0:2]
         logger.debug('Stop {}'.format(node2.name))
         node2.stop(wait_other_notice=True)
 
+        session = self.patient_cql_connection(node1, keyspace=self.KEYSPACE_NAME)
         self.create_large_row_table(session=session, table_name=self.TABLE_NAME, columns_num=columns_num)
         expected_rows_data_size = self.create_large_row_data(session=session,
                                                              table_name=self.TABLE_NAME,
