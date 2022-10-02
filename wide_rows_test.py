@@ -54,9 +54,8 @@ class TestWideRows(Tester):
         if options_dict:
             cluster.set_configuration_options(values=options_dict)
         cluster.populate(nodes).start(wait_for_binary_proto=True)
-        node1 = cluster.nodelist()[0]
 
-        session = self.patient_cql_connection(node1)
+        session = self.patient_cql_connection(cluster.nodelist())
         logger.debug('Create %s keyspace' % keyspace_name)
         create_ks(session=session, name=keyspace_name, rf=rf)
         return session
