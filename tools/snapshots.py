@@ -104,6 +104,7 @@ def make_snapshot(node: ScyllaNode,
         save_dir = snapshot_dir.replace('/snapshots/', '/').replace(os.path.join(node_dir, "data/"), '')
         os.makedirs(os.path.join(tmpdir, save_dir), exist_ok=False)
         dir_util.copy_tree(str(snapshot_dir), os.path.join(tmpdir, save_dir))
+        logger.debug(f"Copied snapshot {snapshot_dir} to {os.path.join(tmpdir, save_dir)}")
 
     return tmpdir
 
@@ -132,7 +133,9 @@ def get_cf_snapshot_saved_dir(base_snapshot_dir: str, keyspace: str, table: str,
         path_pattern += f"/{name}"
     else:
         path_pattern += f"/*/"
-    return glob.glob(path_pattern)[0]
+    dirs = glob.glob(path_pattern)
+    logger.debug(f"snapshots for {keyspace}.{table} with name={name}: {dirs}")
+    return dirs[0] if dirs else ''
 
 
 def restore_snapshot_with_refresh(snapshot_dir, node, keyspace, table, name=None, wait_for_mv=False,
