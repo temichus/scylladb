@@ -166,7 +166,7 @@ class AffectedTestScanner:
                     ):
                         return True  # no point of continue if the test is already marked as affected
             elif node.flavor == Flavor.ATTRIBUTE:  # decorators or global variables
-                if self.check_node_affected(node):
+                if node.namespace not in sys.builtin_module_names and self.check_node_affected(node):
                     return True  # no point of continue if the test is already marked as affected
             else:
                 continue
