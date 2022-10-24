@@ -666,16 +666,15 @@ class DTestSetup:
             "Cluster *_request_timeout_in_ms={}, range_request_timeout_in_ms={}, cql request_timeout={}".format(
                 timeout, range_timeout, self.cql_request_timeout))
 
-        if self.cluster_options is not None and len(self.cluster_options) > 0:
-            values = merge_dicts(self.cluster_options, phi_values, repaired_data_tracking_values)
-        else:
-            values = merge_dicts(phi_values, repaired_data_tracking_values, {
-                'read_request_timeout_in_ms': timeout,
-                'range_request_timeout_in_ms': range_timeout,
-                'write_request_timeout_in_ms': timeout,
-                'truncate_request_timeout_in_ms': range_timeout,
-                'request_timeout_in_ms': timeout
-            })
+        values = self.cluster_options or dict()
+
+        values = merge_dicts(values, phi_values, repaired_data_tracking_values, {
+            'read_request_timeout_in_ms': timeout,
+            'range_request_timeout_in_ms': range_timeout,
+            'write_request_timeout_in_ms': timeout,
+            'truncate_request_timeout_in_ms': range_timeout,
+            'request_timeout_in_ms': timeout
+        })
 
         if self.setup_overrides is not None and len(self.setup_overrides.cluster_options) > 0:
             values = merge_dicts(values, self.setup_overrides.cluster_options)
