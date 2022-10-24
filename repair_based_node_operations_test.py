@@ -139,6 +139,8 @@ class RepairBasedNodeOperationsScenarios:
     def removenode(self) -> Optional[ScyllaNode]:
         remove_node = self.tester.cluster.nodelist()[-1]
         remove_node_host_id = remove_node.hostid()
+        logger.debug(f"Stopping node {remove_node.name} (host id {remove_node_host_id})")
+        remove_node.stop(gently=False, wait_other_notice=True)
         logger.debug(f"Remove node {remove_node.name} (host id {remove_node_host_id})")
         self.tester.cluster.nodelist()[0].removenode(remove_node_host_id)
         logger.debug(f"Node {remove_node.name} (host id {remove_node_host_id}) removed")

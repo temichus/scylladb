@@ -220,9 +220,13 @@ class TestClusterStatusTable(SystemTableBase):
 
         node1, node2 = cluster.nodelist()
         node2_ip_address = node2.address()
+        node2_host_id = node2.hostid()
+
+        logger.debug("Stopping %s", node2.name)
+        node2.stop(gently=False, wait_other_notice=True)
 
         logger.debug("Removing the node %s from the cluster...", node2_ip_address)
-        node1.removenode(hid=node2.hostid())
+        node1.removenode(hid=node2_host_id)
         logger.info("The node %s has been removed from the cluster...", node2_ip_address)
 
         sleep(10)

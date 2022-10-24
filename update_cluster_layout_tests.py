@@ -2087,7 +2087,7 @@ class TestUpdateClusterLayout(Tester):
                     consistency=ConsistencyLevel.TWO, c1_values=cs, c2_values=cs)
 
         hostid = node2.hostid()
-        node2.stop()
+        node2.stop(wait_other_notice=True)
         node1.start(wait_for_binary_proto=True)
         node1.nodetool("removenode %s" % hostid)
         logger.debug("Node 1 finished removenode node 2")

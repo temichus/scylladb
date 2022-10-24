@@ -286,8 +286,11 @@ def flush_by_node(cluster):
         node.flush()
 
 
-def remove_node(cluster, node, wait_other_notice=True, other_nodes=None):
+def remove_node(cluster, node, wait_other_notice=True, other_nodes=None, gently=False):
     hostid = node.hostid()
+    logger.debug(f"Stopping node {node.name} (hostid {hostid}) gently={gently}")
+    node.stop(gently=gently, wait_other_notice=True)
+    logger.debug(f"Remove node {node.name} (hostid {hostid})")
     cluster.remove(node, wait_other_notice=wait_other_notice, other_nodes=other_nodes)
     remove_using_node = cluster.nodelist()[0]
     remove_using_node.nodetool("removenode {}".format(hostid))
