@@ -7,6 +7,7 @@ import logging
 import pytest
 
 from ccmlib.scylla_node import ScyllaNode
+from ccmlib.scylla_cluster import ScyllaCluster
 from cassandra.cluster import Session
 from dtest_class import Tester, create_ks
 from tools.data import rows_to_list
@@ -133,10 +134,10 @@ class ReshardingBase(Tester):
         assert res['total errors'] == 0
         assert res['total partitions'] >= op_cnt
 
-    def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1', consistency_level=ConsistencyLevel.QUORUM, timeout=120):
+    def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1', consistency_level=ConsistencyLevel.QUORUM):
         session = self.patient_cql_connection(self.node)
         q = SimpleStatement(f"SELECT count(*) FROM {keyspace}.{cf}", consistency_level=consistency_level)
-        resp = session.execute(q, timeout=timeout)
+        resp = session.execute(q)
         row_number = rows_to_list(resp)[0][0]
         logger.debug('number of rows: {}'.format(row_number))
         assert row_number == expected_row_num
