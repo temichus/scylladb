@@ -1880,7 +1880,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                                                                        num_windows_with_del_mutation=1, partitions=pks)
         self._check_sstable_timestamps(node1)
         cluster_keys = [i for i in range(20)]
-        self.assert_deleted_rows_in_sstables_exists(node1, timewindows=1, partition_keys=[1], cluster_keys=cluster_keys)
+        self.assert_deleted_rows_in_sstables_exists(node1, partition_keys=[1], cluster_keys=cluster_keys)
 
         logger.debug("Check that new sstables appeared with delete mutation")
         num_sstables = len(self._get_list_of_sstables(node1))
@@ -1902,7 +1902,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             f"Some rows were resurrected {len(current_rows)}"
 
         self.assert_deleted_rows_in_sstables_removed(
-            node1, timewindows=1, partition_keys=[1], cluster_keys=cluster_keys)
+            node1, partition_keys=[1], cluster_keys=cluster_keys)
 
     @pytest.mark.single_node
     def test_compact_several_timewindows_after_delete_rows_in_first_timewindow(self):
@@ -1994,21 +1994,27 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         total_deleted_rows = del_ck_per_window * len(partitions) * (end_window_for_delete - start_window_for_delete)
         return total_deleted_rows
 
-    def assert_deleted_rows_in_sstables_exists(self, node: ScyllaNode, timewindows: int, partition_keys: List, cluster_keys: List):
+    def assert_deleted_rows_in_sstables_exists(self, node: ScyllaNode, partition_keys: List, cluster_keys: List):
         sstables = sorted(get_list_of_sstables(node, self.keyspace_name, self.table_name, suffix="-Data.db"))
-        for sstable in sstables[:timewindows]:
+        exist = False
+        for sstable in sstables:
             for pk in partition_keys:
-                deleted = self.is_deleted_rows_in_sstable(node, sstable, pk, cluster_keys)
-                assert not deleted, f"Keys {cluster_keys} are deleted from sstable {sstable} for window {timewindows}"
+                if self.are_rows_in_sstable(node, sstable, pk, cluster_keys):
+                    exist = True
+                    break
+        assert exist, f"Keys {cluster_keys} are deleted from sstables {sstables}"
 
-    def assert_deleted_rows_in_sstables_removed(self, node: ScyllaNode, timewindows: int, partition_keys: List, cluster_keys: List):
+    def assert_deleted_rows_in_sstables_removed(self, node: ScyllaNode, partition_keys: List, cluster_keys: List):
         sstables = sorted(get_list_of_sstables(node, self.keyspace_name, self.table_name, suffix="-Data.db"))
-        for sstable in sstables[:timewindows]:
+        exist = False
+        for sstable in sstables:
             for pk in partition_keys:
-                deleted = self.is_deleted_rows_in_sstable(node, sstable, pk, cluster_keys)
-                assert deleted, f"Keys {cluster_keys} are left in sstable {sstable} for window {timewindows}"
+                if self.are_rows_in_sstable(node, sstable, pk, cluster_keys):
+                    exist = True
+                    break
+        assert not exist, f"Keys {cluster_keys} are left in sstable {sstable}"
 
-    def is_deleted_rows_in_sstable(self, node: ScyllaNode, sstable_data_file: str, partition_key: Any, cluster_keys: List):
+    def are_rows_in_sstable(self, node: ScyllaNode, sstable_data_file: str, partition_key: Any, cluster_keys: List):
         """ check that rows was removed from sstable
 
             Dump sstable *-Data.db file to json object, and check that partition with partition_key
@@ -2024,10 +2030,13 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         with open(tmp_file) as fp:
             json_data = json.load(fp)
 
+        partition_found = False
         for partition in json_data:
             if int(partition["partition"]["key"][0]) == partition_key:
+                partition_found = True
                 cluster_key_values = set([row["clustering"][0] for row in partition["rows"]])
-                return not set(cluster_keys).issubset(cluster_key_values)
+                return set(cluster_keys).issubset(cluster_key_values)
+        if not partition_found:
             logger.error(f"Partition {partition_key} was not found")
         return False
 
