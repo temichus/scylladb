@@ -21,7 +21,7 @@ class TestDistributedAggregations(Tester):
     CS_PROFILE_PATH = profile_path = os.path.join(
         os.path.dirname(__file__), 'test_data/c-s-profiles/cassandra-stress-custom-counters-1.yaml'
     )
-    OPS = 2_000_000
+    OPS = 1_000_000
     CONFIG_OPTIONS_WITH_PARALLELIZED_AGGREGATION = {"enable_parallelized_aggregation": "true",
                                                     "murmur3_ignore_msb_bits": 1,
                                                     "num_tokens": 3}
@@ -37,6 +37,8 @@ class TestDistributedAggregations(Tester):
         self.cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
+        if self.cluster.scylla_mode == "debug":
+            self.OPS = 10_000
         self._populate_according_to_profile(node=node1, ops=self.OPS, profile_path=self.CS_PROFILE_PATH)
         set_trace_probability(nodes=[node1], probability_value=1.0)
         self.cluster.flush()
