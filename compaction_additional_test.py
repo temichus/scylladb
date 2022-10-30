@@ -1311,18 +1311,27 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         assert len(sstables) >= time_windows, f"Missing sstables on {node.name}." \
                                               f" There should be at least one sstable per time window."
 
-    def _create_ks_cl_with_twcs(self, session, rf=1):
+    def _create_ks_cl_with_twcs(self, session, rf=1, keyspace_name="ks", table_name="test", ttl=None, gc_period=None, window_unit=None, window_size=None):
+
+        if ttl is None:
+            ttl = self.ttl
+        if gc_period is None:
+            gc_period = self.gc_period
+        if window_unit is None:
+            window_unit = self.window_unit
+        if window_size is None:
+            window_size = self.window_size
 
         session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': {}}}".format(
             self.keyspace_name, rf))
         session.execute(
-            "CREATE TABLE {0.keyspace_name}.{0.table_name} (pk int, ck int, v blob, PRIMARY KEY(pk, ck)) "
-            "WITH default_time_to_live = {0.ttl} AND "
-            "gc_grace_seconds = {0.gc_period} AND "
-            "compaction = {{"
-            "'class': 'TimeWindowCompactionStrategy',"
-            "'compaction_window_unit': '{0.window_unit}',"
-            "'compaction_window_size': {0.window_size} }}".format(self))
+            f"CREATE TABLE {keyspace_name}.{table_name} (pk int, ck int, v blob, PRIMARY KEY(pk, ck)) "
+            f"WITH default_time_to_live = {ttl} AND "
+            f"gc_grace_seconds = {gc_period} AND "
+            f"compaction = {{"
+            f"'class': 'TimeWindowCompactionStrategy',"
+            f"'compaction_window_unit': '{window_unit}',"
+            f"'compaction_window_size': {window_size} }}")
 
     def _simulate_write_process_in_minutes(self, session, duration_minutes=20, start_from_minute=0,
                                            flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=10, size=1):
@@ -1864,15 +1873,19 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         num_pks = [1]
 
         [node1], session = self.prepare(1, jvm_args=["--smp", "1"])
-        self._create_ks_cl_with_twcs(session, 1)
+        gc_period = 15
+        self._create_ks_cl_with_twcs(session, 1, gc_period=gc_period)
         pks, total_row = self._simulate_write_process_in_minutes(session=session, duration_minutes=1,
                                                                  flush_period_seconds=10, num_pks=num_pks)
         logger.debug("Run major compaction and validate that there is only 1 table per unit")
         node1.nodetool(f"compact {self.keyspace_name}")
+        node1.wait_for_compactions()
         self._check_sstable_timestamps(node1)
         num_sstables = len(self._get_list_of_sstables(node1))
         assert num_sstables == 1, \
             f"Number of sstables {num_sstables} more than 1"
+
+        deletion_time = time.time()
         # delete first 20 seconds ( first 20 rows )
         total_deleted_rows = self.delete_rows_in_previous_time_windows(node1,
                                                                        start_window_for_delete=0, end_window_for_delete=1,
@@ -1880,29 +1893,47 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                                                                        num_windows_with_del_mutation=1, partitions=pks)
         self._check_sstable_timestamps(node1)
         cluster_keys = [i for i in range(20)]
-        self.assert_deleted_rows_in_sstables_exists(node1, partition_keys=[1], cluster_keys=cluster_keys)
+        self.assert_deleted_rows_in_sstables_exists(node1, partition_key=1, cluster_keys=cluster_keys)
 
         logger.debug("Check that new sstables appeared with delete mutation")
         num_sstables = len(self._get_list_of_sstables(node1))
         assert num_sstables == 2, \
-            f"Number of sstables {num_sstables} less than expected 6"
+            f"Expected 2 sstables, but got {num_sstables}"
 
+        # First compaction is expected to keep the tombstones
+        # since we're still in the gc grace period.
         logger.debug("Run major compaction")
         node1.nodetool(f"compact {self.keyspace_name}")
-        logger.debug("Check that only 6 sstable left")
+        node1.wait_for_compactions()
+        logger.debug("Check that only 2 sstable left")
 
         num_sstables = len(self._get_list_of_sstables(node1))
         self._check_sstable_timestamps(node1)
         assert num_sstables == 2, \
-            f"Number of sstables {num_sstables} more than expected 6"
+            f"Expected 2 sstables, but got {num_sstables}"
 
         logger.debug("Check that all rows are removed")
         current_rows = list(session.execute(f"select * from {self.keyspace_name}.{self.table_name}"))
         assert total_row - total_deleted_rows == len(current_rows), \
             f"Some rows were resurrected {len(current_rows)}"
 
+        self.assert_deleted_rows_in_sstables_exists(node1, partition_key=1, cluster_keys=cluster_keys)
+
+        time_to_sleep = gc_period - (time.time() - deletion_time) + 1
+        logger.debug(f"Sleep {time_to_sleep} seconds until tombstones expire")
+        time.sleep(time_to_sleep)
+
+        logger.debug("Run major compaction")
+        node1.nodetool(f"compact {self.keyspace_name}")
+        node1.wait_for_compactions()
+
         self.assert_deleted_rows_in_sstables_removed(
-            node1, partition_keys=[1], cluster_keys=cluster_keys)
+            node1, partition_key=1, cluster_keys=cluster_keys)
+
+        num_sstables = len(self._get_list_of_sstables(node1))
+        self._check_sstable_timestamps(node1)
+        assert num_sstables == 1, \
+            f"Expected 1 sstable, but got {num_sstables}"
 
     @pytest.mark.single_node
     def test_compact_several_timewindows_after_delete_rows_in_first_timewindow(self):
@@ -1994,25 +2025,21 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         total_deleted_rows = del_ck_per_window * len(partitions) * (end_window_for_delete - start_window_for_delete)
         return total_deleted_rows
 
-    def assert_deleted_rows_in_sstables_exists(self, node: ScyllaNode, partition_keys: List, cluster_keys: List):
+    def assert_deleted_rows_in_sstables_exists(self, node: ScyllaNode, partition_key: Any, cluster_keys: List):
         sstables = sorted(get_list_of_sstables(node, self.keyspace_name, self.table_name, suffix="-Data.db"))
         exist = False
         for sstable in sstables:
-            for pk in partition_keys:
-                if self.are_rows_in_sstable(node, sstable, pk, cluster_keys):
-                    exist = True
-                    break
+            if self.are_rows_in_sstable(node, sstable, partition_key, cluster_keys):
+                return
         assert exist, f"Keys {cluster_keys} are deleted from sstables {sstables}"
 
-    def assert_deleted_rows_in_sstables_removed(self, node: ScyllaNode, partition_keys: List, cluster_keys: List):
+    def assert_deleted_rows_in_sstables_removed(self, node: ScyllaNode, partition_key: Any, cluster_keys: List):
         sstables = sorted(get_list_of_sstables(node, self.keyspace_name, self.table_name, suffix="-Data.db"))
         exist = False
         for sstable in sstables:
-            for pk in partition_keys:
-                if self.are_rows_in_sstable(node, sstable, pk, cluster_keys):
-                    exist = True
-                    break
-        assert not exist, f"Keys {cluster_keys} are left in sstable {sstable}"
+            if self.are_rows_in_sstable(node, sstable, partition_key, cluster_keys):
+                exist = True
+                assert not exist, f"Keys {cluster_keys} are left in sstable {sstable}"
 
     def are_rows_in_sstable(self, node: ScyllaNode, sstable_data_file: str, partition_key: Any, cluster_keys: List):
         """ check that rows was removed from sstable
@@ -2031,14 +2058,17 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             json_data = json.load(fp)
 
         partition_found = False
+        cluster_keys_exist = False
         for partition in json_data:
             if int(partition["partition"]["key"][0]) == partition_key:
                 partition_found = True
                 cluster_key_values = set([row["clustering"][0] for row in partition["rows"]])
-                return set(cluster_keys).issubset(cluster_key_values)
+                if set(cluster_keys).issubset(cluster_key_values):
+                    cluster_keys_exist = True
         if not partition_found:
             logger.error(f"Partition {partition_key} was not found")
-        return False
+        logger.debug(f"Clustering keys {cluster_keys} were {'' if cluster_keys_exist else 'not '}found")
+        return cluster_keys_exist
 
     @pytest.mark.single_node
     def test_reshape_sstables_after_change_window_size_when_small_files_more_than_large(self):
