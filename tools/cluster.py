@@ -69,7 +69,8 @@ def run_rest_api(run_on_node: ScyllaNode, cmd, api_method: str = 'post'):
     else:
         raise Exception(f"Unknown request API method: {api_method}")
     result.raise_for_status()
-    logger.debug(f"API result: {result.json()}")
+    result_json = result.json() if result.text else '{}'
+    logger.debug(f"API result: {result_json}")
     return result
 
 
