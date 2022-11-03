@@ -64,6 +64,8 @@ def run_rest_api(run_on_node: ScyllaNode, cmd, api_method: str = 'post'):
         result = requests.post(full_cmd)
     elif api_method == 'get':
         result = requests.get(full_cmd)
+    elif api_method == 'delete':
+        result = requests.delete(full_cmd)
     else:
         raise Exception(f"Unknown request API method: {api_method}")
     result.raise_for_status()
