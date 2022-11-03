@@ -59,7 +59,7 @@ def run_rest_api(run_on_node: ScyllaNode, cmd, api_method: str = 'post'):
     cmd_prefix = f"http://{run_on_node.address()}:10000"
     full_cmd = cmd_prefix + cmd
     api_method = api_method.lower()
-    logger.debug(f"Send restful api: {full_cmd}")
+    logger.debug(f"Send restful api: {full_cmd}: api_method={api_method}")
     if api_method == 'post':
         result = requests.post(full_cmd)
     elif api_method == 'get':
