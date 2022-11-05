@@ -3,6 +3,8 @@ import os
 import logging
 import collections
 import random
+import re
+
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from pkg_resources import parse_version
@@ -16,6 +18,7 @@ from cassandra.cluster import NoHostAvailable
 from ccmlib.node import NodetoolError
 from ccmlib.scylla_cluster import ScyllaCluster
 from ccmlib.scylla_node import ScyllaNode
+from ccmlib.node import TimeoutError
 
 from tools.assertions import assert_invalid
 
@@ -223,7 +226,7 @@ class TestUpdateClusterLayout(Tester):
         create_ks(session, 'ks', 3)
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        num_keys = 100000 if isinstance(cluster, ScyllaCluster) and cluster.scylla_mode != "debug" else 10000
+        num_keys = 500000 if isinstance(cluster, ScyllaCluster) and cluster.scylla_mode != "debug" else 10000
         logger.debug("Inserting {} keys".format(num_keys))
         insert_c1c2(session, keys=range(num_keys), consistency=ConsistencyLevel.ONE)
 
@@ -234,31 +237,55 @@ class TestUpdateClusterLayout(Tester):
 
         logger.debug("Starting node2")
         node2.start(no_wait=True)
-        node2.watch_log_for("Starting to bootstrap")
+        node2.watch_log_for("BOOTSTRAP")
 
-        expected_error = "Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true"
-        self.ignore_log_patterns += [expected_error]
+        # Select a random test case that determines when to start node3
+        # relative to node2's timeline
+        #
+        # case 0: start immediately after node2 reaches "BOOTSTRAP"
+        #         in this case node3 is expected to fail to start, as reported by "Startup failed" message
+        # case 1: wait up to 60 seconds after node2 reaches "Waiting for pending range setup"
+        # case 2: wait up to 60 seconds after node2 reaches "Starting to bootstrap"
+        #         If starting late (cases 1 or 2), node3 may or may not succeed to start.
+        test_case = random.choice([0, 1, 2])
+        late_start = test_case > 0
+        logger.debug(f"Testing case {test_case}: late_start={late_start}")
 
-        failed_to_detect = False
-        try:
-            logger.debug("Starting node3")
-            cluster.add(node3, is_seed=False)
-            node3.start(wait_other_notice=True, wait_for_binary_proto=True)
-            # lets check that it detected there was another bootstrapping in progress
+        if late_start:
+            time.sleep(1)
+            mark = node2.mark_log()
+            msg = "Waiting for pending range setup" if test_case == 1 else "Starting to bootstrap"
+            timeout = random.random() * 60
+            logger.debug(f"Watching {node2.name} log for msg='{msg}': timeout={timeout:.2f} seconds")
             try:
-                logger.debug("Waiting until node3 notices other node was booting")
-                node3.watch_log_for(
-                    "Checking bootstrapping/leaving/moving nodes: node={}.* sleep 1 second and check again".format(node2.address()), timeout=5)
-                logger.debug('Node3 noticed other node was booting')
-            except:
-                logger.debug('Node3 did not notice other node was booting')
-                failed_to_detect = True
-        except:
-            # if the node was not allowed to boot check reason
-            node3.watch_log_for(expected_error, timeout=5)
-            logger.debug("Node 3 detected other node was booting and gave up booting")
-        if failed_to_detect:
-            pytest.fail("Node3 did not notice other node was booting")
+                node2.watch_log_for(msg, from_mark=mark, timeout=timeout)
+            except TimeoutError:
+                pass
+
+        expected_errors = [
+            "Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true",
+            f"Node {node2.address()} has gossip status=UNKNOWN. Try fixing it before adding new node to the cluster",
+        ]
+        self.ignore_log_patterns += expected_errors
+
+        logger.debug("Starting node3")
+        cluster.add(node3, is_seed=False)
+        node3.start(no_wait=True)
+        # lets check that it detected there was another bootstrapping in progress
+        logger.debug("Waiting until node3 notices other node was booting")
+        detect_msg = rf"Checking bootstrapping/leaving/moving nodes: node={node2.address()}.* sleep 1 second and check again"
+        expr = '|'.join([detect_msg] + expected_errors)
+        res = node3.watch_log_for(expr)
+        logger.debug(f"Log messages: {res}")
+
+        # In all cases node3 may fail to start
+        msg = 'init - Startup failed'
+        if late_start:
+            # node3 may succeed booting if starting late
+            msg = f"{msg}|initialization completed"
+        logger.debug(f"Waiting for {node3.name} startup to complete")
+        res = node3.watch_log_for(msg)
+        logger.debug(f"Log messages: {res}")
 
         logger.debug("Check node2 started successfully")
         node2.watch_log_for("Starting listening for CQL clients")
