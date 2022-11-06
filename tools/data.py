@@ -89,14 +89,14 @@ def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missi
         assertions.assert_length_equal(rows, 0)
 
 
-def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, cf="cf"):
+def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, ks='ks', cf="cf"):
     if (keys is None and n is None) or (keys is not None and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
                          "got keys={keys}, n={n}".format(keys=keys, n=n))
     if n:
         keys = list(range(n))
 
-    statement = session.prepare("DELETE FROM {} WHERE key=?".format(cf))
+    statement = session.prepare("DELETE FROM {}.{} WHERE key=?".format(ks, cf))
     statement.consistency_level = consistency
 
     execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
