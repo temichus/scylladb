@@ -67,9 +67,6 @@ class TestCleanup(Tester):
         logger.info("Adding a new node")
         node4 = cluster.new_node(4)
         node4.start(wait_for_binary_proto=True, wait_other_notice=True)
-        cluster.flush()
-        cluster.stop()
-        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         logger.info("Running cleanup")
         cluster.cleanup()
