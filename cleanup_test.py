@@ -54,7 +54,7 @@ class TestCleanup(Tester):
         session = self.patient_cql_connection(node1)
         rows = session.execute("select count(*) from ks.cf0;", timeout=timeout)
 
-        assert rows[0][0] == num_keys
+        assert rows.one()[0] == num_keys
 
     def test_cluster_cleanup(self):
         num_keys = 100000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != "debug" else 10000
@@ -74,7 +74,7 @@ class TestCleanup(Tester):
         logger.info("Verifying number of rows")
         session = self.patient_cql_connection(node1)
         rows = session.execute("select count(*) from ks.cf0;", timeout=timeout)
-        assert rows[0][0] == num_keys
+        assert rows.one()[0] == num_keys
 
     @pytest.mark.timeout(3000)
     def test_cleanup_space_amplification(self):
