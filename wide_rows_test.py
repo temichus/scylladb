@@ -585,7 +585,9 @@ class TestWideRows(Tester):
 
         node1.nodetool("snapshot")
 
-        logger.debug("Deleting 1 colection item")
+        start_collection_element_index = random.randint(
+            0, initial_collection_elements_number + additional_collection_elements_number - 1)
+        logger.debug("Deleting 1 colection element: key{start_collection_element_index}")
         self.delete_too_many_rows_data(session=session,
                                        table_name=self.TABLE_NAME,
                                        partition_index=0,
@@ -594,7 +596,7 @@ class TestWideRows(Tester):
                                        columns_num=0,
                                        start_col_index=0,
                                        collection_elements=1,
-                                       start_collection_element_index=random.randint(0, initial_collection_elements_number + additional_collection_elements_number))
+                                       start_collection_element_index=start_collection_element_index)
 
         self.cluster.flush()
 
