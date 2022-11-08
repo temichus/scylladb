@@ -809,16 +809,13 @@ class BaseAlternator(Tester):
             raise RuntimeError(f'The "delete_item" of "{pformat(item_key)} is failed (full response is '
                                f'"{pformat(response)}")"')
 
-    @retrying(num_attempts=10, sleep_time=1, allowed_exceptions=(AssertionError,))
-    def get_all_traces_events(self, expected_traces_size):
+    def get_all_traces_events(self):
         result = []
         table_name_prefix = '.scylla.alternator.system_traces.'
         node = self.cluster.nodelist()[0]
         table: Table = self.get_dynamodb_api(node=node).resource.Table(name=f'{table_name_prefix}events')
 
         traces = self.scan_table(table_name=f'{table_name_prefix}sessions', node=node)
-        if expected_traces_size > len(traces):
-            raise AssertionError(f'"Expected at least "{expected_traces_size}" traces!')
         for trace in sorted(traces, key=lambda _trace: _trace['started_at']):
             session_id = trace['session_id']
             result.append(full_query(

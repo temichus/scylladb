@@ -886,72 +886,70 @@ class TesterAlternator(BaseAlternator):
                     raise KeyError(f'The following "{method_name}" method name not supported!')
 
         set_trace_probability(nodes=nodes, probability_value=0.0)
-        expected_traces_size = len(items) * expected_traces_number
-        logger.info(f'Expecting to find at least "{expected_traces_size}" partitions')
-        # For each method we use we get "len(items)" traces. Therefore, in our case we used 2
-        # (len(expected_messages_dict)) methods and 10 (len(item)) items.
-        # Therefore we will observe "len(items) * methods_size" messages.
-        all_traces_events = self.get_all_traces_events(expected_traces_size=expected_traces_size)
-        node_ips = {get_ip_from_node(node) for node in nodes}
-        # The following action order for each item is: "PutItem", "GetItem", "UpdateItem", and "DeleteIte" (this
-        #  order is order of "expected_messages_dict" keys).
-        # Therefore, for each action, we need to get a list with "len(items)" cells.
-        events_by_action = {}
-        for events_idx, events in enumerate(all_traces_events):
-            events_by_action.setdefault(
-                method_name_by_method_idx[events_idx % expected_traces_number], []).append(events)
 
-        def verify_traces_messages(method_name):  # pylint:disable=too-many-locals
-            all_traces = events_by_action[method_name]
-            expected_messages = expected_messages_dict[method_name]
-            # The "all_traces" variable contains the list of traces in the order of action ("get_item" or "pu_item")
-            #  we did. The test enters multiple items. Thus, need over on the traces for each item entered.
-            for action_idx, traces in enumerate(all_traces):
-                source = get_ip_from_node(nodes[action_idx % len(nodes)])
-                trace_idx = 0
-                # This loop goes over the messages that should appear within the traces in the order of the
-                # "expected_messages".
-                for expected_message_details in expected_messages:
-                    result = []
-                    expected_message, expected_message_number = expected_message_details
-                    count = expected_message_number
-                    is_message_found = False
-                    # This loop goes through all the traces once and tries to find the expected messages.
-                    # Therefore, if the message not found or the while loop ends, this is means that a test failed
-                    #  because the messages order was incorrect or the expected message changed.
-                    while trace_idx < len(traces):
-                        trace = traces[trace_idx]
-                        trace_idx += 1
-                        event_msg = trace['activity']
-                        if expected_message in event_msg and source == trace['source']:
-                            if expected_message != event_msg:
-                                result.append(event_msg)
-                            count -= 1
-                            if count == 0:
-                                is_message_found = True
-                                break
-                    if not is_message_found:
-                        raise KeyError(f'The following "{expected_message}" trace message not found from "{source}"'
-                                       f' source!')
-                    if result:
-                        if method_name in ['put', 'update', 'delete']:
-                            ips = {msg.rsplit(' ', maxsplit=1)[1] for msg in result}
-                            _diff = (node_ips ^ ips)
-                            assert _diff == {source}, \
-                                f'The "{expected_message}" message not sent from "{expected_message_number}" ' \
-                                f'nodes (The message in missing in the following "{_diff}" IPs'
-                        elif method_name == 'get':
-                            for msg in result:
-                                ips = set(node_ip.strip() for node_ip in
-                                          msg.split('{', maxsplit=1)[1].split('}', maxsplit=1)[0].split(','))
+        @retrying(num_attempts=10, sleep_time=1, allowed_exceptions=(AssertionError,))
+        def try_checking_all_events():
+            all_traces_events = self.get_all_traces_events()
+            node_ips = {get_ip_from_node(node) for node in nodes}
+            # The following action order for each item is: "PutItem", "GetItem", "UpdateItem", and "DeleteIte" (this
+            #  order is order of "expected_messages_dict" keys).
+            # Therefore, for each action, we need to get a list with "len(items)" cells.
+            events_by_action = {}
+            for events_idx, events in enumerate(all_traces_events):
+                events_by_action.setdefault(
+                    method_name_by_method_idx[events_idx % expected_traces_number], []).append(events)
+
+            def verify_traces_messages(method_name):  # pylint:disable=too-many-locals
+                all_traces = events_by_action[method_name]
+                expected_messages = expected_messages_dict[method_name]
+                # The "all_traces" variable contains the list of traces in the order of action ("get_item" or "pu_item")
+                #  we did. The test enters multiple items. Thus, need over on the traces for each item entered.
+                for action_idx, traces in enumerate(all_traces):
+                    source = get_ip_from_node(nodes[action_idx % len(nodes)])
+                    trace_idx = 0
+                    # This loop goes over the messages that should appear within the traces in the order of the
+                    # "expected_messages".
+                    for expected_message_details in expected_messages:
+                        result = []
+                        expected_message, expected_message_number = expected_message_details
+                        count = expected_message_number
+                        is_message_found = False
+                        # This loop goes through all the traces once and tries to find the expected messages.
+                        # Therefore, if the message not found or the while loop ends, this is means that a test failed
+                        #  because the messages order was incorrect or the expected message changed.
+                        while trace_idx < len(traces):
+                            trace = traces[trace_idx]
+                            trace_idx += 1
+                            event_msg = trace['activity']
+                            if expected_message in event_msg and source == trace['source']:
+                                if expected_message != event_msg:
+                                    result.append(event_msg)
+                                count -= 1
+                                if count == 0:
+                                    is_message_found = True
+                                    break
+                        assert is_message_found, f'The following "{expected_message}" trace message not found from "{source}" source!'
+                        if result:
+                            if method_name in ['put', 'update', 'delete']:
+                                ips = {msg.rsplit(' ', maxsplit=1)[1] for msg in result}
                                 _diff = (node_ips ^ ips)
-                                assert not _diff, f'The following node ips "{_diff}" not found in "get_item" event'
-                        else:
-                            raise KeyError(f'The following "{method_name}" method name not supported!')
+                                assert _diff == {source}, \
+                                    f'The "{expected_message}" message not sent from "{expected_message_number}" ' \
+                                    f'nodes (The message in missing in the following "{_diff}" IPs'
+                            elif method_name == 'get':
+                                for msg in result:
+                                    ips = set(node_ip.strip() for node_ip in
+                                              msg.split('{', maxsplit=1)[1].split('}', maxsplit=1)[0].split(','))
+                                    _diff = (node_ips ^ ips)
+                                    assert not _diff, f'The following node ips "{_diff}" not found in "get_item" event'
+                            else:
+                                raise AssertionError(f'The following "{method_name}" method name not supported!')
 
-        for method_name in expected_messages_dict:
-            logger.info(f'Verifying all traces of "{method_name}_item" method name')
-            verify_traces_messages(method_name=method_name)
+            for method_name in expected_messages_dict:
+                logger.info(f'Verifying all traces of "{method_name}_item" method name')
+                verify_traces_messages(method_name=method_name)
+
+        try_checking_all_events()
 
     @pytest.mark.parametrize("sttableloder_flag", ['', '-v', '-nb'], ids=['without_flag', 'v_flag', 'nb_flag'])
     @pytest.mark.single_node
