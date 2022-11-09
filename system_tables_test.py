@@ -211,14 +211,14 @@ class TestClusterStatusTable(SystemTableBase):
          172.17.0.4 | datacenter1 | 9c51fae6-8a9b-41a3-910f-4afb5e3489db |      934981 | 0.470253 |  NORMAL |    256 |  True
 
         The test scenario
-        1. Create the cluster of 2 nodes
-        2. Remove the 2nd node
+        1. Create the cluster of 3 nodes
+        2. Remove the 3nd node
         3. Check state and status of the removed node in the table.
         """
 
-        cluster = self.prepare_cluster(nodes=2)
+        cluster = self.prepare_cluster(nodes=3)
 
-        node1, node2 = cluster.nodelist()
+        node1, node2, node3 = cluster.nodelist()
         node2_ip_address = node2.address()
         node2_host_id = node2.hostid()
 
