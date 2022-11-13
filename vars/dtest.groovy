@@ -103,18 +103,15 @@ def artifactScyllaVersion() {
 def setupTestEnv(String buildMode, String relocWebUrl = "latest", architecture = generalProperties.x86ArchName, boolean dryRun=false) {
 	// This override of HOME as an empty dir is needed by ccm
 	echo "Setting test environment, mode: |$buildMode|"
-	(scyllaPackageName, jmxPackageName, toolsPackageName) = artifact.getRelocArtifacts(relocWebUrl, buildMode)
+	unifiedPackageName = artifact.getUnifiedRelocArtifact(relocWebUrl, buildMode)
 
-    String scyllaRelocPkgFile = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${scyllaPackageName}"
+    String scyllaUnifiedPkgFile = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${unifiedPackageName}"
 
-	boolean pkgFileExists = fileExists scyllaRelocPkgFile
+	boolean pkgFileExists = fileExists scyllaUnifiedPkgFile
 	if (pkgFileExists) {
 		echo "Reloc pkg file exists. Setting testing env vars."
 		env.SCYLLA_VERSION = artifactScyllaVersion()
-		env.SCYLLA_CORE_PACKAGE_NAME = scyllaPackageName
-		env.SCYLLA_CORE_PACKAGE = scyllaRelocPkgFile
-		env.SCYLLA_JAVA_TOOLS_PACKAGE = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/$toolsPackageName"
-		env.SCYLLA_JMX_PACKAGE = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/$jmxPackageName"
+		env.SCYLLA_UNIFIED_PACKAGE = scyllaUnifiedPkgFile
 		env.CASSANDRA_DIR = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode"
 	} else {
 		echo "Reloc pkg file does not exist. Skipping set testing env vars."

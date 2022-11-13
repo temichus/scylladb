@@ -161,7 +161,8 @@ elif [[ "$*" == *'--scylla-version'*  ]]; then
     -e SCYLLA_VERSION \
     -e SCYLLA_CORE_PACKAGE \
     -e SCYLLA_JAVA_TOOLS_PACKAGE \
-    -e SCYLLA_JMX_PACKAGE
+    -e SCYLLA_JMX_PACKAGE \
+    -e SCYLLA_UNIFIED_PACKAGE
     "
 fi
 

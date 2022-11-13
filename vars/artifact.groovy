@@ -61,7 +61,7 @@ def getManagerRelocUrl(String url, String architecture='x86_64') {
     return "$url$directory$filename"
 }
 
-def getRelocArtifacts (String cloudUrl, String buildMode) {
+def getUnifiedRelocArtifact (String cloudUrl, String buildMode) {
 	// get Test artifacts from jenkins or cloud
 	//
 	// Parameters:
@@ -76,39 +76,25 @@ def getRelocArtifacts (String cloudUrl, String buildMode) {
     }
     downloadArtifactFromS3(artifact: generalProperties.buildMetadataFile, targetPath: WORKSPACE, sourceUrl: url)
 
-    releaseFromMetadata = fetchMetadataValue (
+    unifiedPackageName = fetchMetadataValue (
         downloadFromCloud: true,
-        fieldName: "scylla-release:",
+        fieldName: "unified-pack-url-${architecture}",
     )
+    unifiedPackageName = unifiedPackageName.substring(unifiedPackageName.lastIndexOf('/') + 1)
 
-    versionFromMetadata = fetchMetadataValue (
-        downloadFromCloud: true,
-        fieldName: "scylla-version:",
-    )
+    if (buildMode == "debug") {
+        unifiedPackageName.replace('scylla-', 'scylla-debug-')
+    }
 
-    scyllaPackageName = relocPackageName (
-		checkLocal: false,
-		mustExist: true,
-		urlOrPath: url,
-		packagePrefix: params.PRODUCT_NAME,
-		buildMode: buildMode,
-		architecture: architecture,
-		version: versionFromMetadata,
-		release: releaseFromMetadata,
-	)
-	jmxPackageName = "${params.PRODUCT_NAME}-jmx-${versionFromMetadata}-${releaseFromMetadata}.noarch.tar.gz"
-	toolsPackageName = "${params.PRODUCT_NAME}-tools-${versionFromMetadata}-${releaseFromMetadata}.noarch.tar.gz"
 	target = "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"
-    artifactsTargets.scyllaReloc = [artifact: scyllaPackageName, target: target]
-    artifactsTargets.jmxReloc = [artifact: jmxPackageName, target: target]
-    artifactsTargets.toolsJavaReloc = [artifact: toolsPackageName, target: target]
+    artifactsTargets.unifiedPackage = [artifact: unifiedPackageName, target: target]
 
 	artifactsTargets.each { key, val ->
 		downloadArtifactFromS3(artifact: val.artifact,
 			targetPath: val.target,
 			sourceUrl: url)
 	}
-	return [scyllaPackageName, jmxPackageName, toolsPackageName]
+	return unifiedPackageName
 }
 
 boolean fileExistsOnPath(String file, String path=WORKSPACE) {
