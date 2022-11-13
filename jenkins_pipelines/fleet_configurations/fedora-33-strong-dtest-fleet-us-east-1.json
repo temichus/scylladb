@@ -3,7 +3,7 @@
     "AllocationStrategy": "capacityOptimized",
     "TargetCapacity": 0,
     "ValidFrom": "2021-11-11T14:04:22Z",
-    "ValidUntil": "2022-11-11T14:04:22Z",
+    "ValidUntil": "2122-11-11T14:04:22Z",
     "TerminateInstancesWithExpiration": true,
     "LaunchSpecifications": [
         {
