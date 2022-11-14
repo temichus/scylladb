@@ -9,6 +9,7 @@ import os
 import tempfile
 import logging
 import pytest
+from pathlib import Path
 
 from dtest_class import Tester
 
@@ -20,19 +21,24 @@ class TestScyllaTop(Tester):
 
     def get_cli(self):
         node = self.cluster.nodelist()[0]
-        cli = os.path.join(node.get_install_dir(), 'tools/scyllatop/scyllatop.py')
-
-        # in relocatable packages the path is a bit different
-        if not os.path.exists(cli):
-            cli = os.path.join(node.get_install_dir(), 'scylla/bin/scyllatop')
-        if not os.path.exists(cli):
-            cli = os.path.join(node.get_install_dir(), 'scylla/opt/scylladb/scyllatop/scyllatop.py')
+        candidates_clis = [
+            'tools/scyllatop/scyllatop.py',
+            'scylla/bin/scyllatop',
+            'scylla/opt/scylladb/scyllatop/scyllatop.py',
+            'scyllatop/scyllatop.py',
+        ]
+        for candidate_cli in candidates_clis:
+            cli = Path(node.get_install_dir()) / candidate_cli
+            if cli.exists():
+                break
+        else:
+            raise EnvironmentError("Didn't found scyllatop cli ")
 
         t = tempfile.mkstemp(prefix='scyllatop.log.')
         os.close(t[0])
         logfile = t[1]
-        cli += ' -L {} -p http://{}:9180/metrics -v DEBUG'.format(logfile, node.address())
-        return (cli, logfile)
+        cli = f'{cli} -L {logfile} -p http://{node.address()}:9180/metrics -v DEBUG'
+        return cli, logfile
 
     def interactive_start(self, wait=True, sleep_time=10):
         """
