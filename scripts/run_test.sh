@@ -62,6 +62,11 @@ Script to run dtest from within docker
 here="$(realpath $(dirname "$0"))"
 DOCKER_IMAGE="$(<"$here/image")"
 
+if [[ "$*" == *'-h'* ]] || [[ "$*" == *'--help'* ]]; then
+    echo "${help_text}"
+    exit 2
+fi
+
 export CASSANDRA_DIR=${CASSANDRA_DIR:-`pwd`/../scylla}
 export PYTEST_CAPTURE=${PYTEST_CAPTURE:-'-s'}
 
