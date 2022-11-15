@@ -102,7 +102,11 @@ export CCM_DIR=${CCM_DIR:-$(echo ${DTEST_DIR} | sed 's/-dtest$/-ccm/')}
 export SCYLLA_DBUILD_SO_DIR=$( realpath ${SCYLLA_DBUILD_SO_DIR:-${CASSANDRA_DIR}/dynamic_libs} )
 export SCYLLA_EXT_OPTS=${SCYLLA_EXT_OPTS:-"--smp 2 --memory 1024M"}
 if [[ "$mode" == debug ]]; then
-    export DEF_SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0:abort_on_error=1:detect_stack_use_after_return=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
+    ASAN_OPTIONS=disable_coredump=0:abort_on_error=1:detect_stack_use_after_return=1
+    UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1
+    supp=${SCYLLA_ROOT_DIR}/ubsan-suppressions.supp
+    test -f ${supp} && UBSAN_OPTIONS=${UBSAN_OPTIONS}:suppressions=${supp}
+    export DEF_SCYLLA_EXT_ENV="ASAN_OPTIONS=${ASAN_OPTIONS};UBSAN_OPTIONS=${UBSAN_OPTIONS};BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
 fi
 export SCYLLA_EXT_ENV=${SCYLLA_EXT_ENV:-"$DEF_SCYLLA_EXT_ENV"}
 
