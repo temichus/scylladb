@@ -223,10 +223,6 @@ cd scylla-dtest
 cleanup_workspace
 
 setup_environment_vars
-reloc_package_name="scylla-package.tar.gz"
-if [ -n $SCYLLA_CORE_PACKAGE_NAME ] ; then
-  reloc_package_name="$SCYLLA_CORE_PACKAGE_NAME"
-fi
 
 if [ -z $SCYLLA_VERSION ] ; then
   echo "SCYLLA_VERSION is not defined. Setting ccm create only for cas-tmp"
@@ -246,18 +242,6 @@ fi
 
 RUN_TEST_CMD="./scripts/run_test.sh"
 export TOOLS_JAVA_DIR="$scylla_tools_java_dir"
-
-# Copy binaries to logs, before running pytest, so it will be available even if we have timeout
-run_cmd mkdir -p "$LOG_SAVED_DIR"
-if [ ! -f $CASSANDRA_DIR/$reloc_package_name ] ; then
-  if [ -e $CASSANDRA_DIR/scylla ] ; then
-    run_cmd cp $CASSANDRA_DIR/scylla $LOG_SAVED_DIR/
-  else
-    echo "Scylla binary was not found, Can't backup it (to upload later as an artifact)"
-  fi
-else
-  echo "No need to backup 'scylla' binary because '$reloc_package_name' already exists."
-fi
 
 if [ "x$tests" = "xgating" ]; then
 	echo "Going to run next-gating dtest"
