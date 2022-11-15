@@ -608,7 +608,7 @@ class TestLWTBankingLoad(Tester):
             proc.join()
             if proc.exception:
                 logger.error(proc.exception)
-                raise SetupError(f"Setup worker {idx} failed")
+                raise SetupError(f"Setup worker {idx} failed: {proc.exception}")
 
     def fetch_account_balance(self, session, account):
         try:
