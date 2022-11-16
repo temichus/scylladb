@@ -31,7 +31,7 @@ MAX_COLUMNS = LIMIT_64_K
 MAX_TUPLES = LIMIT_32K
 MAX_BATCH_SIZE = 50 * 1024
 MAX_CELLS_COLUMNS = LIMIT_32K
-MAX_CELLS_BATCH_SIZE = 1000
+MAX_CELLS_BATCH_SIZE = 50
 MAX_CELLS = 16777216
 
 # Those are values used to validate the tests code
@@ -309,7 +309,7 @@ class TestLimits(Tester):
         c = "BEGIN UNLOGGED  BATCH\n"
         for i in range(rows):
             c += "insert into ks.test1  (%s blub) values (%s %i);\n" % (keys, values, i)
-            if i % batch_size == 0:
+            if i == rows - 1 or (i + 1) % batch_size == 0:
                 c += "APPLY BATCH;\n"
                 session.execute(c)
                 c = "BEGIN UNLOGGED  BATCH\n"
@@ -319,8 +319,13 @@ class TestLimits(Tester):
     @pytest.mark.scylla_mode('!debug')  # client times out in debug mode
     def test_max_cells(self):
         cluster = self.prepare()
-        cluster.set_configuration_options(values={'query_tombstone_page_limit': 9999999})
-        cluster.populate(1).start()
+        cluster.set_configuration_options(values={
+            'query_tombstone_page_limit': 9999999,
+            'batch_size_warn_threshold_in_kb': 1024 * 1024,
+            'batch_size_fail_threshold_in_kb': 1024 * 1024,
+            'commitlog_segment_size_in_mb': 64
+        })
+        cluster.populate(1).start(jvm_args=['--smp', '1', '--memory', '2G'])
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
