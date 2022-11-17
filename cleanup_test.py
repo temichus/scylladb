@@ -8,7 +8,7 @@ from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
 from dtest_class import Tester, create_ks, create_cf
-from tools.data import insert_c1c2, delete_c1c2
+from tools.data import insert_c1c2, delete_c1c2, create_c1c2_table
 from tools.files import get_list_of_sstables
 from ccmlib.scylla_cluster import ScyllaCluster
 
@@ -174,3 +174,66 @@ class TestCleanup(Tester):
         logger.info("Reverifying data")
         rows = session.execute(query)
         assert rows.one()[0] == 0
+
+    @pytest.mark.single_node
+    def test_drop_table_during_cleanup(self):
+        """
+        Reproducer for https://github.com/scylladb/scylladb/issues/12007
+
+        Populate a number of tables (with enough keys to make their cleanup time substantial).
+        Drop all tables concurrently during cleanup by dropping the keyspace.
+        Expect cleanup to succeed.
+
+        Dropping the keyspace tests 2 cases in parallel, in parctice.
+        One is dropping a table that is currently undergoing cleanup,
+        where the compaction layer needs to handle that gracefully;
+        and the other case drops a table that is pending cleanup but for which
+        cleanup hasn't started yet, and the api should handle this case gracefully as well.
+        """
+        nodes = 1
+        num_tables = 3
+        # cleanup is performed in each table, sorted by their data size
+        # so populate more keys as we go
+        factor = 10000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != "debug" else 1000
+        table_keys = [factor * i for i in [3, 4, 5]]
+
+        cluster = self.cluster
+        cluster.set_configuration_options({'auto_snapshot': 'false'})
+        cluster.populate(nodes).start()
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        ks = 'ks'
+        create_ks(session, ks, rf=nodes)
+        for i in range(num_tables):
+            cf = f"cf{i}"
+            num_keys = table_keys[i]
+            flush_every = num_keys // 10
+            compaction_options = "{'class': 'SizeTieredCompactionStrategy', 'max_threshold': 1}"
+            create_c1c2_table(session, cf=cf, compaction=compaction_options)
+            cluster.nodetool(f'disableautocompaction {ks} {cf}')
+
+            logger.info(f"Inserting {num_keys} keys to ks.{cf}, flushing every {flush_every} keys")
+            start_key = 0
+            end_key = num_keys
+            while start_key < end_key:
+                batch_end = end_key if not flush_every else min(start_key + flush_every, end_key)
+                insert_c1c2(session=session, keys=range(start_key, batch_end), cf=cf)
+                start_key = batch_end
+                for node in cluster.nodelist():
+                    node.flush('ks', cf)
+
+        def drop_keyspace(session, node, log_msg, from_mark):
+            node.watch_log_for(log_msg, from_mark=from_mark)
+            q = f"DROP KEYSPACE {ks}"
+            logger.info(q)
+            session.execute(q)
+
+        executor = ThreadPoolExecutor(max_workers=1)
+
+        log_msg = f"Cleanup {ks}"
+        thread = executor.submit(drop_keyspace, session, node1, log_msg, node1.mark_log())
+
+        logger.info("Running cleanup")
+        node1.nodetool(f"cleanup {ks}")
+
+        thread.result()
