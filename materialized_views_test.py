@@ -23,7 +23,7 @@ from tools.assertions import assert_all, assert_one, assert_invalid, assert_unav
 
 from dtest_class import Tester, wait_for, create_ks, create_cf
 from tools.retrying import retrying
-from tools.data import run_in_parallel, rows_to_list, run_query_with_data_processing
+from tools.data import run_in_parallel, rows_to_list, run_query_with_data_processing, insert_c1c2
 from tools.misc import flush_by_node, remove_node
 from tools.tables_view_manager import wait_for_view_build_start, wait_for_view, TableManager, MaterializedViewManager
 from cassandra.cluster import NoHostAvailable
@@ -833,6 +833,157 @@ class TestMaterializedViews(CommonUtils):
              else ConsistencyLevel.ALL)
         logger.debug('Query will run with consistency level {}'.format(cl))
         return cl
+
+    def create_few_mv(self, mvs_count, session, keyspace_name, table_name, synchronous_updates, rows,
+                      mv_name_prefix="mv_cf_view", wait_for_mv_built=True):
+        for i in range(mvs_count):
+            query = f"CREATE MATERIALIZED VIEW {mv_name_prefix}_{i} AS SELECT * FROM {table_name} " \
+                    f"WHERE c1 IS NOT NULL and key IS NOT NULL PRIMARY KEY (c1, key) " \
+                    f"{' WITH synchronous_updates = true' if synchronous_updates else ''}"
+            logger.info(f"Create MV {mv_name_prefix}_{i} as: {query}")
+            session.execute(query)
+
+        if wait_for_mv_built:
+            for i in range(mvs_count):
+                mv_name = f"{mv_name_prefix}_{i}"
+                logger.info(f"Wait for view {mv_name}...")
+                wait_for_view(self.cluster, session, keyspace_name, mv_name)
+                logger.info(f"View {mv_name} is built")
+                assert_row_count(session, table_name=mv_name, expected=rows, consistency_level=ConsistencyLevel.QUORUM)
+
+    def test_mv_create_with_synchronous_updates(self):
+        """
+        Commit: https://github.com/scylladb/scylladb/commit/cb8a67dc98b60919ac9d5bbb6618e17f7d1602c7
+        Allow materialized views to run updates in synchronous mode.
+        In this mode, all view updates are applied synchronously as if the view was local.
+        Test scenario:
+        - prepare cluster with 4 nodes
+        - create keyspace with RF = 3
+        - create base table
+        - insert data
+        - create 50 MVs with synchronous_updates = True
+        - wait for all views are built
+        - validate rows count
+        - run update on non-PK column (update view)
+        - immediately validate that old data is not found in the view (select a view randomly)
+        """
+        keyspace_name = "ks"
+        table_name = "cf"
+        session = self.prepare(rf=3, nodes=4, consistency_level=ConsistencyLevel.QUORUM)
+
+        create_cf(session, table_name, columns={'c1': 'text', 'c2': 'text'})
+
+        logger.info("Inserting data...")
+        rows = 1000
+        insert_c1c2(session, n=rows,
+                    c1_values=[f"c1 value {i}" for i in range(rows)],
+                    c2_values=[f"c2 value {i}" for i in range(rows)])
+        assert_row_count(session, table_name=table_name, expected=rows, consistency_level=ConsistencyLevel.QUORUM)
+
+        mv_name_pref = "mv_cf_view"
+        mvs_count = 50
+        self.create_few_mv(mvs_count=mvs_count, session=session, keyspace_name=keyspace_name, table_name=table_name,
+                           synchronous_updates=True, rows=rows)
+
+        logger.info("Run updates on MVs in synchronous node. Not expected to find rows with not updated (old) values.")
+        for _ in range(20000):
+            row_index = random.randint(0, rows)
+            failed = self.update_one_row_and_assert_view(row_index=row_index, session=session,
+                                                         keyspace_name=keyspace_name,
+                                                         table_name=table_name,
+                                                         mv_name_pref=mv_name_pref, mvs_count=mvs_count)
+            assert not failed, f"Unexpectedly found not updated rows in views: {failed}"
+
+    @pytest.mark.require('scylladb/scylla#12700')
+    @pytest.mark.dtest_heavy
+    def test_mv_alter_with_synchronous_updates(self):
+        """
+        Commit: https://github.com/scylladb/scylladb/commit/cb8a67dc98b60919ac9d5bbb6618e17f7d1602c7
+        Allow materialized views to run updates in synchronous mode.
+        In this mode, all view updates are applied synchronously as if the view was local.
+        Test scenario:
+        - prepare cluster with 4 nodes
+        - create keyspace with RF = 3
+        - create base table
+        - create 50 MVs with synchronous_updates = False
+        - insert data
+        - wait for a view is built and validate rows count
+        - run update on non-PK column (update view)
+         - immediately validate updated column value (select a view randomly) - expected to get old value as MV is
+           in asynchronous mode
+        - Alter all MVs with synchronous_updates to TRUE
+        - run update on non-PK column (update view) and in it time alter synchronous_updates to TRUE
+        - immediately validate that old data is not found in the view (select a view randomly)
+        """
+        keyspace_name = "ks"
+        table_name = "cf"
+        session = self.prepare(rf=3, nodes=4, consistency_level=ConsistencyLevel.QUORUM)
+
+        create_cf(session, table_name, columns={'c1': 'text', 'c2': 'text'})
+
+        rows = 100000
+        logger.info("Inserting data...")
+        insert_c1c2(session, n=rows,
+                    c1_values=[f"c1 value {i}" for i in range(rows)],
+                    c2_values=[f"c2 value {i}" for i in range(rows)])
+        assert_row_count(session, table_name=table_name, expected=rows, consistency_level=ConsistencyLevel.QUORUM)
+        logger.info("Finish inserting data...")
+
+        mv_name_pref = "mv_cf_view"
+        mvs_count = 50
+        self.create_few_mv(mvs_count=mvs_count, session=session, keyspace_name=keyspace_name, table_name=table_name,
+                           synchronous_updates=False, rows=rows)
+
+        logger.info("Run updates on MVs in asynchronous node. Rows with not updated (old) values may be found.")
+        asynch_failed_assertion = []
+        for row_index in range(rows):
+            if failed := self.update_one_row_and_assert_view(row_index=row_index, session=session,
+                                                             keyspace_name=keyspace_name,
+                                                             table_name=table_name,
+                                                             mv_name_pref=mv_name_pref, mvs_count=mvs_count):
+                asynch_failed_assertion.append(failed)
+                break
+
+        if not asynch_failed_assertion:
+            logger.error("Not updated rows are not found in views in asynchronous mode")
+
+        logger.info(f"Alter materialized views: set synchronous_updates = true")
+        for i in range(mvs_count):
+            mv_name = f"{mv_name_pref}_{i}"
+            session.execute(f"ALTER MATERIALIZED VIEW {mv_name} WITH synchronous_updates = true")
+
+        logger.info("Run updates on MVs in synchronous node. Not expected to find rows with not updated (old) values.")
+        for row_index in range(rows):
+            failed = self.update_one_row_and_assert_view(row_index=row_index, session=session,
+                                                         keyspace_name=keyspace_name,
+                                                         table_name=table_name,
+                                                         mv_name_pref=mv_name_pref, mvs_count=mvs_count)
+            assert not failed, f"Unexpectedly found not updated rows in views: {failed}"
+
+        if asynch_failed_assertion:
+            logger.info("Not updated rows were found in views in ASYNCHRONOUS mode. "
+                        "Not updated rows were not found in views in SYNCHRONOUS mode."
+                        "'synchronous_updates' feature works as expected.")
+        else:
+            logger.warning("Not updated rows are NOT found in views in ASYNCHRONOUS mode. We can not be sure that "
+                           "'synchronous_updates' feature works as expected")
+
+    @staticmethod
+    def update_one_row_and_assert_view(row_index, session, keyspace_name, table_name, mv_name_pref, mvs_count):
+        failed_assertion = {}
+        c2_new_value = f'c2 value {row_index * random.randint(10, 100000)}'
+        session.execute(f"INSERT INTO {keyspace_name}.{table_name} (key, c1, c2) "
+                        f"VALUES ('k{row_index}', 'c1 value {row_index}', '{c2_new_value}')")
+        mv_name_for_assert = f"{mv_name_pref}_{random.randint(0, mvs_count - 1)}"
+        try:
+            assert_one(session=session,
+                       query=f"select c2 from {keyspace_name}.{mv_name_for_assert} "
+                             f"where key='k{row_index}' and c1 = 'c1 value {row_index}'",
+                       expected=[c2_new_value], cl=ConsistencyLevel.QUORUM)
+        except AssertionError as err:
+            logger.error(err)
+            failed_assertion = {"mv name": mv_name_for_assert, "error": err}
+        return failed_assertion
 
     def _validate_data_in_mvs(self, tm, session, table_expected_rows, mv_expected_rows, node_action=None,
                               grouby_column_index=-1,
