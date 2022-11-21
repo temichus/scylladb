@@ -866,9 +866,12 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         node3.set_configuration_options(values={'auto_bootstrap': False})
 
         skip_shadow_round_msg = "All nodes.* are down.* Skip ShadowRound"
-        start_failure_msg = "Startup failed: .*Failed to learn about other nodes' tokens during bootstrap"
+        start_failure_msgs = [
+            "Startup failed: .*Failed to learn about other nodes' tokens during bootstrap",
+            f"Startup failed: .*Node {node2.address()} has gossip status=UNKNOWN",
+        ]
 
-        self.ignore_log_patterns.append(start_failure_msg)
+        self.ignore_log_patterns.extend(start_failure_msgs)
 
         # only start node2 and node3, node2 will be the real `first node`
         node2.start(wait_for_binary_proto=False, wait_other_notice=False)
@@ -878,8 +881,8 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
 
         node3.start(wait_for_binary_proto=False, wait_other_notice=False)
 
-        node2.watch_log_for(exprs=start_failure_msg)
-        node3.watch_log_for(exprs=start_failure_msg)
+        node2.watch_log_for(exprs=start_failure_msgs[0])
+        node3.watch_log_for(exprs=start_failure_msgs[1])
 
     def test_seeds_on_duty(self):
         """
