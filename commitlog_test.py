@@ -842,12 +842,10 @@ class TestCommitLog(Tester):
         node1 = self.node1
         debug_commitlog = False
 
-        # FIXME: hardcode the scylla available memory (assigned by `-memory')
-        SCYLLA_MEMORY = 1024
         if commitlog_total_space_in_mb == -1:
             # Scylla will use the same size as `available memory` for commitlog,
             # which is assigned by `--memory` in scylla cmdline.
-            total_space_limit = min(get_free_memory_size_in_mb(), SCYLLA_MEMORY)
+            total_space_limit = node1._mem_mb_per_cpu   # we start the node with a single shard
             commitlog_segment_size_in_mb = int(total_space_limit / 6)
         else:
             total_space_limit = commitlog_total_space_in_mb
