@@ -98,8 +98,11 @@ class TestCommitLog(Tester):
         """ Returns the commitlog directory size in MB """
 
         path = self._get_commitlog_path()
-        cmd_args = ['du', '-m', f"-{'a' if all else 's'}"]
-        cmd_args.append(path)
+        files = glob.glob(f"{path}/*CommitLog-*.log")
+        if not files:
+            return 0, "" if all else 0
+        cmd_args = ['du', '-m']
+        cmd_args.extend(files)
         p = subprocess.Popen(cmd_args, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
@@ -114,22 +117,17 @@ class TestCommitLog(Tester):
                 return -1, stderr.decode()
             pytest.fail("du exited with a non-zero status: %d" % exit_status
                         + "\n%s" % stderr.decode())
-        if not all:
-            size = int(stdout.decode().split()[0])
-            return size
-        else:
-            # du will print a line for file
-            # the last line contains the summary
-            size = 0
-            for l in stdout.decode().split('\n'):
-                if not l:
-                    continue
-                a = l.split()
-                if len(a) == 2:
-                    size = int(a[0])
-                else:
-                    logger.warn(f"Unrecognized du output line: {l}")
-            return size, stdout.decode()
+        # du will print a line for file
+        size = 0
+        for l in stdout.decode().split('\n'):
+            if not l:
+                continue
+            a = l.split()
+            if len(a) == 2:
+                size += int(a[0])
+            else:
+                logger.warn(f"Unrecognized du output line: {l}")
+        return size if not all else size, stdout.decode()
 
     def _segment_size_test(self, segment_size_in_mb, compressed=False):
         """ Execute a basic commitlog test and validate the commitlog files """
@@ -851,6 +849,7 @@ class TestCommitLog(Tester):
             total_space_limit = commitlog_total_space_in_mb
         logger.debug(f"commitlog_segment_size_in_mb={commitlog_segment_size_in_mb}")
         logger.debug(f"commitlog_total_space_in_mb={commitlog_total_space_in_mb}")
+        logger.debug(f"total_space_limit={total_space_limit}")
 
         # Calculate a reasonably low commitlog_disk_usage_threshold, flushing will be triggered
         # at this point. We want something that is within reachable range
