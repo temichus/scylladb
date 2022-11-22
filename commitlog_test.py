@@ -816,8 +816,8 @@ class TestCommitLog(Tester):
         session = self.patient_cql_connection(node1)
         assert_row_count(session=session, table_name='Test.cf', expected=100)
 
-    def test_total_space_limit_of_commitlog(self, commitlog_segment_size_in_mb=512,
-                                            commitlog_total_space_in_mb=-1):
+    def _test_total_space_limit_of_commitlog(self, commitlog_segment_size_in_mb,
+                                             commitlog_total_space_in_mb):
         """
         `commitlog_reuse_segments` is enabled by default, reusing commitlog
         segments without deleting and recreating will improve the performance.
@@ -940,26 +940,33 @@ class TestCommitLog(Tester):
         insert_c1c2(session, n=int(total_size * 1.5))
         assert_row_count(session=session, table_name='ks.cf', expected=int(total_size * 1.5))
 
+    def test_total_space_limit_of_commitlog_with_memory_based_limit(self):
+        """
+        Test with 512M commitlog files, total space limit is 3096M
+        """
+        self._test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=512,
+                                                  commitlog_total_space_in_mb=-1)
+
     def test_total_space_limit_of_commitlog_with_large_limit(self):
         """
         Test with 512M commitlog files, total space limit is 3096M
         """
-        self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=512,
-                                                 commitlog_total_space_in_mb=3096)
+        self._test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=512,
+                                                  commitlog_total_space_in_mb=3096)
 
     def test_total_space_limit_of_commitlog_with_medium_limit(self):
         """
         Test with 100M commitlog files, total space limit is 1024M
         """
-        self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=100,
-                                                 commitlog_total_space_in_mb=1024)
+        self._test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=100,
+                                                  commitlog_total_space_in_mb=1024)
 
     def test_total_space_limit_of_commitlog_with_small_limit(self):
         """
         Test with 5M commitlog files, total space limit is 30M
         """
-        self.test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=5,
-                                                 commitlog_total_space_in_mb=30)
+        self._test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=5,
+                                                  commitlog_total_space_in_mb=30)
 
     def test_commitlog_enospc(self, cleanup_firstly_by_drain=True):
         """
