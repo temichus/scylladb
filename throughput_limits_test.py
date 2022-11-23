@@ -80,14 +80,15 @@ class TestCompactionLimitThroughput(ThroughputLimitTester):
 
     Testing https://github.com/scylladb/scylladb/commit/bfc521ee9c2ba16fc4a15e68c21f68300658f530
     """
+
     @pytest.mark.single_node
     def test_can_limit_compaction_throughput(self):
         node1 = self.prepare(1)
         # set compaction_throughput_mb_per_sec setting in runtime
-        node1.set_configuration_options(values={'compaction_throughput_mb_per_sec': 5})
+        node1.set_configuration_options(values={'compaction_throughput_mb_per_sec': 3})
         # send SIGHUP to reread configuration
         node1.kill(signal.SIGHUP)
-        node1.watch_log_for(r"Set compaction bandwidth to 5MB/s", timeout=180)
+        node1.watch_log_for(r"Set compaction bandwidth to 3MB/s", timeout=60)
 
         # populate data to have something to compact
         mark = node1.mark_log()
@@ -96,15 +97,16 @@ class TestCompactionLimitThroughput(ThroughputLimitTester):
         node1.flush()
 
         # wait for compaction to finish and validate throughput
-        node1.watch_log_for(r"Compact keyspace1\.standard1 .+ Compacted", from_mark=mark, timeout=240)
-        compaction_lines = node1.grep_log(
-            r"Compact keyspace1\.standard1 .+ Compacted [\d]+ sstables to .+ in .+= ([\d]+)MB"
-        )
-        assert compaction_lines, "Failed to find compaction finished lines in logs"
-        for line, match in compaction_lines[-1:]:
+        line, match = node1.watch_log_for(r"Compact keyspace1\.standard1 .+ Compacted [\d]+ sstables to .+ in .+= ([\d]+)(MB|kB)",
+                                          from_mark=mark)
+        logger.debug("found compaction line: %s", line)
+        throughput = float(match.group(1))
+        unit = match.group(2)
+        if unit == "MB":
             # asserting 4MB instead 3MB due limited precision of throughput limiter
-            assert float(match.group(1)) <= 6, \
-                f"Failed to limit compaction bandwidth ({match.group(1)}MB/s<=6)"
+            assert throughput <= 4, f"Failed to limit compaction bandwidth ({throughput}{unit}/s<=4MB/s)"
+        else:
+            assert throughput < 4000, f"Failed to limit compaction bandwidth ({throughput}{unit}/s<=4MB/s)"
 
 
 class TestPerPartitionRateLimiter(Tester):
