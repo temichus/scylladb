@@ -2187,7 +2187,6 @@ class TestUpdateClusterLayout(Tester):
             query_c1c2(session, k, ConsistencyLevel.TWO, ks='ks2')
             query_c1c2(session, k, ConsistencyLevel.THREE, ks='ks3')
 
-    @pytest.mark.require("#11355")
     def test_decommission_after_changing_node_ip(self):
         """ Changes to cluster topology after node ip changed"""
 
