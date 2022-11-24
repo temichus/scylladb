@@ -496,7 +496,7 @@ def pytest_collection_modifyitems(items, config):
             deselect_test = True
 
         if item.get_closest_marker("gossip_only"):
-            scylla_ext_opt = os.environ["SCYLLA_EXT_OPTS"]
+            scylla_ext_opt = os.environ.get("SCYLLA_EXT_OPTS", '')
             if "raft" in scylla_ext_opt or "raft" in experimental_features:
                 deselect_test = True
 
@@ -595,6 +595,11 @@ def check_issue_closed(pattern):
     """
     scylla_issue_pattern = re.compile(
         r"^\s*((((?P<user_id>[\w:-]+)/)?(?P<repo_id>[\w:-]+))?#)?(?P<id>\d+)\s*$", re.IGNORECASE)
+
+    for pat in pattern.split(","):
+        match = scylla_issue_pattern.search(pat.strip())
+        if not match:
+            raise ValueError(f"pattern [{pat}] isn't valid for pytest.mark.require")
 
     if GITHUB_TOKEN:
         try:
