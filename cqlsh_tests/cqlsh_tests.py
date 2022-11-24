@@ -717,7 +717,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         assert "" == err
         assert "CREATE TABLE ks.map (" in out
 
-    @pytest.mark.require('materialized view')
+    @pytest.mark.skip('materialized view')
     @pytest.mark.single_node
     def test_describe_mv(self):
         """

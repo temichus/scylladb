@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 class TestUpgradeIndexSummary(Tester):
 
-    @pytest.mark.require('Fixes to ccm around upgrades')
     def test_upgrade_index_summary(self):
         cluster = self.cluster
         cluster.populate(1)

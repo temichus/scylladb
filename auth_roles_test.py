@@ -138,7 +138,7 @@ class TestAuthRoles(Tester):
                        Unauthorized)
 
     # Issue: Convert user-defined functions to lua #2175
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_creator_of_db_resource_granted_all_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -377,7 +377,7 @@ class TestAuthRoles(Tester):
                        Unauthorized)
 
     # Issue: Convert user-defined functions to lua #2175
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_filter_granted_permissions_by_resource_type(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -773,7 +773,7 @@ class TestAuthRoles(Tester):
 
     # UDF permissions tests TODO move to separate fixture & refactor this + auth_test.py
     # Issue: Convert user-defined functions to lua #2175
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_grant_revoke_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -817,7 +817,7 @@ class TestAuthRoles(Tester):
 
     # Issue: Convert user-defined functions to lua #2175
 
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_grant_revoke_are_idempotent(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -836,7 +836,7 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Convert user-defined functions to lua #2175
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_function_resource_hierarchy_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -893,7 +893,7 @@ class TestAuthRoles(Tester):
         mike.execute(select_two)
 
     # Issue: Convert user-defined functions to lua #2175
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_udf_permissions_validation(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -957,7 +957,7 @@ class TestAuthRoles(Tester):
 
     # Issue: Convert user-defined functions to lua #2175
 
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_drop_role_cleans_up_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -981,7 +981,7 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Convert user-defined functions to lua #2175
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_drop_function_and_keyspace_cleans_up_udf_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1007,7 +1007,7 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Convert user-defined functions to lua #2175
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_udf_with_overloads_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1048,7 +1048,7 @@ class TestAuthRoles(Tester):
         self.assert_no_permissions(cassandra, "LIST ALL PERMISSIONS OF mike")
 
     # Issue: Convert user-defined functions to lua #2175
-    @pytest.mark.require('#scylladb/scylla-dtest#2175')
+    @pytest.mark.require('scylladb/scylla-dtest#2175')
     def test_drop_keyspace_cleans_up_function_level_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')

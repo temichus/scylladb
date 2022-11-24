@@ -68,7 +68,7 @@ class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
         else:
             raise AssertionError("Task scheduling withing the next 8 hours while the manager is suspended did not fail")
 
-    @pytest.mark.require("scylla-manager/#2496")
+    @pytest.mark.require("scylladb/scylla-manager#2496")
     def test_schedule_task_to_run_while_suspended(self):
         self.config_and_create_cluster(3)
         mgr_cluster = self._create_mgr_cluster(self.cluster.nodelist()[0], name=CLUSTER_NAME)

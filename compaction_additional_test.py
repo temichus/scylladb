@@ -2522,7 +2522,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         regex_match = self._get_table_levels(node=node)
         self._validate_levels_distribution(regex_match)
 
-    @pytest.mark.require("#scylladb/scylla#10378")
+    @pytest.mark.require("scylladb/scylla#10378")
     def test_lcs_table_promotion_major_compaction(self):
         node, session, storage_service_client = self._prepare()
         create_ks(session=session, name='ks', rf=1)

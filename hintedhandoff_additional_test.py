@@ -516,7 +516,7 @@ class TestHintedHandoff(Tester):
         stress_table = 'keyspace1.standard1'
         assert list(session.execute(f"SELECT count(*) FROM {stress_table}"))[0].count == rows
 
-    @pytest.mark.require('#scylladb/scylla#10111')
+    @pytest.mark.require('scylladb/scylla#10111')
     def test_support_max_hh_concurrency_param_negative(self, fixture_dtest_setup):
         """
         https://github.com/scylladb/scylla/commit/de1679b1b99435bea9d2e801d0e7f61785aed8ff
@@ -537,7 +537,7 @@ class TestHintedHandoff(Tester):
         assert self.cluster.nodelist()[0].grep_log(expr=expected_error_message), \
             f"Expected error message '{expected_error_message}' is not found for node {self.cluster.nodelist()[0].name}"
 
-    @pytest.mark.require('#scylladb/scylla#10111')
+    @pytest.mark.require('scylladb/scylla#10111')
     def test_support_max_hh_concurrency_param_negative_via_args(self, fixture_dtest_setup):
         """
         https://github.com/scylladb/scylla/commit/de1679b1b99435bea9d2e801d0e7f61785aed8ff

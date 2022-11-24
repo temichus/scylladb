@@ -1539,7 +1539,7 @@ class TestNodetool(Tester):
             res["streams"].append(stream)
         return res
 
-    @pytest.mark.require('bootstrap using streaming')
+    @pytest.mark.skip('bootstrap using streaming')
     def test_netstats(self):
         """Testwing the `nodetool netstats` command
         It starts a 2 node cluster load it.

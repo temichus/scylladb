@@ -265,7 +265,7 @@ class TestAdditionalTestSSTableLoader(Tester):
                 f"sstableloader command failed, exit status: {result.returncode},"
                 f"\n\nSTDERR: {result.stderr}\n,\nSTDOUT: {result.stdout}")
 
-    @pytest.mark.require('scylla-tools-java/#216')
+    @pytest.mark.require('scylladb/scylla-tools-java#216')
     def test_ignore_missing_columns_by_drop_column_from_snapshot(self):
         """
         Verify `--ignore-missing-columns` option of sstableloader works
@@ -313,7 +313,7 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2])
         assert_all(session, f'SELECT key, c1, c3 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
-    @pytest.mark.require('scylla-tools-java/#216')
+    @pytest.mark.require('scylladb/scylla-tools-java#216')
     def test_ignore_missing_columns_by_drop_table_from_snapshot(self):
         """
         Verify `--ignore-missing-columns` option of sstableloader works
@@ -483,7 +483,7 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2, -1])
         assert_all(session, f'SELECT key, c1 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
-    @pytest.mark.require('scylla-tools-java/214')
+    @pytest.mark.require('scylladb/scylla-tools-java#214')
     def test_ignore_missing_two_column_by_drop_table_from_backup(self):
         """
         Verify `--ignore-missing-columns` option of sstableloader works
