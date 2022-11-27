@@ -1,4 +1,6 @@
 #!groovy
+library identifier: 'camunda-community'
+library identifier: 'pipeline-logparser@3.2'
 
 def createEmptyDir(String path) {
 	sh "rm -rf $path && mkdir -p $path"
@@ -249,83 +251,123 @@ def doParallelDtest (Map args) {
 	boolean dtestFailed = false
 	boolean publishFailed = false
 	int numOfSplitFiles = args.numOfSplitFiles
+    def results = [:]
 
     for (int i = 0; i < numOfSplitFiles; i++) {
 
         String nodeIndex = i
         nodeIndex = nodeIndex.padLeft(3, '0')
+        results["${dtestType}-split${nodeIndex}"] = 0
         branches["${dtestType}-split${nodeIndex}"] = {
-            node(runnersLabel) {
-                jenkins.checkAndTagAwsInstance(args.runningUserID)
-                withEnv(["NODE_TOTAL=${numOfSplitFiles}", "NODE_INDEX=${nodeIndex}"]) {
-                    prepareDtestLocalTree (
-                        preserveWorkspace: false,
-                        dtestRepo: args.dtestRepo,
-                        ccmRepo: args.ccmRepo,
-                        dtestBranch: args.dtestBranch,
-                        ccmBranch: args.ccmBranch,
-                        relocWebUrl: cloudUrl,
-                        buildMode: args.dtestMode,
-                    )
+            try {
+                def instanceType = ""
+                conditionalRetry([
+                        agentLabel: runnersLabel,
+                        suppressErrors: false,
+                        retryCount: 3,
+                        retryDelay: 1,
+                        useBuiltinFailurePatterns: true,
+                        customFailurePatterns: [
+                            'connection-lost':  '.*Could not connect to .*? to send interrupt signal to process.*',
+                            'termination-request': '.*Termination requested.*',
+                            'node-removed': '.*was marked offline: Node is being removed$',
+                            'channel-termination': '.*Unexpected termination of the channel$',
+                            ],
+                        stageNameFilterPatterns:  [".*${dtestType}-split${nodeIndex}.*"],
+                        runSteps: {
+                            def currentRetryNumber = results["${dtestType}-split${nodeIndex}"]
+                            if (currentRetryNumber > 0) {
+                                if (!currentBuild.description) {
+                                    currentBuild.description = ''
+                                }
+                                def currentDateTime = new Date().format("MM/dd/yyyy HH:mm:ss")
+                                currentBuild.description += "${currentDateTime} - ${instanceType} - ${dtestType}-split${nodeIndex} - retry ${currentRetryNumber}\n"
+                            }
 
-                    def currentWorkSpace = sh(returnStdout: true, script: 'echo $WORKSPACE').trim()
-                    def instanceType = sh(returnStdout: true, script: "curl http://169.254.169.254/latest/meta-data/instance-type").trim()
-                    echo "instanceType: ${instanceType}"
+                            results["${dtestType}-split${nodeIndex}"] += 1
+                            jenkins.checkAndTagAwsInstance(args.runningUserID)
+                            withEnv(["NODE_TOTAL=${numOfSplitFiles}", "NODE_INDEX=${nodeIndex}"]) {
+                                prepareDtestLocalTree (
+                                    preserveWorkspace: false,
+                                    dtestRepo: args.dtestRepo,
+                                    ccmRepo: args.ccmRepo,
+                                    dtestBranch: args.dtestBranch,
+                                    ccmBranch: args.ccmBranch,
+                                    relocWebUrl: cloudUrl,
+                                    buildMode: args.dtestMode,
+                                )
 
-                    // HACK: avoid getting Argument list too long
-                    sh 'ulimit -s 65536'
+                                def currentWorkSpace = sh(returnStdout: true, script: 'echo $WORKSPACE').trim()
+                                instanceType = sh(returnStdout: true, script: "curl http://169.254.169.254/latest/meta-data/instance-type").trim()
+                                echo "instanceType: ${instanceType}"
 
-                    unstash(name: "${dtestType}-dtest-split-files")
-                    setupTestEnv(args.dtestMode, cloudUrl)
-                    String splitFileName = "$WORKSPACE/scylla-dtest/include_${NODE_INDEX}.txt"
-                    if (! fileExists(splitFileName)) {
-                        error("split file missing - ${splitFileName}")
-                    }
-                    String localIncludeTests = " --from-file=$splitFileName"
-                    String dtestRunTestSh = "$WORKSPACE/scylla-dtest/scripts/run_test.sh"
-                    String dtestParameters = setDtestParams (
-                        dryRun: dryRun,
-                        dtestMode: args.dtestMode,
-                        dtestDebugInfoFlag: dtestDebugInfoFlag,
-                        dtestKeepLogsFlag: dtestKeepLogsFlag,
-                        includeTests: localIncludeTests,
-                        extOpts: extOpts,
-                        extEnv: extEnv,
-                        dtestType: dtestType,
-                        managerPackage: managerPackage,
-                        cloudUrl: cloudUrl,
-                        driverVersion: driverVersion,
-                        pyTestExtraCLIOptions: pyTestExtraCLIOptions)
+                                // HACK: avoid getting Argument list too long
+                                sh 'ulimit -s 65536'
 
-                    String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
-                    echo "dtestParameters: |${dtestParameters}|"
-                    try {
-                        sh "set -o pipefail; ${dtestScript} ${dtestParameters} 2>&1 | tee output_${dtestType}_dtest_${NODE_INDEX}.txt"
-                    } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException interruptEx) {
-                        currentBuild.result = 'ABORTED'
-                        error("Interrupt exception (abort) while dtest phase, error: |$interruptEx|")
-                    } catch (Exception error) {
-                        if (currentBuild.currentResult == 'ABORTED') {
-                            error("Interrupt exception (abort) while dtest phase, error: |$error|")
+                                unstash(name: "${dtestType}-dtest-split-files")
+                                setupTestEnv(args.dtestMode, cloudUrl)
+                                String splitFileName = "$WORKSPACE/scylla-dtest/include_${NODE_INDEX}.txt"
+                                if (! fileExists(splitFileName)) {
+                                    error("split file missing - ${splitFileName}")
+                                }
+                                String localIncludeTests = " --from-file=$splitFileName"
+                                String dtestRunTestSh = "$WORKSPACE/scylla-dtest/scripts/run_test.sh"
+                                String dtestParameters = setDtestParams (
+                                    dryRun: dryRun,
+                                    dtestMode: args.dtestMode,
+                                    dtestDebugInfoFlag: dtestDebugInfoFlag,
+                                    dtestKeepLogsFlag: dtestKeepLogsFlag,
+                                    includeTests: localIncludeTests,
+                                    extOpts: extOpts,
+                                    extEnv: extEnv,
+                                    dtestType: dtestType,
+                                    managerPackage: managerPackage,
+                                    cloudUrl: cloudUrl,
+                                    driverVersion: driverVersion,
+                                    pyTestExtraCLIOptions: pyTestExtraCLIOptions)
+
+                                String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
+                                echo "dtestParameters: |${dtestParameters}|"
+                                try {
+                                    sh "set -o pipefail; ${dtestScript} ${dtestParameters} 2>&1 | tee output_${dtestType}_dtest_${NODE_INDEX}.txt"
+                                } finally {
+                                    if (!dryRun) {
+                                        publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+                                        publishFailed |= artifact.publishArtifactsStatus("**/logs-${dtestType}.${args.dtestMode}.${NODE_INDEX}/**", 'scylla-dtest')
+                                        publishFailed |= publishTestResults("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
+                                        if (!publishFailed) {
+                                            results["${dtestType}-split${nodeIndex}"] = "done"
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        else {
-                            echo "Error: dtest phase failed, going ahead to check tests and dtest status, error: |$error|"
-                            currentBuild.result = 'FAILURE'
-                        }
-                    }
-                    finally {
-                        if (!dryRun) {
-                            publishFailed |= artifact.publishArtifactsStatus("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
-                            publishFailed |= artifact.publishArtifactsStatus("**/logs-${dtestType}.${args.dtestMode}.${NODE_INDEX}/**", 'scylla-dtest')
-                            publishFailed |= publishTestResults("scylla-dtest.${dtestType}.${args.dtestMode}.${NODE_INDEX}*.xml", WORKSPACE)
-                        }
-                    }
+                ])
+            } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException interruptEx) {
+                currentBuild.result = 'ABORTED'
+                error("Interrupt exception (abort) while dtest phase, error: |$interruptEx|")
+            } catch (Exception error) {
+                if (currentBuild.currentResult == 'ABORTED') {
+                    error("Interrupt exception (abort) while dtest phase, error: |$error|")
+                }
+                else {
+                    echo "Error: dtest phase failed, going ahead to check tests and dtest status, error: |$error|"
+                    currentBuild.result = 'FAILURE'
                 }
             }
         }
     }
     parallel branches
 
+    def aborted_branches = results.findAll { it.value != 'done' }
+    if (aborted_branches) {
+        aborted_branches.each { entry -> echo "Aborted: $entry" }
+        currentBuild.result = 'ABORTED'
+        if (!currentBuild.description) {
+            currentBuild.description = ""
+        }
+        currentBuild.description += "Aborted splits: ${aborted_branches}\n"
+    }
     Boolean failedStatus = currentBuild.result == 'FAILURE' || currentBuild.result == 'ABORTED'
     jenkins.raiseErrorOnFailureStatus (failedStatus, "dtest phase failed")
 }

@@ -67,8 +67,8 @@ def raiseErrorOnFailureStatus (boolean status, String description) {
 		echo "Error: $description"
 		if (currentBuild.currentResult != "ABORTED") {
 			currentBuild.result = 'FAILURE'
-			error("$description")
 		}
+		error("$description")
 	}
 }
 

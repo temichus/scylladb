@@ -33,6 +33,22 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
                 .allowOverride(false)
                 .build()
         )
+        helper.registerSharedLibrary(library().name('camunda-community')
+                .defaultVersion('snapshot')
+                .targetPath(sharedLibs)
+                .retriever(projectSource(sharedLibs))
+                .implicit(true)
+                .allowOverride(false)
+                .build()
+        )
+        helper.registerSharedLibrary(library().name('pipeline-logparser')
+                .defaultVersion('3.2')
+                .targetPath(sharedLibs)
+                .retriever(projectSource(sharedLibs))
+                .implicit(true)
+                .allowOverride(false)
+                .build()
+        )
         helper.registerAllowedMethod('changeRequest', []) { true }
         binding.setVariable('scm', 'string')
         binding.setVariable('WORKSPACE', '/workspace/')
@@ -77,6 +93,11 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
 
         binding.getVariable('currentBuild').getBuildCauses = { "Started by user" }
 
+        helper.registerAllowedMethod('conditionalRetry', [Map], { Map c ->
+            println "conditionalRetry: ${c}"
+            c.runSteps.delegate = delegate
+            helper.callClosure(c.runSteps)
+        })
     }
 
     @Test

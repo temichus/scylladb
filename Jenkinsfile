@@ -1,4 +1,6 @@
 #!groovy
+library identifier: 'camunda-community'
+library identifier: 'pipeline-logparser@3.2'
 
 def pullRequestSetResult(String status, String context, String description){
     if (env.CHANGE_ID) {
