@@ -648,10 +648,10 @@ class TestDistributedTTL(Tester):
 
     """ Test Time To Live Feature in a distributed environment """
 
-    def prepare(self, default_time_to_live=None, options=None):
+    def prepare(self, default_time_to_live=None, jvm_args=[], options=None):
         if options:
             self.cluster.set_configuration_options(values=options)
-        self.cluster.populate(2).start()
+        self.cluster.populate(2).start(jvm_args=jvm_args)
         [self.node1, self.node2] = self.cluster.nodelist()
         self.session1 = self.patient_cql_connection(self.node1)
         create_ks(self.session1, 'ks', 2)
@@ -751,10 +751,12 @@ class TestDistributedTTL(Tester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    def test_ttl_is_respected_on_repair(self):
+    @pytest.mark.parametrize("enable_parallized_aggregation", ['true', 'false'], ids=["parallel_aggregates_enabled", "parallel_aggregates_disabled"])
+    def test_ttl_is_respected_on_repair(self, enable_parallized_aggregation):
         """ Test that ttl is respected on repair """
 
-        self.prepare()
+        self.prepare(jvm_args=['--logger-log-level', 'forward_service=trace',
+                     '--enable-parallelized-aggregation', enable_parallized_aggregation])
         self.session1.execute("""
             ALTER KEYSPACE ks WITH REPLICATION =
             {'class' : 'SimpleStrategy', 'replication_factor' : 1};
