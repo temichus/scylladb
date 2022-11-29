@@ -15,6 +15,7 @@ from cassandra.cluster import NoHostAvailable, OperationTimedOut
 
 from ccmlib.common import is_win
 from ccmlib.node import Node, TimeoutError
+from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import rows_to_list
@@ -750,6 +751,11 @@ class TestCommitLog(Tester):
     def prepare_cluster_with_ks_cf(self, jvm_args=None):
         node1 = self.node1
         jvm_args = jvm_args or []
+        if not '--commitlog-sync-period-in-ms' in jvm_args:
+            commit_log_sync_period = 10000
+            if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug":
+                commit_log_sync_period *= 3
+            jvm_args.extend(['--commitlog-sync-period-in-ms', str(commit_log_sync_period)])
         self.cluster.start(jvm_args=jvm_args)
 
         logger.debug("Create table")
@@ -857,11 +863,15 @@ class TestCommitLog(Tester):
 
         # By default periodic commitlog_sync mode will be used, so we have chance
         # to accumulate more commitlogs.
+        commit_log_sync_period = 10000
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug":
+            commit_log_sync_period *= 3
         node1.set_configuration_options(values={'commitlog_segment_size_in_mb': commitlog_segment_size_in_mb,
                                                 'commitlog_total_space_in_mb': commitlog_total_space_in_mb,
                                                 'commitlog_flush_threshold_in_mb': commitlog_disk_usage_threshold,
                                                 'commitlog_reuse_segments': True,
-                                                'commitlog_use_hard_size_limit': True})
+                                                'commitlog_use_hard_size_limit': True,
+                                                'commitlog_sync_period_in_ms': commit_log_sync_period})
 
         logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}M')
         logger.debug("Start cluster with `--smp 1' ...")
