@@ -2,10 +2,19 @@
 2) strong-dtest-fleet - used for the running the tests
 
 ## create fleet
+
 ```bash
 # example of how to create a fleet from the configuration
 aws ec2 request-spot-fleet --region us-east-1 \
  --spot-fleet-request-config file://fedora-33-4cpu-dtest-us-east-1.json
+```
+
+## create ASGs
+
+```bash
+aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-4cpu-dtest-asg-spot.json --region us-east-1
+aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-strong-dtest-asg.json --region us-east-1
+aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-strong-dtest-asg-spot.json --region us-east-1
 ```
 
 ## jenkins configuration

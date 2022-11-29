@@ -7,7 +7,7 @@ def call(Map pipelineParams) {
             booleanParam(name: 'RUN_DTEST_HEAVY', defaultValue: true, description: 'Uncheck this to run DtestHeavy, when running in parallel mode only!.')
             booleanParam(name: 'RUN_DTEST_LONG', defaultValue: true, description: 'Uncheck this to run DtestLong, when running in parallel mode only!.')
 
-            string(name: 'SPLIT_FLEET_LABEL', defaultValue: '', description: 'On which spot instance fleet to run the parallel jobs. default: ec2-fleet-strong-dtest')
+            string(name: 'SPLIT_FLEET_LABEL', defaultValue: '', description: 'On which spot instance fleet to run the parallel jobs. default: ec2-asg-strong-dtest-spot')
             string(name: 'SPLIT_TIME_TARGET', defaultValue: '240', description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
             string(name: 'SPLIT_MAX_NODES', defaultValue: '100', description: 'Maximum number of nodes to run tests on parallel.')
             string(name: 'BRANCH', defaultValue: "${pipelineParams.get('BRANCH', 'master')}", description: 'Choose: master|branch-4.4')
@@ -94,7 +94,7 @@ def call(Map pipelineParams) {
                             script {
                                 node(generalProperties.targetDtestBuilder) {
                                     runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_heavy and not dtest_long'",
-                                        "heavy", generalProperties.targetDtestStrongBuilder, "240")
+                                        "heavy", params.SPLIT_FLEET_LABEL, "240")
                                 }
                             }
                         }
@@ -107,7 +107,7 @@ def call(Map pipelineParams) {
                             script {
                                 node(generalProperties.targetDtestBuilder) {
                                     runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_long'",
-                                        "long", generalProperties.targetDtestStrongBuilder, "240")
+                                        "long", params.SPLIT_FLEET_LABEL, "240")
                                 }
                             }
                         }
@@ -128,7 +128,7 @@ def call(Map pipelineParams) {
     }
 }
 
-def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, String splitFleetLabal, String splitTimeTarget) {
+def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, String splitFleetLabel, String splitTimeTarget) {
     echo "runDtest"
     lastStage = env.STAGE_NAME
     dtest.prepareDtestLocalTree (
@@ -165,7 +165,7 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         dtestBranch: params.SCYLLA_DTEST_BRANCH,
         ccmBranch: params.SCYLLA_CCM_BRANCH,
         ccmRepo: params.SCYLLA_CCM_REPO,
-        splitFleetLabal: splitFleetLabal,
+        splitFleetLabel: splitFleetLabel,
         dtestType: dtestType,
         driverVersion: params.DRIVER_VERSION,
         pyTestExtraCLIOptions: params.PYTEST_EXTRA_COMMANDLINE_OPTIONS,

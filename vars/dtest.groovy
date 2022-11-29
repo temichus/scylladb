@@ -245,7 +245,7 @@ def doParallelDtest (Map args) {
     String pyTestExtraCLIOptions = args.pyTestExtraCLIOptions ?: ""
 
 	def branches = [:]
-	def runnersLabel =  args.splitFleetLabal ?: generalProperties.targetDtestStrongBuilder
+	def runnersLabel =  args.splitFleetLabel ?: generalProperties.targetDtestStrongBuilder
 	boolean dtestFailed = false
 	boolean publishFailed = false
 	int numOfSplitFiles = args.numOfSplitFiles
