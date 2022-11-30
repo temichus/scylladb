@@ -11,10 +11,12 @@ from pkg_resources import parse_version
 from tempfile import NamedTemporaryFile
 from uuid import UUID, uuid4
 import logging
+from functools import cached_property
 
 import pytest
 from cassandra import InvalidRequest
 from cassandra.concurrent import execute_concurrent_with_args
+from packaging.version import Version
 
 from tools.assertions import assert_all, assert_none, assert_count_equal
 from ccmlib import common
@@ -27,8 +29,22 @@ from tools.cluster import new_node
 logger = logging.getLogger(__name__)
 
 
+class CqlshVersionMixing(Tester):
+    @cached_property
+    def cqlsh_version(self) -> Version:
+        node, *_ = self.cluster.nodelist()
+        output, err = node.run_cqlsh(cmds='', cqlsh_options=['--version'], return_output=True)
+        return Version(output.strip().split(' ')[1])
+
+    def cqlsh_options(self) -> list:
+        opts = ['-u', 'cassandra', '-p', 'cassandra']
+        if self.cqlsh_version >= Version('6.2.0'):
+            opts += ['--insecure-password-without-warning']
+        return opts
+
+
 @pytest.mark.dtest_full
-class TestCqlsh(Tester):
+class TestCqlsh(CqlshVersionMixing):
 
     @pytest.fixture(scope='class', autouse=True)
     def monkeypatch_driver(self):
@@ -514,7 +530,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         # If this assertion fails check CASSANDRA-7891
 
     def verify_output(self, query, node, expected):
-        output, err = self.run_cqlsh(node, query, ['-u', 'cassandra', '-p', 'cassandra'])
+        output, err = self.run_cqlsh(node, query, cqlsh_options=self.cqlsh_options())
         if common.is_win():
             output = output.replace('\r', '')
         if len(err) > 0:
@@ -1873,7 +1889,7 @@ class TestCqlshSmoke(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class TestCqlLogin(Tester):
+class TestCqlLogin(CqlshVersionMixing):
     """
     Tests login which requires password authenticator
     """
@@ -1899,7 +1915,7 @@ class TestCqlLogin(Tester):
             DESCRIBE TABLES;
             ''',
             return_output=True,
-            cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
+            cqlsh_options=self.cqlsh_options())
         assert [x for x in cqlsh_stdout.split() if x] == ['ks1table', 'ks1table']
         assert cqlsh_stderr == ''
 
@@ -1913,7 +1929,7 @@ class TestCqlLogin(Tester):
             LOGIN user1 'badpass';
             ''',
             return_output=True,
-            cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
+            cqlsh_options=self.cqlsh_options())
         assert 'Username and/or password are incorrect' in err
 
     def test_login_authenticates_correct_user(self):
@@ -1937,7 +1953,7 @@ class TestCqlLogin(Tester):
         cqlsh_stdout, cqlsh_stderr = self.node1.run_cqlsh(
             query,
             return_output=True,
-            cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
+            cqlsh_options=self.cqlsh_options())
 
         err_lines = cqlsh_stderr.splitlines()
         for err_line in err_lines:
@@ -1961,6 +1977,6 @@ class TestCqlLogin(Tester):
             DESCRIBE TABLES;
             ''',
             return_output=True,
-            cqlsh_options=['-u', 'cassandra', '-p', 'cassandra'])
+            cqlsh_options=self.cqlsh_options())
         assert [x for x in cqlsh_stdout.split() if x] == ['ks1table']
         assert 'Username and/or password are incorrect' in cqlsh_stderr
