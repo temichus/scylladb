@@ -32,13 +32,16 @@ class TestBypassCache(Tester):
     }
 
     def prepare(self, nodes=1, keyspace_name='bypass_cache', rf=1, options_dict=None, table_name="user_events",
-                insert_data=True):
+                insert_data=True, smp=1, cache_index_pages=None):
         self.keyspace_name = keyspace_name
         self.table_name = table_name
         cluster = self.cluster
         if options_dict:
             cluster.set_configuration_options(values=options_dict)
-        cluster.populate(nodes).start(jvm_args=['--smp', '1'])
+        jvm_args = ['--smp', str(smp)]
+        if cache_index_pages is not None:
+            jvm_args += ['--cache-index-pages', '1' if cache_index_pages else '0']
+        cluster.populate(nodes).start(jvm_args=jvm_args)
         node1 = cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         create_ks(session=session, name=keyspace_name, rf=rf)
@@ -192,18 +195,20 @@ class TestBypassCache(Tester):
             }
         )
 
-    def test_create_table_caching_disabled(self):
-        session = self.prepare(insert_data=False)
+    @pytest.mark.parametrize("cache_index_pages", [True, False], ids=["cache_index_pages", "no_cache_index_pages"])
+    def test_create_table_caching_disabled(self, cache_index_pages: bool):
+        session = self.prepare(insert_data=False, cache_index_pages=cache_index_pages)
         node = self.cluster.nodelist()[0]
         create_c1c2_table(session, cf=self.table_name, caching=False)
         insert_c1c2(session, n=NUM_OF_QUERY_EXECUTIONS, cf=self.table_name, ks=self.keyspace_name)
         node.flush()
         query = f'select * from {self.table_name}'
         # TODO: After https://github.com/scylladb/scylla/issues/9968 is solved, remove index_cache_involved=True
-        self.verify_read_was_from_disk(node=node, query=query, session=session, index_cache_involved=True)
+        self.verify_read_was_from_disk(node=node, query=query, session=session, index_cache_involved=cache_index_pages)
 
-    def test_alter_table_caching_disable(self):
-        session = self.prepare(insert_data=False)
+    @pytest.mark.parametrize("cache_index_pages", [True, False], ids=["cache_index_pages", "no_cache_index_pages"])
+    def test_alter_table_caching_disable(self, cache_index_pages: bool):
+        session = self.prepare(insert_data=False, cache_index_pages=cache_index_pages)
         node = self.cluster.nodelist()[0]
         create_c1c2_table(session, cf=self.table_name)
         insert_c1c2(session, n=NUM_OF_QUERY_EXECUTIONS, cf=self.table_name, ks=self.keyspace_name)
@@ -213,17 +218,18 @@ class TestBypassCache(Tester):
         # disabling caching for table and checking read comes from disk
         session.execute(f"ALTER TABLE {self.table_name} WITH caching = {{'enabled':false}}")
         # TODO: After https://github.com/scylladb/scylla/issues/9968 is solved, remove index_cache_involved=True
-        self.verify_read_was_from_disk(node=node, query=query, session=session, index_cache_involved=True)
+        self.verify_read_was_from_disk(node=node, query=query, session=session, index_cache_involved=cache_index_pages)
 
-    def test_alter_table_caching_enable(self):
-        session = self.prepare(insert_data=False)
+    @pytest.mark.parametrize("cache_index_pages", [True, False], ids=["cache_index_pages", "no_cache_index_pages"])
+    def test_alter_table_caching_enable(self, cache_index_pages: bool):
+        session = self.prepare(insert_data=False, cache_index_pages=cache_index_pages)
         node = self.cluster.nodelist()[0]
         create_c1c2_table(session, cf=self.table_name, caching=False)
         insert_c1c2(session, n=NUM_OF_QUERY_EXECUTIONS, cf=self.table_name, ks=self.keyspace_name)
         node.flush()
         query = f'select * from {self.table_name}'
         # TODO: After https://github.com/scylladb/scylla/issues/9968 is solved, remove index_cache_involved=True
-        self.verify_read_was_from_disk(node=node, query=query, session=session, index_cache_involved=True)
+        self.verify_read_was_from_disk(node=node, query=query, session=session, index_cache_involved=cache_index_pages)
         # enabling caching for table and checking read comes from cache
         session.execute(f"ALTER TABLE {self.table_name} WITH caching = {{'enabled':true}}")
         self.verify_read_was_from_cache(node=node, query=query, session=session)
