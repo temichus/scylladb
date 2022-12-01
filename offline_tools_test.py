@@ -48,6 +48,7 @@ class TestOfflineTools(Tester):
     def verify_nodetool_stderr(self, error):
         assert not self._nodetool_stderr_has_error(error), f"Unexpected nodetool stderr: {error}"
 
+    @pytest.mark.require('scylladb/scylla-dtest#2911')
     @pytest.mark.single_node
     def test_sstablelevelreset(self):
         """
