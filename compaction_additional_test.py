@@ -1642,6 +1642,9 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         node2.watch_log_for("Streaming for rebuild successful|"
                             "rebuild_with_repair: finished with keyspace=ks", from_mark=mark)
+        full_table_name = f"{self.keyspace_name}.{self.table_name}"
+        node2.watch_log_for(f"Starting off-strategy compaction for {full_table_name}", from_mark=mark)
+        node2.watch_log_for(f"Done with off-strategy compaction for {full_table_name}", from_mark=mark)
         node2.wait_for_compactions()
         self._check_sstable_timestamps(node2)
 
