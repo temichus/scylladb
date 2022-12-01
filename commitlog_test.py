@@ -937,9 +937,10 @@ class TestCommitLog(Tester):
         insert_c1c2(session, n=int(total_size * 1.5))
         assert_row_count(session=session, table_name='ks.cf', expected=int(total_size * 1.5))
 
+    @pytest.mark.require('scylladb/scylladb#12129')
     def test_total_space_limit_of_commitlog_with_memory_based_limit(self):
         """
-        Test with 512M commitlog files, total space limit is 3096M
+        Test with auto-sized commitlog files, and total space limit (based on available memory)
         """
         self._test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=512,
                                                   commitlog_total_space_in_mb=-1)
