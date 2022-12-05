@@ -845,14 +845,17 @@ class TestCommitLog(Tester):
         """
         node1 = self.node1
         debug_commitlog = False
+        log_level = 'debug'
 
         if commitlog_total_space_in_mb == -1:
-            # Scylla will use the same size as `available memory` for commitlog,
-            # which is assigned by `--memory` in scylla cmdline.
-            total_space_limit = node1._mem_mb_per_cpu   # we start the node with a single shard
-            commitlog_segment_size_in_mb = int(total_space_limit / 6)
-        else:
-            total_space_limit = commitlog_total_space_in_mb
+            log_level = 'trace'
+            debug_commitlog = True
+
+        total_space_limit = commitlog_total_space_in_mb
+
+        if commitlog_segment_size_in_mb == -1:
+            commitlog_segment_size_in_mb = 32  # default
+
         logger.debug(f"commitlog_segment_size_in_mb={commitlog_segment_size_in_mb}")
         logger.debug(f"commitlog_total_space_in_mb={commitlog_total_space_in_mb}")
         logger.debug(f"total_space_limit={total_space_limit}")
@@ -861,25 +864,35 @@ class TestCommitLog(Tester):
         # at this point. We want something that is within reachable range
         commitlog_disk_usage_threshold = int(total_space_limit / 2)
 
+        opts = {'commitlog_segment_size_in_mb': commitlog_segment_size_in_mb,
+                'commitlog_total_space_in_mb': commitlog_total_space_in_mb,
+                'commitlog_reuse_segments': True,
+                'commitlog_use_hard_size_limit': True}
+
+        if total_space_limit != -1:
+            opts.update({'commitlog_flush_threshold_in_mb': commitlog_disk_usage_threshold})
+
         # By default periodic commitlog_sync mode will be used, so we have chance
         # to accumulate more commitlogs.
         commit_log_sync_period = 10000
         if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug":
             commit_log_sync_period *= 3
-        node1.set_configuration_options(values={'commitlog_segment_size_in_mb': commitlog_segment_size_in_mb,
-                                                'commitlog_total_space_in_mb': commitlog_total_space_in_mb,
-                                                'commitlog_flush_threshold_in_mb': commitlog_disk_usage_threshold,
-                                                'commitlog_reuse_segments': True,
-                                                'commitlog_use_hard_size_limit': True,
-                                                'commitlog_sync_period_in_ms': commit_log_sync_period})
+        node1.set_configuration_options(values=opts)
 
         logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}M')
         logger.debug("Start cluster with `--smp 1' ...")
         if debug_commitlog:
             self.cluster.start(jvm_args=['--smp', '1', '--logger-log-level',
-                                         'commitlog=debug'], wait_for_binary_proto=True)
+                                         f'commitlog={log_level}'], wait_for_binary_proto=True)
         else:
             self.cluster.start(jvm_args=['--smp', '1'], wait_for_binary_proto=True)
+
+        if commitlog_total_space_in_mb == -1:
+            matches = node1.grep_log(r'Commitlog .* maximum disk size: (\d+) MB / cpu \(\d+ cpus\)')
+            total_space_limit = int(matches[0][1].group(1))
+            commitlog_disk_usage_threshold = int(total_space_limit / 2)
+            logger.debug(f"total_space_limit={total_space_limit}")
+            logger.debug(f"commitlog_disk_usage_threshold={commitlog_disk_usage_threshold}")
 
         logger.debug("Create test keyspace and table")
         session = self.patient_cql_connection(node1)
@@ -947,12 +960,11 @@ class TestCommitLog(Tester):
         insert_c1c2(session, n=int(total_size * 1.5))
         assert_row_count(session=session, table_name='ks.cf', expected=int(total_size * 1.5))
 
-    @pytest.mark.require('scylladb/scylladb#12129')
     def test_total_space_limit_of_commitlog_with_memory_based_limit(self):
         """
         Test with auto-sized commitlog files, and total space limit (based on available memory)
         """
-        self._test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=512,
+        self._test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=-1,
                                                   commitlog_total_space_in_mb=-1)
 
     def test_total_space_limit_of_commitlog_with_large_limit(self):
