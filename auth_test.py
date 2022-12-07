@@ -11,6 +11,7 @@ import re
 import socket
 import subprocess
 import time
+import ssl
 
 from datetime import datetime, timedelta
 
@@ -25,6 +26,7 @@ from dtest_class import Tester
 from tools.misc import require
 from tools.cluster import new_node
 
+from tools.sslkeygen import create_self_signed_x509_certificate, create_ca
 
 logger = logging.getLogger(__file__)
 
@@ -2056,8 +2058,9 @@ class TestAuth(Tester):
         logger.info('STEP: update conf and start cluster to use PasswordAuthenticator/CassandraAuthorizer + configured user')
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
-                  'auth_superuser_name': 'gris', # not 'cassandra'
-                  'auth_superuser_salted_password':'$6$IcPWfCigHWVhHTf.$h3.30m5R2CnYqIeniCumbXCBxBxvtYPP3MbZVsjKcu268ESOcrUtSJwf1iO1s83KUT3waITRtTiexBdSWEI0Q/' # 'gris' hashed using sha512
+                  'auth_superuser_name': 'gris',  # not 'cassandra'
+                  # 'gris' hashed using sha512
+                  'auth_superuser_salted_password': '$6$IcPWfCigHWVhHTf.$h3.30m5R2CnYqIeniCumbXCBxBxvtYPP3MbZVsjKcu268ESOcrUtSJwf1iO1s83KUT3waITRtTiexBdSWEI0Q/'
                   }
         self.cluster.set_configuration_options(values=config)
 
@@ -2077,13 +2080,13 @@ class TestAuth(Tester):
         assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
 
         with pytest.raises(NoHostAvailable) as exc:
-            session = self.get_session(user='gris', password='tuta') # right user, wrong pwd
+            session = self.get_session(user='gris', password='tuta')  # right user, wrong pwd
             self._check_session_available(session, expect_auth_err=True)
         logger.info(exc.value)
         assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
 
         gris = self.get_session(user='gris', password='gris')
-        logger.info('STEP: create normal user by super \'gris\'') # super user operation
+        logger.info('STEP: create normal user by super \'gris\'')  # super user operation
         gris.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
         gris.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
         gris.execute("CREATE TABLE ks.cf (id int primary key)")
@@ -2093,6 +2096,115 @@ class TestAuth(Tester):
                                 session, "SELECT * FROM ks.cf")
         self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
                                 session, "REVOKE SELECT ON ks.cf from normal")
+
+    def test_certificate_auth(self):
+        """
+        Start cluster with certificate Authenticaor + CQL TLS + cert authentication
+        and verify noone but designated roles can log in
+        """
+
+        logger.info('STEP: create CQL transport certificates')
+
+        num_nodes = 1
+        server_cert, server_key = create_self_signed_x509_certificate(test_path=self.cluster.get_path())
+
+        logger.info('STEP: create AUTH CA + certificates for admin and users')
+
+        ca_cert, ca_key = create_ca(test_path=self.cluster.get_path())
+        admin_cert, admin_key = create_self_signed_x509_certificate(test_path=self.cluster.get_path(), cert_file='admin.crt', key_file='admin.key', cname='admin', ca_cert=ca_cert, ca_key=ca_key
+                                                                    )
+        client1_cert, client1_key = create_self_signed_x509_certificate(test_path=self.cluster.get_path(), cert_file='client1.crt', key_file='client1.key', cname='client1', ca_cert=ca_cert, ca_key=ca_key
+                                                                        )
+        client2_cert, client2_key = create_self_signed_x509_certificate(test_path=self.cluster.get_path(), cert_file='client2.crt', key_file='client2.key', cname='client2', ca_cert=ca_cert, ca_key=ca_key
+                                                                        )
+        # One _not_ using cname, but instead email in ALT NAMES
+        client3_cert, client3_key = create_self_signed_x509_certificate(test_path=self.cluster.get_path(), cert_file='client3.crt', key_file='client3.key', ca_cert=ca_cert, ca_key=ca_key, email='client3@scylladb.com'
+                                                                        )
+
+        logger.info('STEP: update conf and start cluster to use PasswordAuthenticator/CassandraAuthorizer + configured user')
+        config = {'authenticator': 'com.scylladb.auth.CertificateAuthenticator',
+                  'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
+                  'auth_superuser_name': 'admin',  # see above
+                  'auth_certificate_role_queries': [
+                      # check first, only one of our certs use it.
+                      {'source': 'ALTNAME', 'query': 'EMAIL=(\\w+)@scylladb.com'},
+                      {'source': 'SUBJECT', 'query': 'CN=([^,]+)'},  # role = CNAME
+                  ],
+                  'client_encryption_options': {
+                      'enabled': True,
+                      'certificate': server_cert,
+                      'keyfile': server_key,
+                      'truststore': ca_cert,
+                      'require_client_auth': True
+                  }
+                  }
+        self.cluster.set_configuration_options(values=config)
+
+        logger.info('STEP: start cluster with CertificateAuthenticator/CassandraAuthorizer')
+        self.prepare(nodes=num_nodes, enable_auth=False, wait_for_superuser=True)
+
+        node = self.cluster.nodelist()[0]
+
+        base_ssl_opts = {
+            'ca_certs': ca_cert,
+            'cert_reqs': ssl.CERT_NONE,  # don't care about server validation here
+            'ssl_version': ssl.PROTOCOL_TLSv1_2,
+        }
+
+        logger.info('STEP: verify user without credentials or with wrong credentials can not login')
+        # no auth cert
+        with pytest.raises(NoHostAvailable) as exc:
+            session = self.cql_connection(node, ssl_opts=base_ssl_opts)
+            self._check_session_available(session, expect_auth_err=True)
+
+        # cert with cname/email not currently active as role
+        for key, cert in [(client1_key, client1_cert), (client2_key, client2_cert), (client3_key, client3_cert)]:
+            with pytest.raises(NoHostAvailable) as exc:
+                session = self.cql_connection(node, ssl_opts=base_ssl_opts | {
+                    'keyfile': key,
+                    'certfile': cert
+                })
+                self._check_session_available(session, expect_auth_err=True)
+
+        logger.info('STEP: verify we can log in our super user with his cert')
+        admin = self.patient_cql_connection(node, ssl_opts=base_ssl_opts | {
+            'keyfile': admin_key,
+            'certfile': admin_cert
+        })
+
+        logger.info('STEP: create normal user \'client2\' and some tables')  # super user operation
+        admin.execute("CREATE USER client2 NOSUPERUSER")
+        admin.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        admin.execute("CREATE TABLE ks.cf (id int primary key)")
+
+        logger.info('STEP: verify we can log in our created user (role) with his cert')
+        client2 = self.patient_cql_connection(node, ssl_opts=base_ssl_opts | {
+            'keyfile': client2_key,
+            'certfile': client2_cert
+        })
+
+        logger.info('STEP: verify other users (client1/client3) still cannot log in')
+        for key, cert in [(client1_key, client1_cert), (client3_key, client3_cert)]:
+            with pytest.raises(NoHostAvailable) as exc:
+                session = self.cql_connection(node, ssl_opts=base_ssl_opts | {
+                    'keyfile': key,
+                    'certfile': cert
+                })
+                self._check_session_available(session, expect_auth_err=True)
+
+        logger.info('STEP: verify client2 can just log in, no additional privs')
+        self.assertUnauthorized("User client2 has no SELECT permission on <table ks.cf> or any of its parents",
+                                client2, "SELECT * FROM ks.cf")
+        self.assertUnauthorized("User client2 has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                client2, "REVOKE SELECT ON ks.cf from client2")
+
+        logger.info('STEP: create normal user \'client3\' and some tables')  # super user operation
+        admin.execute("CREATE USER client3 NOSUPERUSER")
+        logger.info('STEP: verify we can log in our created user (client3) with his cert')
+        client2 = self.patient_cql_connection(node, ssl_opts=base_ssl_opts | {
+            'keyfile': client3_key,
+            'certfile': client3_cert
+        })
 
     def prepare(self, nodes=1, permissions_validity=0, enable_auth=True, wait_for_superuser=False, smp=None):
         config = {'permissions_validity_in_ms': permissions_validity,

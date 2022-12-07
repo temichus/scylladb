@@ -108,7 +108,7 @@ class SecurityCredentials():
                self.keystore, self.cert, self.cakeystore, self.cacert)
 
 
-def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_file='scylla.key', ip_list=None, cname = None, ca_key = None, ca_cert = None, email=None):
+def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_file='scylla.key', ip_list=None, cname=None, ca_key=None, ca_cert=None, email=None):
     ip_list = ip_list or []
 
     cert_file = os.path.join(test_path, cert_file)
@@ -145,7 +145,7 @@ def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_f
             issuer = ca.issuer
         with open(file=ca_key, mode="rb") as file:
             data = file.read()
-            sign_key = serialization.load_pem_private_key(data, password = None)
+            sign_key = serialization.load_pem_private_key(data, password=None)
 
     builder = builder.subject_name(subject)
     builder = builder.issuer_name(issuer)
@@ -183,7 +183,8 @@ def create_self_signed_x509_certificate(test_path, cert_file='scylla.crt', key_f
     logger.debug(f'Created certificate file in "{cert_file}" path, and private key in "{key_file}" path')
     return cert_file, key_file
 
-def create_ca(test_path, cert_file='ca.crt', key_file='ca.key', cname = 'scylladb.com', valid = 365):
+
+def create_ca(test_path, cert_file='ca.crt', key_file='ca.key', cname='scylladb.com', valid=365):
     cert_file = os.path.join(test_path, cert_file)
     key_file = os.path.join(test_path, key_file)
 
