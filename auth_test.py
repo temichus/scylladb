@@ -2047,6 +2047,53 @@ class TestAuth(Tester):
         assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
         logger.info("can't get session of node2 with normal user/password")
 
+    def test_auth_username_password_parameters(self):
+        """
+        Start cluster with password Auth, setting superuser name/passwd via config
+        and verify noone but us can log in
+        """
+
+        logger.info('STEP: update conf and start cluster to use PasswordAuthenticator/CassandraAuthorizer + configured user')
+        config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+                  'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
+                  'auth_superuser_name': 'gris', # not 'cassandra'
+                  'auth_superuser_salted_password':'$6$IcPWfCigHWVhHTf.$h3.30m5R2CnYqIeniCumbXCBxBxvtYPP3MbZVsjKcu268ESOcrUtSJwf1iO1s83KUT3waITRtTiexBdSWEI0Q/' # 'gris' hashed using sha512
+                  }
+        self.cluster.set_configuration_options(values=config)
+
+        logger.info('STEP: start cluster with PasswordAuthenticator/CassandraAuthorizer')
+        self.prepare(nodes=3, enable_auth=True, wait_for_superuser=True)
+
+        logger.info('STEP: verify user without credentials or with wrong credentials can not login')
+        with pytest.raises(NoHostAvailable) as exc:
+            session = self.get_session()
+            self._check_session_available(session, expect_auth_err=True)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
+
+        with pytest.raises(NoHostAvailable) as exc:
+            session = self.get_session(user='normal', password='wrongpwd')
+            self._check_session_available(session, expect_auth_err=True)
+        logger.info(exc.value)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
+
+        with pytest.raises(NoHostAvailable) as exc:
+            session = self.get_session(user='gris', password='tuta') # right user, wrong pwd
+            self._check_session_available(session, expect_auth_err=True)
+        logger.info(exc.value)
+        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
+
+        gris = self.get_session(user='gris', password='gris')
+        logger.info('STEP: create normal user by super \'gris\'') # super user operation
+        gris.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
+        gris.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        gris.execute("CREATE TABLE ks.cf (id int primary key)")
+
+        session = self.get_session(user='normal', password='123456')
+        self.assertUnauthorized("User normal has no SELECT permission on <table ks.cf> or any of its parents",
+                                session, "SELECT * FROM ks.cf")
+        self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
+                                session, "REVOKE SELECT ON ks.cf from normal")
+
     def prepare(self, nodes=1, permissions_validity=0, enable_auth=True, wait_for_superuser=False, smp=None):
         config = {'permissions_validity_in_ms': permissions_validity,
                   'permissions_update_interval_in_ms': int(permissions_validity / 2)}
