@@ -68,11 +68,11 @@ class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
         else:
             raise AssertionError("Task scheduling withing the next 8 hours while the manager is suspended did not fail")
 
-    @pytest.mark.require("scylladb/scylla-manager#2496")
     def test_schedule_task_to_run_while_suspended(self):
         self.config_and_create_cluster(3)
         mgr_cluster = self._create_mgr_cluster(self.cluster.nodelist()[0], name=CLUSTER_NAME)
-        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, start_date="now+2m")
+        intended_run_time_cron = create_cron_list_from_timedelta(minutes=2)
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, cron=intended_run_time_cron)
 
         mgr_cluster.suspend()
         time.sleep(200)
@@ -83,9 +83,6 @@ class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
         mgr_cluster.resume()
 
         assert not len(repair_task.history), f"The task has ran while the manager was suspended"
-        repair_task_next_run = repair_task.next_run
         repair_task_status = repair_task.status
-        assert not repair_task_next_run, \
-            f"The task Has a destined run time of {repair_task_next_run} even though it's not suppose to run at all"
         assert repair_task_status == TaskStatus.SKIPPED, \
             f"The task was expected to reach SKIPPED status, instead it reached {str(repair_task_status)}"
