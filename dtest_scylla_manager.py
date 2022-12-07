@@ -1031,6 +1031,39 @@ class ManagerTask(ScyllaManagerBase):
         stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return stdout
 
+    def get_task_info_dict(self):
+        info_dict = {}
+        cmd = "info {} -c {}".format(self.id, self.cluster_id)
+        stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        # Output example:
+        # ./sctool --api-url=http://127.0.33.1:5080/api/v1 info --cluster=cluster1 backup/e775390c-9106-4717-a0c7-04016a0416c7
+        # Name:	backup/e775390c-9106-4717-a0c7-04016a0416c7
+        # Tz:	Asia/Jerusalem
+        # Retry:	3 (initial backoff 10m)
+        #
+        # Properties:
+        # - keyspace: ks1,ks2,ks3
+        # - location: s3:backup-bucket
+        #
+        # +--------------------------------------+------------------------+----------+--------+
+        # | ID                                   | Start time             | Duration | Status |
+        # +--------------------------------------+------------------------+----------+--------+
+        # | 2c6b70ea-74ad-11ed-aeb4-f4ee08c9cc47 | 12 Dec 22 14:57:44 IST | 0s       | DONE   |
+        # +--------------------------------------+------------------------+----------+--------+
+        info_lines = [line[0] for line in stdout if len(line) == 1]
+        for line in info_lines:
+            if ":" in line:
+                name, value = [string.strip() for string in line.split(":", maxsplit=1)]
+                if name.startswith("-"):
+                    name = name[2:]
+                info_dict[name] = value
+        history_table_lines = [line for line in stdout if len(line) > 1]
+        # The info command returns some unnecessary values: task_name, cron, retry
+        # The number of the extra info is not set, so I just search the for the lines that its length is larger than
+        # 1, which are the history table (See above)
+        info_dict["history"] = history_table_lines
+        return info_dict
+
     @property
     def history(self):
         """
@@ -1045,9 +1078,7 @@ class ManagerTask(ScyllaManagerBase):
         # │ b414cde5-ebe3-11e8-82c1-12c0dad619c2 │ 19 Nov 18 10:13:04 UTC │ 19 Nov 18 10:13:04 UTC │ 0s       │ NEW   │
         # │ 4e741c3d-ebe2-11e8-82c0-12c0dad619c2 │ 19 Nov 18 10:03:04 UTC │ 19 Nov 18 10:03:04 UTC │ 0s       │ NEW   │
         # ╰──────────────────────────────────────┴────────────────────────┴────────────────────────┴──────────┴───────╯
-        cmd = "info {} -c {}".format(self.id, self.cluster_id)
-        stdout, stderr = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
-        return stdout  # or can be specified like: self.get_property(parsed_table=res, column_name='status')
+        return self.get_task_info_dict()["history"]
 
     @property
     def history_list(self):
