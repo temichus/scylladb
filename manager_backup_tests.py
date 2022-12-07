@@ -315,7 +315,7 @@ class TestScyllaMgmtBackup(Tester, ScyllaManagerMixin):
         try:
             mgr_cluster.run_backup_command(location_list=["s3:{}".format(FALSE_BUCKET)])
         except ScyllaManagerError as err:
-            assert "location is not accessible" in err.args[0] and "404 Not Found" in err.args[0],\
+            assert "specified bucket does not exist" in err.args[0],\
                 "Unexpected error: {}".format(err.args[0])
         else:
             raise ScyllaManagerError("No error occurred when a nonexistent bucket was used as a location"
