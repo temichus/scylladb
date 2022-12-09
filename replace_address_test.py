@@ -135,14 +135,8 @@ class TestReplaceAddress(Tester):
         assert moved_tokens_list == tokens
 
         # check that restarting node 3 doesn't work
-        # FIXME: https://github.com/scylladb/scylla/issues/5523 is fixed
+        # FIXME: when https://github.com/scylladb/scylla/issues/5523 is fixed
         # need to verify that the node doesn't start listening
-        logger.info("Try to restart node 3 (should fail)")
-        node3.start(no_wait=True)
-        checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*" +
-                                        self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
-        logger.info(checkCollision)
-        assert len(checkCollision) == 1
 
     def test_serve_writes_during_bootstrap(self):
         """
@@ -323,11 +317,6 @@ class TestReplaceAddress(Tester):
         moved_tokens_list = self.get_sorted_tokens(node4)
         logger.info(len(moved_tokens_list))
         assert moved_tokens_list == tokens
-
-        checkCollision = node1.grep_log("between .*"+self.cluster.get_node_ip(3)+" and .*" +
-                                        self.cluster.get_node_ip(4)+"; .*"+self.cluster.get_node_ip(4)+" is the new owner")
-        logger.info(checkCollision)
-        assert len(checkCollision) == 1
 
         # FIXME: Do not restart the replaced node until
         # https://github.com/scylladb/scylla/issues/5523 is fixed
