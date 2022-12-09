@@ -70,11 +70,13 @@ class TestReplaceAddress(Tester):
         """
         self._replace_node_test(gently=False)
 
-    def get_sorted_tokens(self, node):
+    def get_sorted_tokens(self, node, address=None):
         # sorted([line.split()[-1] for line in node3.nodetool('ring')[0].splitlines()
         #         if node3.address() in line])
 
-        ring_lines = [line for line in node.nodetool('ring')[0].splitlines() if node.address() in line]
+        if address is None:
+            address = node.address()
+        ring_lines = [line for line in node.nodetool('ring')[0].splitlines() if address in line]
         tokens_list = [token.split()[-1] for token in ring_lines]
         return sorted(tokens_list)
 
@@ -133,6 +135,7 @@ class TestReplaceAddress(Tester):
         moved_tokens_list = self.get_sorted_tokens(node4)
         logger.info(len(moved_tokens_list))
         assert moved_tokens_list == tokens
+        assert self.get_sorted_tokens(node1, node3.address()) == []
 
         # check that restarting node 3 doesn't work
         # FIXME: when https://github.com/scylladb/scylla/issues/5523 is fixed
@@ -203,6 +206,7 @@ class TestReplaceAddress(Tester):
         logger.info("Verifying tokens migrated successfully")
         moved_tokens_list = self.get_sorted_tokens(node4)
         assert moved_tokens_list == tokens
+        assert self.get_sorted_tokens(node1, node3.address()) == []
 
         # stop all nodes except new one
         logger.info("Stopping nodes 1 and 2")
@@ -317,6 +321,7 @@ class TestReplaceAddress(Tester):
         moved_tokens_list = self.get_sorted_tokens(node4)
         logger.info(len(moved_tokens_list))
         assert moved_tokens_list == tokens
+        assert self.get_sorted_tokens(node1, node3.address()) == []
 
         # FIXME: Do not restart the replaced node until
         # https://github.com/scylladb/scylla/issues/5523 is fixed
@@ -339,6 +344,7 @@ class TestReplaceAddress(Tester):
         moved_tokens_list = self.get_sorted_tokens(node4)
         logger.info(len(moved_tokens_list))
         assert moved_tokens_list == tokens
+        assert self.get_sorted_tokens(node1, node3.address()) == []
 
     @pytest.mark.skip('test hangs: see CASSANDRA-9831')
     def test_resumable_replace(self):
@@ -505,6 +511,7 @@ class TestReplaceAddress(Tester):
         moved_tokens_list = self.get_sorted_tokens(node5)
         logger.info(len(moved_tokens_list))
         assert moved_tokens_list == tokens
+        assert self.get_sorted_tokens(node1, node2.address()) == []
 
         logger.info("Verifying system.peers table.")
         peers = rows_to_list(session.execute("SELECT * FROM system.peers"))
@@ -615,6 +622,7 @@ class TestReplaceAddress(Tester):
         moved_tokens_list = self.get_sorted_tokens(node4)
 
         assert moved_tokens_list == node3_tokens, "Tokens were not moved correctly to node4"
+        assert self.get_sorted_tokens(node1, node3.address()) == []
         assert node4.is_live(), "Node4 is not alive after node4 has replaced node3"
 
     def test_replace_node_diff_ip(self):
@@ -622,6 +630,8 @@ class TestReplaceAddress(Tester):
         cluster = self.cluster
         cluster.populate(5).start(wait_for_binary_proto=True)
         node1, node2, node3, node4, node5 = cluster.nodelist()
+
+        node5_tokens = self.get_sorted_tokens(node5)
 
         session = self.patient_cql_connection(node5)
         create_ks(session, 'ks', 3)
@@ -636,6 +646,11 @@ class TestReplaceAddress(Tester):
         node6.start(wait_for_binary_proto=True, replace_address=ip5)
         for node in [node1, node2, node3, node4, node6]:
             node.watch_log_for(f"FatClient {ip5} has been silent for .*ms, removing from gossip")
+
+        logger.info("Verifying tokens migrated successfully")
+        moved_tokens_list = self.get_sorted_tokens(node6)
+        assert moved_tokens_list == node5_tokens
+        assert self.get_sorted_tokens(node1, node5.address()) == []
 
     def test_replace_node_same_ip(self):
         logger.info("Starting cluster with 5 nodes.")
