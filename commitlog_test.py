@@ -1044,8 +1044,7 @@ class TestCommitLog(Tester):
         try:
             logger.debug(f'Commitlog size before start: {self._get_commitlog_size()}')
             logger.debug("Start cluster ...")
-            self.cluster.start(no_wait=True)
-            node1.watch_log_for('Starting listening for CQL clients', timeout=30)
+            self.cluster.start(wait_for_binary_proto=True)
 
             logger.debug("Create test keyspace and table")
             session = self.patient_cql_connection(node1)
@@ -1072,8 +1071,7 @@ class TestCommitLog(Tester):
         copy_files_to(tmpdir, commitlog_dir, files_only=True)
         exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
 
-        node1.start(no_wait=True)
-        node1.watch_log_for('Starting listening for CQL clients', timeout=30)
+        node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
 
         # Verified that ENOSPC occurred and not all the data is wrote into db
