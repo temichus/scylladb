@@ -233,7 +233,9 @@ class TestMaterializedViews(CommonUtils):
 
     def _run_node_failure_during_mv_stress_insert(self, rf, nodes, node_action, delay=30, duration='1m',
                                                   double_failure=False, exclude_errors=None):
-        session = self.prepare(rf=rf, nodes=nodes)
+        configuration_options = {'range_request_timeout_in_ms': self.count_request_timeout * 1000}
+        session = self.prepare(rf=rf, nodes=nodes, options=configuration_options,
+                               request_timeout=self.count_request_timeout)
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
 
         node1 = self.cluster.nodelist()[0]
@@ -285,7 +287,9 @@ class TestMaterializedViews(CommonUtils):
             Validate the log has no errors.
             Issue #2783: there are mutation_write_timeout_exception in case starting size 4 and more
         """
-        session = self.prepare(rf={'dc1': 2, 'dc2': 1}, nodes=[3, 3])
+        configuration_options = {'range_request_timeout_in_ms': self.count_request_timeout * 1000}
+        session = self.prepare(rf={'dc1': 2, 'dc2': 1}, nodes=[3, 3], options=configuration_options,
+                               request_timeout=self.count_request_timeout)
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_multidc_profile.yaml'))
 
         node1_dc1 = [node for node in self.cluster.nodelist() if node.data_center == 'dc1'][0]
@@ -415,7 +419,8 @@ class TestMaterializedViews(CommonUtils):
         session.execute('USE mview')
         cl = self.set_consistency_level(node_action=node_action, double_failure=double_failure, cl=cl)
         logger.debug(f"Validate data using CL={consistency_value_to_name(cl)}")
-        exp_res = run_query_with_data_processing(session, 'select count(*) from mview.users', consistency_level=cl)
+        exp_res = run_query_with_data_processing(
+            session, 'select count(*) from mview.users', consistency_level=cl, session_timeout=self.count_request_timeout)
         try:
             exp_res = int(exp_res[0].count)
         except TypeError:
