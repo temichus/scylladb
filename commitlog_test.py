@@ -1077,7 +1077,10 @@ class TestCommitLog(Tester):
         # Verified that ENOSPC occurred and not all the data is wrote into db
         assert_row_count_in_select_less(
             session=session, query="SELECT count(*) FROM ks.cf", max_rows_expected=total_size)
-        node1.watch_log_for('No space left on device', timeout=10)
+        timeout = 10
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug":
+            timeout *= 3
+        node1.watch_log_for('No space left on device', timeout=timeout)
 
         logger.debug('Added more data after recovered from ENOSPC ...')
         insert_c1c2(session, n=int(total_size * 1.5))
