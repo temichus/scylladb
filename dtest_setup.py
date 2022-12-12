@@ -659,6 +659,9 @@ class DTestSetup:
         timeout = self.cql_timeout() * 1000
         range_timeout = 3 * timeout
         self.cql_request_timeout = 3 * self.cql_timeout()
+        # count(*) queries are particularly slow in debug mode
+        # need to adjust the session or query timeout respectively
+        self.count_request_timeout = self.cql_timeout(400)
 
         if isinstance(self.cluster, ScyllaCluster):
             logger.debug("Scylla mode is '{}'".format(self.cluster.scylla_mode))
