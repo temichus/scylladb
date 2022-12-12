@@ -2897,7 +2897,12 @@ class TestMaterializedViews(CommonUtils):
 
     def test_repair_mv(self):
         """ Test repair of materialized view """
-        session = self.prepare(rf=3, nodes=3, options={'hinted_handoff_enabled': False}, fetch_size=100)
+        configuration_options = {
+            'hinted_handoff_enabled': False,
+            'range_request_timeout_in_ms': self.count_request_timeout * 1000,
+        }
+        session = self.prepare(rf=3, nodes=3, options=configuration_options,
+                               fetch_size=100, request_timeout=self.count_request_timeout)
         node1, node2, node3 = self.cluster.nodelist()
         tm = TableManager(session, self.cluster,
                           columns={'int': {'amount': 2, 'frozen': False, 'value length': {'min': 1, 'max': 100}}
