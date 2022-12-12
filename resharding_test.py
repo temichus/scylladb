@@ -46,10 +46,11 @@ class ReshardingBase(Tester):
         self.rf = 1 if self.nodes < 3 else 3
         self.mem = self.set_memory_param(self.smp)
 
-    def prepare(self):
+    def prepare(self, configuration_options={}):
         cluster = self.cluster
         cluster = cluster.populate(self.nodes)
-        cluster.set_configuration_options(values={'murmur3_partitioner_ignore_msb_bits': self.murmur3})
+        configuration_options.update({'murmur3_partitioner_ignore_msb_bits': self.murmur3})
+        cluster.set_configuration_options(values=configuration_options)
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True,
                       jvm_args=['--smp', str(self.smp), '--memory', self.mem])
         self.node = cluster.nodelist()[0]
@@ -138,7 +139,8 @@ class ReshardingBase(Tester):
     def _verify_row_number(self, cf, expected_row_num, keyspace='keyspace1', consistency_level=ConsistencyLevel.ONE):
         session = self.patient_cql_connection(self.node)
         q = SimpleStatement(f"SELECT count(*) FROM {keyspace}.{cf}", consistency_level=consistency_level)
-        resp = session.execute(q)
+        logger.debug('Verifying number of rows')
+        resp = session.execute(q, timeout=self.count_request_timeout)
         row_number = rows_to_list(resp)[0][0]
         logger.debug('number of rows: {}'.format(row_number))
         assert row_number == expected_row_num
@@ -150,7 +152,8 @@ class ReshardingBase(Tester):
         assert res['total errors'] == 0
 
     def _resharding_basic(self, reshard_to, rows, murmur3):
-        self.prepare()
+        configuration_options = {'range_request_timeout_in_ms': self.count_request_timeout * 1000}
+        self.prepare(configuration_options=configuration_options)
         logger.debug('Run stress test on node1')
 
         debug_mode = isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug"
@@ -397,7 +400,8 @@ class TestReshardingVariants(ReshardingBase):
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
         """
-        self.prepare()
+        configuration_options = {'range_request_timeout_in_ms': self.count_request_timeout * 1000}
+        self.prepare(configuration_options=configuration_options)
         keyspace_name = 'keyspace1'
         session = self.patient_cql_connection(self.node)
         # If test failed and re-run by @flaky decorator, the existent keyspace should be re-created
@@ -458,7 +462,8 @@ class TestReshardingVariants(ReshardingBase):
         Resharding with small counter data set(c-s 1M counter objects) after changing the parameter
         and restarting the cluster
         """
-        self.prepare()
+        configuration_options = {'range_request_timeout_in_ms': self.count_request_timeout * 1000}
+        self.prepare(configuration_options=configuration_options)
         session = self.patient_cql_connection(self.node)
         create_ks(session, 'ks', self.rf)
         compaction = {'compaction': {'class': self.compaction_strategy}}
