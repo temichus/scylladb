@@ -1643,6 +1643,6 @@ class TestCqlshCopy(CqlshPrepare):
         logger.debug(out)
         logger.debug(err)
 
-        assert 'child process(es) died unexpectedly' in err, f"Not found message 'child process(es) died unexpectedly' in the error {err}"
+        assert err, "no error was found"
         assert_row_count_in_select_less(
             session=self.session, query=f"SELECT COUNT(*) FROM {stress_table}", max_rows_expected=num_records)
