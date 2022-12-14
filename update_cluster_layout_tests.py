@@ -1905,6 +1905,7 @@ class TestUpdateClusterLayout(Tester):
             0, 1000), consistency=ConsistencyLevel.THREE, c1_values=cs, c2_values=cs)
 
         # Stop node 3
+        node3_host_id = node3.hostid()
         node3.stop()
 
         # Insert on node1 only
@@ -1928,7 +1929,7 @@ class TestUpdateClusterLayout(Tester):
         # Replacing node3 with node4
         logger.debug("Starting node 4 to replace node 3")
         node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
-        node4.start(wait_for_binary_proto=True, replace_address=self.cluster.get_node_ip(3))
+        node4.start(wait_for_binary_proto=True, replace_node_host_id=node3_host_id)
         session = self.patient_cql_connection(node4)
         session.execute("use ks;")
         logger.debug("Node 4 finished replacing node 3")

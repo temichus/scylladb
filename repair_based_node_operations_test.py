@@ -91,7 +91,7 @@ class RepairBasedNodeOperationsScenarios:
                                 self.bootstrap_scenario, self.removenode_rejecting_scenario,
                                 self.replace_scenario, self.decommission_scenario]
 
-    def add_node(self, dc: int = 0, replace_address: str = None, is_seed: bool = False,
+    def add_node(self, dc: int = 0, replace_node_host_id: str = None, is_seed: bool = False,
                  ignore_dead_node_ip: str = '') -> ScyllaNode:
         new_node_index = int(self.tester.cluster.nodelist()[-1].name.replace("node", "")) + 1
         new_node = self.tester.cluster.new_node(i=new_node_index, data_center=dc, is_seed=is_seed)
@@ -101,17 +101,18 @@ class RepairBasedNodeOperationsScenarios:
             jvm_args.extend(['--ignore-dead-nodes-for-replace', ignore_dead_node_ip])
 
         new_node.start(wait_for_binary_proto=True, wait_other_notice=True, jvm_args=jvm_args,
-                       replace_address=replace_address)
+                       replace_node_host_id=replace_node_host_id)
         return new_node
 
     def replace_node(self, dc: int = 0) -> ScyllaNode:
         replaced_node = self.tester.cluster.nodelist()[-1]
         replaced_node_address = replaced_node.address()
-        logger.debug(f"Remove {replaced_node.name} ({replaced_node_address})")
+        replaced_node_host_id = replaced_node.hostid()
+        logger.debug(f"Stop replaced {replaced_node.name} ({replaced_node_host_id}/{replaced_node_address})")
         replaced_node.stop(wait_other_notice=True)
 
         logger.debug("Add new node")
-        new_node = self.add_node(replace_address=replaced_node_address, dc=dc)
+        new_node = self.add_node(replace_node_host_id=replaced_node_host_id, dc=dc)
         logger.debug(f"Added new node {new_node.name} ({new_node.address()})")
 
         self.tester.cluster.remove(node=replaced_node, wait_other_notice=True, remove_node_dir=False)
@@ -121,14 +122,16 @@ class RepairBasedNodeOperationsScenarios:
     def replace_node_when_two_nodes_dead(self, dc: int = 0) -> ScyllaNode:
         replaced_node, dead_node1, dead_node2 = self.tester.cluster.nodelist()[-3:]
         replaced_node_address = replaced_node.address()
+        replaced_node_host_id = replaced_node.hostid()
         dead_node1_address = dead_node1.address()
         dead_node2_address = dead_node2.address()
-        logger.debug(f"Stop 3 nodes: {replaced_node_address}, {dead_node1_address}, {dead_node2_address}")
+        logger.debug(
+            f"Stop 3 nodes: {replaced_node_host_id}/{replaced_node_address}, {dead_node1_address}, {dead_node2_address}")
         for node in [replaced_node, dead_node1, dead_node2]:
             node.stop(wait_other_notice=True)
 
-        logger.debug(f"Add a new node that replaces {replaced_node_address}")
-        new_node = self.add_node(replace_address=replaced_node_address, dc=dc,
+        logger.debug(f"Add a new node that replaces {replaced_node_host_id}/{replaced_node_address}")
+        new_node = self.add_node(replace_node_host_id=replaced_node_host_id, dc=dc,
                                  ignore_dead_node_ip=f"{dead_node1_address},{dead_node2_address}")
         logger.debug(f"Added the new node {new_node.name} ({new_node.address()})")
 
