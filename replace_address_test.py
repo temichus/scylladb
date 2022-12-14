@@ -1,6 +1,7 @@
 import datetime
 import threading
 import logging
+import uuid
 from time import sleep
 from concurrent.futures import ThreadPoolExecutor
 
@@ -64,11 +65,12 @@ class TestReplaceAddress(Tester):
         self.cluster.set_configuration_options(values=configuration_options)
         self.cluster.start(no_wait=False, wait_for_binary_proto=True, wait_other_notice=True)
 
-    def test_replace_stopped_node(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_stopped_node(self, use_host_id: bool):
         """
         Test that we can replace a node that is not shutdown gracefully.
         """
-        self._replace_node_test(gently=False)
+        self._replace_node_test(gently=False, use_host_id=use_host_id)
 
     def get_sorted_tokens(self, node, address=None):
         # sorted([line.split()[-1] for line in node3.nodetool('ring')[0].splitlines()
@@ -80,14 +82,15 @@ class TestReplaceAddress(Tester):
         tokens_list = [token.split()[-1] for token in ring_lines]
         return sorted(tokens_list)
 
-    def test_replace_shutdown_node(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_shutdown_node(self, use_host_id: bool):
         """
         @jira_ticket CASSANDRA-9871
         Test that we can replace a node that is shutdown gracefully.
         """
-        self._replace_node_test(gently=True)
+        self._replace_node_test(gently=True, use_host_id=use_host_id)
 
-    def _replace_node_test(self, gently):
+    def _replace_node_test(self, gently: bool, use_host_id: bool):
         """
         Check that the replace address function correctly replaces a node that has failed in a cluster.
         Create a cluster, cause a node to fail, and bring up a new node with the replace_address parameter.
@@ -111,6 +114,8 @@ class TestReplaceAddress(Tester):
 
         # stop node, query should not work with consistency 3
         logger.info("Stopping node 3.")
+        node3_hostid = node3.hostid()
+        node3_address = node3.address()
         node3.stop(gently=gently, wait_other_notice=True)
 
         logger.info("Testing node stoppage (query should fail).")
@@ -123,7 +128,10 @@ class TestReplaceAddress(Tester):
         logger.info("Starting node 4 to replace node 3")
 
         node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
-        node4.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
+        replace_node_host_id = node3_hostid if use_host_id else None
+        replace_address = node3_address if not use_host_id else None
+        node4.start(replace_node_host_id=replace_node_host_id,
+                    replace_address=replace_address, wait_for_binary_proto=True)
 
         # query should work again
         logger.info("Verifying querying works again.")
@@ -141,7 +149,8 @@ class TestReplaceAddress(Tester):
         # FIXME: when https://github.com/scylladb/scylla/issues/5523 is fixed
         # need to verify that the node doesn't start listening
 
-    def test_serve_writes_during_bootstrap(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_serve_writes_during_bootstrap(self, use_host_id: bool):
         """
         When replacing a node, the new node should serve writes while data is streamed into it, ensuring that when
         the operation completes it will have up-to-date data.
@@ -179,12 +188,16 @@ class TestReplaceAddress(Tester):
 
         # stop node
         logger.info("Stopping node 3.")
+        node3_hostid = node3.hostid()
+        node3_address = node3.address()
         node3.stop(gently=True, wait_other_notice=True)
 
         # replace node 3 with node 4
         logger.info("Starting node 4 to replace node 3")
         node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
-        node4.start(replace_address=self.cluster.get_node_ip(3), no_wait=True,
+        replace_node_host_id = node3_hostid if use_host_id else None
+        replace_address = node3_address if not use_host_id else None
+        node4.start(replace_node_host_id=replace_node_host_id, replace_address=replace_address, no_wait=True,
                     jvm_args=['--logger-log-level', 'stream_session=debug'])
 
         node4.watch_log_for("Starting to bootstrap")
@@ -220,10 +233,14 @@ class TestReplaceAddress(Tester):
         assert_row_count(session, table_name, total_rows + 1000)
         assert_all(session, f"select * from {table_name}", data, ignore_order=True)
 
-    def test_shutdown_all_and_replace_node(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_shutdown_all_and_replace_node(self, use_host_id: bool):
         logger.info("Starting cluster with 3 nodes.")
         self.init_cluster(num_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
+
+        node3_hostid = node3.hostid()
+        node3_address = node3.address()
 
         self.cluster.stop_nodes([node1, node2, node3])
         self.cluster.start_nodes([node1, node2], wait_for_binary_proto=True)
@@ -231,15 +248,22 @@ class TestReplaceAddress(Tester):
         logger.info("Starting node 4 to replace node 3")
         node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
 
-        node4.start(wait_for_binary_proto=True, replace_address=self.cluster.get_node_ip(3))
+        replace_node_host_id = node3_hostid if use_host_id else None
+        replace_address = node3_address if not use_host_id else None
+        node4.start(wait_for_binary_proto=True, replace_node_host_id=replace_node_host_id,
+                    replace_address=replace_address)
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    def test_replace_active_node(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_active_node(self, use_host_id: bool):
 
         logger.info("Starting cluster with 3 nodes.")
         self.init_cluster(num_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
+
+        node3_hostid = node3.hostid()
+        node3_address = node3.address()
 
         # replace active node 3 with node 4
         logger.info("Starting node 4 to replace active node 3")
@@ -249,11 +273,14 @@ class TestReplaceAddress(Tester):
         self.ignore_log_patterns += [expected_message]
 
         mark = node4.mark_log()
-        node4.start(replace_address=self.cluster.get_node_ip(3), no_wait=True)
+        replace_node_host_id = node3_hostid if use_host_id else None
+        replace_address = node3_address if not use_host_id else None
+        node4.start(replace_node_host_id=replace_node_host_id, replace_address=replace_address, no_wait=True)
         node4.watch_log_for(expected_message, from_mark=mark)
         self.check_not_running(node4)
 
-    def test_replace_nonexistent_node(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_nonexistent_node(self, use_host_id: bool):
         logger.info("Starting cluster with 3 nodes.")
         self.init_cluster(num_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
@@ -261,13 +288,22 @@ class TestReplaceAddress(Tester):
         logger.info('Start node 4 and replace an address with no node')
         node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
 
-        expected_message = "Cannot replace_address .*"+self.cluster.get_node_ip(5)+" because it doesn't exist in gossip"
+        replace_node_host_id = None
+        replace_address = None
+        expected_message = None
+        if use_host_id:
+            replace_node_host_id = str(uuid.uuid4())
+            expected_message = f"Replaced node with Host ID {replace_node_host_id} not found"
+        else:
+            replace_address = self.cluster.get_node_ip(5) if not use_host_id else None
+            expected_message = f"Cannot replace_address .*{replace_address} because it doesn't exist in gossip"
+
         self.ignore_log_patterns += [expected_message]
 
         # try to replace an unassigned ip address
         mark = node4.mark_log()
         try:
-            node4.start(replace_address=self.cluster.get_node_ip(5), no_wait=True)
+            node4.start(replace_node_host_id=replace_node_host_id, replace_address=replace_address, no_wait=True)
         except NodeError:
             pass  # node doesn't start as expected
         node4.watch_log_for(expected_message, from_mark=mark)
@@ -281,7 +317,8 @@ class TestReplaceAddress(Tester):
 
         assert not node.is_running()
 
-    def test_replace_first_boot(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_first_boot(self, use_host_id: bool):
         logger.info("Starting cluster with 3 nodes.")
         self.init_cluster(num_nodes=3, configuration_options={'range_request_timeout_in_ms': 10000})
         node1, node2, node3 = self.cluster.nodelist()
@@ -300,6 +337,8 @@ class TestReplaceAddress(Tester):
 
         # stop node, query should not work with consistency 3
         logger.info("Stopping node 3.")
+        replace_node_host_id = node3.hostid() if use_host_id else None
+        replace_address = node3.address() if not use_host_id else None
         node3.stop(gently=False)
 
         logger.info("Testing node stoppage (query should fail).")
@@ -309,8 +348,8 @@ class TestReplaceAddress(Tester):
         # replace node 3 with node 4
         logger.info("Starting node 4 to replace node 3")
         node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
-        node4.start(jvm_args=["-Dcassandra.replace_address_first_boot=" +
-                              self.cluster.get_node_ip(3)], wait_for_binary_proto=True)
+        node4.start(replace_node_host_id=replace_node_host_id,
+                    replace_address=replace_address, wait_for_binary_proto=True)
 
         # query should work again
         logger.info("Verifying querying works again.")
@@ -447,7 +486,8 @@ class TestReplaceAddress(Tester):
         finalData = list(session.execute(query))
         assert_lists_equal_ignoring_order(initialData, finalData)
 
-    def test_replace_node_no_hibernate_state(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_node_no_hibernate_state(self, use_host_id: bool):
         """Test that there is no HIBERNATE status for a replacing node.
 
         See https://github.com/scylladb/scylla/issues/5449 for details.
@@ -457,6 +497,7 @@ class TestReplaceAddress(Tester):
         node1, node2, node3 = self.cluster.nodelist()
         logger.info(f"Node 1 address is {self.cluster.get_node_ip(1)}")
 
+        node2_hostid = node2.hostid()
         node2_address = self.cluster.get_node_ip(2)
         logger.info(f"Node 2 address is {node2_address}")
 
@@ -479,7 +520,9 @@ class TestReplaceAddress(Tester):
 
         logger.info("Starting node 4 to replace node 2, but stop it in the middle of the replace.")
         node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
-        node4.start(replace_address=node2_address, no_wait=True)
+        replace_node_host_id = node2_hostid if use_host_id else None
+        replace_address = node2_address if not use_host_id else None
+        node4.start(replace_node_host_id=replace_node_host_id, replace_address=replace_address, no_wait=True)
 
         node4_address = self.cluster.get_node_ip(4)
         logger.info(f"Node 4 address is {node4_address}")
@@ -493,10 +536,8 @@ class TestReplaceAddress(Tester):
 
         logger.info("Starting node 5 to replace node 2.")
         node5 = self.cluster.new_node(5, auto_bootstrap=True, is_seed=False)
-        node5.start(replace_address=node2_address, wait_for_binary_proto=True, wait_other_notice=True)
-
-        node5_address = self.cluster.get_node_ip(5)
-        logger.info(f"Node 4 address is {node5_address}")
+        node5.start(replace_node_host_id=replace_node_host_id, replace_address=replace_address,
+                    wait_for_binary_proto=True, wait_other_notice=True)
 
         status2, err2 = node1.nodetool("gossipinfo")
         logger.info(f"gossipinfo:\n{status2}")
@@ -517,7 +558,8 @@ class TestReplaceAddress(Tester):
         peers = rows_to_list(session.execute("SELECT * FROM system.peers"))
         assert len(peers) == 2, "Unexpected number of peers."
 
-    def test_replace_with_background_workload(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_with_background_workload(self, use_host_id: bool):
         """
         The subtest is used to reproduce https://github.com/scylladb/scylla/issues/4705
         the background write workload continue running more than 30 seconds,
@@ -562,13 +604,16 @@ class TestReplaceAddress(Tester):
 
         logger.info('Start to kill node3 ...')
         node3 = self.cluster.nodelist()[2]
+        replace_node_host_id = node3.hostid() if use_host_id else None
+        replace_address = node3.address() if not use_host_id else None
         node3.stop(gently=False)
         logger.info('node3 has been killed')
 
         logger.info('Add a new node to replace the dead node')
         self.replace_done_time = None
         added_node = self.cluster.new_node(4, data_center='dc1', is_seed=False)
-        added_node.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
+        added_node.start(replace_node_host_id=replace_node_host_id,
+                         replace_address=replace_address, wait_for_binary_proto=True)
         logger.info('Successfully add a new node to replace node3')
         self.replace_done_time = datetime.datetime.now()
 
@@ -581,22 +626,24 @@ class TestReplaceAddress(Tester):
             logger.info('{}: {}'.format(node.name, err_log))
             assert not err_log
 
-    def test_replace_stopped_node_with_schema_rf_1(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_stopped_node_with_schema_rf_1(self, use_host_id: bool):
         """
         Test that we can replace a node that is not shutdown gracefully
         and schema have replication factor equal 1
 
         """
-        self.replace_node_with_schema_rf_1(gently=False)
+        self.replace_node_with_schema_rf_1(gently=False, use_host_id=use_host_id)
 
-    def test_replace_shutdown_node_with_schema_rf_1(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_shutdown_node_with_schema_rf_1(self, use_host_id: bool):
         """
         Test that we can replace a node that is shutdown gracefully
         and schema have replication factor equal 1
         """
-        self.replace_node_with_schema_rf_1(gently=True)
+        self.replace_node_with_schema_rf_1(gently=True, use_host_id=use_host_id)
 
-    def replace_node_with_schema_rf_1(self, gently):
+    def replace_node_with_schema_rf_1(self, gently: bool, use_host_id: bool):
         self.init_cluster(num_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
 
@@ -606,12 +653,15 @@ class TestReplaceAddress(Tester):
         node1.stress(['write', 'n=10000', '-schema', 'replication(factor=1)'])
 
         logger.info("Stopping node 3.")
+        replace_node_host_id = node3.hostid() if use_host_id else None
+        replace_address = node3.address() if not use_host_id else None
         node3.stop(gently=gently, wait_other_notice=True)
 
         # replace node 3 with node 4
         logger.info("Starting node 4 to replace node 3")
         node4 = self.cluster.new_node(4, auto_bootstrap=True, is_seed=False)
-        node4.start(replace_address=self.cluster.get_node_ip(3), wait_for_binary_proto=True)
+        node4.start(replace_node_host_id=replace_node_host_id,
+                    replace_address=replace_address, wait_for_binary_proto=True)
         if not self.rbo_enabled:
             node4.watch_log_for(
                 [r"WARN .* Unable to find sufficient sources to stream range .* for keyspace .* with RF = 1 for replace operation"])
@@ -625,7 +675,8 @@ class TestReplaceAddress(Tester):
         assert self.get_sorted_tokens(node1, node3.address()) == []
         assert node4.is_live(), "Node4 is not alive after node4 has replaced node3"
 
-    def test_replace_node_diff_ip(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_node_diff_ip(self, use_host_id: bool):
         logger.info("Starting cluster with 5 nodes.")
         cluster = self.cluster
         cluster.populate(5).start(wait_for_binary_proto=True)
@@ -638,12 +689,16 @@ class TestReplaceAddress(Tester):
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
 
+        node5_hostid = node5.hostid()
         ip5 = node5.address()
         node5.stop()
 
         logger.info("Starting node 6 to replace node 5")
         node6 = cluster.new_node(6, auto_bootstrap=True, is_seed=False)
-        node6.start(wait_for_binary_proto=True, replace_address=ip5)
+        replace_node_host_id = node5_hostid if use_host_id else None
+        replace_address = ip5 if not use_host_id else None
+        node6.start(wait_for_binary_proto=True, replace_node_host_id=replace_node_host_id,
+                    replace_address=replace_address)
         for node in [node1, node2, node3, node4, node6]:
             node.watch_log_for(f"FatClient {ip5} has been silent for .*ms, removing from gossip")
 
@@ -652,7 +707,8 @@ class TestReplaceAddress(Tester):
         assert moved_tokens_list == node5_tokens
         assert self.get_sorted_tokens(node1, node5.address()) == []
 
-    def test_replace_node_same_ip(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_node_same_ip(self, use_host_id: bool):
         logger.info("Starting cluster with 5 nodes.")
         cluster = self.cluster
         cluster.populate(5).start(wait_for_binary_proto=True)
@@ -663,16 +719,21 @@ class TestReplaceAddress(Tester):
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
 
+        node5_hostid = node5.hostid()
         ip5 = node5.address()
         node5.stop()
 
         logger.info("Starting node 5 to replace node 5")
         node5.clear()
         jvm_args = ['--auto-bootstrap', 'true', '--seed-provider-parameters', 'seeds={}'.format(node1.address())]
-        node5.start(wait_for_binary_proto=True, replace_address=ip5, jvm_args=jvm_args)
+        replace_node_host_id = node5_hostid if use_host_id else None
+        replace_address = ip5 if not use_host_id else None
+        node5.start(wait_for_binary_proto=True, replace_node_host_id=replace_node_host_id,
+                    replace_address=replace_address, jvm_args=jvm_args)
 
     @pytest.mark.dtest_heavy
-    def test_replace_node_diff_ip_take_write(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_node_diff_ip_take_write(self, use_host_id: bool):
         logger.info("Starting cluster with 5 nodes.")
         cluster = self.cluster
         cluster.populate(5).start(wait_for_binary_proto=True)
@@ -683,6 +744,7 @@ class TestReplaceAddress(Tester):
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
 
+        node5_hostid = node5.hostid()
         ip5 = node5.address()
         node5.stop()
 
@@ -709,7 +771,10 @@ class TestReplaceAddress(Tester):
 
         logger.info("Starting node 6 to replace node 5")
         node6 = cluster.new_node(6, auto_bootstrap=True, is_seed=False)
-        node6.start(wait_for_binary_proto=False, replace_address=ip5)
+        replace_node_host_id = node5_hostid if use_host_id else None
+        replace_address = ip5 if not use_host_id else None
+        node6.start(wait_for_binary_proto=False, replace_node_host_id=replace_node_host_id,
+                    replace_address=replace_address)
 
         with_replacing_take_write_patch = True
         if with_replacing_take_write_patch:
@@ -757,7 +822,8 @@ class TestReplaceAddress(Tester):
         write_thread.result()
 
     @pytest.mark.dtest_heavy
-    def test_replace_node_same_ip_take_write(self):
+    @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    def test_replace_node_same_ip_take_write(self, use_host_id: bool):
         logger.info("Starting cluster with 5 nodes.")
         cluster = self.cluster
         cluster.populate(5).start(wait_for_binary_proto=True)
@@ -768,6 +834,7 @@ class TestReplaceAddress(Tester):
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
 
+        node5_hostid = node5.hostid()
         ip5 = node5.address()
         node5.stop()
         mark = node5.mark_log()
@@ -796,7 +863,10 @@ class TestReplaceAddress(Tester):
         logger.info("Starting node 5 to replace node 5")
         node5.clear()
         jvm_args = ['--auto-bootstrap', 'true', '--seed-provider-parameters', 'seeds={}'.format(node1.address())]
-        node5.start(wait_for_binary_proto=False, replace_address=ip5, jvm_args=jvm_args)
+        replace_node_host_id = node5_hostid if use_host_id else None
+        replace_address = ip5 if not use_host_id else None
+        node5.start(wait_for_binary_proto=False, replace_node_host_id=replace_node_host_id,
+                    replace_address=replace_address, jvm_args=jvm_args)
 
         with_replacing_take_write_patch = True
         if with_replacing_take_write_patch:
