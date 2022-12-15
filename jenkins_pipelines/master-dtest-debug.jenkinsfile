@@ -2,6 +2,8 @@
 
 // trick from https://github.com/jenkinsci/workflow-cps-global-lib-plugin/pull/43
 def lib = library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
+library identifier: 'camunda-community'
+library identifier: 'pipeline-logparser@3.2'
 
 dtestPipeline(
     BUILD_MODE: 'debug',
