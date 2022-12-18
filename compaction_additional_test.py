@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import time
 import json
+from pprint import pformat
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ from ccmlib import scylla_node
 from ccmlib.common import parse_settings
 from ccmlib.node import NodetoolError, TimeoutError, Node
 from ccmlib.scylla_cluster import ScyllaCluster, ScyllaNode
+from deepdiff import DeepDiff
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
@@ -2160,7 +2162,6 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         logger.info("Run tw queries with disabled optimized algorithms")
         tw_query_result["disabled"] = self.get_tw_query_results(session, pks)
 
-        logger.debug("Queries results: \n%s", tw_query_result)
         self.assert_tw_query_results(tw_query_result["enabled"], tw_query_result["disabled"])
 
         logger.info("Enable optimized queries")
@@ -2169,7 +2170,6 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         logger.info("Run tw queries with disabled optimized algorithms")
         tw_query_result["enabled"] = self.get_tw_query_results(session, pks)
 
-        logger.debug("Queries results: \n%s", tw_query_result)
         self.assert_tw_query_results(tw_query_result["enabled"], tw_query_result["disabled"])
 
     def run_flow_generate_and_reshape_twcs_sstables(self):
@@ -2249,7 +2249,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         for query in queries:
             logger.info(f"Query: {query}")
             st = time.perf_counter_ns()
-            res = list(session.execute(query))
+            res = list(row._asdict() for row in session.execute(query))
             ft = time.perf_counter_ns()
             results.append({
                 "query": query,
@@ -2273,12 +2273,18 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
     @staticmethod
     def assert_tw_query_results(optimize_enable, optimize_disabled):
         for results_enabled, results_disabled in zip(optimize_enable, optimize_disabled):
-            assert results_enabled["query"] == results_disabled["query"], \
-                f"Not same queries {results_enabled['query']} != {results_disabled['query']}"
-            assert results_enabled["result"] == results_disabled["result"], \
-                f"Return results are not the same {results_enabled['result']} != {results_disabled['result']}"
             logger.debug(f"Query's time execution for optimized query {results_enabled['time']} \
                            and not optimized {results_disabled['time']}")
+
+            assert results_enabled["query"] == results_disabled["query"], \
+                f"Not same queries {results_enabled['query']} != {results_disabled['query']}"
+
+            diff = DeepDiff(t1=results_enabled["result"][:20], t2=results_disabled["result"])
+            for t in ['iterable_item_added', 'iterable_item_removed', 'dictionary_item_added',
+                      'dictionary_item_removed']:
+                assert not diff.get(t), f"{t}: {len(diff.get(t))}, " \
+                                        f"first 5 differences:\n{pformat(dict(list(diff.get(t).items())[:5]))}"
+            assert not diff, f"Return results are not the same:\n{pformat(diff)}"
 
     def simulate_twcs_write_data_per_minute_by_size(self, session, sstable_size_distribution, num_pks):
         prev_min = 0
