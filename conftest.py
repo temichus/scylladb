@@ -107,6 +107,7 @@ def pytest_configure(config):
     # so it's not enough to put it in a function fixture, since some code would be used even before that
     logging.getLogger("boto3").setLevel(logging.INFO)
     logging.getLogger("botocore").setLevel(logging.INFO)
+    logging.getLogger("s3transfer").setLevel(logging.INFO)
 
 
 def sufficient_system_resources_for_resource_intensive_tests():
@@ -175,7 +176,7 @@ def fixture_logging_setup(request):
     logging.getLogger("cassandra").setLevel(logging.INFO)
     logging.getLogger("boto3").setLevel(logging.INFO)
     logging.getLogger("botocore").setLevel(logging.INFO)
-
+    logging.getLogger("s3transfer").setLevel(logging.INFO)
     yield
 
     logging_plugin.log_file_handler.removeFilter(name_filer)
