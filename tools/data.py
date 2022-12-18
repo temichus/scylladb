@@ -561,6 +561,6 @@ def simulate_write_process_in_minutes(cluster, session, keyspace, table_name, du
         # Flush every flush period in seconds on each node
         if t % flush_period_seconds == 0:
             for node in flushing_nodes:
-                node.flush()
+                node.flush(verbose=False)
     total_rows = (duration_minutes - start_from_minute) * 60 * len(pk_list)
     return pk_list, total_rows
