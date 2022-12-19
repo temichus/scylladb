@@ -564,7 +564,6 @@ class TestAuth(Tester):
         cassandra.execute("GRANT ALTER ON KEYSPACE ks TO cathy")
         cathy.execute("ALTER KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':2}")
 
-    @pytest.mark.skip('index')
     @pytest.mark.single_node
     def test_alter_cf_auth(self):
         """
