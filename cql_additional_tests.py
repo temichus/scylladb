@@ -1082,7 +1082,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT total FROM clicks WHERE userid = 1 AND url = 'http://foo.com'")
         assert rows_to_list(res) == [[-4]], list(res)
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_indexed_with_eq(self):
         """ Check that you can query for an indexed column even with a key EQ clause """
@@ -2129,7 +2128,6 @@ class TestCQL(Tester):
         res = list(session.execute("SELECT * FROM test"))
         assert len(res) == 3, res
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_range_query_2ndary(self):
         """ Test range queries with 2ndary indexes (#4257) """
@@ -2987,7 +2985,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test")
         assert rows_to_list(res) == [[0, 0], [2, 2]], list(res)
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_indexes_composite(self):
         session = self.prepare()
@@ -3027,7 +3024,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT blog_id, timestamp FROM test WHERE author = 'bob'")
         assert rows_to_list(res) == [[1, 0], [1, 3], [0, 0]], list(res)
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_refuse_in_with_indexes(self):
         """ Test for the validation bug of #4709 """
@@ -3381,7 +3377,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT l1, l2 FROM test WHERE k = 0")
         assert rows_to_list(res) == [[[1, 24, 3], [4, 42, 6]]]
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_composite_index_collections(self):
         session = self.prepare()
@@ -3824,7 +3819,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM bar")
         assert rows_to_list(res) == [[1, 2]], list(res)
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_clustering_indexing(self):
         session = self.prepare()
@@ -3884,7 +3878,6 @@ class TestCQL(Tester):
         session.execute("CREATE TABLE test3 (a int, b int, c int static , PRIMARY KEY (a, b))")
         assert_invalid(session, "CREATE INDEX ON test3(c)")
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_edge_2i_on_complex_pk(self):
         session = self.prepare()
@@ -3923,10 +3916,9 @@ class TestCQL(Tester):
         assert [[2]] == rows_to_list(res)
 
         res = session.execute(
-            "SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3")
+            "SELECT value FROM indexed WHERE pk0 = 5 AND pk1 = 0 AND ck0 = 1 AND ck2 = 3 ALLOW FILTERING")
         assert [[4]] == rows_to_list(res)
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_bug_5240(self):
         session = self.prepare()
@@ -4492,7 +4484,6 @@ class TestCQL(Tester):
             assert_one(session, "UPDATE tkns SET consumed = TRUE WHERE tkn = %i IF consumed = FALSE;" %
                        i, [False, True], cl=ConsistencyLevel.QUORUM)
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_bug_6050(self):
         session = self.prepare()
@@ -4836,7 +4827,6 @@ class TestCQL(Tester):
                              APPLY BATCH
                            """)
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_static_columns_with_2i(self):
         session = self.prepare()
@@ -4860,8 +4850,7 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test WHERE v = 1", [[0, 0, 42, 1], [0, 1, 42, 1]])
         assert_all(session, "SELECT p, s FROM test WHERE v = 1", [[0, 42], [1, 42]])
         assert_all(session, "SELECT p FROM test WHERE v = 1", [[0], [1]])
-        # We don't support that
-        assert_invalid(session, "SELECT s FROM test WHERE v = 1")
+        assert_all(session, "SELECT s FROM test WHERE v = 1", [[42], [42]])
 
     @pytest.mark.single_node
     def test_static_columns_with_distinct(self):
@@ -4958,7 +4947,6 @@ class TestCQL(Tester):
             assert list(range(10)) == sorted([r[0] for r in rows])
             assert list(range(10)) == sorted([r[1] for r in rows])
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_select_count_paging(self):
         """
@@ -5850,7 +5838,6 @@ class TestCQL(Tester):
                     """select * from system.schema_columnfamilies
                        where keyspace_name = 'my_test_ks' and columnfamily_name = 'my_test_table'""")
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_conditional_ddl_index(self):
         session = self.prepare(create_keyspace=False)
@@ -5876,7 +5863,7 @@ class TestCQL(Tester):
                 """select index_name from system."IndexInfo" where table_name = 'my_test_ks'""")
 
             if results:
-                assert [('my_test_table.myindex',)] == results
+                assert 'myindex' == results.one()[0], results
                 break
 
             time.sleep(0.5)
@@ -5891,7 +5878,6 @@ class TestCQL(Tester):
         session.execute("DROP INDEX IF EXISTS myindex")
         assert_none(session, """select index_name from system."IndexInfo" where table_name = 'my_test_ks'""")
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
     def test_bug_6612(self):
         session = self.prepare()
@@ -6027,9 +6013,8 @@ class TestCQL(Tester):
 
         assert_none(session, "select * from space1.table1 where a=1 and b=1")
 
-    @pytest.mark.skip('indexes')
     @pytest.mark.single_node
-    def test_bug_5732(self):
+    def test_bug_5732(self, request):
         session = self.prepare(use_cache=True)
 
         session.execute("""
@@ -6048,8 +6033,9 @@ class TestCQL(Tester):
         start = time.time()
         while True:
             results = session.execute(
-                """SELECT * FROM system."IndexInfo" WHERE table_name = 'ks' AND index_name = 'test.testindex'""")
+                """SELECT index_name FROM system."IndexInfo" WHERE table_name = 'ks'""")
             if results:
+                assert 'testindex' == results.one()[0], results
                 break
 
             if time.time() - start > 10.0:
