@@ -3875,8 +3875,12 @@ class TestCQL(Tester):
         assert_invalid(session, "CREATE INDEX ON test2(b)")
         assert_invalid(session, "CREATE INDEX ON test2(c)")
 
-        session.execute("CREATE TABLE test3 (a int, b int, c int static , PRIMARY KEY (a, b))")
-        assert_invalid(session, "CREATE INDEX ON test3(c)")
+    @pytest.mark.single_node
+    def test_indexing_of_static_column(self):
+        session = self.prepare()
+
+        session.execute("CREATE TABLE test (a int, b int, c int static , PRIMARY KEY (a, b))")
+        session.execute("CREATE INDEX ON test(c)")
 
     @pytest.mark.single_node
     def test_edge_2i_on_complex_pk(self):
