@@ -2273,13 +2273,13 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
     @staticmethod
     def assert_tw_query_results(optimize_enable, optimize_disabled):
         for results_enabled, results_disabled in zip(optimize_enable, optimize_disabled):
-            logger.debug(f"Query's time execution for optimized query {results_enabled['time']} \
-                           and not optimized {results_disabled['time']}")
+            logger.debug(f"Query's time execution for optimized query {results_enabled['time']}"
+                         f" and not optimized {results_disabled['time']}")
 
             assert results_enabled["query"] == results_disabled["query"], \
                 f"Not same queries {results_enabled['query']} != {results_disabled['query']}"
 
-            diff = DeepDiff(t1=results_enabled["result"][:20], t2=results_disabled["result"])
+            diff = DeepDiff(t1=results_enabled["result"], t2=results_disabled["result"])
             for t in ['iterable_item_added', 'iterable_item_removed', 'dictionary_item_added',
                       'dictionary_item_removed']:
                 assert not diff.get(t), f"{t}: {len(diff.get(t))}, " \
