@@ -1581,7 +1581,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             time.sleep(1)
         thread1.result()
 
-    @pytest.mark.next_gating
+    # removed from gating, cause of scylladb/scylladb#11848 changed behavior
+    # @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_streaming_on_rebuild_multidc(self):
 
