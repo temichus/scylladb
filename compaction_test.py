@@ -21,7 +21,7 @@ from tools.marks import enterprise_only_param
 from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
 from tools.stress import fill_data_by_cs
-from tools.cluster import parallel_nodetool
+from tools.cluster import parallel_nodetool, run_rest_api
 
 logger = logging.getLogger(__file__)
 
@@ -278,6 +278,8 @@ class TestCompaction(Tester):
     def repair_and_wait_for_off_strategy(node, table: str = FULL_TABLE_NAME):
         log_mark = node.mark_log()
         node.repair()
+        ks, cf = table.split('.')
+        run_rest_api(node, f"/storage_service/keyspace_offstrategy_compaction/{ks}?cf={cf}")
         node.watch_log_for(f"Done with off-strategy compaction for {table}", timeout=300, from_mark=log_mark,
                            verbose=True)
 
