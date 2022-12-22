@@ -167,7 +167,7 @@ class TestCompaction(Tester):
         json_path = tempfile.mkstemp(suffix='.json')
         jname = json_path[1]
         with open(jname, 'w') as f:
-            node.run_sstable2json(f)
+            node.run_sstable2json(f, keyspace=self.KEYSPACE_NAME)
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
