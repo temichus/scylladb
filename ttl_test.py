@@ -193,13 +193,14 @@ class TestTTL(Tester):
         self.session1.execute(f"ALTER TABLE ttl_table WITH default_time_to_live = {ttl1};")
         logger.debug(
             f"Inserting key=1, expected to expire at {datetime.utcfromtimestamp(time.time() + ttl1).isoformat(timespec='seconds')}")
-        start = time.time()
+        start1 = time.time()
         self.session1.execute("""
             INSERT INTO ttl_table (key, col1) VALUES (%d, %d);
         """ % (1, 1))
-        ttl2 = 15
+        ttl2 = 30
         logger.debug(
             f"Inserting key=2 USING TTL {ttl2}, expected to expire at {datetime.utcfromtimestamp(time.time() + ttl2).isoformat(timespec='seconds')}")
+        start2 = time.time()
         self.session1.execute("""
             INSERT INTO ttl_table (key, col1) VALUES (%d, %d) USING TTL %d;
         """ % (2, 1, ttl2))
@@ -207,13 +208,13 @@ class TestTTL(Tester):
         self.session1.execute("ALTER TABLE ttl_table WITH default_time_to_live = 0;")
         logger.debug("Inserting key=3, expected to never expire")
         self.session1.execute("INSERT INTO ttl_table (key, col1) VALUES (%d, %d);" % (3, 1))
-        self.smart_sleep(start, ttl1 // 2)
+        self.smart_sleep(start1, ttl1 // 2)
         logger.debug("Expecting 3 rows")
         assert_row_count(self.session1, 'ttl_table', 3)
-        self.smart_sleep(start, ttl1 + 2)
+        self.smart_sleep(start1, ttl1 + 2)
         logger.debug("Expecting 2 rows")
         assert_row_count(self.session1, 'ttl_table', 2)
-        self.smart_sleep(start, ttl1 + ttl2 + 5)
+        self.smart_sleep(start2, ttl2 + 2)
         logger.debug("Expecting 1 row")
         assert_row_count(self.session1, 'ttl_table', 1)
 
