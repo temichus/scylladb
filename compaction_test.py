@@ -151,7 +151,7 @@ class TestCompaction(Tester):
         """
         count, jsoninfo = self.count_deleted(session=session, node=node)
         assert count == num_deleted_rows, "Error: expected {} deleted partitions but found {}:\n{}".format(
-            0, count, len(jsoninfo))
+            num_deleted_rows, count, len(jsoninfo))
 
     def count_deleted(self, session, node):
         """
