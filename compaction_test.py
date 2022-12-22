@@ -21,6 +21,7 @@ from tools.marks import enterprise_only_param
 from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
 from tools.stress import fill_data_by_cs
+from tools.cluster import parallel_nodetool
 
 logger = logging.getLogger(__file__)
 
@@ -334,9 +335,7 @@ class TestCompaction(Tester):
             self.repair_and_wait_for_off_strategy(node=node4)
             repair_history = list(session.execute("SELECT table_name from system.repair_history"))
             assert any("cf" in repair for repair in repair_history)
-            node1.repair()
-            node2.repair()
-            node3.repair()
+            parallel_nodetool([node1, node2, node3], 'repair -pr ks cf')
             logger.debug(
                 f"Check with tombstone_gc_mode = repair, after a full successful repair there are no tombstones")
             self.verify_deleted(session=session, node=node1, num_deleted_rows=0)

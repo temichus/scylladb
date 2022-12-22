@@ -1,7 +1,8 @@
 import logging
 import re
-
 import requests
+from concurrent.futures.thread import ThreadPoolExecutor
+
 from ccmlib.cluster import Cluster
 from ccmlib.dse_cluster import DseCluster
 from ccmlib.scylla_node import ScyllaNode
@@ -80,3 +81,18 @@ def wait_for_compactions(node) -> None:
         output, err = node.nodetool("compactionstats", capture_output=True)
         if pattern.search(output):
             break
+
+
+def parallel_nodetool(nodes, cmd, capture_output=True, wait=True, timeout=300):
+    if not isinstance(nodes, list):
+        nodes = [nodes]
+    if isinstance(nodes[0], ScyllaNode) and nodes[0].scylla_mode() == 'debug':
+        timeout *= 3
+    with ThreadPoolExecutor(max_workers=len(nodes)) as pool:
+        threads = []
+        for node in nodes:
+            threads.append(pool.submit(node.nodetool, cmd=cmd, capture_output=capture_output, wait=wait))
+        results = {}
+        for i in range(len(threads)):
+            results[nodes[i].name] = threads[i].result(timeout=timeout)
+        return results
