@@ -274,15 +274,6 @@ class TestCompaction(Tester):
             self.verify_deleted(session, node1, 10)
             self.verify_deleted(session, node2, 10)
 
-    @staticmethod
-    def repair_and_wait_for_off_strategy(node, table: str = FULL_TABLE_NAME):
-        log_mark = node.mark_log()
-        node.repair()
-        ks, cf = table.split('.')
-        run_rest_api(node, f"/storage_service/keyspace_offstrategy_compaction/{ks}?cf={cf}")
-        node.watch_log_for(f"Done with off-strategy compaction for {table}", timeout=300, from_mark=log_mark,
-                           verbose=True)
-
     def test_delete_tombstone_gc_node_down(self):
         """
         Test compaction drop tombstones correctly in 'repair' tombstone_gc_mode mode
@@ -334,10 +325,16 @@ class TestCompaction(Tester):
                             from_mark=log_mark, verbose=True)
         with self.patient_cql_connection(node4, consistency_level=ConsistencyLevel.QUORUM) as session:
             logger.debug("Running a repair on all nodes")
-            self.repair_and_wait_for_off_strategy(node=node4)
+            log_mark = node4.mark_log()
+            ks, cf = self.FULL_TABLE_NAME.split('.')
+            parallel_nodetool([node1, node2, node3, node4], f'repair -pr {ks} {cf}')
+
             repair_history = list(session.execute("SELECT table_name from system.repair_history"))
             assert any("cf" in repair for repair in repair_history)
-            parallel_nodetool([node1, node2, node3], 'repair -pr ks cf')
+
+            run_rest_api(node4, f"/storage_service/keyspace_offstrategy_compaction/{ks}?cf={cf}")
+            node4.watch_log_for(f"Done with off-strategy compaction for {self.FULL_TABLE_NAME}", from_mark=log_mark)
+
             logger.debug(
                 f"Check with tombstone_gc_mode = repair, after a full successful repair there are no tombstones")
             self.verify_deleted(session=session, node=node1, num_deleted_rows=0)
