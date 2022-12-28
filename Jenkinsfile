@@ -34,7 +34,7 @@ if (env.CHANGE_ID && pullRequestContainsLabels("test/Jenkinsfile")) {
 
 pipeline {
     agent {
-            label "sct-builders"
+            label "aws-sct-builders-eu-west-1-v2-CI"
     }
     environment {
         AWS_ACCESS_KEY_ID         = credentials('qa-aws-secret-key-id')
