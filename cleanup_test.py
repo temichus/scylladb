@@ -4,12 +4,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from cassandra import ConsistencyLevel
+from cassandra import ConsistencyLevel, Unavailable
 from cassandra.query import SimpleStatement
 
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2, delete_c1c2, create_c1c2_table
 from tools.files import get_list_of_sstables
+from tools.snapshots import make_snapshot, restore_snapshot_with_refresh
 from ccmlib.scylla_cluster import ScyllaCluster
 
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.dtest_full
 class TestCleanup(Tester):
-    def prepare(self, nodes, num_keys, timeout=None, consistency=ConsistencyLevel.ALL, amount_of_tables=1):
+    def prepare(self, nodes, num_keys, timeout=None, consistency=ConsistencyLevel.ALL, amount_of_tables=1, rf=None):
         cluster = self.cluster
         if timeout:
             values = {
@@ -29,7 +30,9 @@ class TestCleanup(Tester):
         cluster.populate(nodes).start()
         node1 = self.cluster.nodelist()[0]
         with self.patient_cql_cluster_session(node1) as session:
-            create_ks(session=session, name="ks", rf=nodes)
+            if not rf:
+                rf = nodes
+            create_ks(session=session, name="ks", rf=rf)
             for i in range(amount_of_tables):
                 create_cf(session=session, name=f"cf{i}", columns={"c1": "text", "c2": "text"})
             if num_keys:
@@ -174,6 +177,94 @@ class TestCleanup(Tester):
         logger.info("Reverifying data")
         rows = session.execute(query)
         assert rows.one()[0] == 0
+
+    @pytest.mark.require('scylladb/scylla#11933')
+    def test_cluster_restore_no_resurrection(self):
+        """
+        Reproducer for https://github.com/scylladb/scylladb/issues/11933:
+        - Write data to 2-node cluster
+        - Make a snapshot
+        - Add node
+        - Run cleanup
+        - Delete data
+        - Wait for tombstones to expire
+        - Run major compaction (this will get rid of both data and tombstones)
+        - Restore sstables from snapshot
+        - Verify there are no readable keys.
+        - Any stale data that is restored from snapshots would get resurrected at this stage.
+        """
+        num_keys = 1000
+        self.prepare(nodes=2, num_keys=num_keys, rf=1)
+        cluster = self.cluster
+        node1, node2 = cluster.nodelist()
+        session = self.patient_cql_connection(node1)
+        gc_grace_seconds = 0
+        session.execute(f"ALTER TABLE ks.cf0 WITH gc_grace_seconds={gc_grace_seconds}")
+
+        def existing_keys(session):
+            res = []
+            key_exists_query = session.prepare("SELECT key from ks.cf0 WHERE key = ?")
+            key_exists_query.consistency_level = ConsistencyLevel.ONE
+            for i in range(num_keys):
+                try:
+                    if session.execute(key_exists_query, [f"k{i}"]):
+                        res.append(i)
+                except Unavailable:
+                    pass
+            return res
+
+        logger.info("Verifying initial dataset")
+        assert existing_keys(session) == list(range(num_keys))
+
+        snapshot_name = 'pre_bootstrap'
+        snapshot_dirs = {}
+        for node in cluster.nodelist():
+            snapshot_dirs[node.name] = make_snapshot(node, ks="ks", name=snapshot_name)
+
+        logger.info("Adding a new node")
+        new_node = cluster.new_node(len(cluster.nodelist()) + 1)
+        new_node.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        logger.info("Running cleanup")
+        cluster.nodetool('cleanup ks')
+
+        logger.info(f"Stopping {new_node.name}")
+        new_node.stop()
+
+        logger.info(f"Get existing keys")
+        existing = existing_keys(session)
+
+        logger.info(f"Starting {new_node.name}")
+        new_node.start()
+
+        logger.info("Deleting data")
+        delete_c1c2(session, n=num_keys, cf='cf0')
+
+        logger.info("Verifying data")
+        query = SimpleStatement("SELECT count(*) FROM ks.cf0", consistency_level=ConsistencyLevel.QUORUM)
+        rows = session.execute(query)
+        assert rows.one()[0] == 0
+
+        logger.info(f"Sleeping until gc_grace_seconds={gc_grace_seconds} pass")
+        time.sleep(gc_grace_seconds + 1)
+        logger.info("Running compaction")
+        cluster.compact()
+        cluster.wait_for_compactions()
+
+        logger.info("Restoring from snapshot")
+        for node in [node1, node2]:
+            restore_snapshot_with_refresh(
+                snapshot_dir=snapshot_dirs[node.name], node=node, keyspace='ks', table='cf0', name=snapshot_name)
+
+        logger.info(f"Removing {new_node.name}")
+        new_node_hostid = new_node.hostid()
+        new_node.stop()
+        node1.removenode(new_node_hostid)
+
+        logger.info("Verifying that no data was resurrected")
+        restored = existing_keys(session)
+
+        assert restored == existing
 
     @pytest.mark.single_node
     def test_drop_table_during_cleanup(self):
