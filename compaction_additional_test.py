@@ -34,7 +34,7 @@ from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
 from tools import tables_view_manager
 from tools.assertions import assert_none, assert_all, assert_row_count
-from tools.cluster import new_node
+from tools.cluster import new_node, run_rest_api
 from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_table, simulate_write_process_in_minutes
 from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables, \
     check_file_lists_are_equal
@@ -1643,6 +1643,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         node2.watch_log_for("Streaming for rebuild successful|"
                             "rebuild_with_repair: finished with keyspace=ks", from_mark=mark)
+        run_rest_api(
+            node2, f"/storage_service/keyspace_offstrategy_compaction/{self.keyspace_name}?cf={self.table_name}")
         full_table_name = f"{self.keyspace_name}.{self.table_name}"
         node2.watch_log_for(f"Starting off-strategy compaction for {full_table_name}", from_mark=mark)
         node2.watch_log_for(f"Done with off-strategy compaction for {full_table_name}", from_mark=mark)
@@ -1683,7 +1685,9 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         node3.nodetool('rebuild')
         node3.watch_log_for("Streaming for rebuild successful|"
                             "rebuild_with_repair: finished with keyspace=ks", from_mark=mark)
-        node3.wait_for_compactions()
+        run_rest_api(
+            node3, f"/storage_service/keyspace_offstrategy_compaction/{self.keyspace_name}?cf={self.table_name}")
+        node3.watch_log_for(f"Done with off-strategy compaction for {self.keyspace_name}", from_mark=mark)
         self._check_sstable_timestamps(node3)
 
     def _get_list_of_sstables(self, node):
