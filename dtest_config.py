@@ -31,6 +31,7 @@ class DTestConfig:
         self.enable_jacoco_code_coverage = False
         self.jemalloc_path = find_libjemalloc()
         self.experimental_features = []
+        self.consistent_cluster_management = False
 
     def setup(self, request):
         self.use_vnodes = request.config.getoption("--use-vnodes")
@@ -53,6 +54,7 @@ class DTestConfig:
         self.keep_test_dir = request.config.getoption("--keep-test-dir")
         self.enable_jacoco_code_coverage = request.config.getoption("--enable-jacoco-code-coverage")
         self.experimental_features = request.config.getoption('--experimental-features')
+        self.consistent_cluster_management = request.config.getoption('--consistent-cluster-management')
 
     def get_version_from_build(self):
         # There are times when we want to know the C* version we're testing against

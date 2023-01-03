@@ -94,7 +94,8 @@ def pytest_addoption(parser):
                           "rpm/unstable/centos/branch-2.3/2/scylla-manager/x86_64/")
     parser.addoption("--experimental-features", type=lambda s: s.split(","), action="store",
                      help="Pass experimental features <feature>,<feature> to enable")
-
+    parser.addoption('--consistent-cluster-management', action='store_true', default=False,
+                     help="enable consistent_cluster_management a.k.a raft")
     parser.addoption("--collect-required", action="store_true", default=False,
                      help="collect a report on require tests")
 
@@ -396,6 +397,7 @@ def pytest_collection_modifyitems(items, config):
     _is_enterprise = is_enterprise(cassandra_dir, scylla_version)
     test_list_file = config.getoption("--from-file")
     experimental_features = config.getoption("--experimental-features") or []
+    consistent_cluster_management = config.getoption("--consistent-cluster-management")
 
     if test_list_file:
         test_list_file = test_list_file.read().splitlines()
@@ -498,7 +500,8 @@ def pytest_collection_modifyitems(items, config):
 
         if item.get_closest_marker("gossip_only"):
             scylla_ext_opt = os.environ.get("SCYLLA_EXT_OPTS", '')
-            if "raft" in scylla_ext_opt or "raft" in experimental_features:
+            if "raft" in scylla_ext_opt or "raft" in experimental_features or \
+                    consistent_cluster_management:
                 deselect_test = True
 
         if not deselect_test and test_list_file:

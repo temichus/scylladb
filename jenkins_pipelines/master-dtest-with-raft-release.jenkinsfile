@@ -9,5 +9,5 @@ dtestPipeline(
     BUILD_MODE: 'release',
     PRODUCT_NAME: 'scylla',
     BRANCH: 'master',
-    PYTEST_EXTRA_COMMANDLINE_OPTIONS: '--experimental-features=raft'
+    PYTEST_EXTRA_COMMANDLINE_OPTIONS: '--consistent-cluster-management'
 )

@@ -703,6 +703,9 @@ class DTestSetup:
                 if f not in experimental_features:
                     experimental_features.append(f)
 
+        if self.dtest_config.consistent_cluster_management:
+            values['consistent_cluster_management'] = True
+
         self.cluster.set_configuration_options(values)
         logger.debug("Done setting configuration options:\n" + pprint.pformat(self.cluster._config_options, indent=4))
 
