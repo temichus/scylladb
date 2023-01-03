@@ -344,38 +344,6 @@ class TestCQL(Tester):
             last_evicted = res["prepared_cache_evictions"]
 
     @pytest.mark.single_node
-    @pytest.mark.skip(reason="scylla doesn't have this print")
-    def test_large_collection_errors(self):
-        """
-        For large collections, make sure that we are printing warnings.
-        """
-
-        # We only warn with protocol 2
-        session = self.prepare(protocol_version=2)
-
-        cluster = self.cluster
-        node1 = cluster.nodelist()[0]
-        self.ignore_log_patterns += ["Detected collection for table"]
-
-        session.execute("""
-            CREATE TABLE maps (
-                userid text PRIMARY KEY,
-                properties map<int, text>
-            );
-        """)
-
-        # Insert more than the max, which is 65535
-        for i in range(70000):
-            session.execute("UPDATE maps SET properties[%i] = 'x' WHERE userid = 'user'" % i)
-
-        # Query for the data and throw exception
-        session.execute("SELECT properties FROM maps WHERE userid = 'user'")
-        node1.watch_log_for("Detected collection for table ks.maps with 70000 "
-                            "elements, more than the 65535 limit. Only the "
-                            "first 65535 elements will be returned to the "
-                            "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
-
-    @pytest.mark.single_node
     def test_noncomposite_static_cf(self):
         """
         Test non-composite static CF syntax.
@@ -2351,26 +2319,6 @@ class TestCQL(Tester):
         session.execute("update user set static_tags[1] = 'b' where fn='Tom'")
         res = session.execute("select static_tags from user where fn='Tom'")
         assert rows_to_list(res) == [[['a', 'b']]]
-
-    @pytest.mark.single_node
-    @pytest.mark.next_gating
-    def test_collection_serialization_with_protocol_v2(self):
-        session = self.prepare(protocol_version=2)
-
-        session.execute("""
-            CREATE TABLE user (
-                fn text,
-                ln text,
-                tags list<text>,
-                PRIMARY KEY (fn, ln)
-            )
-        """)
-
-        update_q = "UPDATE user SET %s WHERE fn='Tom' AND ln='Bombadil'"
-        select_q = "SELECT %s FROM user WHERE fn='Tom' AND ln='Bombadil'"
-        session.execute(update_q % "tags = tags + [ 'a', 'b', 'c' ]")
-        res = session.execute(select_q % 'tags')
-        assert rows_to_list(res) == [[['a', 'b', 'c']]]
 
     @pytest.mark.single_node
     def test_multi_collection(self):
@@ -6081,7 +6029,7 @@ class TestCQL(Tester):
 
     @pytest.mark.single_node
     def test_cql_versions_collections(self):
-        for p in range(2, 5):
+        for p in range(3, 5):
             session = self.prepare(protocol_version=p)
 
             session.execute("""
@@ -6109,7 +6057,7 @@ class TestCQL(Tester):
 
     @pytest.mark.single_node
     def test_cql_versions_batch(self):
-        for p in range(2, 3):
+        for p in range(3, 4):
             session = self.prepare(protocol_version=p)
             session.execute("""
             CREATE TABLE dogs (

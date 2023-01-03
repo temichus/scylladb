@@ -80,14 +80,6 @@ class TestWriteFailures(Tester):
             with pytest.raises(expected_exception=(self.expected_expt, )):
                 session.execute(statement)
 
-    def test_mutation_v2(self):
-        """
-            A failed mutation at v2 receives a WriteTimeout
-        """
-        self.expected_expt = WriteTimeout
-        self.protocol_version = 2
-        self._perform_cql_statement("INSERT INTO mytable (key, value) VALUES ('key1', 'Value 1')")
-
     def test_mutation_v3(self):
         """
             A failed mutation at v3 receives a WriteTimeout
