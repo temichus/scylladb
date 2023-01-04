@@ -98,7 +98,7 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
         node1 = nodes[0]
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
         agent_version = mgr_cluster.scylla_manager.version.vstring.splitlines()[0]
-        scylla_version = self.cluster.version()
+        scylla_version = self.cluster.version().replace("-dev", "")
 
         logger.info(f"Stopping the node '{node1.name}'")
         node1.stop()
