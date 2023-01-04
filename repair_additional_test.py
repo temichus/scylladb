@@ -2204,7 +2204,10 @@ class RepairAdditionalBase(Tester):
         logger.debug(info[1])
 
         # Check repair synced the correct number of rows
-        self.check_repair_tx_rx_rows(node3, expected_tx_row_nr=4000, expected_rx_row_nr=2000)
+        self.expected_tx_row_nr = 4000
+        self.expected_rx_row_nr = 2000
+        self.check_repair_tx_rx_rows(node3, expected_tx_row_nr=self.expected_tx_row_nr,
+                                     expected_rx_row_nr=self.expected_rx_row_nr)
 
         # Check that all nodes have all data
         logger.debug("Check rows on node 1...")
@@ -2824,6 +2827,17 @@ class TestRepairAdditional(RepairAdditionalBase):
 
     def test_repair_disjoint_row_3nodes(self):
         return self._repair_disjoint_row_3nodes_test()
+
+    def test_no_streaming_on_second_repair(self):
+        self._repair_disjoint_row_3nodes_test()
+        node1, node2, node3 = self.cluster.nodelist()
+        self.cluster.start_nodes([node1, node2], wait_other_notice=True, wait_for_binary_proto=True)
+        logger.debug("starting a second repair on node3...")
+        self._repair(node3, ['ks'])
+        # Check that the second repair did not sync any additional rows.
+        # The same number of rx/tx of the first repair should be found in log without any additions.
+        self.check_repair_tx_rx_rows(node3, expected_tx_row_nr=self.expected_tx_row_nr,
+                                     expected_rx_row_nr=self.expected_rx_row_nr)
 
     def test_repair_joint_row_3nodes_1(self):
         return self._repair_joint_row_3nodes_same_key_same_value_test()
