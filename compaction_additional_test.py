@@ -1336,7 +1336,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             f"'compaction_window_size': {window_size} }}")
 
     def _simulate_write_process_in_minutes(self, session, duration_minutes=20, start_from_minute=0,
-                                           flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=10, size=1):
+                                           flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=100, size=1):
         """Simulate a write process across duration minutes.
 
         We use `USING TIMESTAMP` to distribute the writes evenly
