@@ -1,15 +1,16 @@
 import logging
+import re
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 import pytest as pytest
 from cassandra.cluster import ConsistencyLevel
+from ccmlib.node import NodetoolError
 
 from ccmlib.scylla_node import ScyllaNode
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup import DTestSetup
 from tools.data import insert_c1c2
-from tools.retrying import retrying
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,14 @@ class RepairBasedNodeOperationsScenarios:
                                                 operation_name="removenode",
                                                 repair_on_tested_node=False,
                                                 repair_on_all_nodes=True)
+        # removenode was rejected:
+        # if node is up or node is down, but gossiper has status for node is up, removenode operation
+        # should be rejected
+        self.removenode_rejecting_scenario = RBNOperation(operation=self.removenode_rejecting,
+                                                          operation_name="removenode",
+                                                          repair_on_tested_node=False,
+                                                          repair_on_all_nodes=False)
+
         # decommission:
         # It is used to remove a live node from the cluster. Token ring changes. It does not suffer from the
         # “latest replica” issue. The leaving node pushes data to existing nodes.
@@ -79,7 +88,8 @@ class RepairBasedNodeOperationsScenarios:
 
         self.tester = tester
         self.operations_flow = [self.rebuild_scenario, self.removenode_scenario,
-                                self.bootstrap_scenario, self.replace_scenario, self.decommission_scenario]
+                                self.bootstrap_scenario, self.removenode_rejecting_scenario,
+                                self.replace_scenario, self.decommission_scenario]
 
     def add_node(self, dc: int = 0, replace_address: str = None, is_seed: bool = False,
                  ignore_dead_node_ip: str = '') -> ScyllaNode:
@@ -136,16 +146,29 @@ class RepairBasedNodeOperationsScenarios:
         logger.debug(f"Added new node {new_node.name} ({new_node.address()})")
         return new_node
 
-    def removenode(self) -> Optional[ScyllaNode]:
+    def removenode(self, wait_stop=True) -> Optional[ScyllaNode]:
+        removenode_reject_msg = r"Rejected removenode operation.*the node being removed is alive, maybe you should use decommission instead"
         remove_node = self.tester.cluster.nodelist()[-1]
         remove_node_host_id = remove_node.hostid()
         logger.debug(f"Stopping node {remove_node.name} (host id {remove_node_host_id})")
-        remove_node.stop(gently=False, wait_other_notice=True)
+        remove_node.stop(gently=False, wait_other_notice=wait_stop)
         logger.debug(f"Remove node {remove_node.name} (host id {remove_node_host_id})")
-        self.tester.cluster.nodelist()[0].removenode(remove_node_host_id)
-        logger.debug(f"Node {remove_node.name} (host id {remove_node_host_id}) removed")
+        if wait_stop:
+            self.tester.cluster.nodelist()[0].removenode(remove_node_host_id)
+            logger.debug(f"Node {remove_node.name} (host id {remove_node_host_id}) removed")
+        else:
+            with pytest.raises(NodetoolError) as nodetool_exc:
+                self.tester.cluster.nodelist()[0].removenode(remove_node_host_id)
+                if not re.match(removenode_reject_msg, nodetool_exc):
+                    logger.error(f"Nodetool removenode failed with error: {nodetool_exc}")
+                    raise nodetool_exc
+
+            logger.debug(f"Nodetool removenode failed as expected: {nodetool_exc}")
 
         return remove_node
+
+    def removenode_rejecting(self) -> Optional[ScyllaNode]:
+        return self.removenode(wait_stop=False)
 
     def decommission(self) -> Optional[ScyllaNode]:
         decommission_node = self.tester.cluster.nodelist()[-1]
@@ -349,3 +372,16 @@ class TestRepairBasedNodeOperations(Tester):
         rbnos = RepairBasedNodeOperationsScenarios(tester=self)
         rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops,
                             scenarios=[rbnos.replace_with_dead_nodes_scenario])
+
+    def test_removenode_rejected_with_rnbo(self):
+        """
+        if node marked as alive in gossiper, remove node
+        should be rejected
+        """
+        enable_repair_based_node_ops = True
+        self.prepare_cluster(nodes=3, enable_repair_based_node_ops=enable_repair_based_node_ops)
+        self.prepare_schema(node=self.cluster.nodelist()[0])
+
+        rbnos = RepairBasedNodeOperationsScenarios(tester=self)
+        rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops,
+                            scenarios=[rbnos.removenode_rejecting_scenario])

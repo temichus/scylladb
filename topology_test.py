@@ -3,11 +3,12 @@ import pytest
 import re
 import time
 
-from dtest_class import Tester
+from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2, query_c1c2
 from tools.assertions import assert_almost_equal
 
 from ccmlib.node import NodetoolError
+from ccmlib.scylla_node import ScyllaNode
 from cassandra import ConsistencyLevel
 from threading import Thread
 
@@ -17,6 +18,25 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.dtest_full
 class TestTopology(Tester):
+    REMOVENODE_REJECT_MSG = r"Rejected removenode operation.*the node being removed is alive, maybe you should use decommission instead"
+    REMOVENODE_HOSTID_NOT_IN_CLUSTER = "Host ID not found in the cluster"
+
+    def prepare_cluster(self):
+        self.cluster.populate(3).start(wait_other_notice=True)
+        node: ScyllaNode = self.cluster.nodelist()[0]
+        with self.patient_cql_connection(node) as session:
+            create_ks(session, 'ks', 3)
+            create_cf(
+                session=session,
+                name='cf',
+                columns={'c1': 'text', 'c2': 'text'},
+            )
+        logger.debug(f"Insert 1000 rows ...")
+        with self.patient_exclusive_cql_connection(node, 'ks') as session1:
+            insert_c1c2(session1, keys=range(1000), consistency=ConsistencyLevel.QUORUM)
+
+        for current_node in self.cluster.nodelist():
+            current_node.flush()
 
     @pytest.mark.skip("Scylla doesn't support SizeEstimatesRecorder")
     @pytest.mark.single_node
@@ -238,6 +258,72 @@ class TestTopology(Tester):
         logger.debug("Status as reported by node {}".format(node.address()))
         logger.debug(out)
         return out
+
+    def test_remove_node_alive(self):
+        self.prepare_cluster()
+        remove_node = self.cluster.nodelist()[-1]
+        removenode_hostid = remove_node.hostid()
+        node: ScyllaNode = self.cluster.nodelist()[0]
+
+        mark = node.mark_log()
+        with pytest.raises(NodetoolError) as nodetool_exc:
+            logger.debug(f"Remove node {remove_node.name} (host id {removenode_hostid}) which is alive")
+            node.removenode(removenode_hostid)
+            if not re.match(self.REMOVENODE_REJECT_MSG, nodetool_exc):
+                raise nodetool_exc
+
+        found_messages = node.grep_log(expr=self.REMOVENODE_REJECT_MSG, from_mark=mark)
+        if not found_messages:
+            raise Exception("Removenode reject message was not found in logs")
+
+    def test_remove_node_alive_in_gossip(self):
+        self.prepare_cluster()
+        remove_node = self.cluster.nodelist()[-1]
+        removenode_hostid = remove_node.hostid()
+        node: ScyllaNode = self.cluster.nodelist()[0]
+
+        mark = node.mark_log()
+        logger.debug(f"Stopping node {remove_node.name} (host id {removenode_hostid}) so node stay in gossip alive")
+        remove_node.stop(gently=False, wait_other_notice=False)
+
+        with pytest.raises(NodetoolError) as nodetool_exc:
+            logger.debug(f"Remove node {remove_node.name} (host id {removenode_hostid}) which is alive")
+            node.removenode(removenode_hostid)
+            if not re.match(self.REMOVENODE_REJECT_MSG, nodetool_exc):
+                logger.debug(f"Nodetool failed with error: {nodetool_exc}")
+                raise nodetool_exc
+
+        found_messages = node.grep_log(expr=self.REMOVENODE_REJECT_MSG, from_mark=mark)
+        if not found_messages:
+            raise Exception("Removenode reject message was not found in logs")
+
+    def test_removenode_rejected_before_decommision_node(self):
+        self.prepare_cluster()
+        remove_node: ScyllaNode = self.cluster.nodelist()[-1]
+        removenode_hostid = remove_node.hostid()
+        node: ScyllaNode = self.cluster.nodelist()[0]
+
+        mark = node.mark_log()
+        # removenode operation should fail with error
+        with pytest.raises(NodetoolError) as nodetool_exc:
+            logger.debug(f"Remove node {remove_node.name} (host id {removenode_hostid}) which is alive")
+            node.removenode(removenode_hostid)
+            if not re.match(self.REMOVENODE_REJECT_MSG, nodetool_exc):
+                logger.debug(f"Nodetool failed with error: {nodetool_exc}")
+                raise nodetool_exc
+
+        found_messages = node.grep_log(expr=self.REMOVENODE_REJECT_MSG, from_mark=mark)
+        if not found_messages:
+            raise Exception("Removenode error message was not found in logs")
+
+        logger.debug(f"Decommission node {remove_node.name}")
+        remove_node.decommission()
+        with pytest.raises(NodetoolError) as nodetool_exc:
+            logger.debug(f"Remove node {remove_node.name} (host id {removenode_hostid}) which was decommissioned")
+            node.removenode(removenode_hostid)
+            if not re.match(self.REMOVENODE_HOSTID_NOT_IN_CLUSTER, nodetool_exc):
+                logger.debug(f"Nodetool failed with error: {nodetool_exc}")
+                raise nodetool_exc
 
 
 class DecommissionInParallel(Thread):
