@@ -84,5 +84,5 @@ class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
 
         assert not len(repair_task.history), f"The task has ran while the manager was suspended"
         repair_task_status = repair_task.status
-        assert repair_task_status == TaskStatus.SKIPPED, \
-            f"The task was expected to reach SKIPPED status, instead it reached {str(repair_task_status)}"
+        assert repair_task_status == TaskStatus.NEW, \
+            f"The task was expected to reach NEW status, instead it reached {str(repair_task_status)}"
