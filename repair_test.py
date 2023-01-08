@@ -158,7 +158,7 @@ class TestRepair(Tester):
     def _simple_repair(self, sequential=True, metrics=None):
         metrics, metrics_data = metrics or set(), dict()
         if not isinstance(metrics, set):
-            metrics = set(metrics) if not isinstance(metrics, str) else {[metrics]}
+            metrics = set(metrics) if not isinstance(metrics, str) else {metrics}
         cluster = self.cluster
 
         # Disable hinted handoff and set batch commit log so this doesn't

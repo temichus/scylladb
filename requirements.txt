@@ -14,7 +14,7 @@ deepdiff==4.3.2
 ldap3==2.7
 docker==4.2.1
 pre-commit==2.7.1
-pylint==2.12.2  # Needed for pre-commit hooks
+pylint==2.15.9  # Needed for pre-commit hooks
 autopep8==1.6.0  # Needed for pre-commit hooks
 pytest==6.2.5
 flaky==3.7.0
@@ -27,8 +27,9 @@ pytest-timeout==1.4.2
 pytest-subtests==0.5.0
 pytest-html==3.1.1
 filelock==3.0.12
-PyGithub==1.55
+PyGithub==1.57
 cryptography~=36.0.0
 unidiff==0.7.3
 pyan3==1.2.0
 tqdm==4.62.3
+wrapt==1.14.1

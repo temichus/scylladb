@@ -3468,6 +3468,8 @@ class TestCQL(Tester):
             session.execute("INSERT INTO test(k, v) VALUES (%d, %d)" % (i, i))
 
         for i in random.sample(range(nb_keys), nb_deletes):
+            # failing cause of https://github.com/PyCQA/astroid/pull/1189
+            # pylint: disable=bad-string-format-type
             session.execute("DELETE FROM test WHERE k = %d" % i)
 
         res = list(session.execute("SELECT * FROM test LIMIT %d" % (nb_keys / 2)))
