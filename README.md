@@ -3,6 +3,25 @@ Scylla Distributed Tests - Introduction
 
 Tests for [Scylla](http://www.scylladb.com/) clusters.
 
+Basic overview
+--------------
+
+### High level component diagram for basic DTest understanding
+The main purpose of this diagram show the  main test manipulators that used in Dtest
+![DTest HL component](https://user-images.githubusercontent.com/1948660/211262284-357a34c7-1691-4fc1-a787-4ee86a0d590b.jpg)
+
+1.  Dtest uses [Pytest](https://docs.pytest.org/en/7.2.x/) sa test runner
+2.  almost all  test cases locates ./ folder in in files with _test.py endings
+3.  [CCM](https://github.com/scylladb/scylla-ccm). Modified for Scylla support 3dr party Java solution that spawns many DB instances(processes)
+and provides the interface to easily manage them. DTest uses python SDK but CCM also has CLI interface.
+Dtest uses CCM for deployment, run Cassandra-stress and in cqlsh tests.
+4. Cassandra driver uses to work with ScyllaDB instance directly and perforn CRUD(Create/Read/Update/Delete) operations
+5. Tools contain rest of the manipulators that mainly uses for particular test or feature
+### known issues and limitations
+1. The main purpose of DTest run Functional tests not performance because Dtest works locally.
+For performance test please refer to [scylla-cluster-tests](https://github.com/scylladb/scylla-cluster-tests)
+
+
 Prerequisites
 ------------
 
@@ -29,6 +48,7 @@ If you want to remove the hook
 pre-commit uninstall
 
 ```
+
 
 few helpers to know
 ```bash
@@ -69,29 +89,33 @@ Using `virtualenv` is recommended in order to not pollute your global python3 in
 To setup a `virtualenv` follow the below instructions:
 
 ```bash
-# fedora
-sudo dnf install python3 python3-devel python3-pip python3-virtualenv
+## install  3.9.10 via pyenv same as used in docker installation
+## ❯ docker run -it `cat ./scripts/image` python --version
+##      Python 3.9.10
+    curl https://pyenv.run | bash
+    exec $SHELL
+    # go to: https://github.com/pyenv/pyenv/wiki/Common-build-problems#prerequisites
+    # and follow the instructions for your distribution, to install the prerequisites
+    # for compiling python from source
+    pyenv install 3.9.10
 
-# centos/redhat
-sudo yum install https://centos7.iuscommunity.org/ius-release.rpm
-sudo yum install python36u python36u-libs python36u-devel python36u-pip python36u-virtualenv
 
-# ubuntu/debian
-sudo apt install python3 python3-dev python3-pip python3-virtualenv
-
-# Create the virtualenv (dtests require python3)
-python3 -m virtualenv env
-
-# Start using the virtualenv, you should now see `(env)` in you bash prompt.
-source ./env/bin/activate
+    # create a virtualenv for Dtest
+    pyenv virtualenv 3.9.10 dst391
+    # cd to projecct tocectory and run
+    pyenv local dst391
+    # Some external tools (e.g. jedi) might require you to activate the virtualenv and conda environments.
+    # If eval "$(pyenv virtualenv-init -)" is configured in your shell, pyenv-virtualenv will automatically
+    # activate/deactivate virtualenvs on entering/leaving directories which contain a .python-version
 
 # General dependencies.
-pip3 install -r ./requirements.txt
+pip install -r ./requirements.txt
 
 # Install Scylla CCM, using pip ensures it will be installed *into* the
 # virtualenv (setup.py does a global install by default).
 cd /path/to/scylla-ccm
-pip3 install .
+pyenv activate dst391
+pip install .
 ```
 
 To get rid of the virtual environment just delete the directory (`env` in the above example) it was created in.
