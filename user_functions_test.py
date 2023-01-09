@@ -283,3 +283,70 @@ class TestUserFunctions(Tester):
             "create aggregate suma (ks.udt) sfunc plus stype int finalfunc stri initcond 10",
             "Statement on keyspace user_ks cannot refer to a user type in keyspace ks"
         )
+
+    def test_restart(self):
+        """Ensure that UDA survives server restart"""
+        session = self.prepare(nodes=3)
+
+        # Prepare a table with some data
+        session.execute("CREATE TABLE tab (pk int PRIMARY KEY, t text)")
+        for x in range(10):
+            session.execute(f"INSERT INTO tab (pk, t) VALUES ({x}, '" + 'a' * x + "');")
+
+        # Create a UDA that sums integers from all rows
+        session.execute(
+            "CREATE FUNCTION plus(acc int, val int) RETURNS NULL ON NULL INPUT RETURNS int LANGUAGE lua AS 'return acc + val'")
+        session.execute(
+            "CREATE FUNCTION return_int(acc int) RETURNS NULL ON NULL INPUT RETURNS int LANGUAGE lua AS 'return acc'")
+        session.execute("CREATE AGGREGATE suma(int) SFUNC plus STYPE int FINALFUNC return_int INITCOND 0")
+        assert_one(session, "SELECT suma(pk) FROM tab", [45])
+
+        # Create a variant of the UDA that uses a REDUCEFUNC
+        session.execute(
+            "CREATE AGGREGATE sum_reduce(int) SFUNC plus STYPE int REDUCEFUNC plus FINALFUNC return_int INITCOND 0")
+        assert_one(session, "SELECT sum_reduce(pk) FROM tab", [45])
+
+        # Create a UDA that concatenates strings from all rows
+        session.execute(
+            "CREATE FUNCTION concat(acc text, val text) RETURNS NULL ON NULL INPUT RETURNS text LANGUAGE lua AS 'return acc..val'")
+        session.execute(
+            "CREATE FUNCTION return_string(acc text) RETURNS NULL ON NULL INPUT RETURNS text LANGUAGE lua AS 'return acc'")
+        session.execute("CREATE AGGREGATE suma(text) SFUNC concat STYPE text FINALFUNC return_string INITCOND ''")
+        assert_one(session, "SELECT suma(t) FROM tab WHERE pk IN (1,3,5)", ['aaaaaaaaa'])
+
+        # Create a variant of the UDA that uses a REDUCEFUNC
+        session.execute(
+            "CREATE AGGREGATE sum_reduce(text) SFUNC concat STYPE text REDUCEFUNC concat FINALFUNC return_string INITCOND ''")
+        assert_one(session, "SELECT sum_reduce(t) FROM tab WHERE pk IN (1,3,5)", ['aaaaaaaaa'])
+
+        # Stop and start the cluster
+        cluster = self.cluster
+        cluster.stop()
+
+        cluster.start(wait_other_notice=True)
+        node = cluster.nodelist()[0]
+        time.sleep(1)
+
+        session = self.patient_cql_connection(node)
+        session.execute("use ks")
+
+        # Ensure that the UDAs still work after restart
+        assert_one(session, "SELECT plus(pk, pk) FROM tab WHERE pk = 1", [2])
+        assert_one(session, "SELECT concat(t, t) FROM tab WHERE pk = 1", ['aa'])
+        assert_one(session, "SELECT suma(pk) FROM tab", [45])
+        assert_one(session, "SELECT suma(t) FROM tab WHERE pk in (1,3,5)", ['aaaaaaaaa'])
+        assert_one(session, "SELECT sum_reduce(pk) FROM tab", [45])
+        assert_one(session, "SELECT sum_reduce(t) FROM tab WHERE pk in (1,3,5)", ['aaaaaaaaa'])
+
+        # Ensure that the UDAs are still tracked:
+        # - they can't be overwritten
+        assert_invalid(session, "CREATE AGGREGATE suma(int) SFUNC plus STYPE int")
+        assert_invalid(session, "CREATE AGGREGATE suma(text) SFUNC concat STYPE text")
+        assert_invalid(session, "CREATE AGGREGATE sum_reduce(int) SFUNC plus STYPE int")
+        assert_invalid(session, "CREATE AGGREGATE sum_reduce(text) SFUNC concat STYPE text")
+
+        # - they can be dropped
+        session.execute("DROP AGGREGATE suma(int)")
+        session.execute("DROP AGGREGATE suma(text)")
+        session.execute("DROP AGGREGATE sum_reduce(int)")
+        session.execute("DROP AGGREGATE sum_reduce(text)")
