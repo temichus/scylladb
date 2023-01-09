@@ -1,7 +1,7 @@
-FROM scylladb/scylla-toolchain:fedora-34-20210902
+FROM scylladb/scylla-toolchain:fedora-37-20221225
 
 RUN sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
-RUN sudo dnf -y install redhat-rpm-config redhat-lsb-core python2 python3-devel rsyslog cyrus-sasl iproute docker-ce-cli iptables-services openssl-devel libffi-devel libev libev-devel
+RUN sudo dnf -y install redhat-rpm-config redhat-lsb-core python2 python3-devel rsyslog cyrus-sasl iproute docker-ce-cli iptables-services openssl-devel libffi-devel libev libev-devel && dnf clean all
 
 # set java 8 as default
 RUN echo 2 | sudo update-alternatives --config java
