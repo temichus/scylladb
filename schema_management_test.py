@@ -12,8 +12,8 @@ from cassandra import ConsistencyLevel
 from cassandra.query import dict_factory, SimpleStatement
 
 from tools.assertions import assert_all
-from tools.data import rows_to_list
-from dtest_class import Tester, create_ks
+from tools.data import rows_to_list, create_c1c2_table, insert_c1c2, query_c1c2
+from dtest_class import Tester, create_ks, create_cf
 
 logger = logging.getLogger(__name__)
 
@@ -194,8 +194,8 @@ class TestSchemaManagement(Tester):
         """
         raise NotImplementedError
 
-    @pytest.mark.skip('unimplemented')
-    def nodes_rejoining_a_cluster_synch_on_schema(self):
+    @pytest.mark.parametrize("is_gently_stop", [True, False])
+    def test_nodes_rejoining_a_cluster_synch_on_schema(self, is_gently_stop):
         """
         Nodes rejoining the cluster synch on schema changes
         1. Create a cluster and insert data
@@ -205,7 +205,46 @@ class TestSchemaManagement(Tester):
         5. Start the stopped node
         6. Verify the stopped node synchs on the updated schema
         """
-        raise NotImplementedError
+
+        logger.debug('1. Create a cluster and insert data')
+        self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
+        self.cluster.populate(3)
+        self.cluster.start(wait_other_notice=True)
+
+        [node1, node2, node3] = self.cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+
+        logger.debug('Creating schema')
+        create_ks(session, 'ks', 3)
+        create_c1c2_table(session)
+        create_cf(session, 'cf', key_name="p", key_type="int", columns={'v': 'text'})
+
+        logger.debug('Populating')
+        insert_c1c2(session, n=10, consistency=ConsistencyLevel.ALL)
+
+        logger.debug("2 Stop a node1")
+        node1.stop(gently=is_gently_stop, wait_other_notice=True)
+
+        logger.debug("3 Alter table")
+        session = self.patient_cql_connection(node2)
+        session.execute("ALTER TABLE ks.cf ADD (c3 text);", timeout=180)
+
+        logger.debug('4 Insert additional data')
+        session.execute(SimpleStatement("INSERT INTO ks.cf (key, c1, c2, c3) VALUES ('test', 'test', 'test', 'test')",
+                                        consistency_level=ConsistencyLevel.QUORUM))
+
+        logger.debug("5. Start the stopped node1")
+        node1.start(wait_for_binary_proto=True)
+
+        logger.debug("6. Verify the stopped node synchs on the updated schema")
+        session = self.patient_exclusive_cql_connection(node1)
+        rows = session.execute(SimpleStatement(
+            "SELECT * FROM ks.cf WHERE key=\'test\'", consistency_level=ConsistencyLevel.ALL))
+        expected = [['test', 'test', 'test', 'test']]
+        assert rows_to_list(rows) == expected, f"Expected {expected} but got {rows} instead"
+        for key in range(0, 10):
+            query_c1c2(session=session, key=key, consistency=ConsistencyLevel.ALL)
 
     def test_reads_schema_recreated_while_node_down(self):
         self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
