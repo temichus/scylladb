@@ -8,7 +8,8 @@ Basic overview
 
 ### High level component diagram for basic DTest understanding
 The main purpose of this diagram show the  main test manipulators that used in Dtest
-![DTest HL component](https://user-images.githubusercontent.com/1948660/211262284-357a34c7-1691-4fc1-a787-4ee86a0d590b.jpg)
+
+![DTest HL component](docs/DTest_HL_component_diagram.jpg?raw=true "DTest HL component diagramm")
 
 1.  Dtest uses [Pytest](https://docs.pytest.org/en/7.2.x/) sa test runner
 2.  almost all  test cases locates ./ folder in in files with _test.py endings
@@ -82,11 +83,11 @@ For example:
 
     CASSANDRA_DIR=../scylla ./scripts/run_test.sh <file>:<class>.<test>
 
-Setup using virtualenv
+Setup using 'pyenv virtualenv'
 ----------------------
 
-Using `virtualenv` is recommended in order to not pollute your global python3 installation with the dtest requirements. It also makes it very easy to switch between the different ccm versions (or other package versions) when changing release branches.
-To setup a `virtualenv` follow the below instructions:
+Using `pyenv virtualenv` is recommended in order to not pollute your global python3 installation with the dtest requirements. It also makes it very easy to switch between the different ccm versions (or other package versions) when changing release branches.
+To setup a `pyenv virtualenv` follow the below instructions:
 
 ```bash
 ## install  3.9.10 via pyenv same as used in docker installation
@@ -101,9 +102,9 @@ To setup a `virtualenv` follow the below instructions:
 
 
     # create a virtualenv for Dtest
-    pyenv virtualenv 3.9.10 dst391
+    pyenv virtualenv 3.9.10 dtest-3.9.10
     # cd to projecct tocectory and run
-    pyenv local dst391
+    pyenv local dtest-3.9.10
     # Some external tools (e.g. jedi) might require you to activate the virtualenv and conda environments.
     # If eval "$(pyenv virtualenv-init -)" is configured in your shell, pyenv-virtualenv will automatically
     # activate/deactivate virtualenvs on entering/leaving directories which contain a .python-version
@@ -114,15 +115,14 @@ pip install -r ./requirements.txt
 # Install Scylla CCM, using pip ensures it will be installed *into* the
 # virtualenv (setup.py does a global install by default).
 cd /path/to/scylla-ccm
-pyenv activate dst391
+pyenv activate dtest-3.9.10
 pip install .
 ```
 
-To get rid of the virtual environment just delete the directory (`env` in the above example) it was created in.
-
-To deactivate the virtual environment close the terminal and start a new one (there is no `deactivate` script unfortunately).
-
-To start using the virtual environment in a new terminal just source the `bin/activate` script, like above.
+* To get rid of the virtual environment run `pyenv virtualenv-delete dtest-3.9.10`
+* To deactivate the virtual environment `cd` to another folder
+* To start using the virtual environment again just `cd` to repo folder
+* To remove automatic virtual environment enabling on `cd` just delete file `.python-version` in repo directory
 
 
 Usage
