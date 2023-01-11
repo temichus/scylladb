@@ -11,9 +11,9 @@ The main purpose of this diagram show the  main test manipulators that used in D
 
 ![DTest HL component](docs/DTest_HL_component_diagram.jpg?raw=true "DTest HL component diagramm")
 
-1.  Dtest uses [Pytest](https://docs.pytest.org/en/7.2.x/) sa test runner
-2.  almost all  test cases locates ./ folder in in files with _test.py endings
-3.  [CCM](https://github.com/scylladb/scylla-ccm). Modified for Scylla support 3dr party Java solution that spawns many DB instances(processes)
+1.  Dtest uses [Pytest](https://docs.pytest.org/en/7.2.x/) as test runner
+2.  almost all  test cases located ./ folder in files with _test.py endings
+3.  [CCM](https://github.com/scylladb/scylla-ccm). Modified for Scylla support 3rd party Java solution that spawns many DB instances(processes)
 and provides the interface to easily manage them. DTest uses python SDK but CCM also has CLI interface.
 Dtest uses CCM for deployment, run Cassandra-stress and in cqlsh tests.
 4. Cassandra driver uses to work with ScyllaDB instance directly and perforn CRUD(Create/Read/Update/Delete) operations
