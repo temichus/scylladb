@@ -50,6 +50,9 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
         logger.debug("keystores already exists - skipping generation of ssl keystores")
         return
 
+    legacy = ['-legacy'] if '-legacy' in subprocess.run(['openssl', 'pkcs12', '--help'],
+                                                        universal_newlines=True, stderr=subprocess.PIPE).stderr else []
+
     logger.debug("generating keystore.jks in [{0}]".format(base_dir))
     subprocess.check_call(['keytool', '-genkeypair', '-alias', 'ccm_node', '-keyalg', 'RSA', '-validity', '365',
                            '-keystore', os.path.join(base_dir, 'keystore.jks'), '-storepass', passphrase,
@@ -71,12 +74,12 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
     logger.debug("Using openssl to split pks12 in [{0}] to pem format".format(base_dir))
     subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'ccm_node.p12'),
                            '-passin', 'pass:{0}'.format(passphrase), '-nokeys',
-                           '-out', os.path.join(base_dir, 'ccm_node.pem')])
+                           '-out', os.path.join(base_dir, 'ccm_node.pem')] + legacy)
     # Key with password. We want without...
     subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'ccm_node.p12'),
                            '-passin', 'pass:{0}'.format(passphrase),
                            '-passout', 'pass:{0}'.format(passphrase), '-nocerts',
-                           '-out', os.path.join(base_dir, 'ccm_node.tmp')])
+                           '-out', os.path.join(base_dir, 'ccm_node.tmp')] + legacy)
     subprocess.check_call(['openssl', 'rsa', '-in', os.path.join(base_dir, 'ccm_node.tmp'),
                            '-passin', 'pass:{0}'.format(passphrase),
                            '-out', os.path.join(base_dir, 'ccm_node.key')])
@@ -87,7 +90,7 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
                            '-deststoretype', 'PKCS12', '-srcalias', 'ccm_node', '-deststorepass', passphrase])
     subprocess.check_call(['openssl', 'pkcs12', '-in', os.path.join(base_dir, 'trust.p12'),
                            '-passin', 'pass:{0}'.format(passphrase),
-                           '-out', os.path.join(base_dir, 'trust.pem')])
+                           '-out', os.path.join(base_dir, 'trust.pem')] + legacy)
     # generate a revokation list (crl) for the same cert
     index_txt = os.path.join(base_dir, 'index.txt')
     pulp_crl_number = os.path.join(base_dir, 'pulp_crl_number')
