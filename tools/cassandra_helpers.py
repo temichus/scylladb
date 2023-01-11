@@ -43,6 +43,8 @@ class CassandraCluster:
         self.dtest_setup.initialize_cluster(DTestSetup.create_ccm_cluster)
         self.request.addfinalizer(self.tear_down)
         self.cluster = self.dtest_setup.cluster
+        # remove flags that cassandra doesn't support`
+        self.cluster._config_options.pop('consistent_cluster_management', None)
         self.cluster.set_configuration_options(values=config_options)
         logger.debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
         self.cluster.populate(nodes)
