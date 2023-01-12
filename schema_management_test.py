@@ -8,7 +8,7 @@ from concurrent import futures
 
 from cassandra.cluster import ThreadPoolExecutor
 from cassandra.concurrent import execute_concurrent_with_args
-from cassandra import ConsistencyLevel
+from cassandra import ConsistencyLevel, AlreadyExists
 from cassandra.query import dict_factory, SimpleStatement
 
 from tools.assertions import assert_all
@@ -91,15 +91,57 @@ class TestSchemaManagement(Tester):
                 "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
             s.execute("drop keyspace testxyz")
 
-    @pytest.mark.skip('unimplemented')
-    def multiple_create_table_in_parallel(self):
+    def test_multiple_create_table_in_parallel(self):
         """
         Run multiple create table statements via different nodes
         1. Create a cluster of 3 nodes
         2. Run create table with different table names in parallel - check all complete
         3. Run create table with the same table name in parallel - check if they complete
         """
-        raise NotImplementedError
+        logger.debug('1. Create a cluster of 3 nodes')
+        nodes_count = 3
+        self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
+        self.cluster.populate(nodes_count)
+        self.cluster.start(wait_other_notice=True)
+        sessions = [self.patient_exclusive_cql_connection(node) for node in self.cluster.nodelist()]
+        ks = "ks"
+        create_ks(sessions[0], ks, nodes_count)
+
+        def create_table(session, table_name):
+            create_statement = f"CREATE TABLE {ks}.{table_name} (p int PRIMARY KEY, c0 text, c1 text, c2 text, " \
+                               f"c3 text, c4 text, c5 text, c6 text, c7 text, c8 text, c9 text);"
+            logger.debug(f"create_statement {create_statement}")
+            session.execute(create_statement)
+
+        logger.debug('2. Run create table with different table names in parallel - check all complete')
+        step2_tables = [f"t{i}" for i in range(nodes_count)]
+        with ThreadPoolExecutor(max_workers=nodes_count) as executor:
+            list(executor.map(create_table, sessions, step2_tables))
+
+        for table in step2_tables:
+            sessions[0].execute(SimpleStatement(f"INSERT INTO {ks}.{table} (p) VALUES (1)",
+                                                consistency_level=ConsistencyLevel.ALL))
+            rows = sessions[0].execute(SimpleStatement(f"SELECT * FROM {ks}.{table}",
+                                                       consistency_level=ConsistencyLevel.ALL))
+            assert len(rows_to_list(rows)) == 1, f"Expected 1 row but got rows:{rows} instead"
+
+        logger.debug('3. Run create table with the same table name in parallel - check if they complete')
+        step3_table = "test"
+        step3_tables = [step3_table for i in range(nodes_count)]
+        with ThreadPoolExecutor(max_workers=nodes_count) as executor:
+            res_futures = [executor.submit(create_table, *args) for args in zip(sessions, step3_tables)]
+            for res_future in res_futures:
+                try:
+                    res_future.result()
+                except AlreadyExists as e:
+                    logger.info(f"expected cassandra.AlreadyExists error {e}")
+
+        sessions[0].execute(SimpleStatement(f"INSERT INTO {ks}.{step3_table} (p) VALUES (1)",
+                                            consistency_level=ConsistencyLevel.ALL))
+        sessions[0].execute(f"SELECT * FROM {ks}.{step3_table}")
+        rows = sessions[0].execute(SimpleStatement(f"SELECT * FROM {ks}.{step3_table}",
+                                                   consistency_level=ConsistencyLevel.ALL))
+        assert len(rows_to_list(rows)) == 1, f"Expected 1 row but got rows:{rows} instead"
 
     @pytest.mark.skip('unimplemented')
     def alter_table_in_parallel_to_write(self):
