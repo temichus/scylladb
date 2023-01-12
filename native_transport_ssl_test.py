@@ -28,7 +28,7 @@ class TestNativeTransportSSL(Tester):
     """
 
     def _create_cluster_session(self, node_to_connect, port=9042, use_ssl=False, ca_certs=None):
-        ssl_context, ssl_options, ssl_options = None, None, {}
+        ssl_context, ssl_options = None, {}
         if use_ssl or ca_certs:
             ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         if use_ssl:
