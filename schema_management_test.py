@@ -102,36 +102,6 @@ class TestSchemaManagement(Tester):
         raise NotImplementedError
 
     @pytest.mark.skip('unimplemented')
-    def multiple_alter_table_in_parallel(self):
-        """
-        Run multiple alter table statements via different nodes
-        1. Create a cluster of 3 nodes
-        2. Run alter table with different table names in parallel - check all complete
-        3. Run alter table with the same table name in parallel - check if they complete
-        """
-        raise NotImplementedError
-
-    @pytest.mark.skip('unimplemented')
-    def alter_and_drop_table_in_parallel(self):
-        """
-        Run alter and drop table statements via different nodes
-        1. Create a cluster of 3 nodes
-        2. Run alter and drop table with different table names in parallel - check all complete
-        3. Run alter and drop table with the same table name in parallel - check if they complete
-        """
-        raise NotImplementedError
-
-    @pytest.mark.skip('unimplemented')
-    def create_table_after_drop_table(self):
-        """
-        Run create table after drop table statements via different nodes
-        1. Create a cluster of 3 nodes
-        2. Run drop table
-        3. Create a table using the same table name
-        """
-        raise NotImplementedError
-
-    @pytest.mark.skip('unimplemented')
     def alter_table_in_parallel_to_write(self):
         """
         Create a table and write into while altering the table
