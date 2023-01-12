@@ -1023,7 +1023,7 @@ class TestCommitLog(Tester):
 
         logger.debug("Mount commitlog directory to a size limited device")
         exec_cmd(f'dd if=/dev/zero of={tmp_img} bs=1M count={commitlog_dir_limit_in_mb}')
-        exec_cmd(f'mkfs.xfs -f {tmp_img}')
+        exec_cmd(f'mkfs.xfs -f {tmp_img} -m crc=0,finobt=0')
         # checking existing loop devices and setup
         logger.debug(subprocess.getoutput('ls /dev/loop*'))
         exec_cmd('losetup -la', debug_output=True)
