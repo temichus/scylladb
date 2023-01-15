@@ -514,7 +514,7 @@ def pytest_collection_modifyitems(items, config):
     config.hook.pytest_deselected(items=deselected_items)
     items[:] = selected_items
     if collect_require:
-        pytest.exit(msg="--collect-require was used", returncode=0)
+        pytest.exit(msg="--collect-required was used", returncode=0)
 
 
 def pytest_markeval_namespace():
