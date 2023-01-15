@@ -489,7 +489,7 @@ def pytest_collection_modifyitems(items, config):
         require_mark = item.get_closest_marker("require")
         if require_mark and collect_require:
             issue = require_mark.kwargs.get('require_pattern', next(iter(require_mark.args), None))
-            if not check_issue_closed(issue):
+            if not check_issue_closed(issue, collect_require):
                 print(f"* {item.nodeid} - {issue}")
             else:
                 print(f"* {item.nodeid} - marked with closed issue {issue}")
@@ -565,7 +565,7 @@ def configure_es(request: pytest.FixtureRequest, dtest_config):
         elk_reporter.session_data.update(**jenkins_build_data)
 
 
-def check_issue_closed(pattern):
+def check_issue_closed(pattern, collect_require=False):
     """check if issue is closed
 
     Parse pattern and find whether it matched
@@ -610,10 +610,14 @@ def check_issue_closed(pattern):
         except Exception:
             return False
     else:
+        if collect_require:
+            print(f"check_issue_closed: {pattern}: no GITHUB_TOKEN")
         return False
 
     closed = []
     if pattern is None:
+        if collect_require:
+            print(f"check_issue_closed: no pattern")
         return False
 
     for pat in pattern.split(","):
@@ -626,10 +630,15 @@ def check_issue_closed(pattern):
             if not issue_id:
                 continue
 
+            msg = f"check_issue_closed: {user_id}/{repo_id}#{issue_id}"
             try:
                 found_issue = git.get_user(user_id).get_repo(repo_id).get_issue(int(issue_id))
+                if collect_require:
+                    print(f"{msg}: state={found_issue.state}")
                 closed.append(found_issue.state == "closed")
-            except Exception:
+            except Exception as ex:
+                if collect_require:
+                    print(f"{msg} failed: {ex}")
                 closed.append(False)
 
     return all(closed) if closed else False
