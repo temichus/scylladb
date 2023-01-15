@@ -1573,15 +1573,15 @@ class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
         for n in range(50):
             _validate_data(expected_rows=40, format_value=-999)
 
-    @pytest.mark.require('#2962')
+    @pytest.mark.require('scylladb/scylla-dtest#2972')
     def test_list_indexes(self):
         self.collection_indexes_run(type='list')
 
-    @pytest.mark.require('#2962')
+    @pytest.mark.require('scylladb/scylla-dtest#2972')
     def test_set_indexes(self):
         self.collection_indexes_run(type='set')
 
-    @pytest.mark.require('#2962')
+    @pytest.mark.require('scylladb/scylla-dtest#2972')
     def test_map_indexes(self):
         self.collection_indexes_run(type='map')
 
