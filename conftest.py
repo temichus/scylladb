@@ -336,10 +336,10 @@ def fixture_require_version(request, fixture_dtest_setup):
     if marker is not None:
         issue = marker.kwargs.get('require_pattern', next(iter(marker.args), None))
         if DTEST_REQUIRE == "disabled":
-            print(f"DTEST_REQUIRE is disabled. Test will be run")
+            logger.info(f"DTEST_REQUIRE is disabled. Test will be run")
         elif DTEST_REQUIRE != "enabled" and check_issue_closed(issue):
             # DTEST_REQUIRE == "auto"
-            print(f"Issue {issue} closed. Test will be run")
+            logger.info(f"Issue {issue} closed. Test will be run")
         else:   # DTEST_REQUIRE == "enabled"
             pytest.skip(f"require: {issue}")
 
@@ -412,7 +412,6 @@ def pytest_collection_modifyitems(items, config):
             elk_reporter.slices_query_fmt = '(name:"{}")  AND (outcome: passed) AND (build_tag: debug)'
 
     if collect_require:
-        print()
         print("List of test with require mark:")
 
     if not scylla_version and not collect_require:
