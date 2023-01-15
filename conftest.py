@@ -625,7 +625,7 @@ def check_issue_closed(pattern, collect_require=False):
         if match:
             obj = match.groupdict()
             user_id = obj.get("user_id") or "scylladb"
-            repo_id = obj.get("repo_id") or "scylla"
+            repo_id = obj.get("repo_id") or "scylladb"
             issue_id = obj.get("id")
             if not issue_id:
                 continue
