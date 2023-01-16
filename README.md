@@ -72,7 +72,7 @@ Running using docker
 Use `scripts/run_test.sh` to run the distributed tests in the `scylla-dtest` docker container.
 
 Optional values can be set via environment variables:
-    `SCYLLA_DIR`, `TOOLS_JAVA_DIR`, `JMX_DIR`, `DTEST_DIR`, `CCM_DIR`, `SCYLLA_DBUILD_SO_DIR`, `SCYLLA_EXT_OPTS`, `CLUSTER_ID_ALLOCATOR`
+    `CASSANDRA_DIR`, `TOOLS_JAVA_DIR`, `JMX_DIR`, `DTEST_DIR`, `CCM_DIR`, `SCYLLA_DBUILD_SO_DIR`, `SCYLLA_EXT_OPTS`, `CLUSTER_ID_ALLOCATOR`
 
 The script pulls the latest `docker.io/scylladb/scylla-dtest` image (and if that fails, it builds it)
 and the it runs pytest in a docker container based on this image.
