@@ -273,7 +273,7 @@ class TestUpdateClusterLayout(Tester):
         node3.start(no_wait=True)
         # lets check that it detected there was another bootstrapping in progress
         logger.debug("Waiting until node3 notices other node was booting")
-        detect_msg = rf"Checking bootstrapping/leaving/moving nodes: node={node2.address()}.* sleep 1 second and check again"
+        detect_msg = rf"Checking bootstrapping/leaving.* sleep 1 second and check again"
         expr = '|'.join([detect_msg] + expected_errors)
         res = node3.watch_log_for(expr)
         logger.debug(f"Log messages: {res}")
