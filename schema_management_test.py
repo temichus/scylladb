@@ -12,7 +12,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from cassandra import ConsistencyLevel, AlreadyExists
 from cassandra.query import dict_factory, SimpleStatement
 
-from tools.assertions import assert_all
+from tools.assertions import assert_all,  assert_invalid
 from tools.data import rows_to_list, create_c1c2_table, insert_c1c2, query_c1c2
 from dtest_class import Tester, create_ks, create_cf
 
@@ -211,26 +211,65 @@ class TestSchemaManagement(Tester):
         """
         raise NotImplementedError
 
-    @pytest.mark.skip('unimplemented')
-    def create_table_while_node_is_killed(self):
+    @pytest.mark.parametrize("case", ("create_table", "alter_table", "drop_table"))
+    def test_update_schema_while_node_is_killed(self, case):
         """
-        Check that a node that is killed durring a table creation is able to rejoin and to synch on schema
+        Check that a node that is killed durring a table creation/alter/drop is able to rejoin and to synch on schema
         """
-        raise NotImplementedError
 
-    @pytest.mark.skip('unimplemented')
-    def alter_table_while_node_is_killed(self):
-        """
-        Check that a node that is killed durring a table alter is able to rejoin and to synch on schema
-        """
-        raise NotImplementedError
+        logger.debug('1. Create a cluster and insert data')
+        self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
+        self.cluster.populate(3)
+        self.cluster.start(wait_other_notice=True)
 
-    @pytest.mark.skip('unimplemented')
-    def drop_table_while_node_is_killed(self):
-        """
-        Check that a node that is killed durring a table drop is able to rejoin and to synch on schema
-        """
-        raise NotImplementedError
+        [node1, node2, node3] = self.cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+
+        def create_table_case():
+            logger.debug('Creating table')
+            create_c1c2_table(session)
+            logger.debug('Populating')
+            insert_c1c2(session, n=10)
+
+        logger.debug('Creating keyspace')
+        create_ks(session, 'ks', 3)
+        if case != 'create_table':
+            create_table_case()
+
+        case_map = {
+            "create_table": create_table_case,
+            "alter_table": functools.partial(
+                session.execute, "ALTER TABLE ks.cf ADD (c3 text);", timeout=180),
+            "drop_table": functools.partial(
+                session.execute, "DROP TABLE cf;", timeout=180),
+        }
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            logger.debug(f'2. kill node during {case}')
+            kill_node_future = executor.submit(node2.stop, gently=False, wait_other_notice=True)
+            case_map[case]()
+            kill_node_future.result()
+
+        logger.debug("3. Start the stopped node2")
+        node2.start(wait_for_binary_proto=True)
+
+        session = self.patient_exclusive_cql_connection(node2)
+
+        def create_or_alter_table_expected_result(col_mun):
+            rows = session.execute(SimpleStatement("SELECT * FROM ks.cf LIMIT 1;",
+                                                   consistency_level=ConsistencyLevel.QUORUM))
+            assert len(rows_to_list(rows)[0]) == col_mun, \
+                f"Expected {col_mun} columns but got rows:{rows} instead"
+            for key in range(0, 10):
+                query_c1c2(session=session, key=key, consistency=ConsistencyLevel.QUORUM)
+
+        expected_case_result_map = {
+            "create_table": functools.partial(create_or_alter_table_expected_result, 3),
+            "alter_table": functools.partial(create_or_alter_table_expected_result, 4),
+            "drop_table": functools.partial(assert_invalid, session, "SELECT * FROM test1"),
+        }
+        logger.debug('verify that commitlog has been replayed and that all data is restored')
+        expected_case_result_map[case]()
 
     @pytest.mark.parametrize("is_gently_stop", [True, False])
     def test_nodes_rejoining_a_cluster_synch_on_schema(self, is_gently_stop):
