@@ -7,19 +7,19 @@ Basic overview
 --------------
 
 ### High level component diagram for basic DTest understanding
-The main purpose of this diagram show the  main test manipulators that used in Dtest
+The purpose of this diagram is to demonstrate the main test manipulators used by Dtest
 
 ![DTest HL component](docs/DTest_HL_component_diagram.jpg?raw=true "DTest HL component diagramm")
 
 1.  Dtest uses [Pytest](https://docs.pytest.org/en/7.2.x/) as test runner
-2.  almost all  test cases located ./ folder in files with _test.py endings
+2.  almost all test cases are located under ./ folder in files ending with `_test.py`
 3.  [CCM](https://github.com/scylladb/scylla-ccm). Modified for Scylla support 3rd party Java solution that spawns many DB instances(processes)
 and provides the interface to easily manage them. DTest uses python SDK but CCM also has CLI interface.
 Dtest uses CCM for deployment, run Cassandra-stress and in cqlsh tests.
-4. Cassandra driver uses to work with ScyllaDB instance directly and perforn CRUD(Create/Read/Update/Delete) operations
-5. Tools contain rest of the manipulators that mainly uses for particular test or feature
+4. Cassandra driver is used to talk to ScyllaDB instance directly and to perform CRUD (Create/Read/Update/Delete) operations
+5. `tools` contain rest of the manipulators that are mainly used for particular test or feature
 ### known issues and limitations
-1. The main purpose of DTest run Functional tests not performance because Dtest works locally.
+1. The primary purpose of DTest is to run *Functional* tests not performance because Dtest works locally.
 For performance test please refer to [scylla-cluster-tests](https://github.com/scylladb/scylla-cluster-tests)
 
 
