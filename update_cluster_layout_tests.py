@@ -1304,9 +1304,9 @@ class TestUpdateClusterLayout(Tester):
         def kill_node_thread(kill_coordinator, node1, node2, node3, node4, node5):
             logger.debug('kill node thread')
 
-            node3.watch_log_for(f"Added node={node2.address()} as leaving node, coordinator={node1.address()}")
-            node4.watch_log_for(f"Added node={node2.address()} as leaving node, coordinator={node1.address()}")
-            node5.watch_log_for(f"Added node={node2.address()} as leaving node, coordinator={node1.address()}")
+            node3.watch_log_for(f"Added node=.*{node2.address()} as leaving node, coordinator={node1.address()}")
+            node4.watch_log_for(f"Added node=.*{node2.address()} as leaving node, coordinator={node1.address()}")
+            node5.watch_log_for(f"Added node=.*{node2.address()} as leaving node, coordinator={node1.address()}")
 
             logger.debug('Wait for node 5 to start to sync data')
             node5.watch_log_for(f"Started to sync data for removing node")
@@ -1335,12 +1335,12 @@ class TestUpdateClusterLayout(Tester):
         except Exception as e:
             logger.debug(f"It is except to see the restful api to node1 to fail because node1 is killed: {e}")
 
-        node3.watch_log_for(f"Removed node={node2.address()} as leaving node, coordinator={node1.address()}")
-        node4.watch_log_for(f"Removed node={node2.address()} as leaving node, coordinator={node1.address()}")
+        node3.watch_log_for(f"Removed node=.*{node2.address()} as leaving node, coordinator={node1.address()}")
+        node4.watch_log_for(f"Removed node=.*{node2.address()} as leaving node, coordinator={node1.address()}")
         if kill_coordinator:
-            node5.watch_log_for(f"Removed node={node2.address()} as leaving node, coordinator={node1.address()}")
+            node5.watch_log_for(f"Removed node=.*{node2.address()} as leaving node, coordinator={node1.address()}")
         else:
-            node1.watch_log_for(f"Removed node={node2.address()} as leaving node, coordinator={node1.address()}")
+            node1.watch_log_for(f"Removed node=.*{node2.address()} as leaving node, coordinator={node1.address()}")
 
         t.result()
 
