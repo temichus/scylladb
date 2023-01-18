@@ -930,7 +930,8 @@ class TestTTLWithMigrate(Tester):
         table_name = 'cf'
         int_columns = 99
         stmt = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
-               'PRIMARY KEY(pk, ck))'.format(table_name, ', '.join('c%d int' % i for i in range(1, int_columns)))
+               'PRIMARY KEY(pk, ck)) WITH compaction = {{\'class\': \'SizeTieredCompactionStrategy\'}}'.format(
+                   table_name, ', '.join('c%d int' % i for i in range(1, int_columns)))
         self.session1.execute(stmt)
 
         min_ttl = 120
