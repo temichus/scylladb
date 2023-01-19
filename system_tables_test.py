@@ -725,7 +725,7 @@ class TestRuntimeInfoTable(SystemTableBase):
         2. Run select query on system.runtime_info table
         3. Verify the content of the table
         """
-        cluster = self.prepare_cluster(nodes=1, jvm_args=["--memory", "1G"])
+        cluster = self.prepare_cluster(nodes=1)
         node = cluster.nodelist()[0]
 
         expected_content = {"cache": ["entries", "hit_rate_recent", "hit_rate_total", "hits", "memory_free",
@@ -756,7 +756,7 @@ class TestRuntimeInfoTable(SystemTableBase):
                 assert int(row.value.replace(" seconds", "")) > 0, "Uptime for a node should be more than 0!"
             elif row.group == "memory" and row.item == "total":
                 if node.scylla_mode() != 'debug':
-                    assert int(row.value) == 1024 * 1024 * 1024, f"Unexpected memory value: {row.value}"
+                    assert int(row.value) == node.memory(), f"Unexpected memory value: {row.value}"
             else:
                 assert self.is_number(value=row.value),\
                     f"The type of value='{row.value}' for item='{row.item}' is not number (integer or float)!"
