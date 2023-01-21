@@ -683,6 +683,7 @@ class TestBackupRestore(Tester):
             assert test_dir is None, "'snapshot{}' has not been deleted!".format(i)
 
     @pytest.mark.skip('#7022')
+    @pytest.mark.single_node
     # nodetool refresh does not examine the main directory since
     # refresh was changed to use off-strategy compaction
     # in scylla@7351db7cab7bbf907172940d0bbf8b90afde90ba

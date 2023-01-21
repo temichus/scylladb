@@ -22,6 +22,7 @@ class TestSCCache(Tester):
         })
         return dtest_setup_overrides
 
+    @pytest.mark.single_node
     def test_sc_with_row_cache(self):
         """ Test for bug reported in #4190 """
         cluster = self.cluster

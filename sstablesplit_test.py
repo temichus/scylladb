@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestSSTableSplit(Tester):
 
     @pytest.fixture(scope='function', autouse=True)

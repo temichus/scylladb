@@ -33,6 +33,7 @@ except KeyError:
 class TestThriftHSHA(Tester):
 
     @pytest.mark.skipif(sys.platform == "win32", reason='Could not be executed on Windows')
+    @pytest.mark.single_node
     def test_closing_connections(self):
         """
         @jira_ticket CASSANDRA-6546

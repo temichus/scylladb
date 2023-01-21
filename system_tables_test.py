@@ -502,6 +502,7 @@ class TestTokenRingTable(SystemTableBase):
 class TestVersionsTable(SystemTableBase):
     TABLE_NAME = "versions"
 
+    @pytest.mark.single_node
     def test_content(self):
         """
         Table content example:
@@ -557,6 +558,7 @@ class TestProtocolServersTable(SystemTableBase):
                               ("rpc", {"start_rpc": "true"}, "9160"),
                               ("redis", {"redis_port": "6379"}, "6379")],
                              ids=["default", "alternator", "thrift", "redis"])
+    @pytest.mark.single_node
     def test_content(self, mode: str, scylla_yaml_options: Optional[Dict[str, str]], port: Optional[str]):
         """
         Test scenario:
@@ -621,6 +623,7 @@ class TestSnapshotsTable(SystemTableBase):
 
     @pytest.mark.parametrize("mode,number_of_tables", [("one_table", 1), ("keyspace", 5)],
                              ids=["one_table", "keyspace"])
+    @pytest.mark.single_node
     def test_content_create_and_remove_snapshot(self, mode: str, number_of_tables: int):
         """
         Test scenario:
@@ -714,6 +717,7 @@ class TestRuntimeInfoTable(SystemTableBase):
     TABLE_NAME = "runtime_info"
     TEST_KEYSPACE = "test_keyspace"
 
+    @pytest.mark.single_node
     def test_default_content(self):
         """
         Test scenario:
@@ -766,6 +770,7 @@ class TestRuntimeInfoTable(SystemTableBase):
                              [("gossip_active", "true", "false", "disablegossip", "enablegossip"),
                               ("incremental_backup_enabled", "false", "true", "enablebackup", "disablebackup")],
                              ids=["gossip_active", "incremental_backup_enabled"])
+    @pytest.mark.single_node
     # pylint: disable=too-many-arguments
     def test_content_toggle_item(self,
                                  item: str,
@@ -811,6 +816,7 @@ class TestRuntimeInfoTable(SystemTableBase):
             assert item_state_reverted == default_state, f"Expected to get state '{default_state}' for {item}, " \
                                                          f"but it has '{item_state_reverted}' state!"
 
+    @pytest.mark.single_node
     def test_cache_metrics(self):
         """
         Test scenario:
@@ -874,6 +880,7 @@ class TestRuntimeInfoTable(SystemTableBase):
             metrics_after_request["hits"] + metrics_after_request["misses"]
 
     @pytest.mark.xfail(reason="https://github.com/scylladb/scylla/issues/10340")
+    @pytest.mark.single_node
     def test_memtable_metrics(self):
         """
         Test scenario:
@@ -935,6 +942,7 @@ class TestConfigTable(SystemTableBase):
     """
     TABLE_NAME = "config"
 
+    @pytest.mark.single_node
     def test_content_values_types(self):
         """
         1. Create a one-node Scylla cluster
@@ -969,6 +977,7 @@ class TestConfigTable(SystemTableBase):
             else:
                 assert row.value, "The value is empty!"
 
+    @pytest.mark.single_node
     def test_content_source_config(self):
         """
         1. Create a one-node Scylla cluster
@@ -1005,6 +1014,7 @@ class TestConfigTable(SystemTableBase):
                 f"Wrong value for name='{row.name}' in the table {self.KEYSPACE_NAME}.{self.TABLE_NAME}. " \
                 f"Expected: {scylla_yaml_value}. Got: {row_value}."
 
+    @pytest.mark.single_node
     def test_content_source_cli(self):
         """
         1. Create a one-node Scylla cluster
@@ -1069,6 +1079,7 @@ class TestConfigTable(SystemTableBase):
                                                reason="https://github.com/scylladb/scylla/issues/10394"))],
                              ids=["no_value_provided", "source_not_updatable", "type_not_updatable",
                                   "parameter_not_live_updatable", "wrong_parameter_name", "wrong_value_type"])
+    @pytest.mark.single_node
     def test_invalid_update(self, statement: str, error_message: str):
         """
         Test scenario:
@@ -1089,6 +1100,7 @@ class TestConfigTable(SystemTableBase):
             assert error_message in str(exc_info.value), \
                 f"Returned message '{str(exc_info.value)}' doesn't contain '{error_message}'!"
 
+    @pytest.mark.single_node
     def test_content_update_value(self):
         """
         Test scenario:
@@ -1152,6 +1164,7 @@ class TestConfigTable(SystemTableBase):
                                         f"Expected: 'cql', got: '{updated_parameter.source}'"
         assert not errors, f"Got the following errors:\n{list(errors.values())}"
 
+    @pytest.mark.single_node
     def test_content_disable_update(self):
         """
         Test scenario:

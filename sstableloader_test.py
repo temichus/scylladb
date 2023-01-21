@@ -526,6 +526,7 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2, -1])
         assert_all(session, f'SELECT key, c1 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
+    @pytest.mark.single_node
     def test_invalid_sstable(self):
         """Test with unsupported version and index missing, sstable won't success"""
         self.cluster.populate(1).start(wait_for_binary_proto=True)

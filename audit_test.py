@@ -324,6 +324,7 @@ class TestCQLAudit(AuditTester):
 
         self.assertLastAuditRow(session, "QUERY", "SELECT * FROM audit.audit_log", ks="audit", table="audit_log")
 
+    @pytest.mark.single_node
     def test_audit_categories_invalid(self):
         """
         'audit_categories': invalid

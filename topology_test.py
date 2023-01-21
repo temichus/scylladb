@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class TestTopology(Tester):
 
     @pytest.mark.skip("Scylla doesn't support SizeEstimatesRecorder")
+    @pytest.mark.single_node
     def test_do_not_join_ring(self):
         """
         @jira_ticket CASSANDRA-9034
