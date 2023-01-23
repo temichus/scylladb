@@ -15,6 +15,7 @@ from cassandra import ConsistencyLevel, InvalidRequest
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodetoolError, Node
 from ccmlib.scylla_node import ScyllaNode
+from ccmlib.scylla_cluster import ScyllaCluster
 import pytest
 
 from dtest_class import Tester, create_ks, create_cf, get_ip_from_node, wait_for
@@ -1555,6 +1556,7 @@ class RepairAdditionalBase(Tester):
         # Start a cluster of two nodes, and create a keyspace with RF=2, and
         # a table with one partition. Hinted handoff and read repair are disabled
         # so they don't fix the problems which repair is supposed to fix.
+        num_keys = 10000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != "debug" else 1000
         self.cluster.set_configuration_options(values=self.default_config_options())
         self.cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = self.cluster.nodelist()
@@ -1562,22 +1564,24 @@ class RepairAdditionalBase(Tester):
             create_ks(session, 'ks', 2)
             create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        # Insert 10000 keys *only* on node 1, another 10000 keys *only* on node 2:
+        # Insert num_keys keys *only* on node 1, another num_keys keys *only* on node 2:
         node2.flush()
         node2.stop(wait_other_notice=True)
         with self.patient_exclusive_cql_connection(node1, 'ks') as session1:
-            insert_c1c2(session1, keys=range(0, 10000), consistency=ConsistencyLevel.ONE)
+            insert_c1c2(session1, keys=range(0, num_keys), consistency=ConsistencyLevel.ONE)
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         node1.flush()
         node1.stop(wait_other_notice=True)
         with self.patient_exclusive_cql_connection(node2, 'ks') as session2:
-            insert_c1c2(session2, keys=range(10000, 20000), consistency=ConsistencyLevel.ONE)
+            insert_c1c2(session2, keys=range(num_keys, 2 * num_keys), consistency=ConsistencyLevel.ONE)
         node1.start(wait_other_notice=True, wait_for_binary_proto=True)
 
         # Run repair on node 1 in the background
         def do_repair():
             try:
+                logger.debug(f"Repairing {node1.name}")
                 info = node1.repair(['ks'])
+                logger.debug(f"Repairing {node1.name} done")
                 logger.debug(info[0])
                 logger.debug(info[1])
             except (NodetoolError):
@@ -1587,12 +1591,14 @@ class RepairAdditionalBase(Tester):
 
         # In parallel with the repair, for as long as it doesn't finish,
         # we write more data to both nodes
-        original_count = 20000
+        original_count = 2 * num_keys
         count = original_count
         session = self.patient_cql_connection(node1, 'ks')
         while not thread1.done():
             prev_count = count
-            count = count + 1000
+            add_keys = num_keys // 10
+            count = count + add_keys
+            logger.debug(f"Inserting {add_keys} keys")
             insert_c1c2(session, keys=range(prev_count, count), consistency=ConsistencyLevel.TWO)
         logger.debug("wrote %d partitions in parallel with repair" % (count - original_count))
         thread1.result()
@@ -2790,7 +2796,6 @@ class TestRepairAdditional(RepairAdditionalBase):
         return self._repair_kill_3_test()
 
     @pytest.mark.next_gating
-    @pytest.mark.timeout(3000)
     def test_repair_during_update(self, more_options=[]):
         return self._repair_during_update_test(more_options)
 
