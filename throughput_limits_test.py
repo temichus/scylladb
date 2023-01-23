@@ -33,6 +33,7 @@ class TestStreamingLimitThroughput(ThroughputLimitTester):
         node1 = self.prepare(1, configuration_options={'stream_io_throughput_mb_per_sec': 1})
         node1.stress(['write', 'n=3000', 'no-warmup', '-schema', 'replication(factor=1)', '-rate', 'threads=1',
                       "-col", "n=FIXED(1)", "size=FIXED(16384)", "-errors", "ignore"])
+        node1.flush()
 
         # add node to start streaming
         node2 = new_node(self.cluster)
@@ -56,6 +57,7 @@ class TestStreamingLimitThroughput(ThroughputLimitTester):
                                                        "allowed_repair_based_node_ops": "bootstrap"})
         node1.stress(['write', 'n=3000', 'no-warmup', '-schema', 'replication(factor=1)', '-rate', 'threads=1',
                       "-col", "n=FIXED(1)", "size=FIXED(16384)", "-errors", "ignore"])
+        node1.flush()
 
         # add node to start streaming
         node2 = new_node(self.cluster)
