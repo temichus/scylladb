@@ -138,7 +138,7 @@ def prepareDtestLocalTree (Map args) {
 	boolean preserveWorkspace = args.preserveWorkspace ?: false
 	String dtestBranch = args.dtestBranch ?: "${GIT_BRANCH}".split('/')[1]
 	String dtestRepo = args.dtestRepo ?: "${GIT_URL}"
-	String ccmBranch = args.ccmBranch ?: branchProperties.ccmStableBranchName
+	String ccmBranch = args.ccmBranch ?: "${GIT_BRANCH}".split('/')[1]
 	String ccmRepo = args.ccmRepo ?: branchProperties.ccmDefaultRepo
 	String relocWebUrl = args.relocWebUrl ?: "latest"
 	String buildMode = args.buildMode ?: "release"
