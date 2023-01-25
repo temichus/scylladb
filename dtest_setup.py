@@ -705,6 +705,8 @@ class DTestSetup:
 
         if self.dtest_config.consistent_cluster_management:
             values['consistent_cluster_management'] = True
+        else:
+            values['consistent_cluster_management'] = False
 
         self.cluster.set_configuration_options(values)
         logger.debug("Done setting configuration options:\n" + pprint.pformat(self.cluster._config_options, indent=4))
