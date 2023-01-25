@@ -224,6 +224,10 @@ JAVA7_HOME and JAVA8_HOME, respectively.
 
 See more information about dtest here: [Scylla-DTEST](https://github.com/scylladb/scylla/wiki/Scylla-DTEST)
 
+scylla-jmx requires a JDK8 launcher (JDK11 or higher will not work).
+To control which java executable is used to run scylla-jmx you can
+set the JAVA_HOME variable to point to an appropriate jre/jdk.
+
 ### Changing the Cluster ID Allocator
 
 The default allocator was changed to the RandomClusterIdAllocator that draws
