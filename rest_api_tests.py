@@ -1,5 +1,5 @@
 from datetime import datetime
-from time import sleep
+from time import sleep, time
 import logging
 import re
 
@@ -27,11 +27,17 @@ class TestScyllaARestApi(Tester):
     @pytest.mark.single_node
     def test_basic_rest_uptime(self):
         node1 = self.config_and_create_cluster(1)[0]
+        upper_start = time()
         previous_node1_uptime = self.request_uptime(node1)
-        sleep(10)
+        sleep_ms = 10000
+        sleep(sleep_ms // 1000)
         current_node1_uptime = self.request_uptime(node1)
-        logger.debug(current_node1_uptime - previous_node1_uptime)
-        assert 10000 <= current_node1_uptime - previous_node1_uptime < 11000, \
+        upper_stop = time()
+        lower_ms = sleep_ms - 10
+        upper_ms = int((upper_stop - upper_start) * 1000) + 10
+        logger.debug(
+            f"lower bound={lower_ms} api delta={current_node1_uptime - previous_node1_uptime} upper bound={upper_ms}")
+        assert lower_ms <= current_node1_uptime - previous_node1_uptime <= upper_ms, \
             "The uptime received from scylla does not match the expected uptime"
 
     @pytest.mark.single_node
