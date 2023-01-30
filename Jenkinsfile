@@ -53,6 +53,10 @@ pipeline {
         string(name: 'SPLIT_FLEET_LABEL', defaultValue: '', description: 'On which spot instance fleet to run the parallel jobs. default: ec2-asg-strong-dtest-spot')
         string(name: 'SPLIT_TIME_TARGET', defaultValue: '240', description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
         string(name: 'TIMEOUT_PARAM', defaultValue: "2", description: 'hours. This time includes the time needed to wait for local machines. Could be much less for cloud machines.')
+        string(name: 'SCYLLA_DTEST_REPO', defaultValue: '', description: '')
+        string(name: 'SCYLLA_DTEST_BRANCH', defaultValue: '', description: '')
+        string(name: 'SCYLLA_CCM_REPO', defaultValue: '', description: '')
+        string(name: 'SCYLLA_CCM_BRANCH', defaultValue: '', description: '')
     }
     stages {
         stage("precommit") {
@@ -187,6 +191,9 @@ pipeline {
                             SCYLLA_DTEST_REPO = params.SCYLLA_DTEST_REPO ?: "git@github.com:${env.CHANGE_FORK}/scylla-dtest.git"
                             SCYLLA_DTEST_BRANCH = params.SCYLLA_DTEST_BRANCH ?: env.CHANGE_BRANCH
 
+                            SCYLLA_CCM_REPO = params.SCYLLA_CCM_REPO ?: "git@github.com:scylladb/scylla-ccm.git"
+                            SCYLLA_CCM_BRANCH = params.SCYLLA_CCM_BRANCH ?: "master"
+
                             String managerPackage = ""
                             if (testFiles.contains(' manager_')) {
                                 managerPackage = artifact.getManagerRelocUrl("master")
@@ -199,8 +206,8 @@ pipeline {
                                     preserveWorkspace: false,
                                     dtestBranch: SCYLLA_DTEST_BRANCH,
                                     dtestRepo: SCYLLA_DTEST_REPO,
-                                    ccmBranch: params.SCYLLA_CCM_BRANCH,
-                                    ccmRepo: params.SCYLLA_CCM_REPO,
+                                    ccmBranch: SCYLLA_CCM_BRANCH,
+                                    ccmRepo: SCYLLA_CCM_REPO,
                                     relocWebUrl: params.ARTIFACT_WEB_URL,
                                     baseRelocJob: RELOC_JOB_NAME,
                                     relocBuildID: params.RELOC_BUILD_ID,
@@ -247,8 +254,8 @@ def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtest
         preserveWorkspace: false,
         dtestBranch: SCYLLA_DTEST_BRANCH,
         dtestRepo: SCYLLA_DTEST_REPO,
-        ccmBranch: params.SCYLLA_CCM_BRANCH,
-        ccmRepo: params.SCYLLA_CCM_REPO,
+        ccmBranch: SCYLLA_CCM_BRANCH,
+        ccmRepo: SCYLLA_CCM_REPO,
         relocWebUrl: params.ARTIFACT_WEB_URL,
         baseRelocJob: RELOC_JOB_NAME,
         relocBuildID: params.RELOC_BUILD_ID,
@@ -275,8 +282,8 @@ def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtest
         runningUserID: jenkins.getRunningUserInfo().userId,
         dtestRepo: SCYLLA_DTEST_REPO,
         dtestBranch: SCYLLA_DTEST_BRANCH,
-        ccmBranch: params.SCYLLA_CCM_BRANCH,
-        ccmRepo: params.SCYLLA_CCM_REPO,
+        ccmBranch: SCYLLA_CCM_BRANCH,
+        ccmRepo: SCYLLA_CCM_REPO,
         splitFleetLabel: params.SPLIT_FLEET_LABEL,
         dtestType: dtestType,
         managerPackage: managerPackage,
