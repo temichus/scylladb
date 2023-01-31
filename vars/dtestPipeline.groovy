@@ -4,11 +4,11 @@ def call(Map pipelineParams) {
     pipeline {
         parameters {
             booleanParam(name: 'RUN_DTEST_FULL', defaultValue: true, description: 'Uncheck this to skip FullDtest, when running in parallel mode only!.')
-            booleanParam(name: 'RUN_DTEST_HEAVY', defaultValue: true, description: 'Uncheck this to run DtestHeavy, when running in parallel mode only!.')
-            booleanParam(name: 'RUN_DTEST_LONG', defaultValue: true, description: 'Uncheck this to run DtestLong, when running in parallel mode only!.')
+            booleanParam(name: 'RUN_DTEST_HEAVY', defaultValue: "${pipelineParams.get('RUN_DTEST_HEAVY', 'true')}", description: 'Uncheck this to run DtestHeavy, when running in parallel mode only!.')
+            booleanParam(name: 'RUN_DTEST_LONG', defaultValue: "${pipelineParams.get('RUN_DTEST_LONG', 'true')}", description: 'Uncheck this to run DtestLong, when running in parallel mode only!.')
 
             string(name: 'SPLIT_FLEET_LABEL', defaultValue: '', description: 'On which spot instance fleet to run the parallel jobs. default: ec2-asg-strong-dtest-spot')
-            string(name: 'SPLIT_TIME_TARGET', defaultValue: '240', description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
+            string(name: 'SPLIT_TIME_TARGET', defaultValue: "${pipelineParams.get('SPLIT_TIME_TARGET', '240')}", description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
             string(name: 'SPLIT_MAX_NODES', defaultValue: '100', description: 'Maximum number of nodes to run tests on parallel.')
             string(name: 'BRANCH', defaultValue: "${pipelineParams.get('BRANCH', 'master')}", description: 'Choose: master|branch-4.4')
             string(name: 'PRODUCT_NAME', defaultValue: "${pipelineParams.get('PRODUCT_NAME', 'scylla')}", description: 'Choose: scylla|scylla-enterprise')
