@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from cassandra import ConsistencyLevel
 
 from ccmlib import common
+from ccmlib.scylla_node import ScyllaNode
 from dtest_class import wait_for, WaitTimeoutExpired, create_ks, create_cf
 from tools.data import insert_c1c2, insert_c1c2_with_clustering
 from dtest_config import DTestConfig
@@ -1482,7 +1483,7 @@ class ManagerCluster(ScyllaManagerBase):
 
         stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
         if stderr:
-            logger.error("Encountered an error on '{}' command response".format(cmd))
+            logger.error("Encountered an error on %s command response", cmd)
             raise ScyllaManagerError(stderr)
 
         task_id = stdout.strip()
@@ -1905,6 +1906,18 @@ class ScyllaManagerMixin:
                                 c1_values=[C1_PREFIX % i for i in range(*key_range)],
                                 c2_values=[C2_PREFIX % i for i in range(*key_range)],
                                 ks=keyspace, cf=table)
+
+    def clean_up_tables(self, node: ScyllaNode, keyspace_and_tables_dict: dict):
+        """
+        :param node:
+        :param keyspace_and_tables_dict: a dict that contains a list of names of the tables to truncate in each keyspace.
+        :return:
+        """
+        session = self.patient_cql_connection(node)
+
+        for keyspace, table_list in keyspace_and_tables_dict.items():
+            for table in table_list:
+                session.execute(f"TRUNCATE {keyspace}.{table}")
 
 
 def create_cron_list_from_timedelta(minutes=0, hours=0):
