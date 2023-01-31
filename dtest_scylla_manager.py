@@ -1414,6 +1414,11 @@ class BackupTask(ManagerTask):
             upload_parallel_list=upload_parallel_list, cluster_name=self.cluster_id, sctool_kwargs=sctool_kwargs)
 
 
+class RestoreTask(ManagerTask):
+    def __init__(self, task_id, cluster_id, scylla_manager):
+        ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
+
+
 class RestTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
@@ -1452,6 +1457,37 @@ class ManagerCluster(ScyllaManagerBase):
             raise ScyllaManagerError("Cannot create a Manager Cluster where no 'scylla-manager' parameter is given")
         ScyllaManagerBase.__init__(self, id=cluster_id, scylla_manager=scylla_manager)
         self.client_encrypt = client_encrypt
+
+    def run_restore_command(self, batch_size: int = None,
+                            keyspace_list: list = None,
+                            restore_schema: bool = False,
+                            restore_data: bool = False,
+                            location_list: list = None,
+                            snapshot_tag: str = None):
+        cmd = f"restore -c {self.id}"
+        if batch_size:
+            cmd += f" --batch-size {batch_size}"  # The manager's default is 2
+        if keyspace_list:
+            keyspace_names = ','.join(keyspace_list)
+            cmd += f" --keyspace {keyspace_names} "
+        if restore_schema:
+            cmd += " --restore-schema"
+        if restore_data:
+            cmd += " --restore-tables"
+        if location_list:
+            locations_names = ','.join(location_list)
+            cmd += " --location {} ".format(locations_names)
+        if snapshot_tag:
+            cmd += f" --snapshot-tag {snapshot_tag}"
+
+        stdout, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
+        if stderr:
+            logger.error("Encountered an error on '{}' command response".format(cmd))
+            raise ScyllaManagerError(stderr)
+
+        task_id = stdout.strip()
+        logger.debug("Created task id is: %s", task_id)
+        return RestoreTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
     def run_backup_command(self,
                            dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
