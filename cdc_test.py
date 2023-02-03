@@ -226,7 +226,7 @@ class TestCdc(Tester, CDCInitializeHelper):
                                  replication=cluster_config.replication, with_preimage=True)
 
     def cluster_expansion_with_cdc_template(self, request, cluster_size, replication, with_preimage):
-        logger.debug(f'Setup a cluster')
+        logger.debug(f'Setup a cluster: size={cluster_size} replication={replication} with_preimage={with_preimage}')
         cluster: ScyllaCluster = self.cluster
         self.populate_sequentially(n=cluster_size)
         # choose random node from random dc in multidc configuration
@@ -292,7 +292,7 @@ class TestCdc(Tester, CDCInitializeHelper):
                                                  replication=cluster_config.replication, with_preimage=True)
 
     def cluster_reduction_with_cdc_template(self, request, cluster_size, replication, with_preimage):
-        logger.debug('Setup a cluster')
+        logger.debug(f'Setup a cluster: size={cluster_size} replication={replication} with_preimage={with_preimage}')
         cluster: ScyllaCluster = self.cluster
         # increase cluster size by 1 node in each DC, so
         # CL=ALL not failed after node decommission
@@ -407,7 +407,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         logger.debug('Test finished')
 
     def schema_change_template(self, request, alter_query, cluster_size, replication, with_preimage=False, additional_fields=[]):
-        logger.debug('Setup a cluster')
+        logger.debug(f'Setup a cluster: size={cluster_size} replication={replication} with_preimage={with_preimage}')
         cluster = self.cluster
         self.populate_sequentially(n=cluster_size)
         node1 = cluster.nodes['node1']
