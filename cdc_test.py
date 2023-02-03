@@ -151,13 +151,6 @@ class CDCInitializeHelper:  # pylint: disable=no-member
 @pytest.mark.scylla_cdc
 @pytest.mark.dtest_full
 class TestCdc(Tester, CDCInitializeHelper):
-    SINGLE_DC_SIZE = [3]
-    MULTI_DC_SIZE = [3, 3, 3]
-
-    SINGLE_DC_REPL = f"{{'class': 'SimpleStrategy', 'replication_factor': {SINGLE_DC_SIZE[0]}}}"
-    _replication = ", ".join([f"'dc{i}': {n}" for i, n in enumerate(MULTI_DC_SIZE, start=1)])
-    MULTI_DC_REPL = f"{{'class': 'NetworkTopologyStrategy', {_replication}}}"
-
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
         assert dtest_config.is_scylla, 'CDC tests are intended for Scylla only'
@@ -172,13 +165,26 @@ class TestCdc(Tester, CDCInitializeHelper):
         })
         return dtest_setup_overrides
 
-    @pytest.fixture(params=[(SINGLE_DC_SIZE, SINGLE_DC_REPL),
-                            (MULTI_DC_SIZE, MULTI_DC_REPL)],
+    @pytest.fixture(params=["Single_cluster", "Multi_DC_cluster"],
                     ids=("Single_cluster", "Multi_DC_cluster"),
                     )
     def cluster_config(self, request):
         ClusterConfig = namedtuple("ClusterConfig", "size replication")
-        return ClusterConfig(request.param[0], request.param[1])
+        if (request.param[0] == "Single_cluster"):
+            nodes = 3
+            DC_SIZE = [nodes]
+            DC_REPL = f"{{'class': 'SimpleStrategy', 'replication_factor': {DC_SIZE[0]}}}"
+        else:
+            if type(self.cluster) is ScyllaCluster and self.cluster.scylla_mode == "debug":
+                dcs = 2
+                nodes = 2
+            else:
+                dcs = 3
+                nodes = 3
+            DC_SIZE = dcs * [nodes]
+            replication = ", ".join([f"'dc{i}': {n}" for i, n in enumerate(DC_SIZE, start=1)])
+            DC_REPL = f"{{'class': 'NetworkTopologyStrategy', {replication}}}"
+        return ClusterConfig(DC_SIZE, DC_REPL)
 
     def simple_cdc_template(self, request, cluster_size, replication, with_preimage):
         logger.debug('Setup a cluster')
@@ -220,7 +226,7 @@ class TestCdc(Tester, CDCInitializeHelper):
                                  replication=cluster_config.replication, with_preimage=True)
 
     def cluster_expansion_with_cdc_template(self, request, cluster_size, replication, with_preimage):
-        logger.debug('Setup a cluster')
+        logger.debug(f'Setup a cluster')
         cluster: ScyllaCluster = self.cluster
         self.populate_sequentially(n=cluster_size)
         # choose random node from random dc in multidc configuration
