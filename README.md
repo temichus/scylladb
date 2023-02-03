@@ -342,8 +342,6 @@ Another example is setting `wait_for_binary_proto=False` and/or `wait_other_noti
 that is not expected to be able to join the cluster or if other nodes in the cluster are considered alive but
 cannot detect that the node started.
 
-- If you're using JMX via [the `jmxutils` module](jmxutils.py), make sure to call `remove_perf_disable_shared_mem` on the node or nodes you want to query with JMX _before starting the nodes_. `remove_perf_disable_shared_mem` disables a JVM option that's incompatible with JMX (see [this JMX ticket](https://github.com/rhuss/jolokia/issues/198)). It works by performing a string replacement in the node's Cassandra startup script, so changes will only propagate to the node at startup time.
-
 If you'd like to know what to expect during a code review, please see the included [CONTRIBUTING file](CONTRIBUTING.md).
 
 Saving Coredumps
