@@ -80,7 +80,7 @@ class CDCInitializeHelper:  # pylint: disable=no-member
     def populate_sequentially_multidc(self, n: list, wait_other_notice: bool = False):
         cluster: ScyllaCluster = self.cluster
         first_nodes_in_multidc = [1] * len(n)
-        print(first_nodes_in_multidc)
+        logger.debug(f"Starting first_nodes_in_multidc={first_nodes_in_multidc}")
         cluster.populate(first_nodes_in_multidc).start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
         node_idx = len(n)
 
