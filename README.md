@@ -22,19 +22,6 @@ Dtest uses CCM for deployment, run Cassandra-stress and in cqlsh tests.
 1. The primary purpose of DTest is to run *Functional* tests not performance because Dtest works locally.
 For performance test please refer to [scylla-cluster-tests](https://github.com/scylladb/scylla-cluster-tests)
 
-
-Prerequisites
-------------
-
-See [requirements.txt](./requirements.txt). In addition to the packages listed
-therein, the following extra packages are required (not published to PIP):
- * [ccm](https://github.com/scylladb/scylla-ccm)
-
-For running dtests in `scylla-dtest` docker container,
-[docker](https://docs.docker.com/install/linux/docker-ce/fedora/) is required.
-Note that when using docker, the other prerequisites are _not_ needed on the
-host.
-
 Contribution (pre-commit setup)
 -------------------------------
 Since we are trying to keep the code neat, please install this git precommit hooks,
@@ -47,7 +34,6 @@ pre-commit install
 If you want to remove the hook
 ```bash
 pre-commit uninstall
-
 ```
 
 
@@ -68,6 +54,20 @@ git commit ... -n
 
 Running using docker
 --------------------
+For running dtests in `scylla-dtest` docker container,
+[docker](https://docs.docker.com/install/linux/docker-ce/fedora/) is required.
+
+
+### Qiuck start:
+```bash
+mkdir docker_dtest
+cd docker_dtest
+git clone git@github.com:scylladb/scylla-ccm.git
+git clone git@github.com:scylladb/scylla-dtest.git # or from your fork
+cd scylla-dtest
+./scripts/run_test.sh -scylla-version='unstable/master:latest' <file>::<class>::<test>
+```
+
 
 Use `scripts/run_test.sh` to run the distributed tests in the `scylla-dtest` docker container.
 
@@ -81,42 +81,69 @@ This method requires _no_ setup of a virtualenv.
 
 For example:
 
-    CASSANDRA_DIR=../scylla ./scripts/run_test.sh <file>:<class>.<test>
+    ./scripts/run_test.sh -scylla-version='unstable/master:latest' <file>:<class>.<test>
 
-Setup using 'pyenv virtualenv'
+Running Local
 ----------------------
+for running [ccm](https://github.com/scylladb/scylla-ccm) local we need to installed git, Java and pyenv with their dependencies
+
+### Ubuntu requirements:
+```bash
+apt-get update -y
+apt-get install curl git openssh-client -y
+apt-get install make build-essential libssl-dev zlib1g-dev \
+libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev -y
+apt-get install openjdk-8-jdk -y
+```
+
+### Fedora requirements:
+```bash
+dnf install git -y
+dnf groupinstall "Development Tools" -y
+dnf install zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel xz xz-devel libffi-devel findutils -y
+dnf install java-1.8.0-openjdk-devel -y
+```
+
+make ssh key using `ssh-keygen` and [add a new SSH key to your GitHub account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
+
 
 Using `pyenv virtualenv` is recommended in order to not pollute your global python3 installation with the dtest requirements. It also makes it very easy to switch between the different ccm versions (or other package versions) when changing release branches.
 To setup a `pyenv virtualenv` follow the below instructions:
 
+### Qiuck start:
 ```bash
+mkdir local_dtest
+cd local_dtest
+git clone git@github.com:scylladb/scylla-ccm.git
+git clone git@github.com:scylladb/scylla-dtest.git # or from your fork
+cd scylla-dtest
 ## install  3.9.10 via pyenv same as used in docker installation
 ## ❯ docker run -it `cat ./scripts/image` python --version
 ##      Python 3.9.10
-    curl https://pyenv.run | bash
-    exec $SHELL
-    # go to: https://github.com/pyenv/pyenv/wiki/Common-build-problems#prerequisites
-    # and follow the instructions for your distribution, to install the prerequisites
-    # for compiling python from source
-    pyenv install 3.9.10
-
-
-    # create a virtualenv for Dtest
-    pyenv virtualenv 3.9.10 dtest-3.9.10
-    # cd to projecct tocectory and run
-    pyenv local dtest-3.9.10
-    # Some external tools (e.g. jedi) might require you to activate the virtualenv and conda environments.
-    # If eval "$(pyenv virtualenv-init -)" is configured in your shell, pyenv-virtualenv will automatically
-    # activate/deactivate virtualenvs on entering/leaving directories which contain a .python-version
-
+curl https://pyenv.run | bash
+# go to: https://github.com/pyenv/pyenv/wiki/Common-build-problems#prerequisites
+# and follow the instructions for your distribution, to install the prerequisites
+#then run exec $SHELL
+# or for run the following commands to add 'pyenv' in path for current terminal session
+export PYENV_ROOT="$HOME/.pyenv"
+command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+# compiling python from source
+pyenv install 3.9.10
+# create a virtualenv for Dtest
+pyenv virtualenv 3.9.10 dtest-3.9.10
+# cd to projecct tocectory and run
+pyenv local dtest-3.9.10
+# Some external tools (e.g. jedi) might require you to activate the virtualenv and conda environments.
+# If eval "$(pyenv virtualenv-init -)" is configured in your shell, pyenv-virtualenv will automatically
+# activate/deactivate virtualenvs on entering/leaving directories which contain a .python-version
 # General dependencies.
 pip install -r ./requirements.txt
-
 # Install Scylla CCM, using pip ensures it will be installed *into* the
 # virtualenv (setup.py does a global install by default).
-cd /path/to/scylla-ccm
-pyenv activate dtest-3.9.10
-pip install .
+pip install ../scylla-ccm/.
+pytest --scylla-version='unstable/master:latest'  <file>::<class>::<test>
 ```
 
 * To get rid of the virtual environment run `pyenv virtualenv-delete dtest-3.9.10`
@@ -133,10 +160,17 @@ The only thing needed is the location of the (compiled) sources for Scylla. This
 the `SCYLLA_VERSION` to shortname representing the directory in our `s3://downloads.scylladb.com`:
 
 ```bash
-pytest --scylla-version=unstable/master:201910240141 [other pytest parameters]
+pytest --scylla-version=unstable/master:latest [other pytest parameters]
 ```
 
 Getting the listings or the latest version can be done like that:
+
+### From web:
+
+go to http://downloads.scylladb.com/relocatable/unstable/master/
+
+
+### From AWS cli
 ```bash
 LATEST_MASTER_JOB_ID=`aws s3 ls downloads.scylladb.com/relocatable/unstable/master/ | tr -s ' ' | cut -d ' ' -f 3 | tr -d '\/'  | sort -g | tail -n 1`
 LATEST_SCYLA_VERSION=master:${LATEST_MASTER_JOB_ID}
@@ -318,10 +352,6 @@ in which case, pytest runs all test cases in the file (unless skipped
 with the `@pytest.mark.skip()` directive), or individual test cases, using the
 `<file>:<class>.<test>` notation.
 
-Installation Instructions
--------------------------
-
-See more detailed instructions in the included [INSTALL file](./INSTALL.md).
 
 Writing Tests
 -------------
