@@ -5,11 +5,8 @@ def lib = library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
 library identifier: 'camunda-community'
 library identifier: 'pipeline-logparser@3.2'
 
-dtestPipeline(
+dtestGatingPipeline(
     BUILD_MODE: 'release',
     PRODUCT_NAME: 'scylla',
     BRANCH: 'master',
-    INCLUDE_DTESTS: '-m next_gating',
-    RUN_DTEST_HEAVY: 'false',
-    RUN_DTEST_LONG: 'false',
 )
