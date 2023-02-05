@@ -63,7 +63,7 @@ def call(Map pipelineParams) {
                         baseRelocJob = params.RELOC_JOB_NAME ?: "next"
                         buildMode = params.BUILD_MODE
                         excludeTests = params.EXCLUDE_DTESTS ?: ""
-                        includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and dtest_full and not dtest_heavy and not dtest_long'"
+                        includeDtests = params.INCLUDE_DTESTS ?: "-m next_gating"
 
                         splitMaxNodesForHeavyAndLong = "10"
 

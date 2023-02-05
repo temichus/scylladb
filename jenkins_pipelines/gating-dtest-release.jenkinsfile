@@ -9,4 +9,5 @@ dtestGatingPipeline(
     BUILD_MODE: 'release',
     PRODUCT_NAME: 'scylla',
     BRANCH: 'master',
+    INCLUDE_DTESTS: '-m next_gating',
 )
