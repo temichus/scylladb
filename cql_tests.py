@@ -269,17 +269,20 @@ class TestMiscellaneousCQL(CQLTester):
     required.
     """
 
-    def large_collection_errors(self):
+    @pytest.mark.single_node
+    def test_large_collection(self):
         """
         For large collections, make sure that we are printing warnings.
         """
 
-        # We only warn with protocol 2
-        session = self.prepare(protocol_version=2)
+        threshold = 1000
+        configuration_options = {
+            'compaction_collection_elements_count_warning_threshold': threshold
+        }
+        session = self.prepare(configuration_options=configuration_options)
 
         cluster = self.cluster
         node1 = cluster.nodelist()[0]
-        self.ignore_log_patterns += ["Detected collection for table"]
 
         session.execute("""
             CREATE TABLE maps (
@@ -288,16 +291,39 @@ class TestMiscellaneousCQL(CQLTester):
             );
         """)
 
-        # Insert more than the max, which is 65535
-        for i in range(70000):
+        logger.debug("Populating map up to warning threshold")
+        for i in range(threshold):
             session.execute("UPDATE maps SET properties[%i] = 'x' WHERE userid = 'user'" % i)
 
-        # Query for the data and throw exception
-        session.execute("SELECT properties FROM maps WHERE userid = 'user'")
-        node1.watch_log_for("Detected collection for table ks.maps with 70000 "
-                            "elements, more than the 65535 limit. Only the "
-                            "first 65535 elements will be returned to the "
-                            "client. Please see http://cassandra.apache.org/doc/cql3/CQL.html#collections for more details.")
+        node1.flush()
+        node1.compact()
+        node1.wait_for_compactions()
+
+        msg = "Writing large collection"
+        res = node1.grep_log(msg)
+        assert not res, f"Found unexpected warnings: {res}"
+        mark = node1.mark_log()
+
+        query = "SELECT * from system.large_cells WHERE keyspace_name='ks' AND table_name='maps' ALLOW FILTERING"
+        res = list(session.execute(query))
+        assert not res, f"Found unexpected row in system.large_cells: {res}"
+
+        self.ignore_log_patterns.append(msg)
+        logger.debug("Adding entry to map to trigger warning")
+        session.execute(f"UPDATE maps SET properties[{threshold}] = 'x' WHERE userid = 'user'")
+
+        node1.flush()
+        node1.compact()
+        node1.wait_for_compactions()
+
+        res = node1.grep_log(msg, from_mark=mark)
+        assert res, f"Did not find expected log message: {msg}"
+
+        query = "SELECT * from system.large_cells WHERE keyspace_name='ks' AND table_name='maps' ALLOW FILTERING"
+        res = list(session.execute(query))
+        logger.debug(res)
+        assert len(res), f"Did not find expected row in system.large_cells"
+        assert len(res) == 1, f"Found too many rows in system.large_cells: {res}"
 
     def test_cql3_insert_thrift(self):
         """ Check that we can insert from thrift into a CQL3 table (#4377) """
