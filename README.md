@@ -83,6 +83,8 @@ For example:
 
     ./scripts/run_test.sh -scylla-version='unstable/master:latest' <file>:<class>.<test>
 
+For more parameters please see [Common Optional Environment Variables and parameters](#common-optional-environment-variables-and-parameters) section
+
 Running Local
 ----------------------
 for running [ccm](https://github.com/scylladb/scylla-ccm) local we need to installed git, Java and pyenv with their dependencies
@@ -167,7 +169,7 @@ Getting the listings or the latest version can be done like that:
 
 ### From web:
 
-go to http://downloads.scylladb.com/relocatable/unstable/master/
+go to https://downloads.scylladb.com/unstable/
 
 
 ### From AWS cli
@@ -180,20 +182,31 @@ LATEST_SCYLA_VERSION=master:${LATEST_MASTER_JOB_ID}
 
 Taking a relocatable using you own scylla core compiled package
 a tarball that was built by scylla [scripts/create-relocatable-package.py](https://github.com/scylladb/scylla/blob/master/scripts/create-relocatable-package.py)
-see scylla [docs/building-packages.md#scylla-server](https://github.com/scylladb/scylla/blob/master/docs/building-packages.md#scylla-server)
 
-**NOTE:** `~/.ccm/scylla-repository/unstable/master/201910240141` should be deleted, otherwise it would use it as is.
+Commands to build relocatable package:
+```bash
+cd /path/to/scylla
+git submodule update --init --force --recursive
+./tools/toolchain/dbuild ./configure.py
+./tools/toolchain/dbuild ninja -j2 dist-unified-release
+```
+at the end of building procedure you will see the message like
+```commandline
+[555/555] unified/build_unified.sh --mode release --unified-pkg 'build/release/dist/tar/scylla-unified-5.3.0~dev-0.20230206.53366db6c667.x86_64.tar.gz'
+```
+use
+
+**NOTE:** `~/.ccm/scylla-repository/local_tarball` should be deleted, otherwise it would use it as is.
 ccm currently isn't very smart on the way it's caching the versions.
 
+Command to run tests wia pytest:
 ```bash
-SCYLLA_CORE_PACKAGE=../scylla/build/dev/scylla-package.tar.gz
-pytest --scylla-version=unstable/master:201910240141  [more pytest parameters]
+SCYLLA_UNIFIED_PACKAGE=absolute/path/to/scylla-package.tar.gz pytest --scylla-version=local_tarball  <file>::<class>::<test>
 ```
-
-Also `SCYLLA_JAVA_TOOLS_PACKAGE` or `SCYLLA_JMX_PACKAGE` can be used for replacing other relocatable packages relevant.
-
-All the `*_PACKAGE` environment variables can also point to public available files on http
-
+Command to run tests using docker:
+```bash
+WORKSPACE='absolute/path/to/scylla' SCYLLA_UNIFIED_PACKAGE='absolute/path/to/scylla-package.tar.gz' ./scripts/run_test.sh --scylla-version='local_tarball'  <file>::<class>::<test>
+```
 ### Running different architecture
 
 Use `SCYLLA_ARCH` environment variable, so ccm and run_test.sh could know which architecture to use.
@@ -207,60 +220,45 @@ SCYLLA_ARCH=aarch64 ./scripts/run_test.sh cql_additional_tests.py::TestCQL::test
 ```
 
 ### Running from the compiled source
+requirements:
 
-The only thing needed is the location of the (compiled) sources for Scylla. This is done by pointing
-the `--cassandra_dir` to the path of the Scylla repository:
+1) Java Version:
 
-    pytest --cassandra-dir=~/path/to/scylla
+
+    scylla-jmx requires a JDK8 launcher (JDK11 or higher will not work).
+    To control which java executable is used to run scylla-jmx you can
+    set the JAVA_HOME variable to point to an appropriate jre/jdk.
+
+2) directory of dynamic .so files. Please see https://github.com/scylladb/scylla-dtest/blob/next/docs/working-with-dbuild.md for more info
+```bash
+export SCYLLA_DIR=/absolute/path/to/scylla-next
+export DTEST_DIR=/absolute/path/to/scylla-dtest
+cd ${SCYLLA_DIR}
+./tools/toolchain/dbuild -it -v ${DTEST_DIR}/scripts/dbuild_collect_so.sh:/bin/dbuild_collect_so.sh -- bash
+mkdir dynamic_libs_for_dtest
+dbuild_collect_so.sh build/release/scylla dynamic_libs_for_dtest/
+export SCYLLA_DBUILD_SO_DIR=${SCYLLA_DIR}/dynamic_libs_for_dtest
+```
+run tests via pytest:
+```bash
+SCYLLA_DBUILD_SO_DIR='absolute/path/to/dynamic_libs_for_dtest' pytest --cassandra-dir='absolute/path/to/scylla'  <file>::<class>::<test>
+```
+
+run tests using docker:
+```bash
+WORKSPACE='absolute/path/to/scylla' SCYLLA_DBUILD_SO_DIR='absolute/path/to/dynamic_libs_for_dtest' ./scripts/run_test.sh --cassandra-dir='absolute/path/to/scylla'  <file>::<class>::<test>
+```
 
 To target a Scylla executable compiled in a specific mode include the full path
 to the build dir:
+```commandline
+  --cassandra-dir=~/path/to/scylla/build/debug
 
-    pytest --cassandra-dir=~/path/to/scylla/build/debug
-
-The shell script `scylla_dtest_env.sh` will set this automatically for you to a
-value that works in most deployments, it assumes the Scylla sources are next to
-the `scylla-dtest` repository, in a directory called `scylla`. To use this
-script just source it:
-
-    source ./scylla_dtest_env.sh
-
-Note that for the dtests to work the Scylla repository has to contain a
-directory called `resources` that contains a symlink to a local clone of the
-[scylla-tools-java](https://github.com/scylladb/scylla-tools-java) repository,
-that is now a submodule of the `scylla` repository.
-The name of the symlink has to be `cassandra`. Create it like this:
-
-    cd ~/path/to/scylla
-    mkdir resources
-    ln -s ../tools/java resources/cassandra
-
-A convenient option if tests are regularly run against the same existing
-directory is to set a `default_dir` in `~/.cassandra-dtest`. Create the file and
-set it to something like:
-
-    [main]
-    default_dir=~/path/to/scylla
-
-The tests will use this directory by default, avoiding the need for any
-environment variable (that still will have precedence if given though).
-
-To run a specific test in a test file concatenate class and test:
-
-    pytest <file>.py::<class>::<test>
-
-To run the same tests that are used to validate changes into master,
-use `-m next_gating`.
+```
 
 Note: To run the upgrade tests, you have must both JDK7 and JDK8 installed. Paths
 to these installations should be defined in the environment variables
 JAVA7_HOME and JAVA8_HOME, respectively.
-
-See more information about dtest here: [Scylla-DTEST](https://github.com/scylladb/scylla/wiki/Scylla-DTEST)
-
-scylla-jmx requires a JDK8 launcher (JDK11 or higher will not work).
-To control which java executable is used to run scylla-jmx you can
-set the JAVA_HOME variable to point to an appropriate jre/jdk.
 
 ### Changing the Cluster ID Allocator
 
@@ -272,8 +270,18 @@ between pytest processes.  pytest, if pytest is aborted before the symbolic
 link has been removed, there may be stale symlinks that prevent re-allocating
 those cluster IDs.  These should be cleaned up by hand.
 
-Common Optional Environment Variables
+Common Optional Environment Variables and Parameters
 -------------------------------------
+**NOTE:**  all mentioned parameters are applied for pytest and run_test.sh , as call the same pytest command inside Docker environment
+
+To run a specific test in a test file concatenate class and test:
+
+    pytest <file>.py::<class>::<test>
+See more information about dtest here: [Scylla-DTEST](https://github.com/scylladb/scylla/wiki/Scylla-DTEST)
+
+To run the same tests that are used to validate changes into master,
+
+    -m next_gating
 
 To set the maximum number of tests to run concurrently (1 by default), use, for example:
 
