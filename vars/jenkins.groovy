@@ -95,7 +95,10 @@ def isSpotTermination (String lastStage = env.STAGE_NAME) {
 		artifact.publishArtifactsStatus(generalProperties.jobSummaryFile, WORKSPACE)
 	} catch (java.io.IOException e) {
 		echo "Spot termination. Writing job description"
-		currentBuild.description = "spot termination"
+		if (!currentBuild.description) {
+			currentBuild.description = ''
+		}
+		currentBuild.description += "\nspot termination"
 		error("Spot termination")
 	} catch (error) {
 		echo "Other error: |$error|"

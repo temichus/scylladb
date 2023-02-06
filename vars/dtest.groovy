@@ -281,7 +281,7 @@ def doParallelDtest (Map args) {
                                     currentBuild.description = ''
                                 }
                                 def currentDateTime = new Date().format("MM/dd/yyyy HH:mm:ss")
-                                currentBuild.description += "${currentDateTime} - ${instanceType} - ${dtestType}-split${nodeIndex} - retry ${currentRetryNumber}\n"
+                                currentBuild.description += "\n${currentDateTime} - ${instanceType} - ${dtestType}-split${nodeIndex} - retry ${currentRetryNumber}\n"
                             }
 
                             results["${dtestType}-split${nodeIndex}"] += 1

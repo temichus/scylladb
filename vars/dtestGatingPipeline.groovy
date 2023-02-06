@@ -47,6 +47,7 @@ def call(Map pipelineParams) {
         options {
             timeout(time: params.TIMEOUT_PARAM, unit: 'HOURS')
             buildDiscarder(logRotator(numToKeepStr: '200'))
+            copyArtifactPermission('*next*,*Scylla-CI*')
         }
 
         environment {
@@ -66,6 +67,8 @@ def call(Map pipelineParams) {
                         includeDtests = params.INCLUDE_DTESTS ?: "-m next_gating"
 
                         splitMaxNodesForHeavyAndLong = "10"
+                        def upstream = currentBuild.rawBuild.getCause(hudson.model.Cause$UpstreamCause)
+                        currentBuild.description =  upstream?.shortDescription
 
                         echo "Build mode upon parameter |${params.BUILD_MODE}| or upon job name |${JOB_NAME}|: |${buildMode}|"
                     }
