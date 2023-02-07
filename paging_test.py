@@ -2419,6 +2419,54 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
         self.check_all_paging_results(expected_data, 8,
                                       [25, 25, 25, 25, 25, 25, 25, 20])
 
+    def test_paged_read_with_tombstones(self):
+        session = self.prepare()
+        seed = random.randint(0, 1000)
+        logger.debug(f"Testing with a seed of: {seed}")
+        random.seed(seed)
+        deletion_range = random.randint(10, 200)
+        rows_number = deletion_range * random.randint(3, 20)
+        page_size = random.randint(5, 100)
+        logger.info(
+            f"Testing a total {rows_number=}, with a {deletion_range=} and a {page_size=}")
+        create_ks(session, 'paging_test', 2)
+        session.execute("""
+            CREATE TABLE paging_test (
+                k int,
+                c int,
+                v int,
+                PRIMARY KEY (k, c)
+            );
+        """)
+        node1 = self.cluster.nodelist()[0]
+        num_of_deletions = 0
+        for index in range(0, rows_number, deletion_range):
+            for insert in range(index, index + deletion_range):
+                session.execute("INSERT INTO paging_test (k, c, v) VALUES (0, %i, %i)" % (insert, insert))
+            node1.flush()
+            deletion_end = index + deletion_range // 2
+            deletes = deletion_end - index
+            num_of_deletions += deletes
+            session.execute("DELETE FROM paging_test WHERE k = 0 AND c >= %d AND c < %d" % (index, deletion_end))
+            node1.flush()
+
+        def _get_all_data():
+            future = session.execute_async(
+                SimpleStatement("select * from paging_test BYPASS CACHE", fetch_size=page_size, consistency_level=CL.QUORUM))
+            pager = PageFetcher(future)
+            pager.request_all()
+            return pager.all_data()
+        all_data = _get_all_data()
+        left_rows = rows_number - num_of_deletions
+        assert len(all_data) == left_rows
+        deletion_factor = random.randint(2, 7)
+        for index in range(0, len(all_data), deletion_factor):
+            clustering_key = all_data[index]['c']
+            session.execute("DELETE FROM paging_test WHERE k = 0 AND c = %d" % clustering_key)
+            left_rows -= 1
+        all_data = _get_all_data()
+        assert len(all_data) == left_rows
+
     def test_single_cell_deletions(self):
         """Test single cell deletions """
         self.session = self.prepare()
