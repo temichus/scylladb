@@ -17,6 +17,7 @@ from tools.ldap_docker import LdapDocker
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestLdap(Tester):
     _multiprocess_can_split_ = False
@@ -515,6 +516,7 @@ class TestLdap(Tester):
         self.check_user_permissions(permission_dict=permission)
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestLdapSaslAuth(TestLdap):
     use_saslauth = True

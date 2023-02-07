@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.single_node
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestInMemory(Tester):
     """
@@ -442,6 +443,7 @@ class EncryptionAtRestBase(Tester):
                 self.cleanup()
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestEncryptionAtRest(EncryptionAtRestBase):
     default_node_num = 1
@@ -542,6 +544,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
             self._alter_test(key_provider=value)
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestSystemInfoEncryption(EncryptionAtRestBase):
     def _grep_database_files(self, pattern, path, expect=None, skip=False, debug_detail=True):

@@ -42,6 +42,7 @@ class expected_failure(object):
                         "not enough in-memory storage available")
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestInMemory(Tester):
 

@@ -57,6 +57,7 @@ def create_table(session, compaction_strategy=None,
     session.execute(query)
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestIcsCompaction(Tester):
 

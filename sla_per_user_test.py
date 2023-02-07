@@ -41,6 +41,7 @@ class SLATester(Tester):
         return entity
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestSLA(SLATester):
     @staticmethod
@@ -256,6 +257,7 @@ class TestSLA(SLATester):
         self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl200])
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestSLANegativeTests(SLATester):
     def test_update_not_existing_sla(self):

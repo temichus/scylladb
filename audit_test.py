@@ -57,6 +57,7 @@ class AuditTester(Tester):
         return session
 
 
+@pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 @pytest.mark.single_node
 class TestCQLAudit(AuditTester):
