@@ -900,8 +900,11 @@ class TesterAlternator(BaseAlternator):
                     method_name_by_method_idx[events_idx % expected_traces_number], []).append(events)
 
             def verify_traces_messages(method_name):  # pylint:disable=too-many-locals
-                all_traces = events_by_action[method_name]
-                expected_messages = expected_messages_dict[method_name]
+                all_traces = events_by_action.get(method_name)
+                expected_messages = expected_messages_dict.get(method_name)
+                assert all_traces, f"traces for {method_name} wasn't found"
+                assert expected_messages, f"expected_messages for {method_name} wasn't found"
+
                 # The "all_traces" variable contains the list of traces in the order of action ("get_item" or "pu_item")
                 #  we did. The test enters multiple items. Thus, need over on the traces for each item entered.
                 for action_idx, traces in enumerate(all_traces):
