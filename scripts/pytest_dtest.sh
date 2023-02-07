@@ -49,7 +49,6 @@ function cleanup_workspace {
 function setup_environment_vars {
   # The env script assums we run under scylla-dtest, and that ccm dir is next to it (sister)
   echo "Path before setting: |$PATH|"
-  source scylla_dtest_env.sh
   echo "Path after setting: |$PATH|"
   echo "Locale settings:"
   echo "LC_ALL=\"$LC_ALL\""

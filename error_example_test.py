@@ -1,6 +1,4 @@
 from dtest_class import Tester, create_ks
-# NOTE: this should be run with scylla dev or debug builds
-#       see  README.md and scylla_dtest_env.sh CASSANDRA_DIR
 
 MY_NODE = 0
 
