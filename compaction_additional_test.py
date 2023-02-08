@@ -906,6 +906,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
                 f"Found sstables that were compacted by both regular compactions and cleanup " \
                 f"(table '{tables[i]}'): {double_compacted_sstables}"
 
+    @pytest.mark.single_node
     def test_double_compaction_by_cleanup_and_major_compactions(self):
         """
         Cover the issue https://github.com/scylladb/scylla/issues/8155
@@ -969,6 +970,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         errors = node1.grep_log_for_errors()
         assert not errors, f"Failed with error: {errors}"
 
+    @pytest.mark.single_node
     def test_double_compaction_by_cleanup_and_ongoing_compaction(self):
         """
         Cover the issue https://github.com/scylladb/scylla/issues/8155
