@@ -39,7 +39,6 @@ class TestDataDistribution(Tester):
 
         logger.info("Writing data...")
         stress_cmd = f"write cl=QUORUM n=210000 -schema replication(factor=3) compaction(strategy={strategy}) \
-                    -port jmx=6868 -mode cql3 native -rate threads=50 \
                     -col size=fixed(200) n=FIXED(5) -pop seq=1..210000"
 
         self.cluster.stress(stress_cmd.split(" "))
