@@ -13,13 +13,6 @@ ALLOW_BALANCE_DIFF = 0.2
 PP = pprint.PrettyPrinter(indent=2)
 
 
-@pytest.fixture(params=['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'])
-def stress_cmd(request):
-    return """write cl=QUORUM n=210000 -schema replication(factor=3) compaction(strategy={strategy}) \
-                    -port jmx=6868 -mode cql3 native -rate threads=50 \
-                    -col size=fixed(200) n=FIXED(5) -pop seq=1..210000""".format(strategy=request.param)
-
-
 @pytest.mark.dtest_full
 class TestDataDistribution(Tester):
     def prepare(self, nodes_num=4):
@@ -28,7 +21,12 @@ class TestDataDistribution(Tester):
         self.ks = "keyspace1"
         self.cf = "standard1"
 
-    def test_data_distribution_balance(self, stress_cmd):
+    @pytest.mark.parametrize('strategy', [
+        'LeveledCompactionStrategy',
+        'SizeTieredCompactionStrategy',
+        'TimeWindowCompactionStrategy',
+    ])
+    def test_data_distribution_balance(self, strategy):
         """Check data distribution between nodes
 
         Based on issue #6193, verify data distribution
@@ -38,6 +36,10 @@ class TestDataDistribution(Tester):
         self.prepare()
 
         logger.info("Writing data...")
+        stress_cmd = f"write cl=QUORUM n=210000 -schema replication(factor=3) compaction(strategy={strategy}) \
+                    -port jmx=6868 -mode cql3 native -rate threads=50 \
+                    -col size=fixed(200) n=FIXED(5) -pop seq=1..210000"
+
         self.cluster.stress(stress_cmd.split(" "))
         self.cluster.flush()
         logger.info("Compacting data...")
