@@ -6,6 +6,8 @@ import pytest
 import re
 import time
 
+from ccmlib.scylla_cluster import ScyllaCluster
+
 from dtest_class import Tester
 from tools.marks import enterprise_only_param
 
@@ -16,7 +18,7 @@ PP = pprint.PrettyPrinter(indent=2)
 
 @pytest.mark.dtest_full
 class TestDataDistribution(Tester):
-    def prepare(self, nodes_num=4):
+    def prepare(self, nodes_num):
         self.cluster.populate(nodes=nodes_num)
         self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
         self.ks = "keyspace1"
@@ -35,11 +37,18 @@ class TestDataDistribution(Tester):
         between nodes by asserting size of dataset with
         nodetool status and filesizes on fs
         """
-        self.prepare()
 
-        logger.info("Writing data...")
-        stress_cmd = f"write cl=QUORUM n=210000 -schema replication(factor=3) compaction(strategy={strategy}) \
-                    -col size=fixed(200) n=FIXED(5) -pop seq=1..210000"
+        debug_mode = type(self.cluster) is ScyllaCluster and self.cluster.scylla_mode == "debug"
+        nodes_num = 3 if debug_mode else 4
+        rf = nodes_num - 1
+        keys = 21000 if debug_mode else 210000
+
+        self.prepare(nodes_num)
+
+        logger.info(f"Writing data...")
+        stress_cmd = f"write cl=QUORUM n={keys} -schema replication(factor={rf}) compaction(strategy={strategy}) \
+                    -col size=fixed(200) n=FIXED(5) -pop dist=UNIFORM(1..1000000000)"
+        logger.debug(f"stress cmd={stress_cmd}")
 
         self.cluster.stress(stress_cmd.split(" "))
         self.cluster.flush()
