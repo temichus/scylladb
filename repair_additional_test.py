@@ -201,8 +201,9 @@ class RepairAdditionalBase(Tester):
             ignore_nodes_ips = ','.join(node.address() for node in ignore_nodes)
             repair_cmd += f"?ignore_nodes={ignore_nodes_ips}"
         result = run_rest_api(run_on_node=run_on_node, cmd=repair_cmd)
+        timeout = 120 if self.cluster.scylla_mode != "debug" else 360
         if await_completion:
-            self.wait_for_repair(run_on_node=run_on_node, repair_id=result.json())
+            self.wait_for_repair(run_on_node=run_on_node, repair_id=result.json(), timeout=timeout)
 
     def _setup_cluster_with_table(self):
         cluster = self.cluster
@@ -218,12 +219,12 @@ class RepairAdditionalBase(Tester):
         return keyspace, table
 
     @staticmethod
-    def wait_for_repair(run_on_node, repair_id):
+    def wait_for_repair(run_on_node, repair_id, timeout=120):
         repair_id = str(repair_id)
         await_cmd = f"/storage_service/repair_status?id={repair_id}"
         wait_for(
             func=lambda: run_rest_api(run_on_node=run_on_node, cmd=await_cmd, api_method='get').json() == 'SUCCESSFUL',
-            timeout=60, text=f"[{run_on_node.name}] Waiting for repair {repair_id} completion..")
+            timeout=timeout, text=f"[{run_on_node.name}] Waiting for repair {repair_id} completion..")
 
     def _repair(self, node, options=[]):
         return node.repair(options)
