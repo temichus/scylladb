@@ -62,6 +62,7 @@ class CompactionAdditionalTester(Tester):
 
     def prepare(self, nodes: int, wait_for_binary_proto=True,
                 jvm_args=None, configuration_options={}) -> Tuple[List[ScyllaNode], Session]:
+        self.debug_mode = type(self.cluster) is ScyllaCluster and self.cluster.scylla_mode == "debug"
         configuration_options.update({'enable_sstable_key_validation': True})
         self.cluster.set_configuration_options(values=configuration_options)
         self.cluster.populate(nodes).start(wait_for_binary_proto=wait_for_binary_proto, jvm_args=jvm_args)
@@ -920,7 +921,8 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         # the issue
         node_list, session_node1 = self.prepare(nodes=1, configuration_options={'compaction_static_shares': 10})
         node1 = node_list[0]
-        rows = 200000
+        rows = 20000 if self.debug_mode else 200000
+        chunk = rows // 20
 
         create_ks(session_node1, 'ks', 1)
         create_cf(session_node1, 'cf', gc_grace=5, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
@@ -936,11 +938,11 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         for _ in range(3):
             # Insert or delete data will change data files
-            insert_c1c2(session_node1, keys=range(20000, 70000), consistency=ConsistencyLevel.ONE)
+            insert_c1c2(session_node1, keys=range(2 * chunk, 7 * chunk), consistency=ConsistencyLevel.ONE)
             node1.flush()
             run_in_parallel(proc_functions)
 
-            delete_c1c2(session_node1, keys=list(range(20000, 70000)))
+            delete_c1c2(session_node1, keys=list(range(2 * chunk, 7 * chunk)))
             node1.flush()
             run_in_parallel(proc_functions)
 
@@ -992,7 +994,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         tables = ['cf', 'cf1', 'cf2']
         insert_proc_functions = []
         compact_proc_functions = []
-        rows = 200000
+        rows = 20000 if self.debug_mode else 200000
         for table in tables:
             create_cf(session_node1, table, gc_grace=5, read_repair=0.0, columns={'c1': 'text', 'c2': 'text'},
                       compaction={'class': 'NullCompactionStrategy'})
