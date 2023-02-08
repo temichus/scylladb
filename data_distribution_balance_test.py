@@ -7,6 +7,7 @@ import re
 import time
 
 from dtest_class import Tester
+from tools.marks import enterprise_only_param
 
 logger = logging.getLogger(__file__)
 ALLOW_BALANCE_DIFF = 0.2
@@ -25,6 +26,7 @@ class TestDataDistribution(Tester):
         'LeveledCompactionStrategy',
         'SizeTieredCompactionStrategy',
         'TimeWindowCompactionStrategy',
+        enterprise_only_param('IncrementalCompactionStrategy')
     ])
     def test_data_distribution_balance(self, strategy):
         """Check data distribution between nodes
