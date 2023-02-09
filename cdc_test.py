@@ -170,7 +170,7 @@ class TestCdc(Tester, CDCInitializeHelper):
                     )
     def cluster_config(self, request):
         ClusterConfig = namedtuple("ClusterConfig", "size replication")
-        if (request.param[0] == "Single_cluster"):
+        if (request.param == "Single_cluster"):
             nodes = 3
             DC_SIZE = [nodes]
             DC_REPL = f"{{'class': 'SimpleStrategy', 'replication_factor': {DC_SIZE[0]}}}"
@@ -184,7 +184,9 @@ class TestCdc(Tester, CDCInitializeHelper):
             DC_SIZE = dcs * [nodes]
             replication = ", ".join([f"'dc{i}': {n}" for i, n in enumerate(DC_SIZE, start=1)])
             DC_REPL = f"{{'class': 'NetworkTopologyStrategy', {replication}}}"
-        return ClusterConfig(DC_SIZE, DC_REPL)
+        ret = ClusterConfig(DC_SIZE, DC_REPL)
+        logger.debug(f"cluster_config={ret}")
+        return ret
 
     def simple_cdc_template(self, request, cluster_size, replication, with_preimage):
         logger.debug('Setup a cluster')
