@@ -65,7 +65,7 @@ class CDCInitializeHelper:
 
     def get_cdc_description_rows(self: CDC_TESTER_TYPE, session):
         query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}",
-                                consistency_level=ConsistencyLevel.ONE)
+                                consistency_level=ConsistencyLevel.QUORUM)
         return session.execute(query)
 
     def wait_for_metadata_update(self: CDC_TESTER_TYPE, session, cluster_size):

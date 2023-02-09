@@ -103,7 +103,7 @@ class CDCInitializeHelper:  # pylint: disable=no-member
         return GenerationId(time=rs[0].streams_timestamp, uuid=rs[0].uuid)
 
     def get_cdc_description_rows(self, session):
-        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}", consistency_level=ConsistencyLevel.ONE)
+        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}", consistency_level=ConsistencyLevel.QUORUM)
         return session.execute(query)
 
     def get_last_generation_timestamp(self, session):
@@ -120,17 +120,17 @@ class CDCInitializeHelper:  # pylint: disable=no-member
 
     def get_all_cdc_description_rows(self, session):
         query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}",
-                                consistency_level=ConsistencyLevel.ONE)
+                                consistency_level=ConsistencyLevel.QUORUM)
         return session.execute(query)
 
     def get_single_cdc_description_rows(self, session, gen_ts):
         query = session.prepare(f"SELECT * FROM {CDC_STREAMS_TABLE} WHERE time = ?")
-        query.consistency_level = ConsistencyLevel.ONE
+        query.consistency_level = ConsistencyLevel.QUORUM
         return session.execute(query, (gen_ts,))
 
     def get_cdc_generation_timestamps(self, session):
         query = SimpleStatement(f"SELECT time FROM {CDC_TIMESTAMPS_TABLE} WHERE key = 'timestamps'",
-                                consistency_level=ConsistencyLevel.ONE)
+                                consistency_level=ConsistencyLevel.QUORUM)
         return session.execute(query)
 
     def wait_for_metadata_update(self, session, cluster_size):
