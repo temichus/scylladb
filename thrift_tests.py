@@ -1702,8 +1702,8 @@ class TestMutations(ThriftTester):
         assert len(kspaces) == len(ksnames), ksnames
         if isinstance(self.cluster, ScyllaCluster) \
                 and parse_version(self.cluster.version()) >= parse_version('4.6.dev'):
-            # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema', 'system_auth', 'system_distributed', 'system_distributed_everywhere']
-            assert len(kspaces) == 8, ksnames
+            expected = ['Keyspace2', 'Keyspace1', 'system', 'system_auth', 'system_distributed', 'system_distributed_everywhere', 'system_schema', 'system_traces']
+            assert sorted(ksnames) == sorted(expected)
         elif parse_version(self.cluster.version()) >= parse_version('3.0'):
             # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema', 'system_auth', 'system_distributed']
             assert len(kspaces) == 7, [x.name for x in kspaces]
