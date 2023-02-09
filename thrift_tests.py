@@ -1695,12 +1695,17 @@ class TestMutations(ThriftTester):
             slice = fixture_thrift_client.get_slice('key1', ColumnParent('Super1', 'sc2'), p, ConsistencyLevel.ONE)
             assert len(slice) == n, "expected %s results; found %s" % (n, slice)
 
-    def test_describe_keyspace(self, fixture_thrift_client):
+    def test_describe_keyspace(self, fixture_thrift_client, fixture_cluster):
         kspaces = fixture_thrift_client.describe_keyspaces()
         ksnames = set([x.name for x in kspaces])
         # kspaces should have unique names
         assert len(kspaces) == len(ksnames), ksnames
-        if isinstance(self.cluster, ScyllaCluster) \
+        if fixture_cluster.dtest_config.is_enterprise:
+            expected = ['Keyspace1', 'Keyspace2', 'system', 'system_auth', 'system_distributed', 'system_schema', 'system_traces']
+            if parse_version(self.cluster.version()) >= parse_version('2022.1'):
+                expected += ['audit', 'system_distributed_everywhere']
+            assert sorted(ksnames) == sorted(expected)
+        elif isinstance(self.cluster, ScyllaCluster) \
                 and parse_version(self.cluster.version()) >= parse_version('4.6.dev'):
             expected = ['Keyspace2', 'Keyspace1', 'system', 'system_auth', 'system_distributed', 'system_distributed_everywhere', 'system_schema', 'system_traces']
             assert sorted(ksnames) == sorted(expected)
