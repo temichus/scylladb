@@ -39,6 +39,8 @@ def call(Map pipelineParams) {
             booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Check this to check pipeline syntax. will not perform anything.')
 
             string(name: 'DRIVER_VERSION', defaultValue: "${pipelineParams.get('DRIVER_VERSION', '')}", description: 'driver version to use during the tests, ex. scylla-driver==3.25.4')
+            string(name: 'SPOT_RETRY_COUNT', defaultValue: "${pipelineParams.get('SPOT_RETRY_COUNT', 3)}",
+                   description: 'number of spot termination retry')
         }
 
         agent {

@@ -264,7 +264,7 @@ def doParallelDtest (Map args) {
                 conditionalRetry([
                         agentLabel: runnersLabel,
                         suppressErrors: false,
-                        retryCount: 3,
+                        retryCount: params.SPOT_RETRY_COUNT ?: 3,
                         retryDelay: 1,
                         useBuiltinFailurePatterns: true,
                         customFailurePatterns: [
