@@ -682,7 +682,7 @@ class TestLwt(Tester):
 
 
 @pytest.mark.dtest_full
-class PaxosBugTest(Tester):
+class TestPaxosBug(Tester):
 
     def test_synced_most_recent_commit_in_cas_should_not_cause_timeouts(self):
         """Test for https://issues.apache.org/jira/browse/CASSANDRA-12043:
@@ -757,7 +757,7 @@ error_injections = [
 
 
 @pytest.mark.dtest_full
-class LwtReadLinearizabilityTest(Tester):  # pylint: disable=too-few-public-methods
+class TestLwtReadLinearizability(Tester):  # pylint: disable=too-few-public-methods
 
     @pytest.mark.dtest_debug
     @pytest.mark.scylla_mode('!release')
