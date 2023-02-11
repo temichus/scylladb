@@ -993,6 +993,10 @@ class TestUpdateClusterLayout(Tester):
         node2.watch_log_for("DECOMMISSIONING: unbootstrap starts")
         node2.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
 
+        self.ignore_log_patterns += [
+            r'decommission.*failed',
+        ]
+
         node1.stop(gently=False)
 
         # starting node1 - it should reconnect and run as is
@@ -1324,6 +1328,7 @@ class TestUpdateClusterLayout(Tester):
         self.ignore_log_patterns += [
             'connection dropped',
             'Failed to handle STREAM_MUTATION_FRAGMENTS',
+            r'removenode.*failed',
         ]
 
         api_cmd = f"http://{node1.address()}:10000/storage_service/remove_node/?host_id={node2_hostid}"
