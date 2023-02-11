@@ -234,6 +234,10 @@ class TestTopology(Tester):
         t = DecommissionInParallel(node1)
         t.start()
 
+        self.ignore_log_patterns += [
+            r'decommission.*failed',
+        ]
+
         null_status_pattern = re.compile(r".N(?:\s*)127\.0\.0\.1(?:.*)null(?:\s*)rack1")
         while t.is_alive():
             out = self.show_status(node2)
