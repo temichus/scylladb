@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 import logging
+import random
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Union
 
 import pytest
 from cassandra import InvalidRequest, ReadTimeout
-from cassandra.cluster import Session
+from cassandra.cluster import Session, NoHostAvailable
 from cassandra.protocol import SyntaxException
 
 from dtest_class import Tester, create_ks
@@ -16,14 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 class SLATester(Tester):
-    def prepare(self, nodes: int = 1) -> Session:
+    def prepare(self, nodes: int = 1, smp=1) -> Session:
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                   'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
                   'role_manager': 'org.apache.cassandra.auth.CassandraRoleManager'}
 
         self.cluster.set_configuration_options(values=config)
         self.cluster.populate(nodes)
-        self.cluster.start(wait_other_notice=True, wait_for_binary_proto=True)
+        jvm_args = ['--smp', str(smp)]
+        self.cluster.start(wait_other_notice=True, wait_for_binary_proto=True, jvm_args=jvm_args)
         session = self.patient_cql_connection(self.cluster.nodelist()[0], user='cassandra', password='cassandra')
         return session
 
@@ -254,6 +258,161 @@ class TestSLA(SLATester):
         entity.attach_service_level(service_level=sl200)
 
         self.validate_sl_list(session=session, expected_service_levels=[sl100, sl200])
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl200])
+
+    def test_chaos_sl_creation_altering_deletion(self):
+        """
+        chaos test: create/attach to role/alter/drop service levels in the parallel threads
+        """
+        def watch_logs_for_effectively_dropped(sl, sla_list_before_create, sla_list_after_create, marks, role,
+                                               iteration):
+            if (sls_over_in_start := len(sla_list_before_create) - sl.MAX_ALLOWED_SERVICE_LEVELS) < 0:
+                sls_over_in_start = 0
+
+            logger.info(f"Thread with role '{role.name}'. Iteration {iteration}. All SLs in the beginning: len "
+                        f"- {len(sla_list_before_create)}. {sla_list_before_create}")
+            logger.info(f"Thread with role '{role.name}'. Iteration {iteration}. All SLs after creation: len - "
+                        f"{len(sla_list_after_create)}. {sla_list_after_create}")
+
+            if (sls_over := len(sla_list_after_create) - sl.MAX_ALLOWED_SERVICE_LEVELS) > sls_over_in_start:
+                # How many service levels expected to be effectively dropped
+                sls_over -= sls_over_in_start
+            else:
+                sls_over = 1
+            logger.info(f"How many service levels expected to be effectively dropped: {sls_over}")
+
+            effectively_dropped_found = 0
+            for node, mark in marks.items():
+                res = node.grep_log(f'will be effectively dropped', from_mark=mark)
+                logger.info(f"Thread with role '{role.name}'. Iteration {iteration}. Node: {node.name}. "
+                            f"Search 'will be effectively dropped' message result: {res}")
+                if res:
+                    effectively_dropped_found += len(res)
+
+            if effectively_dropped_found >= sls_over:
+                return True
+            else:
+                return False
+
+        def create_sl_in_loop(session, random_range, name_range=(0, 100000), timeout=300):
+            role = Role(session=session_n1, name=f"role{random.randint(*name_range)}").create()
+            end_time = time.time() + timeout
+            i = 0
+            while time.time() < end_time:
+                sl_name = f"sl{random.randint(*name_range)}"
+                i += 1
+                sl = None
+                try:
+                    logger.info(f"Thread with role '{role.name}'. Iteration {i}")
+                    # Prevent service level creation in exactly same time from all threads
+                    time.sleep(random.randint(1, 10))
+                    # TODO: The "maximum allowed service levels" and "effectively dropped" validation is very
+                    #  problematic due to a few issues:
+                    #  1. The command "LIST ALL SERVICE LEVELS" shows those service levels that are "effectively
+                    #     dropped" (https://github.com/scylladb/scylla-enterprise/issues/2726)
+                    #  2. Scylla Enterprise is limited to 8 service levels, including the default one. And what happens
+                    #     is that the service level with the (lexicographically) greatest name will be dropped to stay
+                    #     within the limit. This behavior is dangerous because a user can kill their production
+                    #     temporarily if they accidentally cross the limit of max.
+                    #     (https://github.com/scylladb/scylla-enterprise/issues/2713#issuecomment-1456020836).
+                    #     The validation by Scylla log is not reliable and fails every run.
+                    #     I will keep the validation code in case of changes/fixes
+                    # marks = {node: node.mark_log() for node in self.cluster.nodelist()}
+                    sl = ServiceLevel(session=session, name=sl_name, shares=random.randint(*random_range)).create()
+                    # sla_list_before_create = sl.list_all_service_levels()
+                    # Wait for a service level is propagated to all nodes (needed approximately 10 sec)
+                    time.sleep(15)
+                    # sla_list_after_create = sl.list_all_service_levels()
+                    # if len(sla_list_after_create) > sl.MAX_ALLOWED_SERVICE_LEVELS:
+                    #     if not watch_logs_for_effectively_dropped(sl=sl,
+                    #                                               sla_list_before_create=sla_list_before_create,
+                    #                                               sla_list_after_create=sla_list_after_create,
+                    #                                               marks=marks,
+                    #                                               role=role,
+                    #                                               iteration=i):
+                    #         error_message = (f"{len(sla_list_after_create)} Service Levels were created. Maximum "
+                    #                          f"allowed Service Levels: {sl.MAX_ALLOWED_SERVICE_LEVELS}. Expected "
+                    #                          "message 'will be effectively dropped' was not found")
+                    #         logger.error(f"Thread with role '{role.name}'. Iteration {i}. {error_message}")
+                    #         raise RuntimeError(error_message)
+
+                    sl.alter(new_shares=random.randint(*random_range))
+                    time.sleep(15)
+                except NoHostAvailable as exc:
+                    if "no more scheduling groups exist" in str(exc.errors):
+                        logger.warning(str(exc))
+                    else:
+                        raise
+                except InvalidRequest as exc:
+                    if f"Service Level {sl_name} doesn't exists" in str(exc):
+                        logger.warning(f"It is possible that service level '{sl_name}' has been removed by another "
+                                       f"thread. Error: {str(exc)}")
+                    else:
+                        raise
+                except Exception as e:
+                    raise
+                finally:
+                    if sl:
+                        sl.drop()
+
+        self.prepare(nodes=4, smp=4)
+        session_n1 = self.exclusive_cql_connection(self.cluster.nodelist()[0], user='cassandra', password='cassandra')
+        session_n2 = self.exclusive_cql_connection(self.cluster.nodelist()[1], user='cassandra', password='cassandra')
+        session_n3 = self.exclusive_cql_connection(self.cluster.nodelist()[2], user='cassandra', password='cassandra')
+        session_n4 = self.exclusive_cql_connection(self.cluster.nodelist()[3], user='cassandra', password='cassandra')
+
+        threads = []
+        with ThreadPoolExecutor(max_workers=10) as tp:
+            # Create and drop same named service level
+            threads.append(tp.submit(create_sl_in_loop, session=session_n4,
+                                     random_range=(10, 1000), name_range=(200000, 200000)))
+            # Create and drop same named service level
+            threads.append(tp.submit(create_sl_in_loop, session=session_n3,
+                                     random_range=(10, 1000), name_range=(300000, 300000)))
+            threads.append(tp.submit(create_sl_in_loop, session=session_n2, random_range=(1, 20)))
+            threads.append(tp.submit(create_sl_in_loop, session=session_n1, random_range=(1, 20)))
+            threads.append(tp.submit(create_sl_in_loop, session=session_n3, random_range=(50, 500)))
+            threads.append(tp.submit(create_sl_in_loop, session=session_n4, random_range=(500, 1000)))
+            threads.append(tp.submit(create_sl_in_loop, session=session_n1, random_range=(1, 20)))
+            threads.append(tp.submit(create_sl_in_loop, session=session_n3, random_range=(50, 500)))
+            threads.append(tp.submit(create_sl_in_loop, session=session_n4, random_range=(500, 1000)))
+            threads.append(tp.submit(create_sl_in_loop, session=session_n4, random_range=(500, 1000)))
+
+            for thread in threads:
+                thread.result(timeout=480)
+
+    @pytest.mark.parametrize(argnames=["entity_class", "entity_name"],
+                             argvalues=[[Role, "test_role"], [User, "test_user"]],
+                             ids=["with_role", "with_user"])
+    def test_drop_sl_and_attach_new_to_role(self, entity_class, entity_name: str):
+        """
+        1. Create SL with 100 shares.
+        2. Create entity (User / Role) with the SL created in (1).
+        3. Validate that the SL created in (1) exists and is attached
+        to the entity.
+        4. Create another SL with 200 shares.
+        5. Attach the SL created in (4) to the entity.
+        6. Validate that the SL created in (4) exists and is attached
+        to the entity and that the SL created in (1) is no longer
+        attached to the entity.
+        """
+        session = self.prepare()
+
+        sl100 = ServiceLevel(session=session, name='sla1', shares=100)
+        entity = entity_class(session=session, name=entity_name)
+        self.create_entity_with_service_level(entity=entity, service_level=sl100)
+
+        self.validate_sl_list(session=session, expected_service_levels=[sl100])
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl100])
+
+        sl100.drop()
+
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[])
+
+        sl200 = ServiceLevel(session=session, name='sla2', shares=200).create()
+        entity.attach_service_level(service_level=sl200)
+
+        self.validate_sl_list(session=session, expected_service_levels=[sl200])
         self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl200])
 
 

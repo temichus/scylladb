@@ -52,6 +52,8 @@ class ServiceLevelAttributes:
 
 
 class ServiceLevel(object):
+    MAX_ALLOWED_SERVICE_LEVELS = 8
+
     # The class provide interface to manage SERVICE LEVEL
     def __init__(self, session,
                  name: str,
