@@ -1701,13 +1701,15 @@ class TestMutations(ThriftTester):
         # kspaces should have unique names
         assert len(kspaces) == len(ksnames), ksnames
         if fixture_cluster.dtest_config.is_enterprise:
-            expected = ['Keyspace1', 'Keyspace2', 'system', 'system_auth', 'system_distributed', 'system_schema', 'system_traces']
+            expected = ['Keyspace1', 'Keyspace2', 'system', 'system_auth',
+                        'system_distributed', 'system_schema', 'system_traces']
             if parse_version(self.cluster.version()) >= parse_version('2022.1'):
                 expected += ['audit', 'system_distributed_everywhere']
             assert sorted(ksnames) == sorted(expected)
         elif isinstance(self.cluster, ScyllaCluster) \
                 and parse_version(self.cluster.version()) >= parse_version('4.6.dev'):
-            expected = ['Keyspace2', 'Keyspace1', 'system', 'system_auth', 'system_distributed', 'system_distributed_everywhere', 'system_schema', 'system_traces']
+            expected = ['Keyspace2', 'Keyspace1', 'system', 'system_auth', 'system_distributed',
+                        'system_distributed_everywhere', 'system_schema', 'system_traces']
             assert sorted(ksnames) == sorted(expected)
         elif parse_version(self.cluster.version()) >= parse_version('3.0'):
             # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema', 'system_auth', 'system_distributed']
