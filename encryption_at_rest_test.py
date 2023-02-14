@@ -174,6 +174,9 @@ class KMSKeyProviderFactory(BaseKeyProviderFactory):
         self.endpoint_url = None
         self.client = docker.from_env()
 
+    def connection(self):
+        return boto3.client("kms", endpoint_url=self.endpoint_url, region_name='None')
+
     def prepare_conf(self):
         local_kms_image = "nsmithuk/local-kms:3"
 
@@ -188,7 +191,7 @@ class KMSKeyProviderFactory(BaseKeyProviderFactory):
 
         try:
             # create master key
-            kms_client = boto3.client("kms", endpoint_url=self.endpoint_url, region_name='None')
+            kms_client = self.connection()
             response = kms_client.create_key(Description='dtest',
                                              Tags=[{
                                                  'TagKey': 'Name',
@@ -615,6 +618,62 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
     @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
     def test_alter(self, key_provider):
         self._alter_test(key_provider=key_provider)
+
+
+@pytest.mark.dtest_full
+@pytest.mark.dtest_enterprise
+@pytest.mark.next_gating
+class TestKMSEncryption(EncryptionAtRestBase):
+    def test_per_table_master_key(self):
+        with KMSKeyProviderFactory(self) as kp:
+            session = self.prepare()
+            kms_client = kp.connection()
+            try:
+                self.create_ks()
+                cfs = []
+                for ki in [2, 3]:
+                    response = kms_client.create_key(Description='dtest-' + str(ki),
+                                                     Tags=[{
+                                                         'TagKey': 'Name',
+                                                         'TagValue': 'dtest-' + str(ki)
+                                                     }])
+                    key_id = response['KeyMetadata']['KeyId']
+                    alias = "alias/test_per_table_master_key-" + str(ki)
+                    kms_client.create_alias(AliasName=alias, TargetKeyId=key_id)
+                    cf = 'cf' + str(ki)
+                    opts = kp.additional_cf_options() | {'master_key': alias}
+                    self.create_encrypted_cf(
+                        session, name='ks.' + cf, cipher_algorithm='AES/CBC/PKCS5Padding', secret_key_strength=128, additional_options=opts)
+                    self.prepare_write_workload(session, cf=cf)
+                    cfs.append(cf)
+
+                    # restart the cluster
+
+                session = self.rolling_restart()
+
+                # todo: how can we verify data is actually encrypted with specific key? Aws
+                # does not allow key deletion, and our key ids do not reference aliases once
+                # the are used.
+                for cf in cfs:
+                    self.read_verify_workload(session, cf=cf)
+                    self.drop_cf(name='ks.' + cf)
+
+            finally:
+                self.cleanup()
+
+    def test_per_non_existing_table_master_key(self):
+        with KMSKeyProviderFactory(self) as kp:
+            session = self.prepare()
+            kms_client = kp.connection()
+            try:
+                self.create_ks()
+                alias = "alias/does-not-exist"
+                opts = kp.additional_cf_options() | {'master_key': alias}
+                with pytest.raises(Exception):
+                    self.create_encrypted_cf(
+                        session, name='ks.failme', cipher_algorithm='AES/CBC/PKCS5Padding', secret_key_strength=128, additional_options=opts)
+            finally:
+                self.cleanup()
 
 
 @pytest.mark.dtest_full
