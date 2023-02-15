@@ -242,6 +242,99 @@ class SecondaryIndexesHelpers:
 
 
 @pytest.mark.dtest_full
+class TestStaticSecondaryIndexes(Tester, SecondaryIndexesHelpers):
+    INDEX_TYPE = 'global'
+
+    # @pytest.mark.skip(reason='#12829')
+    def test_query_data_with_index(self):
+        """
+        Create the index on the populated table and read the data that was inserted before index
+        Test also various queries with index
+        """
+        keyspace_name = 'ks'
+        table_name = 'statics'
+        session = self.prepare(user_table=False, nodes=4, rf=3, keyspace_name=keyspace_name)
+        create_cf(session, '{0}.{1}'.format(keyspace_name, table_name), key_type='text', columns={'ck': 'text', 'cs1': 'text static'},
+                  primary_key='key, ck', compaction={'class': self.compaction_strategy})
+        # insert data
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc1', 'val1', 'stat1');")
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc2', 'val2', 'stat2');")
+
+        # create index on static column
+        assert self.create_and_build_index(create_index, self.cluster, session, ks_name='ks',
+                                           table_name=table_name, index_column='cs1', index_name='cs1_key',
+                                           compaction=self.compaction_strategy), \
+            'Index %s is not built' % 'cs1_key'
+
+        # insert data
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc3', 'val3', 'stat3');")
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc4', 'val4', 'stat3');")
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc5', 'val5', 'stat2');")
+
+        assert_all(session, "select count(*) from statics", expected=[[5]], cl=ConsistencyLevel.QUORUM)
+
+        # verify can query by index on static column
+        assert_all(session, "select count(*) from statics where cs1='stat3'",
+                   expected=[[2]], cl=ConsistencyLevel.QUORUM)
+
+        # verify data created before creating index can be queried
+        assert_all(session, "select count(*) from statics where cs1='stat2'",
+                   expected=[[2]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from statics where cs1='stat1'",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+        # verify can query by pk and static column index
+        assert_all(session, "select count(*) from statics where key='abc1' and cs1='stat1'",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+        # verify can query by ck and static column index requires ALLOW FILTERING
+        assert_invalid(session, "select count(*) from statics where ck='val1' and cs1='stat1'",
+                       matching='use ALLOW FILTERING')
+
+        # verify can query by pk, ck and static column index
+        # skipped due #12829
+        # assert_all(session, "select count(*) from statics where key='abc1' and ck='val1' and cs1='stat1'",
+        #            expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+        # verify SELECT by indexed key with WHERE like "key = X AND key = Y" returns no results
+        assert_all(session, "select count(*) from statics where cs1='stat2' and cs1='stat1' and key='abc2'",
+                   expected=[[0]], cl=ConsistencyLevel.QUORUM)
+
+        # verify delete by index on static column
+        session.execute("DELETE FROM statics WHERE KEY='abc3';")
+        assert_all(session, "select count(*) from statics where cs1='stat3'",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+        # verify ttl on static column expires also its index (by update and insert)
+        session.execute("UPDATE statics USING TTL 1 SET cs1='I will expire' WHERE key='abc5';")
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc6', 'val6', 'stat4') USING TTL 1;")
+
+        assert_all(session, "select count(*) from statics where cs1='I will expire'",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from statics where cs1='stat4'",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+        time.sleep(5)
+        assert_all(session, "select count(*) from statics where cs1='stat4'",
+                   expected=[[0]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from statics where cs1='I will expire'",
+                   expected=[[0]], cl=ConsistencyLevel.QUORUM)
+        # make sure updated index data is also deleted
+        assert_all(session, "select count(*) from statics where cs1='stat2'",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+
+        # verify index is truncated when base table is truncated
+        self.cluster.flush()
+        session.execute("TRUNCATE table statics")
+        assert_all(session, "select count(*) from statics", expected=[[0]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from statics where cs1='stat3'",
+                   expected=[[0]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from statics where cs1='stat2'",
+                   expected=[[0]], cl=ConsistencyLevel.QUORUM)
+
+        session.shutdown()
+
+
+@pytest.mark.dtest_full
 class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
 
@@ -783,6 +876,14 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                                         "CREATE INDEX ON %s(b)",
                                         "INSERT INTO %s (a, b) VALUES (0, ?)",
                                         session, column_name='b', value_length=value_length,
+                                        expect_message=expect_message)
+
+        logger.debug('Insert {} value into indexed static key column'.format(test))
+        self.insert_row_with_long_value("CREATE TABLE %s(a int, b int, c text static, PRIMARY KEY (a, b)) "
+                                        "WITH compaction = %s",
+                                        "CREATE INDEX ON %s(c)",
+                                        "INSERT INTO %s (a, b, c) VALUES (0, 0, ?)",
+                                        session, column_name='c', value_length=value_length,
                                         expect_message=expect_message)
 
     @pytest.mark.skip('Not relevant for Scylla - manual index rebuild is not supported')
