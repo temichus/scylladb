@@ -2386,6 +2386,62 @@ class TestUpdateClusterLayout(Tester):
         node4.start(wait_for_binary_proto=True)
         logger.info("done")
 
+    @pytest.mark.require("scylladb/scylladb#12892")
+    def test_removenode_while_gossip_partly_blocked(self, ip_tables):
+        """
+            restart and remove a node while other nodes can't send gossip communication to it
+        """
+        logger.info("populating cluster with three nodes")
+        cluster = self.cluster
+        cluster.populate(3)
+        logger.info("starting cluster")
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        logger.info("stopping node3")
+        node1, node2, node3 = cluster.nodelist()
+        node3.stop(gently=False)
+
+        logger.info("block gossip communication to node3")
+        node1_ip_address = get_ip_from_node(node=node1)
+        node2_ip_address = get_ip_from_node(node=node2)
+        rule1 = IPTableRule(protocol='tcp', source=f'{node1_ip_address}/32', destination_port=7000, target='DROP')
+        rule2 = IPTableRule(protocol='tcp', source=f'{node2_ip_address}/32', destination_port=7000, target='DROP')
+
+        ip_tables.add_rule(rule1)
+        ip_tables.add_rule(rule2)
+
+        logger.info("start node3")
+        node3.start(wait_for_binary_proto=True, wait_other_notice=False)
+        for n in cluster.nodelist():
+            stdout, stderr = n.nodetool("status")
+            logger.info(stdout)
+            logger.info(stderr)
+
+        logger.info("try to remove node 3")
+        try:
+            node2.nodetool(f'removenode {node3.hostid()}')
+        except NodetoolError as exc:
+            logger.info(traceback.format_exc())
+            # Nodes={127.0.98.1, 127.0.98.2} needed for removenode operation are down.
+            assert re.search("Nodes=.* needed for removenode operation are down", repr(exc))
+        else:
+            raise AssertionError("removenode must fail")
+
+        logger.info("resume gossip communication")
+        ip_tables.delete_chain()
+
+        logger.info("stopping node3")
+        node3_hostid = node3.hostid()
+        node3.stop(gently=False)
+
+        logger.info("remove node 3")
+        retry_till_success(node2.nodetool, f'removenode {node3_hostid}', timeout=120)
+
+        logger.info("add new node4")
+        node4 = cluster.new_node(4)
+        node4.start(wait_for_binary_proto=True)
+        logger.info("done")
+
 
 @pytest.mark.dtest_full
 class TestStopNodeEarly(Tester):
