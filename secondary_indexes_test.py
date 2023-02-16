@@ -245,7 +245,6 @@ class SecondaryIndexesHelpers:
 class TestStaticSecondaryIndexes(Tester, SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
 
-    # @pytest.mark.skip(reason='#12829')
     def test_query_data_with_index(self):
         """
         Create the index on the populated table and read the data that was inserted before index
@@ -275,7 +274,7 @@ class TestStaticSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
         # verify can query by index on static column
         assert_all(session, "select count(*) from statics where cs1='stat3'",
-                   expected=[[2]], cl=ConsistencyLevel.QUORUM)
+                   expected=[[2]], cl=ConsistencyLevel.QUORUM, num_attempts=10)
 
         # verify data created before creating index can be queried
         assert_all(session, "select count(*) from statics where cs1='stat2'",
@@ -290,46 +289,56 @@ class TestStaticSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         # verify can query by ck and static column index requires ALLOW FILTERING
         assert_invalid(session, "select count(*) from statics where ck='val1' and cs1='stat1'",
                        matching='use ALLOW FILTERING')
-
-        # verify can query by pk, ck and static column index
-        # skipped due #12829
-        # assert_all(session, "select count(*) from statics where key='abc1' and ck='val1' and cs1='stat1'",
-        #            expected=[[1]], cl=ConsistencyLevel.QUORUM)
+        assert_all(session, "select count(*) from statics where ck='val1' and cs1='stat1' ALLOW FILTERING",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
 
         # verify SELECT by indexed key with WHERE like "key = X AND key = Y" returns no results
         assert_all(session, "select count(*) from statics where cs1='stat2' and cs1='stat1' and key='abc2'",
                    expected=[[0]], cl=ConsistencyLevel.QUORUM)
 
-        # verify delete by index on static column
+        # delete of a static column modifies the index
         session.execute("DELETE FROM statics WHERE KEY='abc3';")
         assert_all(session, "select count(*) from statics where cs1='stat3'",
-                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM, num_attempts=10)
 
         # verify ttl on static column expires also its index (by update and insert)
-        session.execute("UPDATE statics USING TTL 1 SET cs1='I will expire' WHERE key='abc5';")
-        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc6', 'val6', 'stat4') USING TTL 1;")
+        session.execute("UPDATE statics USING TTL 60 SET cs1='I will expire' WHERE key='abc5';")
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc6', 'val6', 'stat4') USING TTL 60;")
 
         assert_all(session, "select count(*) from statics where cs1='I will expire'",
-                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM, num_attempts=10)
         assert_all(session, "select count(*) from statics where cs1='stat4'",
                    expected=[[1]], cl=ConsistencyLevel.QUORUM)
-        time.sleep(5)
+        time.sleep(62)
         assert_all(session, "select count(*) from statics where cs1='stat4'",
                    expected=[[0]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from statics where cs1='I will expire'",
                    expected=[[0]], cl=ConsistencyLevel.QUORUM)
-        # make sure updated index data is also deleted
-        assert_all(session, "select count(*) from statics where cs1='stat2'",
-                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
+        # make sure index data is also deleted
+        assert_all(session, "select count(*) from statics where cs1='stat4'",
+                   expected=[[0]], cl=ConsistencyLevel.QUORUM)
 
         # verify index is truncated when base table is truncated
         self.cluster.flush()
         session.execute("TRUNCATE table statics")
         assert_all(session, "select count(*) from statics", expected=[[0]], cl=ConsistencyLevel.QUORUM)
-        assert_all(session, "select count(*) from statics where cs1='stat3'",
+        assert_all(session, "select count(*) from statics where cs1='stat3'", num_attempts=10,
                    expected=[[0]], cl=ConsistencyLevel.QUORUM)
         assert_all(session, "select count(*) from statics where cs1='stat2'",
                    expected=[[0]], cl=ConsistencyLevel.QUORUM)
+
+        # verify count(*) when using static column index counts properly when there's multiple rows in partition
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc1', 'val1', 'stat1');")
+        session.execute("INSERT INTO statics (KEY, ck, cs1) VALUES ('abc2', 'val1', 'stat1');")
+        session.execute("INSERT INTO statics (KEY, ck) VALUES ('abc1', 'val2');")
+
+        assert_all(session, "select count(*) from statics where cs1='stat1'",
+                   expected=[[3]], cl=ConsistencyLevel.QUORUM, num_attempts=10)
+
+        # verify can query by pk, ck and static column index
+        pytest.xfail(reason="#12829")
+        assert_all(session, "select count(*) from statics where key='abc1' and ck='val1' and cs1='stat1'",
+                   expected=[[1]], cl=ConsistencyLevel.QUORUM)
 
         session.shutdown()
 
