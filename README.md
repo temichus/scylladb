@@ -58,7 +58,7 @@ For running dtests in `scylla-dtest` docker container,
 [docker](https://docs.docker.com/install/linux/docker-ce/fedora/) is required.
 
 
-### Qiuck start:
+### Quick start:
 ```bash
 mkdir docker_dtest
 cd docker_dtest
@@ -113,7 +113,7 @@ make ssh key using `ssh-keygen` and [add a new SSH key to your GitHub account](h
 Using `pyenv virtualenv` is recommended in order to not pollute your global python3 installation with the dtest requirements. It also makes it very easy to switch between the different ccm versions (or other package versions) when changing release branches.
 To setup a `pyenv virtualenv` follow the below instructions:
 
-### Qiuck start:
+### Quick start:
 ```bash
 mkdir local_dtest
 cd local_dtest
