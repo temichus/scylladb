@@ -2,6 +2,7 @@ import time
 import logging
 import pytest
 import math
+import tempfile
 from collections import OrderedDict
 from datetime import datetime
 
@@ -643,6 +644,18 @@ class TestTTL(Tester):
                            expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
 
+def print_sstable(node, keyspace, table):
+    node.flush()
+    json_path = tempfile.mkstemp(suffix='.json')
+    json_name = json_path[1]
+    with open(json_name, 'w') as f:
+        node.run_sstable2json(f, keyspace=keyspace, column_families=[table])
+    with open(json_name, 'r') as f:
+        sstable_dump = f.read()
+    node_name = getattr(node, 'name') or str(node)
+    logger.debug('[{}] SStable dump of {}.{}: {}'.format(node_name, keyspace, table, sstable_dump))
+
+
 @pytest.mark.dtest_full
 class TestDistributedTTL(Tester):
 
@@ -774,6 +787,9 @@ class TestDistributedTTL(Tester):
             [[1, 1, None, None], [2, 2, None, None]]
         )
         time.sleep(7)
+        logger.debug('SStable dump after writes with RF = 1')
+        print_sstable(self.node1, 'ks', 'ttl_table')
+        print_sstable(self.node2, 'ks', 'ttl_table')
         self.node1.stop()
         session2 = self.patient_exclusive_cql_connection(self.node2)
         session2.execute("USE ks;")
@@ -786,6 +802,9 @@ class TestDistributedTTL(Tester):
             {'class' : 'SimpleStrategy', 'replication_factor' : 2};
         """)
         self.node1.repair(['ks'])
+        logger.debug('SStable dump after alter RF to 2 and repair')
+        print_sstable(self.node1, 'ks', 'ttl_table')
+        print_sstable(self.node2, 'ks', 'ttl_table')
         ttl_start = time.time()
         ttl_session1 = self.session1.execute('SELECT ttl(col1) FROM ttl_table;')
         self.node1.stop()
