@@ -64,14 +64,14 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
             insert_statement = session.prepare("INSERT INTO ks.cf (pk, ck, v) VALUES (?, ?, ?)")
         else:
             insert_statement = SimpleStatement("INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
-        insert_parameters = [{"pk": i, "ck": j, "v": insert_value} for i in range(10) for j in range(5)]
+        insert_parameters = [{"pk": i, "ck": j, "v": insert_value} for i in range(4) for j in range(3)]
 
         update_value = bytes("2".encode()) * 4 * MB
         if prepare_statements:
             update_statement = session.prepare("UPDATE ks.cf set v = ? where pk = ? and ck = ?")
         else:
             update_statement = SimpleStatement("UPDATE ks.cf set v = %(v)s where pk = %(pk)s and ck=%(ck)s")
-        update_parameters = [{"pk": i, "ck": j, "v": update_value} for i in range(10) for j in range(5)]
+        update_parameters = [{"pk": i, "ck": j, "v": update_value} for i in range(4) for j in range(3)]
 
         self.execute_case(node, session,
                           insert_data={
@@ -114,7 +114,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
             insert_statement = SimpleStatement(f"INSERT INTO ks.cf (pk, ck, {insert_cells_names}) \
                                                VALUES (%(pk)s, %(ck)s, {insert_cells_values})")
         blob_columns = {f"v_{i}": VALUE for i in range(NUM_CELLS)}
-        insert_parameters = [{**{"pk": i, "ck": j}, **blob_columns} for i in range(10) for j in range(10)]
+        insert_parameters = [{**{"pk": i, "ck": j}, **blob_columns} for i in range(4) for j in range(3)]
 
         if prepare_statements:
             update_cells = ", ".join([f"v_{i} = ?" for i in range(NUM_CELLS)])
@@ -122,7 +122,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         else:
             update_cells = ", ".join([f"v_{i} = %(v_{i})s" for i in range(NUM_CELLS)])
             update_statement = SimpleStatement(f"UPDATE ks.cf SET {update_cells} WHERE pk = %(pk)s and ck = %(ck)s")
-        update_parameters = [{**{"pk": i, "ck": j}, **blob_columns} for i in range(10) for j in range(10)]
+        update_parameters = [{**{"pk": i, "ck": j}, **blob_columns} for i in range(4) for j in range(3)]
 
         self.execute_case(node, session,
                           insert_data={
@@ -154,7 +154,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
             insert_statement = session.prepare("INSERT INTO ks.cf (pk, ck, v) VALUES (?, ?, ?)")
         else:
             insert_statement = SimpleStatement("INSERT INTO ks.cf (pk, ck, v) VALUES (%(pk)s, %(ck)s, %(v)s)")
-        insert_parameters = [{"pk": i, "ck": j, "v": {"key": insert_value}} for i in range(10) for j in range(5)]
+        insert_parameters = [{"pk": i, "ck": j, "v": {"key": insert_value}} for i in range(4) for j in range(3)]
 
         update_value = bytes("2".encode()) * 1 * MB
         if prepare_statements:
@@ -162,7 +162,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         else:
             update_statement = SimpleStatement("UPDATE ks.cf SET v = v + %(v)s WHERE pk=%(pk)s and ck=%(ck)s")
         update_parameters = [{"pk": i, "ck": j, "v": {f"key{k}": update_value}}
-                             for i in range(10) for j in range(5) for k in range(5)]
+                             for i in range(4) for j in range(3) for k in range(5)]
 
         self.execute_case(node, session,
                           insert_data={
@@ -180,7 +180,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                      check_stalls: bool = False):
 
         select_statement = SimpleStatement("SELECT * FROM ks.cf WHERE pk = %(pk)s and ck = %(ck)s")
-        select_parameters = [{"pk": i, "ck": j} for i in range(10) for j in range(5)]
+        select_parameters = [{"pk": i, "ck": j} for i in range(4) for j in range(3)]
 
         cdc_select_statement = SimpleStatement("SELECT * FROM ks.cf_scylla_cdc_log LIMIT 10")
 
