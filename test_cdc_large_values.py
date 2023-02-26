@@ -137,9 +137,6 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         limit 16MB.
         """
 
-        if not prepare_statements:
-            pytest.skip("Skipped due to scylladb/scylladb#11642")
-
         node, session = self.prepare_cluster(1)
         session.execute(
             "CREATE TABLE IF NOT EXISTS ks.cf (pk bigint, ck bigint, v map<text,blob>, PRIMARY KEY (pk, ck)) \
