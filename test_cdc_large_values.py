@@ -211,7 +211,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         found = node.grep_log("oversized allocation", from_mark=mark)
         assert not found, f"Next oversized allocation were found: {found}"
 
-        found = node.grep_log_for_errors()
+        found = self.check_errors(node)
         assert not found, f"Next errors were found: {found}"
 
     @staticmethod
