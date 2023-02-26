@@ -29,8 +29,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         dtest_setup_overrides.cluster_options = ImmutableMapping({'max_memory_for_unlimited_query_soft_limit': 20 * MB,
                                                                   'max-memory-for-unlimited-query': 20 * MB,
                                                                   'compaction_large_row_warning_threshold_mb': 20 * MB,
-                                                                  'compaction_large_cell_warning_threshold_mb': 20 * MB,
-                                                                  'write-request-timeout-in-ms': 1000})
+                                                                  'compaction_large_cell_warning_threshold_mb': 20 * MB})
         return dtest_setup_overrides
 
     def prepare_cluster(self, n: int) -> Tuple[ScyllaNode, Session]:
