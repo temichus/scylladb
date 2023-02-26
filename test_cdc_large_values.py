@@ -38,6 +38,14 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         node: ScyllaNode = self.cluster.nodelist()[0]
         session: Session = self.patient_cql_connection(node, request_timeout=120)
         create_ks(session, "ks", n)
+        self.expected_errors = [
+            # bad_alloc errors are expected in this test after
+            # scylladb/scylladb@aab5954cfb65cc1bee645384a45a844f252f8d7e
+            # Ref: https://github.com/scylladb/scylladb/issues/12600
+            rf'[Ee]xception when communicating with {node.address()}, to read from [^\s]+: std::bad_alloc',
+            rf'exception during mutation write to {node.address()}: std::bad_alloc',
+        ]
+        self.ignore_log_patterns.extend(self.expected_errors)
         return (node, session)
 
     @pytest.mark.parametrize("prepare_statements", [True, False], ids=["prepared_statements", "unprepared_statements"])
@@ -211,7 +219,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         found = node.grep_log("oversized allocation", from_mark=mark)
         assert not found, f"Next oversized allocation were found: {found}"
 
-        found = self.check_errors(node)
+        found = self.check_errors(node, exclude_errors=self.expected_errors)
         assert not found, f"Next errors were found: {found}"
 
     @staticmethod
