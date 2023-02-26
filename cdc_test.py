@@ -60,6 +60,7 @@ class CDCInitializeHelper:  # pylint: disable=no-member
 
     def populate_sequentially(self, n: Union[list, int], wait_other_notice: bool = False):
         cluster = self.cluster  # pylint: disable=no-member
+        jvm_args = ['--blocked-reactor-notify-ms', '100' if cluster.scylla_mode != "debug" else '1000000']
         logger.debug('Starting node 1')
         # We need to use populate() for the first node, because it writes
         # a configuration file that specifies the first node as a seed.
@@ -69,19 +70,21 @@ class CDCInitializeHelper:  # pylint: disable=no-member
         # for gossip on a different address.
         n = [n] if isinstance(n, int) else n
         if len(n) == 1:
-            cluster.populate(1).start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
+            cluster.populate(1).start(wait_for_binary_proto=True,
+                                      wait_other_notice=wait_other_notice, jvm_args=jvm_args)
             for i in range(2, n[0] + 1):
                 logger.debug('Starting node {}'.format(i))
                 node = self.cluster.new_node(i, auto_bootstrap=True)  # pylint: disable=no-member
                 node.start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
         else:
-            self.populate_sequentially_multidc(n, wait_other_notice)
+            self.populate_sequentially_multidc(n, wait_other_notice, jvm_args=jvm_args)
 
-    def populate_sequentially_multidc(self, n: list, wait_other_notice: bool = False):
+    def populate_sequentially_multidc(self, n: list, wait_other_notice: bool = False, jvm_args: list[str] = []):
         cluster: ScyllaCluster = self.cluster
         first_nodes_in_multidc = [1] * len(n)
         logger.debug(f"Starting first_nodes_in_multidc={first_nodes_in_multidc}")
-        cluster.populate(first_nodes_in_multidc).start(wait_for_binary_proto=True, wait_other_notice=wait_other_notice)
+        cluster.populate(first_nodes_in_multidc).start(wait_for_binary_proto=True,
+                                                       wait_other_notice=wait_other_notice, jvm_args=jvm_args)
         node_idx = len(n)
 
         for dcx in range(1, len(n) + 1):
