@@ -634,28 +634,35 @@ class TestUpdateClusterLayout(Tester):
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(
             values=self.default_config_options(), batch_commitlog=True)
-        cluster.populate(3).start()
+        num_nodes = 3
+        num_keys = 4000
+        cluster.populate(num_nodes).start()
         node1 = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node1)
         create_ks(session, 'ks', rf)
         create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(session, keys=range(2000), consistency=consistency)
+        insert_c1c2(session, keys=range(num_keys // 2), consistency=consistency)
 
+        logger.debug("Adding a node")
         node4 = new_node(cluster)
         node4.start(jvm_args=['--logger-log-level', 'stream_session=debug'], no_wait=True)
         node4.watch_log_for("Starting to bootstrap")
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
-        insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
+        logger.debug("Inserting more data")
+        insert_c1c2(session, keys=range(num_keys // 2, num_keys), consistency=consistency)
+
+        logger.debug("Waiting for new node to start listenting for CQL")
         node4.wait_for_binary_interface()
 
+        logger.debug("Verifying data")
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
         result = list(session.execute(query))
-        assert len(result) == 4000
+        assert len(result) == num_keys
 
-        for k in range(0, 4000):
+        for k in range(0, num_keys):
             query_c1c2(session, k, consistency)
 
     def test_simple_add_new_node_while_adding_info_1(self):
