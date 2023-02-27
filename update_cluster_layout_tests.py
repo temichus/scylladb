@@ -625,7 +625,7 @@ class TestUpdateClusterLayout(Tester):
         (2, 'streaming'),
         (2, 'rbno'),
     ])
-    def test_simple_add_new_node_while_adding_info(self, rf: int, bootstrap_method: str):
+    def test_add_new_node_while_adding_data(self, rf: int, bootstrap_method: str):
         """
         Test bootstrapped node streams all data
 
