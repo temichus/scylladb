@@ -619,7 +619,13 @@ class TestUpdateClusterLayout(Tester):
         assert len(rows) >= keys and len(rows) <= keys + \
             1, "Expected between {} and {} rows, but got {}".format(keys, keys+1, len(rows))
 
-    def _simple_add_new_node_while_adding_info(self, rf):
+    @pytest.mark.parametrize('rf, bootstrap_method', [
+        (1, 'streaming'),
+        (1, 'rbno'),
+        (2, 'streaming'),
+        (2, 'rbno'),
+    ])
+    def test_simple_add_new_node_while_adding_info(self, rf: int, bootstrap_method: str):
         """
         Test bootstrapped node streams all data
 
@@ -634,6 +640,8 @@ class TestUpdateClusterLayout(Tester):
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(
             values=self.default_config_options(), batch_commitlog=True)
+        if (bootstrap_method == 'rbno'):
+            self.repair_based_node_ops_config_options(True, ops=["bootstrap"])
         num_nodes = 3
         num_keys = 4000
         cluster.populate(num_nodes).start()
@@ -664,12 +672,6 @@ class TestUpdateClusterLayout(Tester):
 
         for k in range(0, num_keys):
             query_c1c2(session, k, consistency)
-
-    def test_simple_add_new_node_while_adding_info_1(self):
-        self._simple_add_new_node_while_adding_info(1)
-
-    def test_simple_add_new_node_while_adding_info_2(self):
-        self._simple_add_new_node_while_adding_info(2)
 
     def repair_based_node_ops_config_options(self, enable_repair_based_node_ops: bool, ops=["bootstrap", "replace", "removenode", "decommission", "rebuild"]):
         config_options = self.default_config_options()
