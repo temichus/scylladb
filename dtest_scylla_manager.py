@@ -1419,6 +1419,31 @@ class RestoreTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, scylla_manager=scylla_manager)
 
+    def update(self,
+               batch_size: int = None,
+               keyspace_list: list = None,
+               restore_schema: bool = False,
+               restore_data: bool = False,
+               location_list: list = None,
+               snapshot_tag: str = None):
+        cmd = f"restore update {self.id} -c {self.cluster_id}"
+        if batch_size:
+            cmd += f" --batch-size {batch_size}"  # The manager's default is 2
+        if keyspace_list:
+            keyspace_names = ','.join(keyspace_list)
+            cmd += f" --keyspace {keyspace_names} "
+        if restore_schema:
+            cmd += " --restore-schema"
+        if restore_data:
+            cmd += " --restore-tables"
+        if location_list:
+            locations_names = ','.join(location_list)
+            cmd += f" --location {locations_names} "
+        if snapshot_tag:
+            cmd += f" --snapshot-tag {snapshot_tag}"
+        stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        return stdout
+
 
 class RestTask(ManagerTask):
     def __init__(self, task_id, cluster_id, scylla_manager):
