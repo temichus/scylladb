@@ -163,6 +163,13 @@ class ManagerBackupMixin:
                     f"The table {'.'.join([keyspace, table_name])} contains the keys {wrongfully_existing_keys} " \
                     f"in column {key_name}, even though they are not suppose to exist in it"
 
+    def _delete_file_from_bucket(self, cluster_id: str, file_type: str = "sst"):
+        file_objects = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET,
+                                                     Prefix=f"backup/{file_type}/cluster/{cluster_id}/")["Contents"]
+        random_file_object = random.choice(file_objects)
+        logger.info(f"Removing file %s from bucket %s", random_file_object['Key'], DESTINATION_BUCKET)
+        self.boto_client.delete_object(Bucket=DESTINATION_BUCKET, Key=random_file_object['Key'])
+
 
 @pytest.mark.scylla_manager
 class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
@@ -1409,13 +1416,6 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
             assert not downloaded_snapshot_files, \
                 f"Even though the download-files command uses the dry-run argument, " \
                 f"the snapshot files were still downloaded to the upload directory of {table_full_name}"
-
-    def _delete_file_from_bucket(self, cluster_id):
-        file_objects = self.boto_client.list_objects(Bucket=DESTINATION_BUCKET,
-                                                     Prefix=f"backup/sst/cluster/{cluster_id}/")["Contents"]
-        random_file_object = random.choice(file_objects)
-        logger.info(f"Removing file {random_file_object['Key']} from bucket {DESTINATION_BUCKET}")
-        self.boto_client.delete_object(Bucket=DESTINATION_BUCKET, Key=random_file_object['Key'])
 
     def test_validate_backup_after_deleting_file(self):
         """

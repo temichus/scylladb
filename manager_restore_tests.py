@@ -367,3 +367,96 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
 
     def test_pause_restore_and_check_gc_grace_seconds(self):
         self._restore_check_gc_grace_seconds_template("2500K", post_action="pause")
+
+    def test_restore_alter_batch_size(self):
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        self.cluster.stress(
+            ['write', 'n=3500K', '-rate', 'threads=50', '-schema',
+             'compaction(strategy=SizeTieredCompactionStrategy)'])
+        backup_task = self._backup_and_cleanup(healthy_node=node1, mgr_cluster=mgr_cluster,
+                                               keyspace_table_and_key_range={"keyspace1": ["standard1"]})
+        restore_task = mgr_cluster.run_restore_command(location_list=[f"s3:{DESTINATION_BUCKET}"],
+                                                       restore_data=True, batch_size=3,
+                                                       snapshot_tag=backup_task.get_snapshot_tag())
+        restore_task.wait_for_status(list_status=[TaskStatus.RUNNING])
+        restore_task.stop()
+        restore_task.update(batch_size=1)
+        restore_task.start(continue_task=True)
+        final_status = restore_task.wait_and_get_final_status(step=5)
+        assert final_status == TaskStatus.DONE, \
+            f"Restore task failed after altering the batch size: {restore_task.progress_details()}"
+
+    def test_delete_keyspace_while_restore_is_paused(self):
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        self.cluster.stress(
+            ['write', 'n=3500K', '-rate', 'threads=50', '-schema',
+             'compaction(strategy=SizeTieredCompactionStrategy)'])
+        backup_task = self._backup_and_cleanup(healthy_node=node1, mgr_cluster=mgr_cluster,
+                                               keyspace_table_and_key_range={"keyspace1": ["standard1"]})
+        restore_task = mgr_cluster.run_restore_command(location_list=[f"s3:{DESTINATION_BUCKET}"],
+                                                       restore_data=True, snapshot_tag=backup_task.get_snapshot_tag())
+        restore_task.wait_for_status(list_status=[TaskStatus.RUNNING])
+        restore_task.stop()
+        self._drop_table_and_delete_table_dir(keyspace_name="keyspace1", table_name="standard1", up_normal_node=node1)
+        restore_task.start(continue_task=True)
+        final_status = restore_task.wait_and_get_final_status(step=5)
+        assert final_status == TaskStatus.ERROR,\
+            f"Even though the restored keyspace was dropped while the restore task was paused, the task did not fail," \
+            f" but it instead reached the status of {final_status}: {restore_task.full_progress_string()}"
+        assert "not found" in restore_task.full_progress_string(), \
+            f'The expected message "not found" did not appear in the output of task progress: ' \
+            f'{restore_task.full_progress_string()}'
+
+    def test_restore_after_deleting_file_from_s3(self):
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        self.cluster.stress(
+            ['write', 'n=3500K', '-rate', 'threads=50', '-schema',
+             'compaction(strategy=SizeTieredCompactionStrategy)'])
+        backup_task = self._backup_and_cleanup(healthy_node=node1, mgr_cluster=mgr_cluster,
+                                               keyspace_table_and_key_range={"keyspace1": ["standard1"]})
+        for _ in range(15):
+            self._delete_file_from_bucket(mgr_cluster.id, file_type="sst")
+        restore_task = mgr_cluster.run_restore_command(location_list=[f"s3:{DESTINATION_BUCKET}"],
+                                                       restore_data=True,
+                                                       snapshot_tag=backup_task.get_snapshot_tag())
+        final_status = restore_task.wait_and_get_final_status(step=5)
+        assert final_status == TaskStatus.ERROR, \
+            f"After deleting several files from the s3 snapshot directory, The restore task was expected to fail. " \
+            f"However, it did not fail, and instead reached the status {final_status}"
+        assert "object not found" in restore_task.full_progress_string(), \
+            f"The restore task has failed as expected, but printed unexpected error message:\n" \
+            f"{restore_task.full_progress_string()}"
+
+    def test_restore_data_after_purge(self):
+        key_ranges = [
+            (1, 21),
+            (21, 101),
+            (101, 251),
+            (251, 388)
+        ]
+        complete_key_range = (key_ranges[0][0], key_ranges[-1][1])
+        keyspace_name = "ks"
+        table_name = "cf1"
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        self.insert_data_from_ranges(healthy_node=node1,
+                                     keyspace_table_and_key_range={keyspace_name: {table_name: key_ranges[0]}})
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=[keyspace_name],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"],
+                                                     retention=2)
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+        for key_range in key_ranges[1:]:
+            self.insert_data_from_ranges(healthy_node=node1,
+                                         keyspace_table_and_key_range={keyspace_name: {table_name: key_range}})
+            backup_task.start(continue_task=False)
+            backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+        self.clean_up_tables(node=node1, keyspace_and_tables_dict={keyspace_name: [table_name]})
+        restore_task = mgr_cluster.run_restore_command(location_list=[f"s3:{DESTINATION_BUCKET}"],
+                                                       restore_data=True,
+                                                       snapshot_tag=backup_task.get_snapshot_tag())
+        final_status = restore_task.wait_and_get_final_status(step=5)
+        assert final_status == TaskStatus.DONE
+        self.verify_c1c2(keyspace_table_and_key_range={keyspace_name: {table_name: complete_key_range}}, node=node1)
