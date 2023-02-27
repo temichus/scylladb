@@ -649,6 +649,8 @@ class TestUpdateClusterLayout(Tester):
         node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
         insert_c1c2(session, keys=range(2000, 4000), consistency=consistency)
 
+        node4.wait_for_binary_interface()
+
         query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency)
         result = list(session.execute(query))
         assert len(result) == 4000
