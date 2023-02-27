@@ -735,6 +735,9 @@ class TestRuntimeInfoTable(SystemTableBase):
                                         "uptime"],
                             "memtable": ["entries", "memory_free", "memory_total", "memory_used"]}
 
+        # ensure uptime > 0
+        sleep(1)
+
         with self.patient_cql_connection(node) as session:
             logger.info("Getting table content of %s.%s on node %s...", self.KEYSPACE_NAME, self.TABLE_NAME,
                         node.address())
@@ -745,6 +748,7 @@ class TestRuntimeInfoTable(SystemTableBase):
 
         logger.info("Verifying the content of %s.%s...", self.KEYSPACE_NAME, self.TABLE_NAME)
         for row in table_content:
+            logger.debug(f"group='{row.group}' item='{row.item}' value='{row.value}'")
             table_content_dict.setdefault(row.group, []).append(row.item)
             if row.item == "gossip_active":
                 assert row.value == "true", f"The value='{row.value}' is unexpected for item='{row.item}'!"
