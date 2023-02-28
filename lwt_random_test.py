@@ -68,7 +68,7 @@ class TestRandomPaxos(Tester):
             action_count=5,
             initial_node_count=2,
             min_node_count=2,
-            max_node_count=7,
+            max_node_count=7 if self.cluster.scylla_mode != "debug" else 4,
             sleep_time=10,
             loader=IntKeyLoader(
                 consistency_level=ConsistencyLevel.QUORUM,
@@ -114,7 +114,7 @@ class TestRandomPaxos(Tester):
             action_count=action_count,
             initial_node_count=initial_node_count,
             min_node_count=2,
-            max_node_count=7,
+            max_node_count=7 if self.cluster.scylla_mode != "debug" else 4,
             sleep_time=10,
             loader=IntKeyLoader(
                 # Variate consistency level in order to see if loader traffic is be processed
@@ -143,7 +143,7 @@ class TestRandomPaxos(Tester):
             action_count=5,
             initial_node_count=2,
             min_node_count=2,
-            max_node_count=7,
+            max_node_count=7 if self.cluster.scylla_mode != "debug" else 4,
             sleep_time=10,
             loader=IntKeyLoader(
                 consistency_level=ConsistencyLevel.QUORUM,
@@ -172,7 +172,7 @@ class TestRandomPaxos(Tester):
             action_count=20,
             initial_node_count=2,
             min_node_count=2,
-            max_node_count=7,
+            max_node_count=7 if self.cluster.scylla_mode != "debug" else 4,
             sleep_time=10,
             loader=IntKeyLoader(
                 consistency_level=ConsistencyLevel.QUORUM,
