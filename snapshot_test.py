@@ -427,7 +427,7 @@ class TestSnapshot(SnapshotTester):
 
         logger.info('Run stress command')
         num_keys = 1000000 if self.cluster.scylla_mode != "debug" else 10000
-        results = node1.stress(['write', f'n={num_keys}', '-rate', 'threads=10'], capture_output=True)
+        results = node1.stress(['write', f'n={num_keys}', '-rate', 'threads=10'])
         logger.info('Stress results:\n' + format_cs_output(results))
         assert_cs_success(results)
         assert node1.is_live()
