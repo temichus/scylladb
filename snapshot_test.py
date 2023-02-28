@@ -425,16 +425,24 @@ class TestSnapshot(SnapshotTester):
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
+        ks_name = 'keyspace1'
+        table_name = 'standard1'
+
         logger.info('Run stress command')
         num_keys = 1000000 if self.cluster.scylla_mode != "debug" else 10000
-        results = node1.stress(['write', f'n={num_keys}', '-rate', 'threads=10'])
+        results = node1.stress(['write', f'n={num_keys}', '-rate', 'threads=10',
+                               '-schema', 'compaction(strategy=SizeTieredCompactionStrategy,enabled=0)'])
         logger.info('Stress results:\n' + format_cs_output(results))
         assert_cs_success(results)
         assert node1.is_live()
 
         compaction_thread = Thread(target=run_compaction, args=(node1, ))
         compaction_thread.start()
-        time.sleep(0.5)
+
+        logger.debug("Waiting for compaction to start")
+        node1.watch_log_for(f'User initiated compaction started on behalf of {ks_name}.{table_name}')
+        time.sleep(0.1)
+
         logger.info('Create snapshot right after start')
         result, errors = node1.nodetool('snapshot')
         logger.info(result + errors)
@@ -442,7 +450,9 @@ class TestSnapshot(SnapshotTester):
         # Check that no other errors occured during snapshot command
         assert not errors, "Some errors in creating snapshot: %s" % errors
 
+        logger.debug("Waiting for compaction to complete")
         compaction_thread.join()
+        node1.wait_for_compactions()
 
     def test_cleaning_snapshot_created_by_ks(self):
         self.cleaning_snapshot_by_cf(snapshot_by_multiple_cf=False)
