@@ -240,10 +240,9 @@ class TestMaterializedViews(CommonUtils):
 
         node1 = self.cluster.nodelist()[0]
         n = 10000
-        results = node1.stress(stress_options=['write', 'cl=QUORUM', 'n={}'.format(n),
+        results = node1.stress(stress_options=['write', 'cl=QUORUM', f'n={n}',
                                                "-schema replication(factor=3)", "-mode cql3 native",
-                                               "-rate threads=10", "-pop seq=1..{}".format(n)],
-                               capture_output=True)
+                                               "-rate threads=10", f"-pop seq=1..{n}"])
         logger.debug(format_cs_output(results))
         assert_cs_success(results)
 
