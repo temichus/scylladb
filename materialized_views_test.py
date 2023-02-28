@@ -257,10 +257,10 @@ class TestMaterializedViews(CommonUtils):
 
         proc_functions = [
             {'func': node1.stress,
-             'args': [['user', 'profile={}'.format(mv_profile), 'cl=ONE', 'duration={}'.format(duration),
+             'args': [['user', f'profile={mv_profile}', 'no-warmup', 'cl=ONE', f'duration={duration}',
                        'ops(insert=1,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'], True]},
             {'func': node1.stress,
-             'args': [['mixed', "cl=ONE", "duration={}".format(duration), "-schema replication(factor=3)",
+             'args': [['mixed', "cl=ONE", f"duration={duration}", "-schema replication(factor=3)",
                        "-mode cql3 native", "-rate threads=10", f"-pop dist=UNIFORM(1..{n})", "-log interval=5"], True]},
             {'func': self._node_action_with_delay, 'args': (node_action, nodes_to_start[0]), 'kwargs': {
                 'delay': delay, 'other_nodes': other_nodes}}
@@ -293,7 +293,7 @@ class TestMaterializedViews(CommonUtils):
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_multidc_profile.yaml'))
 
         node1_dc1 = [node for node in self.cluster.nodelist() if node.data_center == 'dc1'][0]
-        proc_functions = [{'func': node1_dc1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM',
+        proc_functions = [{'func': node1_dc1.stress, 'args': [['user', f'profile={mv_profile}', 'no-warmup', 'cl=QUORUM',
                                                                'duration=2m', 'ops(insert=3,read1=1,read2=1,read3=1)',
                                                                '-mode cql3  native', '-rate threads=10'
                                                                ], True]},
@@ -324,7 +324,7 @@ class TestMaterializedViews(CommonUtils):
         mv_profile = os.path.abspath(os.path.join("test_data", 'cassandra-mv-profile', 'cs_mv_profile.yaml'))
 
         node1 = self.cluster.nodelist()[0]
-        proc_functions = [{'func': node1.stress, 'args': [['user', 'profile={}'.format(mv_profile), 'cl=QUORUM',
+        proc_functions = [{'func': node1.stress, 'args': [['user', f'profile={mv_profile}', 'no-warmup', 'cl=QUORUM',
                                                            'duration=1m', 'ops(insert=3,read1=1,read2=1,read3=1)',
                                                            '-mode cql3  native', '-rate threads=10'
                                                            ], True]},
