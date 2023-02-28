@@ -261,7 +261,7 @@ class TestMaterializedViews(CommonUtils):
                        'ops(insert=1,read1=1,read2=1,read3=1)', '-mode cql3  native', '-rate threads=10'], True]},
             {'func': node1.stress,
              'args': [['mixed', "cl=ONE", "duration={}".format(duration), "-schema replication(factor=3)",
-                       "-mode cql3 native", "-rate threads=10", "-pop seq=1..{}".format(n), "-log interval=5"], True]},
+                       "-mode cql3 native", "-rate threads=10", f"-pop dist=UNIFORM(1..{n})", "-log interval=5"], True]},
             {'func': self._node_action_with_delay, 'args': (node_action, nodes_to_start[0]), 'kwargs': {
                 'delay': delay, 'other_nodes': other_nodes}}
         ]
