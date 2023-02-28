@@ -402,7 +402,6 @@ class TestMaterializedViews(CommonUtils):
         delta = time.time() - start
         logger.debug(f"Truncating table '{ks}.{table}' done in {delta:.1f} seconds")
 
-    @pytest.mark.timeout(3500)
     def test_add_dc_during_mv_insert(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during inserts into base
@@ -472,6 +471,9 @@ class TestMaterializedViews(CommonUtils):
                                  groupby_column2=tm.column_names_list[-1],
                                  restrict_column1=list(mv.mv_where_restriction.keys())[0],
                                  restrict_value1=mv_restrict_value)
+
+        if self.debug_mode:
+            more_inserts //= 10
 
         proc_functions = [{'func': self._add_few_nodes, 'args': (2, 'dc2')},
                           {'func': self.add_mv_records if change == 'insert' else self._multiple_int_updates,
