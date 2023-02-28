@@ -402,7 +402,6 @@ class TestMaterializedViews(CommonUtils):
         delta = time.time() - start
         logger.debug(f"Truncating table '{ks}.{table}' done in {delta:.1f} seconds")
 
-    @pytest.mark.require('#5459')
     @pytest.mark.timeout(3500)
     def test_add_dc_during_mv_insert(self):
         """ Test expand cluster - add new DC during MV inserts
