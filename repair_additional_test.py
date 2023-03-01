@@ -51,19 +51,28 @@ class RepairAdditionalBase(Tester):
         if missings is None:
             missings = []
 
+        logger.debug(f"check_rows_on_node[{node_to_check.name}]: Stopping cluster and restarting node")
+
         # restarting node_to_check would run
         # reshape compaction, if needed post repair.
         self.cluster.stop()
         node_to_check.start()
         cs = self.patient_cql_cluster_session(node_to_check, 'ks', exclusive=True, consistency_level=consistency_level)
         session = cs.session
+        logger.debug(f"check_rows_on_node[{node_to_check.name}]: Querying data, expected to get {rows} rows")
         query = SimpleStatement("SELECT * FROM cf LIMIT %d" % (rows * 2), consistency_level=consistency_level)
         result = list(session.execute(query))
         assert len(result) == rows, len(result)
 
+        if found:
+            logger.debug(
+                f"check_rows_on_node[{node_to_check.name}]: Verifying {len(found)} keys that must exist: [{found[0]}..{found[-1]}]")
         for k in found:
             query_c1c2(session, k, consistency_level)
 
+        if missings:
+            logger.debug(
+                f"check_rows_on_node[{node_to_check.name}]: Verifying {len(missings)} keys that must not exist: [{missings[0]}..{missings[-1]}]")
         for k in missings:
             query = SimpleStatement("SELECT c1, c2 FROM cf WHERE key='k%d'" % k, consistency_level=consistency_level)
             res = list(session.execute(query))
