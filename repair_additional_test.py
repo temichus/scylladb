@@ -1011,21 +1011,32 @@ class RepairAdditionalBase(Tester):
         # create a keyspace ks with RF=2, and a table cf.
         # Hinted handoff and read repair are disabled so they don't fix the
         # problems which repair is supposed to fix.
-        logger.debug("Starting 6 nodes...")
+        num_dcs = 3 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != "debug" else 2
+        num_nodes_per_dc = 2
+        num_nodes = num_dcs * num_nodes_per_dc
+        replication_opts = dict()
+        for i in range(num_dcs):
+            replication_opts[f"dc{i+1}"] = num_nodes_per_dc
+        logger.debug(f"Starting {num_nodes} nodes in {num_dcs} data centers as: {replication_opts}...")
         self.cluster.set_configuration_options(values=self.default_config_options())
-        self.cluster.populate([2, 2, 2]).start(wait_for_binary_proto=True, wait_other_notice=True)
-        node1_1, node1_2, node2_1, node2_2, node3_1, node3_2 = self.cluster.nodelist()
-        with self.patient_cql_cluster_session(node1_1) as session:
-            create_ks(session, 'ks', {'dc1': 2, 'dc2': 2, 'dc3': 2})
+        self.cluster.populate([num_nodes_per_dc] * num_dcs).start(wait_for_binary_proto=True, wait_other_notice=True)
+        nodes = [[]] * num_dcs
+        for i in range(num_dcs * num_nodes_per_dc):
+            nodes[i // num_nodes_per_dc].append(self.cluster.nodelist()[i])
+        node1_1 = nodes[0][0]
+        node1_2 = nodes[0][1]
+        with self.patient_cql_cluster_session(nodes[0][0]) as session:
+            create_ks(session, 'ks', replication_opts)
             create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        num_keys = 3000
+        num_keys = 3000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != "debug" else 1000
 
         # Insert 1000 keys *only* on node 1, another 1000 keys *only* on node 2
         # both in the first data center. The other data centers will be
         # completely missing this data:
         logger.debug("Adding data only on node 1...")
-        self.cluster.stop_nodes([node1_2, node2_1, node2_2, node3_1, node3_2], wait_other_notice=True)
+        nodes_to_stop = [n for n in self.cluster.nodelist() if n != node1_1]
+        self.cluster.stop_nodes(nodes_to_stop, wait_other_notice=True)
         with self.patient_cql_cluster_session(node1_1, 'ks', exclusive=True, consistency_level=ConsistencyLevel.LOCAL_ONE) as session1:
             insert_c1c2(session1, keys=range(1 * num_keys, 2 * num_keys), consistency=ConsistencyLevel.LOCAL_ONE)
         self.cluster.flush()
@@ -2774,7 +2785,6 @@ class TestRepairAdditional(RepairAdditionalBase):
         return self._repair_option_pr_dc_host_test()
 
     @pytest.mark.dtest_debug
-    @pytest.mark.timeout(3600)
     def test_repair_option_pr_multi_dc(self):
         return self._repair_option_pr_multi_dc_test()
 
