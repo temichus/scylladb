@@ -1606,9 +1606,10 @@ class RepairAdditionalBase(Tester):
         session = self.patient_cql_connection(node1, 'ks')
         while not thread1.done():
             prev_count = count
-            add_keys = num_keys // 10
+            add_keys = num_keys // 10 if isinstance(self.cluster,
+                                                    ScyllaCluster) and self.cluster.scylla_mode != "debug" else 1
             count = count + add_keys
-            logger.debug(f"Inserting {add_keys} keys")
+            logger.debug(f"Inserting {add_keys} key(s)")
             insert_c1c2(session, keys=range(prev_count, count), consistency=ConsistencyLevel.TWO)
         logger.debug("wrote %d partitions in parallel with repair" % (count - original_count))
         thread1.result()
