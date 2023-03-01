@@ -2508,13 +2508,48 @@ class TestStopNodeEarly(Tester):
 @pytest.mark.dtest_heavy
 class TestLargeScaleCluster(Tester):
 
-    def add_multi_nodes(self, starting_size=3, node_count=10, rf=1, timeout=120):
+    @pytest.mark.timeout(4200)
+    def test_add_many_nodes_under_load(self):
         """
-        1. Create a cluster with 3 nodes and rf=1, insert data
-        2. In a loop add new nodes
-        3. Check that all data exists
+        Test large scale cluster (50 nodes cluster, or 12 in debug mode).
+        Cluster starts with a starting_size=3 and grow to node_count=50 during a c-s write in the background (low load)
+        and c-s read after adding all nodes to make sure all data was written successfully.
+        In addition, while adding each node inserting 100 keys and verifying that all keys were written.
+        E.Result: All nodes were added and c-s read successfully read all keys
         """
+
         cluster = self.cluster
+        debug_mode = isinstance(cluster, ScyllaCluster) and cluster.scylla_mode == "debug"
+        node_count = 40 if not debug_mode else 10
+        starting_size = 3
+        rf = 1
+
+        logger.info(f"Test adding {node_count} nodes under load: starting_size={starting_size} rf={rf}")
+
+        timeout = self.cql_timeout(120)
+
+        # Disable hinted handoff and set batch commit log so this doesn't
+        # interfere with the test (this must be after the populate)
+        config_options = {
+            'hinted_handoff_enabled': False,
+            'enable_sstable_key_validation': True,
+            'range_request_timeout_in_ms': timeout * 1000,
+        }
+        cluster.set_configuration_options(
+            values=config_options, batch_commitlog=True)
+        cluster.populate(starting_size).start()
+        node2 = cluster.nodelist()[1]
+
+        n = '300000' if not debug_mode else 60000
+
+        def run():
+            logger.debug(f"Stress: write {n} keys: starting")
+            node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
+                          '-pop seq=1..%s' % n, '-rate threads=2 limit=100/s'])
+            logger.debug(f"Stress: write {n} keys: done")
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        t = executor.submit(run)
 
         node1 = cluster.nodelist()[0]
 
@@ -2539,43 +2574,8 @@ class TestLargeScaleCluster(Tester):
             assert len(result) == i * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" % \
                 (len(cluster.nodelist()), i * 100 + 1000, len(result))
 
-    @pytest.mark.timeout(4200)
-    def test_add_50_nodes(self):
-        """
-        Test large scale cluster (50 nodes cluster).
-        Cluster starts with a starting_size=3 and grow to node_count=50 during a c-s write in the background (low load)
-        and c-s read after adding all nodes to make sure all data was written successfully.
-        In addition, while adding each node inserting 100 keys and verifying that all keys were written.
-        E.Result: All nodes (50) were added and c-s read successfully read all keys (n=300,000).
-        """
-        starting_size = 3
-        cluster = self.cluster
-
-        timeout = self.cql_timeout(120)
-
-        # Disable hinted handoff and set batch commit log so this doesn't
-        # interfere with the test (this must be after the populate)
-        config_options = {
-            'hinted_handoff_enabled': False,
-            'enable_sstable_key_validation': True,
-            'range_request_timeout_in_ms': timeout * 1000,
-        }
-        cluster.set_configuration_options(
-            values=config_options, batch_commitlog=True)
-        cluster.populate(starting_size).start()
-        node2 = cluster.nodelist()[1]
-
-        n = '300000' if not hasattr(
-            cluster, 'scylla_mode') or cluster.scylla_mode != 'debug' else 30000
-
-        def run():
-            node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
-                          '-pop seq=1..%s' % n, '-rate threads=2 limit=100/s'])
-
-        executor = ThreadPoolExecutor(max_workers=1)
-        t = executor.submit(run)
-
-        self.add_multi_nodes(starting_size, node_count=50, rf=1, timeout=timeout)
         t.result()
 
+        logger.debug(f"Stress: read {n} keys: starting")
         node2.stress(['read', 'cl=ONE', 'n=%s' % n, 'no-warmup', '-pop seq=1..%s' % n, '-rate threads=20'])
+        logger.debug(f"Stress: read {n} keys: done")
