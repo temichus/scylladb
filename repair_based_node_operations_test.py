@@ -154,6 +154,9 @@ class RepairBasedNodeOperationsScenarios:
         remove_node = self.tester.cluster.nodelist()[-1]
         remove_node_host_id = remove_node.hostid()
         logger.debug(f"Stopping node {remove_node.name} (host id {remove_node_host_id})")
+
+        marks = [(node, node.mark_log())
+                 for node in self.tester.cluster.nodelist() if node.is_live() and node != remove_node]
         remove_node.stop(gently=False, wait_other_notice=wait_stop)
         logger.debug(f"Remove node {remove_node.name} (host id {remove_node_host_id})")
         if wait_stop:
@@ -167,6 +170,11 @@ class RepairBasedNodeOperationsScenarios:
                     raise nodetool_exc
 
             logger.debug(f"Nodetool removenode failed as expected: {nodetool_exc}")
+            logger.debug(f"Waiting for all node to see {remove_node} as down")
+            for node, mark in marks:
+                node.watch_log_for_death(remove_node, from_mark=mark)
+            logger.debug(f"Restarting {remove_node}")
+            remove_node.start()
 
         return remove_node
 
