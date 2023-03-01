@@ -760,7 +760,18 @@ class TestRuntimeInfoTable(SystemTableBase):
                 assert int(row.value.replace(" seconds", "")) > 0, "Uptime for a node should be more than 0!"
             elif row.group == "memory" and row.item == "total":
                 if node.scylla_mode() != 'debug':
-                    assert int(row.value) == node.memory(), f"Unexpected memory value: {row.value}"
+                    total_memory = int(row.value)
+                    # see also seastar/src/core/resource.cc: allocate(configuration&)
+                    memory_alignment = 2 << 20
+                    # Seastar always aligns the memory allocated for each shard to
+                    # memory_alignment to the first aligned size smaller than the
+                    # allocated size. so, if "node.memory() / node.smp()" is not aligned,
+                    # the memory allocated for each shard would be smaller than this size.
+                    # hence the total size of memory reported by Scylla would be smaller
+                    # than the specified total memory size.
+                    min_size = node.memory() - node.smp() * memory_alignment
+                    assert min_size < total_memory <= node.memory(),\
+                        f"Unexpected memory value: {row.value}"
             else:
                 assert self.is_number(value=row.value),\
                     f"The type of value='{row.value}' for item='{row.item}' is not number (integer or float)!"
