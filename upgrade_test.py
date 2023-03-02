@@ -24,10 +24,10 @@ from tools.data import simulate_write_process_in_minutes
 
 logger = logging.getLogger(__name__)
 
-upgrade_matrix_full_path = ['release:4.0', 'release:4.1', 'release:4.2', 'release:4.3', 'release:4.4', 'release:4.5']
-upgrade_matrix_from_last_release_version = ['release:4.6']
-upgrade_matrix_from_last_enterprise_release_version = ['release:2021.1']
-upgrade_matrix_enterprise_full_path = ['release:2020.1', 'release:2021.1']
+upgrade_matrix_full_path = ['release:4.6', 'release:5.0', 'release:5.1']
+upgrade_matrix_from_last_release_version = ['release:5.1']
+upgrade_matrix_from_last_enterprise_release_version = ['release:2022.2']
+upgrade_matrix_enterprise_full_path = ['release:2021.1', 'release:2022.1', 'release:2022.2']
 upgrade_matrix_for_raft_experimental = ['release:4.6']
 
 
