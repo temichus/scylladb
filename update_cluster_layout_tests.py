@@ -2252,7 +2252,8 @@ class TestUpdateClusterLayout(Tester):
 
         logger.info("decommission node3")
         node3.start(wait_for_binary_proto=False, wait_other_notice=False)
-        retry_till_success(node3.decommission, timeout=120)
+        timeout = self.cql_timeout(120)
+        retry_till_success(node3.decommission, timeout=timeout)
 
         for node in cluster.nodelist():
             node.nodetool('gossipinfo', capture_output=False)
