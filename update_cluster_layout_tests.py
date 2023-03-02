@@ -23,10 +23,10 @@ from ccmlib.node import TimeoutError
 
 from tools.assertions import assert_invalid
 
-from dtest_class import Tester, create_ks, create_cf, get_ip_from_node, retry_till_success
+from dtest_class import Tester, create_ks, create_cf, get_ip_from_node, retry_till_success, wait_for
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, query_c1c2_concurrent, insert_c1cn
 from tools.cluster import new_node
-from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status
+from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status, nodetool_gossipinfo
 from tools.data import rows_to_list
 from iptables import IPTable, IPTableRule
 
@@ -2245,8 +2245,8 @@ class TestUpdateClusterLayout(Tester):
         node3.stop(gently=True)
 
         logger.info("replace node3 address")
-        ip_prefix = cluster.get_ipprefix()
-        ip3 = f'{ip_prefix}33'
+        old_ip3 = node3.address()
+        ip3 = f'{old_ip3}3'
         node3.set_configuration_options(values={'listen_address': ip3, 'rpc_address': ip3, 'api_address': ip3})
         node3.network_interfaces = {k: (ip3, v[1]) for k, v in node3.network_interfaces.items()}
 
@@ -2255,8 +2255,18 @@ class TestUpdateClusterLayout(Tester):
         timeout = self.cql_timeout(120)
         retry_till_success(node3.decommission, timeout=timeout)
 
-        for node in cluster.nodelist():
-            node.nodetool('gossipinfo', capture_output=False)
+        def is_shutdown(endpoint=old_ip3):
+            found = False
+            for node in cluster.nodelist():
+                gs = nodetool_gossipinfo(node)
+                if endpoint in gs:
+                    logger.debug(gs[endpoint])
+                    if not "shutdown" in gs[endpoint]['STATUS']:
+                        found |= True
+            return not found
+
+        logger.info(f"Waiting for {old_ip3} gossip status=shutdown")
+        wait_for(is_shutdown, step=10, timeout=timeout)
 
         logger.info("add new node4")
         node4 = cluster.new_node(4)
