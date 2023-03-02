@@ -511,7 +511,7 @@ class TestUpdateClusterLayout(Tester):
             new_node.watch_log_for([
                 "Starting to bootstrap",
                 "Beginning stream session|sync data for keyspace=ks, status=started",
-                "Streaming plan for Bootstrap-ks-index-2 succeeded|Repair 100 out of.*keyspace=ks,",
+                "Streaming plan for Bootstrap-ks-index-2 succeeded|repair.*: completed successfully, keyspace=ks$",
             ])
             logger.debug("Stop Node %d" % i)
             new_node.stop(gently=False, wait_other_notice=True)
@@ -600,7 +600,7 @@ class TestUpdateClusterLayout(Tester):
         a_new_node.watch_log_for([
             "Starting to bootstrap",
             "Beginning stream session|sync data for keyspace=ks, status=started",
-            "Streaming plan for Bootstrap-ks-index-2 succeeded|Repair 100 out of.*keyspace=ks,",
+            "Streaming plan for Bootstrap-ks-index-2 succeeded|repair.*: completed successfully, keyspace=ks",
         ])
         logger.debug("Stop Node")
         a_new_node.stop(gently=False, wait_other_notice=True)
