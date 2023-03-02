@@ -55,3 +55,41 @@ def nodetool_status(node, keyspace=""):
     # replace host_id with 'host id' so user of this function doesn't need to change
     res["nodes"] = [{k.replace('_', ' '): v for k, v in s.groupdict().items()} for s in m]
     return res
+
+
+def nodetool_gossipinfo(node):
+    """
+    Parse gossipinfo output and put it into a python dict.
+
+    Trailing slash on node ips is removed.
+
+    :param output: 'nodetool gossip' stdout
+    :returns: Dict with nodetool info. Example follows.
+    {'127.0.0.1': {'DC': 'datacenter1',
+                    'HOST_ID': 'bb821819-9049-4929-b7cc-7b2edf1eec10',
+                    'LOAD': '128982',
+                    'NET_VERSION': '0',
+                    'RACK': 'rack1',
+                    'RELEASE_VERSION': '2.1.8',
+                    'RPC_ADDRESS': '127.0.0.1',
+                    'SCHEMA': '2576e940-0936-3ff6-a12c-9c4ed9571175',
+                    'STATUS': 'NORMAL,996695790724469087',
+                    'generation': '1457611493',
+                    'heartbeat': '118',
+                    'X1': 'RANGE_TOMBSTONES,LARGE_PARTITIONS,COUNTERS',
+                    'X2': 'system_traces.sessions_time_idx:0.000000;system_trac..'}}
+    """
+    output, error = node.nodetool('gossipinfo', capture_output=True)
+    assert not error
+    gossipinfo = {}
+    current_node = None
+    for line in output.splitlines():
+        line = line.strip()
+        try:
+            if current_node and current_node not in gossipinfo:
+                gossipinfo[current_node] = {}
+            key, value = line.split(':', 1)
+            gossipinfo[current_node].update({key: value})
+        except:
+            current_node = line[1:]
+    return gossipinfo

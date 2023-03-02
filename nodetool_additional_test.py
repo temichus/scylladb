@@ -29,6 +29,7 @@ from tools.data import rows_to_list, insert_c1c2, insert_c1c2_no_prepared, get_n
 from tools.assertions import PytestRegex
 from tools.misc import ImmutableMapping
 from tools.files import copy_files_to, get_node_cf_dir
+from tools.status import nodetool_gossipinfo
 
 logger = logging.getLogger(__name__)
 
@@ -1190,47 +1191,11 @@ class TestNodetool(Tester):
         endpoint = self.getendpoints(node, "ks1", "tbl1", "4")
         assert endpoint.startswith("127.0."), "Invalid endpoint returned '" + endpoint + "'"
 
-    def _get_gossipinfo(self, output):
-        """
-        Parse gossipinfo output and put it into a python dict.
-
-        Trailing slash on node ips is removed.
-
-        :param output: 'nodetool gossip' stdout
-        :returns: Dict with nodetool info. Example follows.
-        {'127.0.0.1': {'DC': 'datacenter1',
-                       'HOST_ID': 'bb821819-9049-4929-b7cc-7b2edf1eec10',
-                       'LOAD': '128982',
-                       'NET_VERSION': '0',
-                       'RACK': 'rack1',
-                       'RELEASE_VERSION': '2.1.8',
-                       'RPC_ADDRESS': '127.0.0.1',
-                       'SCHEMA': '2576e940-0936-3ff6-a12c-9c4ed9571175',
-                       'STATUS': 'NORMAL,996695790724469087',
-                       'generation': '1457611493',
-                       'heartbeat': '118',
-                       'X1': 'RANGE_TOMBSTONES,LARGE_PARTITIONS,COUNTERS',
-                       'X2': 'system_traces.sessions_time_idx:0.000000;system_trac..'}}
-        """
-        gossipinfo = {}
-        current_node = None
-        for line in output.splitlines():
-            line = line.strip()
-            try:
-                if current_node and current_node not in gossipinfo:
-                    gossipinfo[current_node] = {}
-                key, value = line.split(':', 1)
-                gossipinfo[current_node].update({key: value})
-            except:
-                current_node = line[1:]
-        return gossipinfo
-
     def test_gossipinfo(self):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
-        gi_output = node.nodetool('gossipinfo', True)[0]
-        gi = self._get_gossipinfo(gi_output)
+        gi = nodetool_gossipinfo(node)
 
         assert 2 == len(gi), "wrong number of nodes"
         for k in gi:
