@@ -1,22 +1,24 @@
 import logging
 
+import pytest
 from cassandra.query import SimpleStatement
 from cassandra.cluster import ConsistencyLevel
 
 
 from ccmlib.scylla_cluster import ScyllaNode
 
-from upgrade_test import UpgradeTester
+from upgrade_test import UpgradeTester, upgrade_matrix_from_last_release_version
 from tools.assertions import assert_all, assert_row_count, assert_one
 
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.dtest_full
 class TestSchemaChanges(UpgradeTester):
 
     __test__ = True
 
-    upgrade_path = ['release:4.3']
+    upgrade_path = upgrade_matrix_from_last_release_version
     init_version = upgrade_path[0]
     ks = "test_upgrades"
     cf = "cf"
