@@ -458,6 +458,9 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         failure = regex.search(str(output))
         assert failure is None, "Error during stress while bootstrapping"
 
+        # Avoid reporting bootstrap errors in logs
+        node3.stop(gently=False)
+
     def test_shutdown_wiped_node_cannot_join(self):
         self._wiped_node_cannot_join_test(gently=True)
 
