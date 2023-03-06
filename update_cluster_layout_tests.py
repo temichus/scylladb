@@ -356,6 +356,7 @@ class TestUpdateClusterLayout(Tester):
             r'Abort bootstrap operation',
             r'Startup failed: seastar::rpc::closed_error',
             r'Startup failed: streaming::stream_exception \(Stream failed\)',
+            r'bootstrap.* failed.* std::runtime_error .*rpc::closed_error',
         ]
 
         sleep_time = random.random() * 0.25
