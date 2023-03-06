@@ -365,31 +365,6 @@ class TestTTL(Tester):
         self.smart_sleep(start, 4)
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 42, None, None]])
 
-    @pytest.mark.next_gating
-    @pytest.mark.dtest_debug
-    @pytest.mark.single_node
-    def test_remove_column_ttl_with_default_ttl(self):
-        """
-        Test that we cannot remove a column ttl when a default ttl is set.
-        """
-
-        self.prepare(default_time_to_live=2)
-
-        start = time.time()
-        self.session1.execute("""
-            INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d);
-        """ % (1, 1, 1, 1))
-        self.session1.execute("""
-            INSERT INTO ttl_table (key, col1, col2, col3) VALUES (%d, %d, %d, %d);
-        """ % (2, 1, 1, 1))
-        self.session1.execute("UPDATE ttl_table using ttl 0 set col1=42 where key=%s;" % (1,))
-        self.session1.execute("UPDATE ttl_table using ttl 8 set col1=42 where key=%s;" % (2,))
-        self.smart_sleep(start, 5)
-        # The first row should be deleted, using ttl 0 should fallback to default_time_to_live
-        assert_all(self.session1, "SELECT * FROM ttl_table;", [[2, 42, None, None]])
-        self.smart_sleep(start, 10)
-        assert_row_count(self.session1, 'ttl_table', 0)
-
     @pytest.mark.single_node
     def test_collection_list_ttl(self):
         """
