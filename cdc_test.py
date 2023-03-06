@@ -30,7 +30,8 @@ from dtest_class import Tester, wait_for
 from dtest_setup import DTestSetup
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
-from tools.cdc_utils import CDC_GENERATIONS_TABLE, CDC_STREAMS_TABLE, CDC_TIMESTAMPS_TABLE
+from tools.cdc_utils import CDC_GENERATIONS_TABLE, CDC_STREAMS_TABLE, CDC_TIMESTAMPS_TABLE, \
+    consistency_for_cdc_streams_query
 
 TOKENS_PER_NODE = 256
 
@@ -103,7 +104,8 @@ class CDCInitializeHelper:  # pylint: disable=no-member
         return GenerationId(time=rs[0].streams_timestamp, uuid=rs[0].uuid)
 
     def get_cdc_description_rows(self, session):
-        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}", consistency_level=ConsistencyLevel.QUORUM)
+        cl = consistency_for_cdc_streams_query(len(self.cluster.nodes))
+        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}", consistency_level=cl)
         return session.execute(query)
 
     def get_last_generation_timestamp(self, session):
@@ -119,18 +121,19 @@ class CDCInitializeHelper:  # pylint: disable=no-member
         return last_timestamp
 
     def get_all_cdc_description_rows(self, session):
-        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}",
-                                consistency_level=ConsistencyLevel.QUORUM)
+        cl = consistency_for_cdc_streams_query(len(self.cluster.nodes))
+        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}", consistency_level=cl)
         return session.execute(query)
 
     def get_single_cdc_description_rows(self, session, gen_ts):
         query = session.prepare(f"SELECT * FROM {CDC_STREAMS_TABLE} WHERE time = ?")
-        query.consistency_level = ConsistencyLevel.QUORUM
+        query.consistency_level = consistency_for_cdc_streams_query(len(self.cluster.nodes))
         return session.execute(query, (gen_ts,))
 
     def get_cdc_generation_timestamps(self, session):
+        cl = consistency_for_cdc_streams_query(len(self.cluster.nodes))
         query = SimpleStatement(f"SELECT time FROM {CDC_TIMESTAMPS_TABLE} WHERE key = 'timestamps'",
-                                consistency_level=ConsistencyLevel.QUORUM)
+                                consistency_level=cl)
         return session.execute(query)
 
     def wait_for_metadata_update(self, session, cluster_size):

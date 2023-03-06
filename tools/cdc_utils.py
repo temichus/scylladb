@@ -23,6 +23,13 @@ CDC_TIMESTAMPS_TABLE = 'system_distributed.cdc_generation_timestamps'
 CDC_TESTER_TYPE = Union[Tester, "CDCInitializeHelper"]  # pylint: disable=unsubscriptable-object)
 
 
+def consistency_for_cdc_streams_query(current_cluster_size: int) -> ConsistencyLevel:
+    if current_cluster_size == 1:
+        return ConsistencyLevel.ONE
+    else:
+        return ConsistencyLevel.QUORUM
+
+
 class CdcLogOperations(IntEnum):
     PREIMAGE = 0
     UPDATE = 1
@@ -64,8 +71,9 @@ class CDCInitializeHelper:
         return last_timestamp
 
     def get_cdc_description_rows(self: CDC_TESTER_TYPE, session):
-        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}",
-                                consistency_level=ConsistencyLevel.QUORUM)
+        cluster = self.cluster  # pylint: disable=no-member
+        cl = consistency_for_cdc_streams_query(len(cluster.nodes))
+        query = SimpleStatement(f"SELECT * FROM {CDC_STREAMS_TABLE}", consistency_level=cl)
         return session.execute(query)
 
     def wait_for_metadata_update(self: CDC_TESTER_TYPE, session, cluster_size):
