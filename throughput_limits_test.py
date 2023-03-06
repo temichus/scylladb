@@ -30,7 +30,8 @@ class TestStreamingLimitThroughput(ThroughputLimitTester):
     def test_limit_streaming_throughput(self):
         """Verifies streaming throughput can be limited using configuration option."""
         # Create cluster and populate data for streaming (with setting stream throughput limit)
-        node1 = self.prepare(1, configuration_options={'stream_io_throughput_mb_per_sec': 1})
+        node1 = self.prepare(1, configuration_options={
+                             'stream_io_throughput_mb_per_sec': 1, 'enable_repair_based_node_ops': "false"})
         node1.stress(['write', 'n=3000', 'no-warmup', '-schema', 'replication(factor=1)', '-rate', 'threads=1',
                       "-col", "n=FIXED(1)", "size=FIXED(16384)", "-errors", "ignore"])
         node1.flush()
