@@ -1393,6 +1393,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         msg = f"Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}"
         shard_count = len(node2.grep_log(msg))
+        assert shard_count % 2 == 0, f"'{msg}' should be logged twice on each shard"
+        shard_count = shard_count / 2
         assert shard_count <= node2._smp, f"Found {shard_count} occurences of '{msg}' in the log, expected up to {node2._smp}"
 
         # After streaming the new node should also have at max one window per sstable.
