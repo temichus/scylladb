@@ -380,6 +380,7 @@ class TestUpgradeClusterWithEnableDisableTWCSQueries(BaseTests):
         pass
 
 
+@pytest.mark.dtest_full
 class TestUpgradeWithExperimentalRaft(BaseTests):
     __test__ = True
 
