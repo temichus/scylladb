@@ -1,6 +1,5 @@
 import copy
 from concurrent.futures.thread import ThreadPoolExecutor
-from random import randint
 from time import sleep
 import logging
 import yaml
@@ -16,10 +15,9 @@ from ccmlib.scylla_cluster import ScyllaCluster, ScyllaNode
 
 from tools.assertions import assert_all
 from tools.cluster import new_node
-from dtest_class import DtestTimeoutError, Tester, create_ks, create_cf
+from dtest_class import Tester, create_ks, create_cf
 from dtest_setup import DTestSetup
 from dtest_config import DTestConfig
-from tools.misc import seconds_to_micros
 from tools.data import simulate_write_process_in_minutes
 
 logger = logging.getLogger(__name__)
