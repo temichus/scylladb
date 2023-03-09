@@ -1,4 +1,3 @@
-import pytest
 import glob
 import os
 import shutil
@@ -11,8 +10,8 @@ import sys
 import errno
 import pprint
 import random
-from collections import OrderedDict
 from functools import partial, partialmethod
+from pathlib import Path
 
 import requests
 from cassandra.cluster import Cluster as PyCluster, default_lbp_factory
@@ -133,6 +132,10 @@ def copy_logs(request, dtest_config, directory=None, name=None, cores=None):
         else:
             dest = "{}_{}".format(n, logname)
         shutil.copyfile(log, os.path.join(logdir, dest))
+
+    jmx_core_files = sum([glob.glob(match) for match in ("core", "core.*", "hs_err_*", "replay_*")], start=[])
+    for jmx_core_file in jmx_core_files:
+        shutil.copyfile(jmx_core_file, Path(logdir) / Path(jmx_core_file).name)
 
     if hasattr(dtest_config.cluster, '_scylla_manager') and dtest_config.cluster._scylla_manager:
         log = os.path.join(dtest_config.cluster._scylla_manager._get_path(), 'scylla-manager.log')
