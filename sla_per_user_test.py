@@ -47,6 +47,7 @@ class SLATester(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
+@pytest.mark.single_node
 class TestSLA(SLATester):
     @staticmethod
     def _validate_sla(service_level: ServiceLevel):
@@ -150,6 +151,50 @@ class TestSLA(SLATester):
 
         self.validate_sl_list(session=session, expected_service_levels=[sl])
         self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl])
+
+    @pytest.mark.parametrize(argnames=["entity_class", "entity_name", "entity_pass", "entity_login"],
+                             argvalues=[
+                                 [Role, "auth_role", "password", True],
+                                 [User, "auth_user", "password", False]
+    ],
+        ids=[
+                                 "attach_to_role",
+                                 "attach_to_user",
+    ])
+    def test_sla_usage(self, entity_class, entity_name: str, entity_pass: str, entity_login: bool):
+        """
+        1. Create SL with 100 shares.
+        2. Create an entity (Role / User) with authentication
+        settings.
+        3. Attach SL to entity.
+        run quick c-s to validate the role/user can be used
+        """
+        session = self.prepare()
+
+        sl = ServiceLevel(session=session, name='sla1', shares=100)
+        entity_kwargs = {
+            "session": session,
+            "name": entity_name,
+            "password": entity_pass,
+            "superuser": True,
+        }
+
+        if entity_login:
+            entity_kwargs["login"] = entity_login
+
+        entity = entity_class(**entity_kwargs)
+        self.create_entity_with_service_level(entity=entity, service_level=sl)
+
+        self.validate_sl_list(session=session, expected_service_levels=[sl])
+        self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl])
+
+        node1 = self.cluster.nodelist()[0]
+        user = 'cassandra'
+        password = 'cassandra'
+        cmd = 'write cl=ALL n=10 -mode cql3 native user={user} password={password}'
+
+        node1.stress(cmd.format(user=user, password=password).split())
+        node1.stress(cmd.format(user=entity.name, password=entity.password).split())
 
     @pytest.mark.require('scylladb/scylla-enterprise#2163')
     def test_sla_no_shares(self):
