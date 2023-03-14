@@ -295,7 +295,7 @@ class TestRepairBasedNodeOperations(Tester):
 
     def test_enable_rbno_for_default_operation(self):
         """
-        By default, --allowed-repair-based-node-ops is set to contain "replace"
+        By default, --allowed-repair-based-node-ops is set for all node operations
 
         This test checks that if "--enable-repair-based-node-ops" is True and "--allowed-repair-based-node-ops" is not
         set, repair will run in case of "replace" operation only
@@ -305,16 +305,12 @@ class TestRepairBasedNodeOperations(Tester):
         self.prepare_schema(node=self.cluster.nodelist()[0])
 
         rbnos = RepairBasedNodeOperationsScenarios(tester=self)
-        # Change default expected behaviour according to enable-repair-based-node-ops and -allowed-repair-based-node-ops
-        for scenario in [rbnos.rebuild_scenario, rbnos.removenode_scenario,
-                         rbnos.bootstrap_scenario, rbnos.decommission_scenario]:
-            scenario.repair_on_tested_node, scenario.repair_on_all_nodes = False, False
 
         rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops, scenarios=rbnos.operations_flow)
 
     def test_enable_rbno_for_bootstrap(self):
         """
-        By default, --allowed-repair-based-node-ops is set to contain "replace"
+        By default, --allowed-repair-based-node-ops is set for all node operations
 
         This test checks that if "--enable-repair-based-node-ops" is True and "--allowed-repair-based-node-ops" is set
         to "bootstrap", repair will run in case of "bootstrap" operation only
@@ -332,14 +328,14 @@ class TestRepairBasedNodeOperations(Tester):
 
         rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops, scenarios=rbnos.operations_flow)
 
-    def test_enable_rbno_for_all_operations(self):
+    def test_disable_rbno_for_all_operations(self):
         """
-        By default, --allowed-repair-based-node-ops is set to contain "replace"
+        By default, --allowed-repair-based-node-ops is set for all node operations
 
-        This test checks that if "--enable-repair-based-node-ops" is True and "--allowed-repair-based-node-ops" is set
-         to all supported operations, repair will run during all operations
+        This test checks that if "--enable-repair-based-node-ops" is False and "--allowed-repair-based-node-ops" is set
+         to all supported operations, repair will not run during all operations
         """
-        enable_repair_based_node_ops = True
+        enable_repair_based_node_ops = False
         self.prepare_cluster(nodes=3, enable_repair_based_node_ops=enable_repair_based_node_ops,
                              allowed_repair_based_node_ops="bootstrap,replace,removenode,decommission,rebuild")
         self.prepare_schema(node=self.cluster.nodelist()[0])
