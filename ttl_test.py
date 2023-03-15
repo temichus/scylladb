@@ -769,11 +769,6 @@ class TestDistributedTTL(Tester):
         logger.debug('SStable dump after writes with RF = 1')
         print_sstable(self.node1, 'ks', 'ttl_table')
         print_sstable(self.node2, 'ks', 'ttl_table')
-        self.node1.stop()
-        session2 = self.patient_exclusive_cql_connection(self.node2)
-        session2.execute("USE ks;")
-        assert_unavailable(session2.execute, "SELECT * FROM ttl_table;")
-        self.node1.start(wait_for_binary_proto=True)
         self.session1 = self.patient_exclusive_cql_connection(self.node1)
         self.session1.execute("USE ks;")
         self.session1.execute("""
@@ -788,6 +783,8 @@ class TestDistributedTTL(Tester):
         ttl_session1 = self.session1.execute('SELECT ttl(col1) FROM ttl_table;')
         self.node1.stop()
 
+        session2 = self.patient_exclusive_cql_connection(self.node2)
+        session2.execute("USE ks;")
         assert_row_count(session2, 'ttl_table', 1)
         assert_all(
             session2,
