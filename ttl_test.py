@@ -696,18 +696,20 @@ class TestDistributedTTL(Tester):
         self.prepare(options={'shadow_round_ms': 1000})
         logger.debug("Stopping node2")
         self.node2.stop()
-        self.session1.execute("""
-            INSERT INTO ttl_table (key, col1) VALUES (1, 1) USING TTL 5;
+        short_ttl = 10
+        long_ttl = 1000
+        self.session1.execute(f"""
+            INSERT INTO ttl_table (key, col1) VALUES (1, 1) USING TTL {short_ttl};
         """)
-        self.session1.execute("""
-            INSERT INTO ttl_table (key, col1) VALUES (2, 2) USING TTL 1000;
+        self.session1.execute(f"""
+            INSERT INTO ttl_table (key, col1) VALUES (2, 2) USING TTL {long_ttl};
         """)
         assert_all(
             self.session1,
             "SELECT * FROM ttl_table;",
             [[1, 1, None, None], [2, 2, None, None]]
         )
-        time.sleep(7)
+        time.sleep(short_ttl + 2)
         logger.debug("Stopping node1")
         self.node1.stop()
         logger.debug("Restarting node2")
@@ -745,15 +747,17 @@ class TestDistributedTTL(Tester):
 
         self.prepare(jvm_args=['--logger-log-level', 'forward_service=trace',
                      '--enable-parallelized-aggregation', enable_parallized_aggregation])
+        short_ttl = 10
+        long_ttl = 1000
         self.session1.execute("""
             ALTER KEYSPACE ks WITH REPLICATION =
             {'class' : 'SimpleStrategy', 'replication_factor' : 1};
         """)
-        self.session1.execute("""
-            INSERT INTO ttl_table (key, col1) VALUES (1, 1) USING TTL 5;
+        self.session1.execute(f"""
+            INSERT INTO ttl_table (key, col1) VALUES (1, 1) USING TTL {short_ttl};
         """)
-        self.session1.execute("""
-            INSERT INTO ttl_table (key, col1) VALUES (2, 2) USING TTL 1000;
+        self.session1.execute(f"""
+            INSERT INTO ttl_table (key, col1) VALUES (2, 2) USING TTL {long_ttl};
         """)
 
         assert_all(
@@ -761,7 +765,7 @@ class TestDistributedTTL(Tester):
             "SELECT * FROM ttl_table;",
             [[1, 1, None, None], [2, 2, None, None]]
         )
-        time.sleep(7)
+        time.sleep(short_ttl + 2)
         logger.debug('SStable dump after writes with RF = 1')
         print_sstable(self.node1, 'ks', 'ttl_table')
         print_sstable(self.node2, 'ks', 'ttl_table')
