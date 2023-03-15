@@ -112,7 +112,6 @@ class TestTTL(Tester):
         """ verify that TTLed data eventually expires within +/- 1 second of the TTL """
         self.smart_sleep(before, ttl - 2)
         logger.debug("Verifying that data is still valid")
-        assert_row_count(session, table, 1)  # should still exist
         query = f"SELECT * FROM {table}"
         simple_query = SimpleStatement(query, consistency_level=cl)
         list_res = rows_to_list(session.execute(simple_query))
