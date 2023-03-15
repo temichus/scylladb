@@ -565,12 +565,13 @@ class TestTTL(Tester):
     @pytest.mark.parametrize("strategies", argvalues=(
         ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'],
         enterprise_only_param(['IncrementalCompactionStrategy'])), ids=("oss", "enterprise"))
+    @pytest.mark.single_node
     def test_overlaped_rows_ttls(self, strategies):
         """ Test when different ttls are applyed  to the same rows
             Perform the test for different compaction strategies
         """
 
-        self.prepare(nodes=4, rf=3)
+        self.prepare()
         table_name = 'ttl_table'
         for strategy in strategies:
             logger.debug('================  Run with {} ==============='.format(strategy))
