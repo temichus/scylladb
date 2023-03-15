@@ -247,7 +247,7 @@ class TestMaterializedViews(CommonUtils):
         assert_cs_success(results)
 
         self.fixture_dtest_setup.ignore_log_patterns += [
-            r'view - Error applying view update to .*: seastar::broken_promise']
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: seastar::broken_promise']
 
         other_nodes = self.cluster.nodelist()
         nodes_to_start = [other_nodes.pop(1)]
@@ -661,7 +661,7 @@ class TestMaterializedViews(CommonUtils):
         self._validate_data_in_mvs(tm=tm, session=session, table_expected_rows=prefill, mv_expected_rows=prefill,
                                    consistency_level=ConsistencyLevel.ALL)
         self.fixture_dtest_setup.ignore_log_patterns += [
-            r'Error applying view update to .*: data_dictionary::no_such_column_family']
+            r'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: data_dictionary::no_such_column_family']
 
     def test_mv_populating_from_existing_data_with_restriction(self):
         session = self.prepare(rf=3, nodes=4)
@@ -675,7 +675,7 @@ class TestMaterializedViews(CommonUtils):
         tm.prefill_table(10000, data={'int': data})
 
         self.fixture_dtest_setup.ignore_log_patterns += [
-            r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception '
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception '
             r'\(Operation failed for ks.tm_table_mv_\d+ - received 0 responses and 1 failures from 1 CL=ONE\.\)']
 
         for i in range(2, mvs + 1):
@@ -808,7 +808,7 @@ class TestMaterializedViews(CommonUtils):
 
         exclude_errors = ['migration_task - Can''t send migration request',
                           'mutation_write_timeout_exception',
-                          'Error applying view update to',
+                          '(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to',
                           'view - Failed to update materialized view bookkeeping.*seastar::no_sharded_instance_exception.*continuing anyway']
         self.check_errors_all_nodes(exclude_errors=exclude_errors, regex=True)
 
@@ -2394,7 +2394,7 @@ class TestMaterializedViews(CommonUtils):
                               "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)")
 
         self.ignore_log_patterns += [
-            r'view - Error applying view update.*no_such_column_family',
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update.*no_such_column_family',
         ]
 
         logger.debug("Waiting for view building to start.")
@@ -4307,10 +4307,10 @@ class TestInterruptBuildProcess(CommonUtils):
         logger.debug(
             f"Running resharding test from {smp_before} to {smp_after} shards: interrupt_resharding={interrupt_resharding}")
         self.ignore_log_patterns += [
-            r'view - Error applying view update to .*: exceptions::unavailable_exception',
-            r'view - Error applying view update to .*: exceptions::mutation_write_timeout_exception',
-            r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception',
-            r'view - Error applying view update to .*: data_dictionary::no_such_column_family',
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::unavailable_exception',
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_timeout_exception',
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception',
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: data_dictionary::no_such_column_family',
         ]
         if interrupt_resharding:
             self.ignore_log_patterns += [

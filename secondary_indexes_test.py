@@ -1499,9 +1499,9 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [rf'Can\'t send migration request: node {node2_ip} is down',
-                          rf'Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
-                          rf'Error applying view update to {node2_ip}.*: exceptions::mutation_write_timeout_exception \(Operation timed out for {keyspace_name}.{index_name}_index - received only 0 responses from 1 CL=ONE.\)',
-                          rf'Error applying view update to .*: exceptions::mutation_write_failure_exception \(Operation failed for {keyspace_name}.{index_name}_index - received 0 responses and 1 failures from 1 CL=ONE.\)',
+                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
+                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::mutation_write_timeout_exception \(Operation timed out for {keyspace_name}.{index_name}_index - received only 0 responses from 1 CL=ONE.\)',
+                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception \(Operation failed for {keyspace_name}.{index_name}_index - received 0 responses and 1 failures from 1 CL=ONE.\)',
                           ]
         self.ignore_log_patterns += exclude_errors
 
@@ -1584,7 +1584,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
             'Index %s is not built' % index_name
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'Error applying view update to .*: exceptions::mutation_write_failure_exception (Operation '
+                          f'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception (Operation '
                           rf'failed for {keyspace_name}\.{index_name}_index - received 0 responses and 1 failures from '
                           f'1 CL=ONE)',
                           ]
@@ -2569,7 +2569,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          rf'Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'
+                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'
                           r'\(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
                           r'Operation timed out for ks\.b_index_index - received only 0 responses from 1 CL=ONE']
         self.ignore_log_patterns += exclude_errors
