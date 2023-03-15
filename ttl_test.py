@@ -566,7 +566,7 @@ class TestTTL(Tester):
                              ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy',
                               enterprise_only_param('IncrementalCompactionStrategy')])
     @pytest.mark.single_node
-    def test_overlaped_rows_ttls(self, strategy):
+    def test_overlapped_rows_ttls(self, strategy):
         """ Test when different ttls are applyed  to the same rows
             Perform the test for different compaction strategies
         """
