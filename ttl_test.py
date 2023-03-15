@@ -779,10 +779,18 @@ class TestDistributedTTL(Tester):
         logger.debug('SStable dump after alter RF to 2 and repair')
         print_sstable(self.node1, 'ks', 'ttl_table')
         print_sstable(self.node2, 'ks', 'ttl_table')
+
+        self.node2.stop()
         ttl_start = time.time()
         ttl_session1 = self.session1.execute('SELECT ttl(col1) FROM ttl_table;')
-        self.node1.stop()
+        assert_all(
+            self.session1,
+            "SELECT * FROM ttl_table;",
+            [[2, 2, None, None]]
+        )
 
+        self.node1.stop()
+        self.node2.start()
         session2 = self.patient_exclusive_cql_connection(self.node2)
         session2.execute("USE ks;")
         assert_row_count(session2, 'ttl_table', 1)
