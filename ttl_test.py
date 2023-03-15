@@ -141,7 +141,7 @@ class TestTTL(Tester):
         logger.debug("Preparing table with default_time_to_live=1")
         self.prepare(default_time_to_live=1)
 
-        ttl = 5
+        ttl = 10
         logger.debug(f"Inserting data USING TTL {ttl}")
         before = time.time()
         self.session1.execute(f"""
@@ -157,7 +157,7 @@ class TestTTL(Tester):
 
         self.prepare()
 
-        ttl = 6
+        ttl = 10
         logger.debug(f"Inserting data USING TTL {ttl}")
         before = time.time()
         self.session1.execute(f"""
