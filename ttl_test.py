@@ -562,62 +562,61 @@ class TestTTL(Tester):
         logger.debug('{} has been finished at {}'.format(action, readble_execute_time))
         return execute_time
 
-    @pytest.mark.parametrize("strategies", argvalues=(
-        ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy'],
-        enterprise_only_param(['IncrementalCompactionStrategy'])), ids=("oss", "enterprise"))
+    @pytest.mark.parametrize("strategy",
+                             ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy',
+                              enterprise_only_param('IncrementalCompactionStrategy')])
     @pytest.mark.single_node
-    def test_overlaped_rows_ttls(self, strategies):
+    def test_overlaped_rows_ttls(self, strategy):
         """ Test when different ttls are applyed  to the same rows
             Perform the test for different compaction strategies
         """
 
         self.prepare()
         table_name = 'ttl_table'
-        for strategy in strategies:
-            logger.debug('================  Run with {} ==============='.format(strategy))
-            drop_table(session=self.session1, table_name=table_name, if_exists=True)
+        logger.debug('================  Run with {} ==============='.format(strategy))
+        drop_table(session=self.session1, table_name=table_name, if_exists=True)
 
-            self.session1.execute('CREATE TABLE %s (key int, col1 int, col2 int, col3 int, PRIMARY KEY (key, col1)) '
-                                  'WITH compaction = {\'class\': \'%s\'}' % (table_name, strategy))
+        self.session1.execute('CREATE TABLE %s (key int, col1 int, col2 int, col3 int, PRIMARY KEY (key, col1)) '
+                              'WITH compaction = {\'class\': \'%s\'}' % (table_name, strategy))
 
-            # logger.debug('Insert 20 rows with default TTL')
-            rows = 20
-            self.insert_few_rows(start=1, end=rows, table_name=table_name)
-            assert_row_count(self.session1, 'ttl_table', rows)
+        # logger.debug('Insert 20 rows with default TTL')
+        rows = 20
+        self.insert_few_rows(start=1, end=rows, table_name=table_name)
+        assert_row_count(self.session1, 'ttl_table', rows)
 
-            ttls = [13, 20, 25, 30]
-            # steps: dictionary with test steps. Keys -it's TTL value
-            # Update rows with key 5-10 with TTL 20
-            ttl = ttls[1]
-            steps = {
-                ttl: {'expected_result': [[i] for i in range(1, 21) if i not in [5, 6, 7, 8, 10]],
-                      'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=5, end_key_value=10, table_name=table_name)
+        ttls = [13, 20, 25, 30]
+        # steps: dictionary with test steps. Keys -it's TTL value
+        # Update rows with key 5-10 with TTL 20
+        ttl = ttls[1]
+        steps = {
+            ttl: {'expected_result': [[i] for i in range(1, 21) if i not in [5, 6, 7, 8, 10]],
+                  'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=5, end_key_value=10, table_name=table_name)
+                  }
+        }
+
+        # Update rows with key 9-13 with TTL 25
+        ttl = ttls[2]
+        steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i < 5 or i > 10],
+                      'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=9, end_key_value=13, table_name=table_name)
                       }
-            }
 
-            # Update rows with key 9-13 with TTL 25
-            ttl = ttls[2]
-            steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i < 5 or i > 10],
-                          'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=9, end_key_value=13, table_name=table_name)
-                          }
+        # Update rows with key 10-11 with TTL 13
+        ttl = ttls[0]
+        steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i != 10],
+                      'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=10, end_key_value=11, table_name=table_name)
+                      }
 
-            # Update rows with key 10-11 with TTL 13
-            ttl = ttls[0]
-            steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i != 10],
-                          'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=10, end_key_value=11, table_name=table_name)
-                          }
+        # Update rows with key 11-15 with TTL 30
+        ttl = ttls[3]
+        steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i < 5 or i > 15],
+                      'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=11, end_key_value=15, table_name=table_name)
+                      }
 
-            # Update rows with key 11-15 with TTL 30
-            ttl = ttls[3]
-            steps[ttl] = {'expected_result': [[i] for i in range(1, 21) if i < 5 or i > 15],
-                          'execute_time': self.execute_statement(action='INSERT', ttl=ttl, start_key_value=11, end_key_value=15, table_name=table_name)
-                          }
-
-            for ttl in ttls:
-                logger.debug('*******Assert records with TTL {}'.format(ttl))
-                self.smart_sleep_with_print(steps[ttl]['execute_time'], ttl+2)
-                assert_all(session=self.session1, query='select key from {}'.format(table_name),
-                           expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
+        for ttl in ttls:
+            logger.debug('*******Assert records with TTL {}'.format(ttl))
+            self.smart_sleep_with_print(steps[ttl]['execute_time'], ttl+2)
+            assert_all(session=self.session1, query='select key from {}'.format(table_name),
+                       expected=steps[ttl]['expected_result'], cl=ConsistencyLevel.QUORUM, ignore_order=True)
 
 
 def print_sstable(node, keyspace, table):
