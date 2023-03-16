@@ -7213,6 +7213,62 @@ class TestsCQLAdditional(Tester):
         assert rows_received < page_size, "Expected to get less rows than requested, "\
                                           f"got {rows_received} with page size of {page_size}."
 
+    @pytest.mark.single_node
+    @pytest.mark.parametrize("restricted_future_state", [False, True])
+    def test_restricted_future_timestamp(self, restricted_future_state):
+        cluster = self.prepare({"restrict_future_timestamp": restricted_future_state})
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        create_ks(session, 'ks', 1)
+        session.execute("""
+             CREATE TABLE foobar ( key bigint PRIMARY KEY , val1 text , val2 float );
+        """)
+        logger.debug("Check that timestamp less than 3 days in future always written")
+        for day in [0, 1, 2]:
+            timestamp = int((time.time() + day * 24 * 3600) * 1000000)
+            session.execute(
+                f"INSERT INTO foobar (key, val1, val2) VALUES (1, 'java1', 1.0) USING TIMESTAMP {timestamp}")
+            result = list(session.execute("""SELECT * FROM foobar"""))
+            assert len(result) == 1, "Invalid number of inserted rows"
+            result = session.execute(f"SELECT writetime(val1) FROM foobar WHERE key = 1")
+            assert [(timestamp,)] == result
+            session.execute(f"UPDATE foobar USING TIMESTAMP {timestamp + 100} SET val1 = 'test' WHERE key = 1")
+            result = session.execute(f"SELECT writetime(val1) FROM foobar WHERE key = 1")
+            assert [(timestamp + 100,)] == result
+            session.execute(f"DELETE val1 FROM foobar USING TIMESTAMP {timestamp + 1000} WHERE key = 1")
+            result = list(session.execute(f"SELECT val1 FROM foobar WHERE key = 1"))
+
+            assert result[0].val1 is None
+
+        logger.debug("Check that timestamp far in future than 3 days, written only if restrict_future_timestamp is disabled")
+        for day in [5, 10, 100, 1000]:
+            timestamp = int((time.time() + day * 24 * 3600) * 1000000)
+
+            if restricted_future_state:
+                with pytest.raises(InvalidRequest, match='into the future'):
+                    session.execute(
+                        f"INSERT INTO foobar (key, val1, val2) VALUES (1, 'java1', 1.0) USING TIMESTAMP {timestamp}")
+                session.execute(f"INSERT INTO foobar (key, val1, val2) VALUES (1, 'java1', 1.0)")
+                with pytest.raises(InvalidRequest, match='into the future'):
+                    session.execute(f"UPDATE foobar USING TIMESTAMP {timestamp} SET val1 = 'test' WHERE key = 1")
+                with pytest.raises(InvalidRequest, match='into the future'):
+                    session.execute(f"DELETE val1 FROM foobar USING TIMESTAMP {timestamp} WHERE key = 1")
+
+            else:
+                session.execute(
+                    f"INSERT INTO foobar (key, val1, val2) VALUES (1, 'java1', 1.0) USING TIMESTAMP {timestamp}")
+                result = list(session.execute("""SELECT * FROM foobar"""))
+                assert len(result) == 1, "Invalid number of inserted rows"
+                result = session.execute(f"SELECT writetime(val1) FROM foobar WHERE key = 1")
+                assert [(timestamp,)] == result
+                session.execute(f"UPDATE foobar USING TIMESTAMP {timestamp + 100} SET val1 = 'test' WHERE key = 1")
+                result = session.execute(f"SELECT writetime(val1) FROM foobar WHERE key = 1")
+                assert [(timestamp + 100,)] == result
+                session.execute(f"DELETE val1 FROM foobar USING TIMESTAMP {timestamp + 1000} WHERE key = 1")
+                result = list(session.execute(f"SELECT val1 FROM foobar WHERE key = 1"))
+
+                assert result[0].val1 is None
+
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
