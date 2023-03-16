@@ -23,6 +23,7 @@ from tools.assertions import (
 from dtest_class import Tester, create_ks
 from tools.data import drop_table
 from tools.marks import enterprise_only_param
+from tools.schema import change_schema_safely
 
 logger = logging.getLogger(__name__)
 
@@ -747,12 +748,14 @@ class TestDistributedTTL(Tester):
 
         self.prepare(jvm_args=['--logger-log-level', 'forward_service=trace',
                      '--enable-parallelized-aggregation', enable_parallized_aggregation])
+        nodes = self.cluster.nodelist()
         short_ttl = 10
         long_ttl = 1000
-        self.session1.execute("""
+        change_schema_safely(self.session1, nodes, """
             ALTER KEYSPACE ks WITH REPLICATION =
             {'class' : 'SimpleStrategy', 'replication_factor' : 1};
         """)
+
         self.session1.execute(f"""
             INSERT INTO ttl_table (key, col1) VALUES (1, 1) USING TTL {short_ttl};
         """)
@@ -771,7 +774,7 @@ class TestDistributedTTL(Tester):
         print_sstable(self.node2, 'ks', 'ttl_table')
         self.session1 = self.patient_exclusive_cql_connection(self.node1)
         self.session1.execute("USE ks;")
-        self.session1.execute("""
+        change_schema_safely(self.session1, nodes, """
             ALTER KEYSPACE ks WITH REPLICATION =
             {'class' : 'SimpleStrategy', 'replication_factor' : 2};
         """)
