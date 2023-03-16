@@ -778,7 +778,7 @@ class TestDistributedTTL(Tester):
             ALTER KEYSPACE ks WITH REPLICATION =
             {'class' : 'SimpleStrategy', 'replication_factor' : 2};
         """)
-        self.node1.repair(['ks'])
+        self.cluster.nodetool('repair ks')
         logger.debug('SStable dump after alter RF to 2 and repair')
         print_sstable(self.node1, 'ks', 'ttl_table')
         print_sstable(self.node2, 'ks', 'ttl_table')
