@@ -2986,7 +2986,8 @@ class TestRepairAdditional(RepairAdditionalBase):
             for i in range(delete_table_num):
                 cf = f'cf_del{i}'
                 out, err = node.run_cqlsh(f"describe table ks.{cf}", return_output=True)
-                assert f"'{cf}' not found" in out + err
+                expr = rf"{cf}.* not found"
+                assert re.search(expr, out + err), f"{expr} not found in {out + err}"
                 query = SimpleStatement(f"SELECT * FROM {cf} LIMIT 1", consistency_level=ConsistencyLevel.ONE)
                 with pytest.raises(InvalidRequest):
                     list(session.execute(query))
