@@ -65,7 +65,7 @@ cd docker_dtest
 git clone git@github.com:scylladb/scylla-ccm.git
 git clone git@github.com:scylladb/scylla-dtest.git # or from your fork
 cd scylla-dtest
-./scripts/run_test.sh -scylla-version='unstable/master:latest' <file>::<class>::<test>
+./scripts/run_test.sh --scylla-version='unstable/master:latest' <file>::<class>::<test>
 ```
 
 
