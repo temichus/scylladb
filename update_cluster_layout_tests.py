@@ -8,6 +8,7 @@ import re
 
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+
 from pkg_resources import parse_version
 
 import requests
@@ -25,12 +26,19 @@ from tools.assertions import assert_invalid
 
 from dtest_class import Tester, create_ks, create_cf, get_ip_from_node, retry_till_success, wait_for
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, query_c1c2_concurrent, insert_c1cn
-from tools.cluster import new_node
+from tools.cluster import new_node, get_group0_members, get_token_ring_members
 from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status, nodetool_gossipinfo
 from tools.data import rows_to_list
 from iptables import IPTable, IPTableRule
 
+
 logger = logging.getLogger(__name__)
+
+
+def generate_test_name(val):
+    if isinstance(val, bool):
+        return ""
+    return val.replace(" ", "_")
 
 
 @pytest.mark.dtest_full
@@ -2510,6 +2518,177 @@ class TestUpdateClusterLayout(Tester):
         node4 = cluster.new_node(4)
         node4.start(wait_for_binary_proto=True)
         logger.info("done")
+
+    def get_diff_group0_and_token_ring_members(self, node: ScyllaNode):
+        logger.debug("Get group0 members")
+        group0_members = get_group0_members(node)
+
+        logger.info(f"Group0 members: {group0_members}")
+
+        logger.debug("Get token ring members")
+        token_ring_members = get_token_ring_members(node)
+        logger.debug(f"Token ring members {token_ring_members}")
+
+        token_ring_members_ids = [member["host_id"] for member in token_ring_members]
+        group0_members_ids = [member["host_id"] for member in group0_members]
+        diff_ids = list(set(group0_members_ids) - set(token_ring_members_ids))
+        logger.debug(f"Token ring and group0 member's ids {diff_ids}")
+
+        return diff_ids
+
+    def verify_group0_and_token_ring_members(self, node: ScyllaNode, expected_num_of_members: int):
+        """verifyg group0 and tokenring consistency
+
+        Get token ring members and group0 members.
+        Validate that number of member is equal. Validate that host_ids in group0
+        and token_ring are the same. Validate that all host_id in group0 are voters
+
+        """
+        logger.debug("Get group0 members")
+        group0_members = get_group0_members(node)
+
+        logger.info(f"Group0 members: {group0_members}")
+        assert expected_num_of_members == len(group0_members), \
+            f"Number of group0 members is not equal {expected_num_of_members}"
+
+        logger.debug("Get token ring members")
+        token_ring_members = get_token_ring_members(node)
+        logger.debug(f"Token ring members {token_ring_members}")
+        assert expected_num_of_members == len(token_ring_members), \
+            f"Number of token ring members is not equal {expected_num_of_members}"
+
+        logger.debug("Validate all group0 members are voters")
+        for member in group0_members:
+            assert member["is_voter"], f"Node with host id {member['host_id']} is not a voter"
+
+        assert not self.get_diff_group0_and_token_ring_members(node)
+
+    def find_and_clean_garbage_from_group0(self, verification_node, garbage_host_id, is_removed_from_token_ring):
+        """Find difference and clean garbage from group0"""
+        garbage_host_ids = self.get_diff_group0_and_token_ring_members(verification_node)
+        failed_members = [member for member in get_group0_members(
+            verification_node) if member["host_id"] == garbage_host_id]
+        if failed_members:
+            for member in failed_members:
+                assert not member["is_voter"], f"Node stay as voter {failed_members}"
+
+                if not is_removed_from_token_ring and not garbage_host_ids:
+                    garbage_host_ids.append(member["host_id"])
+
+        logger.debug(f"Garbage host id in raft group0: {garbage_host_ids}")
+        if not garbage_host_ids:
+            logger.debug("Node was removed from token ring and group0. Check no garbage left")
+            self.verify_group0_and_token_ring_members(verification_node, expected_num_of_members=2)
+        else:
+            logger.debug("Node left in group0")
+            assert garbage_host_id in garbage_host_ids, f"Node3 host id {garbage_host_id} is not in group0 {garbage_host_ids}"
+            logger.debug("Node3 is not a voter, it could be removed from cluster with removenode")
+            retry_till_success(verification_node.nodetool, f"removenode {garbage_host_id}", timeout=120)
+
+    @pytest.mark.scylla_mode('release')
+    @pytest.mark.parametrize("log_message,is_removed_from_token_ring",
+                             [("left token ring", True),
+                              ("Announcing that I have left the ring", False),
+                              ("became a group 0 non-voter", False),
+                              ("leaving token ring", False)],
+                             ids=generate_test_name)
+    def test_remove_garbage_members_from_group0_after_abort_decommission(self, log_message, is_removed_from_token_ring, fixture_dtest_setup):
+        """Clean group0 from garbage after aborted decommission
+
+        If decommission aborted when node left token ring but stay in group0,
+        garbage nodes could affect on raft group0 functionality. Such host_id
+        of the nodes have to be removed from group0. Decommission process
+        is going to be aborted by kill scylla node.
+
+        If decommission process finished fast or node was already removed
+        from token ring and group0, verify that number of node is cluster
+        less on 1 and all nodes are voters.
+        """
+        fixture_dtest_setup.allow_log_errors = True
+        self.cluster.set_configuration_options(values={
+            'ring_delay_ms': 3000})
+        logger.debug("populating cluster with three nodes")
+        cluster: ScyllaCluster = self.cluster
+        cluster.set_configuration_options(
+            values={"consistent_cluster_management": True})
+        cluster.populate(3)
+        logger.debug("starting cluster")
+        cluster.start(wait_other_notice=True)
+
+        node1: ScyllaNode
+        node3: ScyllaNode
+        node1 = cluster.nodelist()[0]
+        node1, _, node3 = cluster.nodelist()
+        node3_hostid = node3.hostid()
+        stress_cmd = "write cl=QUORUM n=40000 -schema replication(factor=3) \
+                    -col size=fixed(200) n=FIXED(5) -pop dist=UNIFORM(1..1000000000)"
+        cluster.stress(stress_cmd.split())
+
+        logger.debug("Verify that group0 and token ring are conssitent")
+        self.verify_group0_and_token_ring_members(node1, expected_num_of_members=3)
+
+        logger.debug("Start decomission node3")
+        mark = node3.mark_log()
+        node3.nodetool("decommission", capture_output=False, wait=False)
+        node3.watch_log_for(log_message, from_mark=mark)
+        logger.debug("Abort decommission by killing the node")
+        # os.kill(node3.pid, signal.SIGKILL)
+        node3.stop(gently=False, wait=False)
+
+        self.find_and_clean_garbage_from_group0(node1, node3_hostid, is_removed_from_token_ring)
+
+        self.verify_group0_and_token_ring_members(node1, expected_num_of_members=2)
+
+        logger.debug("Check that new node could be added to cluster")
+        node = new_node(cluster)
+        node.start(wait_other_notice=True)
+        self.verify_group0_and_token_ring_members(node1, expected_num_of_members=3)
+
+    @pytest.mark.scylla_mode('release')
+    @pytest.mark.parametrize("log_message,is_removed_from_token_ring",
+                             [("removing node.*from Raft group 0", True),
+                              (r"made node.*a non-voter in group 0", False),
+                              ("storage_service - Removing tokens", True),
+                              ("Started to sync data for removing node", False)],
+                             ids=generate_test_name)
+    def test_remove_garbage_members_from_group0_after_abort_removenode(self, log_message, is_removed_from_token_ring, fixture_dtest_setup):
+        fixture_dtest_setup.allow_log_errors = True
+        self.cluster.set_configuration_options(values={
+            'ring_delay_ms': 3000})
+        logger.debug("populating cluster with three nodes")
+        cluster: ScyllaCluster = self.cluster
+        cluster.set_configuration_options(
+            values={"consistent_cluster_management": True})
+        cluster.populate(3)
+        logger.debug("starting cluster")
+        cluster.start(wait_other_notice=True)
+
+        node1, _, node3 = cluster.nodelist()
+        node3_hostid = node3.hostid()
+        stress_cmd = "write cl=QUORUM n=40000 -schema replication(factor=3) \
+                    -col size=fixed(200) n=FIXED(5) -pop dist=GAUSSIAN(1..1000000000, 5000000, 40000)"
+        cluster.stress(stress_cmd.split())
+
+        logger.debug("Verify cluster has group0 and tokenring consistent")
+        self.verify_group0_and_token_ring_members(node1, expected_num_of_members=3)
+
+        logger.debug("Stop node3 for next removenode operation")
+        node3.stop()
+        mark = node1.mark_log()
+        logger.debug("Start removenode operation for node3 from node1")
+        node1.nodetool(f"removenode {node3_hostid}", capture_output=False, wait=False)
+        node1.watch_log_for(log_message, from_mark=mark)
+        logger.debug("Abort remove node operation after log message by node1 reboot")
+        node1.stop()
+        node1.start()
+
+        self.find_and_clean_garbage_from_group0(node1, node3_hostid, is_removed_from_token_ring)
+        self.verify_group0_and_token_ring_members(node1, expected_num_of_members=2)
+
+        logger.debug("Check that new node could be added to cluster")
+        node = new_node(cluster)
+        node.start(wait_other_notice=True)
+        self.verify_group0_and_token_ring_members(node1, expected_num_of_members=3)
 
 
 @pytest.mark.dtest_full

@@ -2,10 +2,12 @@ import logging
 import re
 import requests
 from concurrent.futures.thread import ThreadPoolExecutor
+from typing import Any, TypedDict
 
 from ccmlib.cluster import Cluster
 from ccmlib.dse_cluster import DseCluster
 from ccmlib.scylla_node import ScyllaNode
+from cassandra.cluster import Session
 
 logger = logging.getLogger(__name__)
 
@@ -96,3 +98,62 @@ def parallel_nodetool(nodes, cmd, capture_output=True, wait=True, timeout=300):
         for i in range(len(threads)):
             results[nodes[i].name] = threads[i].result(timeout=timeout)
         return results
+
+
+class Group0Member(TypedDict):
+    host_id: str
+    is_voter: bool
+
+
+class TokenRingMember(TypedDict):
+    host_ip: str
+    host_id: str
+
+
+def get_token_ring_members(node: ScyllaNode) -> list[TokenRingMember]:
+    token_ring_members = []
+    result = run_rest_api(run_on_node=node, cmd="/storage_service/host_id", api_method="get")
+    if not result.text:
+        return []
+
+    for member in result.json():
+        token_ring_members.append({"host_ip": member.get("key"), "host_id": member.get("value")})
+
+    return token_ring_members
+
+
+def get_group0_members(node: ScyllaNode) -> list[Group0Member]:
+    def _parse_cqlsh_output(output: tuple[str, str]) -> list[str]:
+        result = []
+        stdout, stderr = output
+        if stderr:
+            return []
+
+        for line in stdout.strip().split("\n"):
+            if not line.strip():
+                break
+            result.append(line.strip())
+
+        if not result and len(result) < 2:
+            return []
+        return result[2:]
+
+    group0_members = []
+    output = node.run_cqlsh("select value from system.scylla_local where key = 'raft_group0_id'",
+                            return_output=True)
+    result = _parse_cqlsh_output(output)
+    if not result:
+        return []
+    raft_group0_id = result[0]
+
+    output = node.run_cqlsh(f"select server_id, can_vote from system.raft_state where group_id = {raft_group0_id} and disposition = 'CURRENT'",
+                            return_output=True)
+    result = _parse_cqlsh_output(output)
+    if not result:
+        return []
+    for line in result:
+        server_id, can_vote = line.split("|")
+        can_vote = True if can_vote.strip() == "True" else False
+        group0_members.append({"host_id": server_id.strip(), "is_voter": can_vote})
+
+    return group0_members
