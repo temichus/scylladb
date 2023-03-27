@@ -25,6 +25,7 @@ from tools.assertions import assert_row_count, assert_all, assert_row_count_in_s
 from tools.data import insert_c1c2
 from tools.files import copy_files_to
 from tools.misc import get_free_memory_size_in_mb
+import tools.commitlog as commitlog
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +229,7 @@ class TestCommitLog(Tester):
 
         logger.debug("Verify commitlog was written before abrupt stop")
         commitlog_dir = os.path.join(node1.get_path(), 'commitlogs')
-        commitlog_files = os.listdir(commitlog_dir)
+        commitlog_files = commitlog.list_files(commitlog_dir)
         assert len(commitlog_files) > 0, f"expecting positive, len(commitlog_files)={len(commitlog_files)}"
 
         logger.debug("Verify no SSTables were flushed before abrupt stop")
@@ -332,7 +333,7 @@ class TestCommitLog(Tester):
 
         logger.debug("Verify commitlog was written before abrupt stop")
         commitlog_dir = os.path.join(node1.get_path(), 'commitlogs')
-        commitlog_files = os.listdir(commitlog_dir)
+        commitlog_files = commitlog.list_files(commitlog_dir)
         assert len(commitlog_files) > 0, f"expect >0, len(commitlog_files)={len(commitlog_files)}"
 
         logger.debug("Verify commitlog was replayed on startup")

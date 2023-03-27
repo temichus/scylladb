@@ -15,6 +15,7 @@ from dtest_class import Tester, create_ks, create_cf
 from tools.cluster import new_node
 from tools.data import insert_c1c2, query_c1c2_concurrent
 from tools.files import get_node_cf_dir, get_sstables_files
+import tools.commitlog as commitlog
 
 
 logger = logging.getLogger(__name__)
@@ -163,8 +164,7 @@ class TestBackupRestore(Tester):
 
         logger.info("Delete commitlogs...")
         commitlog_dir = os.path.join(self.test_path, 'test', 'node1', 'commitlogs')
-        for f in os.listdir(commitlog_dir):
-            os.remove(os.path.join(commitlog_dir, f))
+        commitlog.cleanup(commitlog_dir)
 
         logger.info("Restart the node...")
         node1.start(wait_for_binary_proto=True)
@@ -785,8 +785,7 @@ class TestBackupRestore(Tester):
         if delete_commitlogs:
             logger.debug("Delete commitlogs ...")
             commitlog_dir = os.path.join(self.test_path, 'test', 'node1', 'commitlogs')
-            for f in os.listdir(commitlog_dir):
-                os.remove(os.path.join(commitlog_dir, f))
+            commitlog.cleanup(commitlog_dir)
         if restart_node:
             logger.debug("Restart the node ...")
             node.start(wait_for_binary_proto=True)

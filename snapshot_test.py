@@ -30,6 +30,7 @@ from tools.snapshots import make_snapshot, get_cf_snapshot_saved_dir, restore_sn
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
 from tools.stress import format_cs_output, assert_cs_success
+import tools.commitlog as commitlog
 
 logger = logging.getLogger(__name__)
 
@@ -585,8 +586,7 @@ class TestArchiveCommitlog(SnapshotTester):
         insert_cutoff_times = [time.gmtime()]
 
         # Delete all commitlog backups so far:
-        for f in glob.glob(tmp_commitlog + "/*"):
-            os.remove(f)
+        commitlog.cleanup(tmp_commitlog)
 
         snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic')
 

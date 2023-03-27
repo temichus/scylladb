@@ -24,6 +24,7 @@ from tools.data import insert_c1c2, query_c1c2
 from tools.files import get_node_cf_dir, remove_files_in_folder
 from tools.metrics import get_node_metrics
 from tools.cluster import run_rest_api
+import tools.commitlog as commitlog
 
 logger = logging.getLogger(__name__)
 
@@ -756,8 +757,7 @@ class RepairAdditionalBase(Tester):
         # This may also end up deleting Scylla commit logs, but those should
         # not exist anyway (as we used node1.flush()).
         commitlog_dir = node1.get_path() + "/commitlogs/"
-        for f in os.listdir(commitlog_dir):
-            os.remove(commitlog_dir + f)
+        commitlog.cleanup(commitlog_dir)
 
         # Finally bring both nodes up, repair, and confirm (by bringing up only
         # node 2) that the data on node2 is now up to date.
