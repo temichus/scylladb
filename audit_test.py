@@ -308,10 +308,10 @@ class TestCQLAudit(AuditTester):
 
     def test_audit_empty_settings(self):
         """
-        'audit': {}
+        'audit': none
          check node started, ks audit not created
         """
-        session = self.prepare(create_keyspace=False, audit_settings={})
+        session = self.prepare(create_keyspace=False, audit_settings={'audit': 'none'})
         assert_invalid(session, "use audit;", expected=InvalidRequest)
 
     def test_audit_audit_ks(self):
