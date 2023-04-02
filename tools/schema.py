@@ -14,3 +14,5 @@ def change_schema_safely(session, nodes, query, timeout=30):
     session.execute(query)
     for node, mark in marks:
         node.watch_log_for("Schema version changed", timeout=timeout)
+    if not session.cluster.control_connection.wait_for_schema_agreement(wait_time=timeout):
+        raise TimeoutError(f"Schema agreement timed out after {timeout} seconds")
