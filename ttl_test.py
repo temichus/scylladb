@@ -784,7 +784,7 @@ class TestDistributedTTL(Tester):
 
         self.node2.stop()
         ttl_start = time.time()
-        ttl_session1 = self.session1.execute('SELECT ttl(col1) FROM ttl_table;')
+        ttl_session1 = self.session1.execute('SELECT ttl(col1) FROM ttl_table;').one()[0]
         assert_all(
             self.session1,
             "SELECT * FROM ttl_table;",
@@ -803,6 +803,6 @@ class TestDistributedTTL(Tester):
         )
 
         # Check that the TTL on both server are the same
-        ttl_session2 = session2.execute('SELECT ttl(col1) FROM ttl_table;')
-        ttl_session1 = ttl_session1[0][0] - (time.time() - ttl_start)
-        assert_almost_equal(ttl_session1, ttl_session2[0][0], error=0.005)
+        ttl_session2 = session2.execute('SELECT ttl(col1) FROM ttl_table;').one()[0]
+        ttl_session1 -= (time.time() - ttl_start)
+        assert_almost_equal(ttl_session1, ttl_session2, error=0.005)
