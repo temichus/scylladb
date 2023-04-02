@@ -339,6 +339,7 @@ class TestCQLAudit(AuditTester):
         cluster = self.cluster
 
         cluster.set_configuration_options(values=audit_settings)
+        cluster.force_wait_for_cluster_start = False
 
         try:
             cluster.populate(1).start(no_wait=True)
