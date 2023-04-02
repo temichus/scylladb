@@ -29,6 +29,7 @@ from ccmlib.common import parse_settings
 from ccmlib.node import NodetoolError, TimeoutError, Node
 from ccmlib.scylla_cluster import ScyllaCluster, ScyllaNode
 from deepdiff import DeepDiff
+from operator import attrgetter
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
@@ -800,8 +801,8 @@ class TestCompactionAdditional(CompactionAdditionalTester):
                        (not item.compaction_time or row.compacted_at > item.compaction_time):
                         item.compaction_time = row.compacted_at
                         logger.debug(item)
-            by_time = sorted(cf_size_time, key=lambda x: x.compaction_time)
-            by_size = sorted(cf_size_time, key=lambda x: x.size)
+            by_time = sorted(cf_size_time, key=attrgetter('compaction_time', 'size'))
+            by_size = sorted(cf_size_time, key=attrgetter('size'))
             return by_time, by_size
 
         nodelist, session = self.prepare(nodes=1, jvm_args=['--smp', '1'])
