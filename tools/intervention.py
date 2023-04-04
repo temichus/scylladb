@@ -25,7 +25,7 @@ class InterruptCompaction(Thread):
     for the table specified. This requires debug level
     logging in 2.1+ and expects debug information to be
     available in a file called "debug.log" unless a
-    different name is passed in as a paramter.
+    different name is passed in as a parameter.
     """
 
     def __init__(self, node, tablename, filename='debug.log', delay=0):
@@ -54,4 +54,24 @@ class KillOnBootstrap(Thread):
 
     def run(self):
         self.node.watch_log_for("Starting to bootstrap")
+        self.node.stop(gently=False)
+
+
+class InterruptDecommission(Thread):
+    """
+    Interrupt decommission by killing a node as soon as
+    the "DECOMMISSIONING: unbootstrap starts" or according to parameter string is found in the log file
+    for the node specified.
+    """
+
+    def __init__(self, node, filename='system.log', search_for="DECOMMISSIONING: unbootstrap starts"):
+        Thread.__init__(self)
+        self.node = node
+        self.filename = filename
+        self.search_for = search_for
+        self.mark = node.mark_log(filename=self.filename)
+
+    def run(self):
+        self.node.watch_log_for(self.search_for, from_mark=self.mark, filename=self.filename)
+        logger.debug("Killing node {}".format(self.node.address()))
         self.node.stop(gently=False)

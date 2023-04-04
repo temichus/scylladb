@@ -22,6 +22,7 @@ from tools.assertions import assert_all, assert_one, assert_invalid, assert_unav
     assert_two_queries_equal_ignore_order, assert_row_count_in_select
 
 from dtest_class import Tester, wait_for, create_ks, create_cf
+from tools.intervention import InterruptDecommission
 from tools.retrying import retrying
 from tools.data import run_in_parallel, rows_to_list, run_query_with_data_processing, insert_c1c2
 from tools.misc import flush_by_node, remove_node
@@ -731,6 +732,110 @@ class TestMaterializedViews(CommonUtils):
     def test_mv_populating_from_existing_data_during_node_restart(self):
         """ Create 10 materialized views in parallel with a node restart """
         self._mv_populating_from_existing_data_during_changes_test('restart node')
+
+    @pytest.mark.parametrize("enable_repair_based_node_ops", [True, False], ids=["with_rbno", "without_rbno"])
+    def test_mv_resurrected_rows_after_decommission_interrupt(self, enable_repair_based_node_ops):
+        """
+        Test for issue https://github.com/scylladb/scylladb/issues/9559 and
+        its fix https://github.com/scylladb/scylladb/pull/11932
+
+        Tested scenario:
+        If run decommission with materialized views and abort decommissioning in the middle,
+        the nodes got data from decommissioning that needs to be cleaned up after it was aborted,
+        and if staging sstables aren't cleaned up, the said data will remain on the nodes.
+
+        Materialized view building will now ignore partitions no longer owned by the node after a topology change.
+        This test runs in two modes:
+        - decommission when enable_repair_based_node_ops is True and allowed RBNO for decommission
+        - decommission when enable_repair_based_node_ops is False
+        """
+        if enable_repair_based_node_ops:
+            options = {'enable_repair_based_node_ops': "true", 'allowed_repair_based_node_ops': "decommission"}
+        else:
+            options = {'enable_repair_based_node_ops': "false"}
+
+        session = self.prepare(rf=3, nodes=4, user_table=True, options=options)
+        keyspace_name = "ks"
+        base_table_name = "users"
+        mv_name = "users_by_state"
+        gc_grace_seconds = 5
+        logger.info(f"Set gc_grace_seconds to {gc_grace_seconds} for {base_table_name} table and {mv_name} "
+                    "materialized view")
+        session.execute(f"ALTER TABLE {base_table_name} WITH gc_grace_seconds = {gc_grace_seconds}")
+        session.execute(f"ALTER MATERIALIZED VIEW {mv_name} WITH gc_grace_seconds = {gc_grace_seconds}")
+
+        wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view=mv_name)
+
+        # This error is reported when stream is interrupted. Because we interrupt the stream in the test, we can ignore
+        # the error
+        self.ignore_log_patterns.append(r"Failed to handle STREAM_MUTATION_FRAGMENTS")
+
+        # insert data
+        rows = 1000
+        insert_stmt = session.prepare(f"INSERT INTO {base_table_name} (username, password, gender, state, birth_year)"
+                                      f" VALUES (?,?,?,?,?)")
+        logger.info(f"Insert {rows} rows")
+        for i in range(rows):
+            session.execute(insert_stmt.bind((f'user{i}', f'ch@ngem{i}a', 'f', f'TX{i}', 2023)))
+
+        logger.info("Flush data into sstables")
+        self.cluster.flush()
+
+        decommissioned_node = self.cluster.nodelist()[2]
+        decommissioned_node_hostid = decommissioned_node.hostid()
+        if enable_repair_based_node_ops:
+            unbootstrap_str = [f"repair - decommission_with_repair: finished with keyspace={keyspace_name}"]
+        else:
+            tmpl = f"Unbootstrap with %s for keyspace={keyspace_name} succeeded"
+            unbootstrap_str = [tmpl % node.address() for node in self.cluster.nodelist() if node != decommissioned_node]
+
+        # Interrupt decommission when unbootstrap for keyspace finished, but decommissioning process was not completed
+        # and tokens were not removed
+        logger.info(f"Interrupt decommission when unbootstrap for keyspace={keyspace_name} is done.")
+
+        interrupt_decommission = InterruptDecommission(decommissioned_node, search_for=unbootstrap_str)
+        interrupt_decommission.start()
+
+        logger.info(f"Start node {decommissioned_node.name} decommissioning and interrupt it")
+        with ThreadPoolExecutor(max_workers=1) as decommission_thread:
+            with pytest.raises(expected_exception=NodetoolError):
+                thread = decommission_thread.submit(decommissioned_node.decommission)
+                interrupt_decommission.join()
+                thread.result(timeout=180)
+
+        assert not decommissioned_node.grep_log(expr="DECOMMISSIONING: done"), \
+            "Decommissioning completed, tokens were removed. The test can not be continued."
+
+        # Due to interruption decommission operation is still may be considered in progress, and it will prevent node
+        # removing. It has a timeout of 120 seconds by default after which the condition should be cleared.
+        # Reboot all nodes causes to clear the decommission operation state
+        self.cluster.stop(wait_other_notice=True)
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        logger.info("Delete all rows")
+        for i in range(rows):
+            session.execute(f"DELETE FROM {base_table_name} WHERE username = 'user{i}'")
+
+        logger.info(f"Wait for gc_grace_seconds {gc_grace_seconds} sec")
+        time.sleep(gc_grace_seconds)
+
+        # Run compaction to remove not owned tokens
+        logger.info("Run major compaction on all nodes")
+        self.cluster.compact()
+        self.cluster.wait_for_compactions()
+
+        logger.info(f"Stopping node {decommissioned_node.name} from cluster")
+        decommissioned_node.stop(wait_other_notice=True)
+        logger.info(f"Remove node {decommissioned_node.name} from cluster")
+        self.cluster.nodelist()[0].removenode(decommissioned_node_hostid)
+
+        # Try to count rows. Expected empty result
+        read_stmt = "SELECT count(*) FROM %s"
+        row = session.execute(read_stmt % base_table_name)
+        assert row.one()[0] == 0
+
+        row = session.execute(read_stmt % mv_name)
+        assert row.one()[0] == 0
 
     def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes=4, rf=3, mvs=None, prefill=None):
         session = self.prepare(rf=rf, nodes=nodes, options={'prometheus_port': 0})
