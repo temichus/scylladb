@@ -1125,7 +1125,10 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
         node1.stop()
         files = glob.glob(os.path.join(node1.get_path(), 'commitlogs', '*'))
         for f in files:
-            os.remove(f)
+            try:
+                os.remove(f)
+            except IsADirectoryError:
+                shutil.rmtree(f)
 
         cf_dir = get_node_cf_dir(node1, 'ks', 'cf')
         sstablefiles = get_sstables_files(cf_dir)
