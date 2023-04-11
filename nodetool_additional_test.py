@@ -24,7 +24,7 @@ from ccmlib.scylla_cluster import ScyllaCluster
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
-from tools.cluster import new_node
+from tools.cluster import new_node, run_rest_api
 from tools.data import rows_to_list, insert_c1c2, insert_c1c2_no_prepared, get_node_sstables_compression
 from tools.assertions import PytestRegex
 from tools.misc import ImmutableMapping, retry_till_success
@@ -1092,6 +1092,69 @@ class TestNodetool(Tester):
                     "{} is not monotonic: {}({} load), was {}\n{}".format(latency_type, latency_val,
                                                                           v, cur, res["out"])
                 cur = latency_val
+
+    @staticmethod
+    def get_buckets_max(bucket_offsets, buckets):
+        for [bucket, offset] in reversed(list(zip(buckets, bucket_offsets))):
+            if bucket > 0:
+                return offset
+        return 0
+
+    @staticmethod
+    def get_buckets_min(bucket_offsets, buckets):
+        for i in range(0, len(buckets)):
+            if buckets[i] > 0:
+                return 0 if i == 0 else 1 + bucket_offsets[i - 1]
+        return 0
+
+    @pytest.mark.single_node
+    def test_sstables_in_tablehistograms(self):
+        """
+        Test sstablesPerRead values in the nodetool tablehistograms
+
+        1) Create a keyspace and a table, and disable autocompaction
+        1) Perform some writes and rewrites, flush in-between to make sure many sstables are created
+        2) Get nodetool's tablehistograms
+        3) Get numbers of sstables via rest api
+        4) Compare the results
+        """
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node] = cluster.nodelist()
+        session = self.patient_cql_connection(node)
+
+        create_ks(session, 'ks', 1)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        node.nodetool("disableautocompaction")
+
+        cmd = "/column_family/metrics/sstables_per_read_histogram/ks:cf"
+
+        flushes = 5
+        times = 100 if self.cluster.scylla_mode != "debug" else 50
+        reads = 1000 if self.cluster.scylla_mode != "debug" else 100
+        for i in range(0, flushes):
+            insert_c1c2(session, keys=list(range(times * i + 1, times * (i + 1))), ks='ks')
+            node.flush()
+
+        for _ in range(0, flushes):
+            beg = random.randint(1, times * flushes)
+            insert_c1c2(session, keys=list(range(beg, beg + random.randint(1, times))), ks='ks')
+            node.flush()
+
+        for _ in range(0, reads):
+            tup = ', '.join([f"\'k{random.randint(1, flushes * times)}\'" for _ in range(100)])
+            session.execute(f'SELECT * FROM ks.cf WHERE key IN ({tup}) ALLOW FILTERING BYPASS CACHE;')
+
+        nodetool_result = self._get_cfhistogram(node, "ks", "cf")
+        api_result = run_rest_api(run_on_node=node, cmd=cmd, api_method="get").json()
+
+        bucket_offsets = api_result["bucket_offsets"]
+        buckets = api_result["buckets"]
+        assert buckets[len(buckets) - 1] == 0, "Histogram overflows"
+        assert nodetool_result['vals']['Max']['SSTables'] == self.get_buckets_max(
+            bucket_offsets, buckets), "Wrong max sstables number"
+        assert nodetool_result['vals']['Min']['SSTables'] == self.get_buckets_min(
+            bucket_offsets, buckets), "Wrong min sstables number"
 
     @staticmethod
     def describecluster(node):
