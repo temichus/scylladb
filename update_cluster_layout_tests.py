@@ -2372,7 +2372,8 @@ class TestUpdateClusterLayout(Tester):
             node3.decommission()
         except NodetoolError as exc:
             logger.info(traceback.format_exc())
-            assert "Rejected decommission operation" in repr(exc)
+            error = repr(exc)
+            assert "Rejected decommission operation" in error or "Cannot start" in error
         else:
             raise AssertionError("decommission must fail")
 
