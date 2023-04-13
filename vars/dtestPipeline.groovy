@@ -50,7 +50,12 @@ def call(Map pipelineParams) {
         options {
             disableConcurrentBuilds()
             timeout(time: params.TIMEOUT_PARAM, unit: 'HOURS')
-            buildDiscarder(logRotator(numToKeepStr: '200'))
+            buildDiscarder(
+                logRotator(
+                    numToKeepStr: '200',
+                    artifactDaysToKeepStr: '240'
+                )
+            )
         }
 
         stages {
