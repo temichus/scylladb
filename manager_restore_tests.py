@@ -1,4 +1,5 @@
 import logging
+import re
 
 import pytest
 
@@ -320,53 +321,44 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
             self.restore_and_verify_using_stress(mgr_cluster=mgr_cluster, backup_task=backup_task, healthy_node=node1,
                                                  number_of_rows=number_of_rows, threads=50, batch_size=batch_size)
 
-    def _get_gc_grace_seconds_value(self, healthy_node, table):
+    def _get_tombstone_gc_mode(self, healthy_node, keyspace, table):
         session = self.patient_cql_connection(healthy_node)
-        result = session.execute(f"select gc_grace_seconds from system_schema.tables where table_name = '{table}';")
-        gc_grace_seconds_value = result.current_rows[0].gc_grace_seconds
-        return gc_grace_seconds_value
+        result = session.execute(f"select extensions from system_schema.tables "
+                                 f"where keyspace_name = '{keyspace}' and table_name = '{table}';")
+        tombstone_gc_mode = 'N\A'
+        if "tombstone_gc" in result.current_rows[0].extensions:
+            tombstone_gc_raw_string = result.current_rows[0].extensions["tombstone_gc"].decode()
+            tombstone_gc_mode = re.search(r"(repair|timeout|immediate|disabled)", tombstone_gc_raw_string)[0]
+        return tombstone_gc_mode
 
-    def _restore_check_gc_grace_seconds_template(self, number_of_rows, post_action):
-        original_gc_grace_seconds = 60
-        node1, node2 = self.config_and_create_cluster(nodes=2)
+    @pytest.mark.parametrize("initial_gc_mode", ["repair", "timeout", "immediate", "disabled"])
+    def test_restore_check_tombstone_gc_value(self, initial_gc_mode):
+        node1, node2 = self.config_and_create_cluster(nodes=[2])
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
         self.cluster.stress(
-            ['write', f'n={number_of_rows}', '-rate', 'threads=50', '-schema',
+            ['write', 'n=2500K', '-rate', 'threads=50', '-schema',
+             "replication(strategy=NetworkTopologyStrategy,dc1=2)",
              'compaction(strategy=SizeTieredCompactionStrategy)'])
         session = self.patient_cql_connection(node1)
-        session.execute(f"ALTER TABLE keyspace1.standard1 WITH gc_grace_seconds = {original_gc_grace_seconds}")
+        session.execute("ALTER TABLE keyspace1.standard1 WITH tombstone_gc = {'mode':'%s'}" % initial_gc_mode)
         backup_task = self._backup_and_cleanup(healthy_node=node1, mgr_cluster=mgr_cluster,
                                                keyspace_table_and_key_range={"keyspace1": ["standard1"]})
         restore_task = mgr_cluster.run_restore_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                        restore_data=True,
                                                        snapshot_tag=backup_task.get_snapshot_tag())
         restore_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=35, step=1)  # Letting the restore start
-        current_gc_grace_seconds = self._get_gc_grace_seconds_value(node1, "standard1")
-        assert current_gc_grace_seconds > original_gc_grace_seconds, \
-            f"The manager did not alter the value of gc_grace_seconds of the restoring table," \
-            f" and it remained at {current_gc_grace_seconds}"
-        if post_action == "continue":
-            restore_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
-            current_gc_grace_seconds = self._get_gc_grace_seconds_value(node1, "standard1")
-            assert current_gc_grace_seconds == original_gc_grace_seconds, \
-                f"After the restore was completed, the value of gc_grace_seconds of the restored table did not return" \
-                f" to its original value ({original_gc_grace_seconds}), but instead remained at" \
-                f" {current_gc_grace_seconds}"
-        elif post_action == "pause":
-            restore_task.stop()
-            current_gc_grace_seconds = self._get_gc_grace_seconds_value(node1, "standard1")
-            assert current_gc_grace_seconds == original_gc_grace_seconds, \
-                f"After stopping the restore task, the value of gc_grace_seconds of the restored table did not return" \
-                f" to its original value ({original_gc_grace_seconds}), but instead remained at" \
-                f" {current_gc_grace_seconds}"
-        else:
-            raise ValueError(f"Unknown post action: {post_action}")
+        current_tombstone_gc_mode = self._get_tombstone_gc_mode(node1, "keyspace1", "standard1")
+        assert current_tombstone_gc_mode == "disabled", \
+            f"The manager did not alter the tombstone_gc mode of the restoring table to 'disabled'," \
+            f" and instead it remained at {current_tombstone_gc_mode}"
 
-    def test_restore_check_gc_grace_seconds(self):
-        self._restore_check_gc_grace_seconds_template("1500K", post_action="continue")
-
-    def test_pause_restore_and_check_gc_grace_seconds(self):
-        self._restore_check_gc_grace_seconds_template("2500K", post_action="pause")
+        restore_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+        current_tombstone_gc_mode = self._get_tombstone_gc_mode(node1, "keyspace1", "standard1")
+        # TODO: Once https://github.com/scylladb/scylla-manager/issues/3363 is solved, expect that the gc mode
+        # will revert back to its original state
+        assert current_tombstone_gc_mode == "disabled", \
+            f"After the restore was completed, the value tombstone_gc mode of the restored table did not " \
+            f"stay at 'disabled', and instead remained at {current_tombstone_gc_mode}"
 
     def test_restore_alter_batch_size(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
