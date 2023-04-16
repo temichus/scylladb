@@ -379,7 +379,7 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         restore_task = mgr_cluster.run_restore_command(location_list=[f"s3:{DESTINATION_BUCKET}"],
                                                        restore_data=True, batch_size=3,
                                                        snapshot_tag=backup_task.get_snapshot_tag())
-        restore_task.wait_for_status(list_status=[TaskStatus.RUNNING])
+        restore_task.wait_for_status(list_status=[TaskStatus.RUNNING], step=2)
         restore_task.stop()
         restore_task.update(batch_size=1)
         restore_task.start(continue_task=True)
@@ -397,7 +397,7 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
                                                keyspace_table_and_key_range={"keyspace1": ["standard1"]})
         restore_task = mgr_cluster.run_restore_command(location_list=[f"s3:{DESTINATION_BUCKET}"],
                                                        restore_data=True, snapshot_tag=backup_task.get_snapshot_tag())
-        restore_task.wait_for_status(list_status=[TaskStatus.RUNNING])
+        restore_task.wait_for_status(list_status=[TaskStatus.RUNNING], step=2)
         restore_task.stop()
         self._drop_table_and_delete_table_dir(keyspace_name="keyspace1", table_name="standard1", up_normal_node=node1)
         restore_task.start(continue_task=True)
