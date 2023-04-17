@@ -248,7 +248,9 @@ class TestMaterializedViews(CommonUtils):
         assert_cs_success(results)
 
         self.fixture_dtest_setup.ignore_log_patterns += [
-            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: seastar::broken_promise']
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: seastar::broken_promise',
+            r'sstable - failed reading index .* std::bad_alloc',
+        ]
 
         other_nodes = self.cluster.nodelist()
         nodes_to_start = [other_nodes.pop(1)]
