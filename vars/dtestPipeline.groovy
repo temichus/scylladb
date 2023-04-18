@@ -176,5 +176,6 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         dtestType: dtestType,
         driverVersion: params.DRIVER_VERSION,
         pyTestExtraCLIOptions: params.PYTEST_EXTRA_COMMANDLINE_OPTIONS,
+        spotRetryCount: params.SPOT_RETRY_COUNT,
     )
 }

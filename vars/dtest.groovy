@@ -251,6 +251,7 @@ def doParallelDtest (Map args) {
 	boolean dtestFailed = false
 	boolean publishFailed = false
 	int numOfSplitFiles = args.numOfSplitFiles
+	int spotRetryCount = args.spotRetryCount ?: 3
     def results = [:]
 
     for (int i = 0; i < numOfSplitFiles; i++) {
@@ -264,7 +265,7 @@ def doParallelDtest (Map args) {
                 conditionalRetry([
                         agentLabel: runnersLabel,
                         suppressErrors: false,
-                        retryCount: params.SPOT_RETRY_COUNT ?: 3,
+                        retryCount: spotRetryCount,
                         retryDelay: 1,
                         useBuiltinFailurePatterns: true,
                         customFailurePatterns: [
