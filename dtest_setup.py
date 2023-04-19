@@ -674,15 +674,26 @@ class DTestSetup:
 
         values = self.cluster_options or dict()
 
-        values = merge_dicts(values, phi_values, repaired_data_tracking_values, {
-            'read_request_timeout_in_ms': timeout,
-            'range_request_timeout_in_ms': range_timeout,
-            'write_request_timeout_in_ms': timeout,
-            'truncate_request_timeout_in_ms': range_timeout,
-            'counter_write_request_timeout_in_ms': timeout * 2,
-            'cas_contention_timeout_in_ms': timeout,
-            'request_timeout_in_ms': timeout
-        })
+        if not cassandra_v4_cluster:
+            values = merge_dicts(values, phi_values, repaired_data_tracking_values, {
+                'read_request_timeout_in_ms': timeout,
+                'range_request_timeout_in_ms': range_timeout,
+                'write_request_timeout_in_ms': timeout,
+                'truncate_request_timeout_in_ms': range_timeout,
+                'counter_write_request_timeout_in_ms': timeout * 2,
+                'cas_contention_timeout_in_ms': timeout,
+                'request_timeout_in_ms': timeout
+            })
+        else:
+            values = merge_dicts(values, phi_values, repaired_data_tracking_values, {
+                'read_request_timeout': f'{timeout}ms',
+                'range_request_timeout': f'{range_timeout}ms',
+                'write_request_timeout': f'{timeout}ms',
+                'truncate_request_timeout': f'{range_timeout}ms',
+                'counter_write_request_timeout': f'{timeout * 2}ms',
+                'cas_contention_timeout': f'{timeout}ms',
+                'request_timeout': f'{timeout}ms',
+            })
 
         if self.setup_overrides is not None and len(self.setup_overrides.cluster_options) > 0:
             values = merge_dicts(values, self.setup_overrides.cluster_options)
