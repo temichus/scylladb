@@ -19,6 +19,7 @@ from tools.data import rows_to_list, insert_c1c2
 from tools.intervention import InterruptBootstrap
 from tools.misc import ImmutableMapping
 from tools.metrics import get_node_metrics
+from tools.stress import format_cs_output, assert_cs_success
 
 
 class NodeUnavailable(Exception):
@@ -149,6 +150,60 @@ class TestReplaceAddress(Tester):
         # check that restarting node 3 doesn't work
         # FIXME: when https://github.com/scylladb/scylla/issues/5523 is fixed
         # need to verify that the node doesn't start listening
+
+    def test_replace_node_using_the_same_ip_then_shut_down(self):
+        self._template_replace_node_then_shut_down(use_same_ip=True)
+
+    def test_replace_node_using_new_ip_then_shut_down(self):
+        self._template_replace_node_then_shut_down(use_same_ip=False)
+
+    def _template_replace_node_then_shut_down(self, use_same_ip):
+        executor = ThreadPoolExecutor(max_workers=1)
+        consistency_level_key = "QUORUM"
+        stress_duration_minutes = 6
+        replication_factor = 3
+        ks_name = "keyspace2"
+        write_stress_cmd = ["write", f"cl={consistency_level_key}", f"duration={stress_duration_minutes}m",
+                            "-rate", "threads=10 throttle=1000/s", "-log", "interval=5", "-schema",
+                            f"replication(factor={replication_factor}) keyspace={ks_name}"]
+
+        logger.info("Starting cluster with 3 nodes.")
+
+        self.init_cluster(num_nodes=2)
+
+        node1, _ = self.cluster.nodelist()
+        # Adding the node separately so it won't be a seed node, since you can't replace a seed node in this matter
+        node3 = self.cluster.new_node(3, is_seed=False)
+        node3.start(wait_for_binary_proto=True)
+
+        logger.debug(msg="starting stress")
+        stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd, capture_output=True))
+
+        logger.info("Stopping node 3.")
+        node3_hostid = node3.hostid()
+        node3.stop(gently=False, wait_other_notice=True)
+
+        # replace node 3 with node 4
+        logger.info("Starting node 4 to replace node 3")
+
+        node4 = self.cluster.new_node(4, is_seed=False)
+        replace_node_host_id = node3_hostid
+        if use_same_ip:
+            node3_address = node3.address()
+            node4.set_configuration_options(values={'listen_address': node3_address,
+                                                    'rpc_address': node3_address,
+                                                    'api_address': node3_address})
+            node4.network_interfaces = {k: (node3_address, v[1]) for k, v in node4.network_interfaces.items()}
+            logger.debug(f"Start node4 again with ip address {node3_address}")
+        else:
+            logger.debug("Start node4 with new ip address")
+
+        node4.start(replace_node_host_id=replace_node_host_id, wait_for_binary_proto=True)
+
+        node4.stop(gently=False, wait_other_notice=True)
+        results = stress_thread.result()
+        logger.debug(format_cs_output(results))
+        assert_cs_success(results)
 
     @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
     def test_serve_writes_during_bootstrap(self, use_host_id: bool):
