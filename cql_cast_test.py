@@ -36,7 +36,6 @@ class TestCQLCast(CqlshPrepare):
 
     def test_cast_tinyint(self):
         """Function performs positive tests CAST scalar function for tinyint type"""
-        # test_from = ['varint']
         test_from = ['tinyint']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
