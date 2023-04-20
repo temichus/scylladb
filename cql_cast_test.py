@@ -111,59 +111,13 @@ class TestCQLCast(CqlshPrepare):
         test_from = ['timeuuid']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    @pytest.mark.skip('Skipped due to scylla#3109')
-    def test_cast_issue_3109(self):
-        """Function performs test for issue #3109"""
+    @require("#13601")
+    def test_avg_cast_from_varint_to_decimal(self):
         # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
-        test_from = ['float', 'double', 'timestamp']
-        self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['text'], test_types=['cast'], exclude=False)
-
-    @pytest.mark.skip('Skipped due to scylla#3109')
-    def test_cast_udt_issue_3109(self):
-        """Function performs test for issue #3109"""
-        # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
-        test_from = ['udt']
-        self._udt_test_run(test_from, TestData.POSITIVE_VALUES, test_to=['text', 'varchar'],
-                           test_types=['cast', 'min', 'max'], exclude=False)
-
-    def test_cast_issue_3104(self):
-        """Function performs or issue #3104"""
-        # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
-        test_from = ['date', 'timeuuid', 'timestamp']
-        self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['date', 'timeuuid', 'timestamp'], test_types=['min', 'max'],
-                       exclude=False)
-
-    @require('#3110')
-    def test_cast_issue_3110(self):
-        """Function performs or issue #3110"""
-        # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
+        # seems like cassandra bug: https://issues.apache.org/jira/browse/CASSANDRA-18470
         test_from = ['varint']
         self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['decimal'],
-                       test_types=['cast', 'avg', 'sum', 'min', 'max', 'cast_min', 'cast_max', 'cast_avg'], exclude=False)
-
-    @pytest.mark.skip('Skipped due to scylla#3111')
-    def cast_issue_3111_test(self):
-        """Function performs or issue #3111"""
-        # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
-        test_from = ['float', 'tinyint', 'smallint', 'int', 'bigint', 'varint']
-        self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=['decimal'],
-                       test_types=['cast', 'sum', 'min', 'max', 'min', 'max', 'avg'], exclude=False)
-
-    def test_cast_udt_issue_3111(self):
-        """Function performs or issue #3111"""
-        # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
-        test_from = ['udt']
-        self._udt_test_run(test_from, TestData.POSITIVE_VALUES, test_to=['decimal'],
-                           test_types=['cast', 'sum', 'min', 'max', 'min', 'max', 'avg'], exclude=False)
-
-    def test_cast_issue_3112(self):
-        """Function performs or issue #3112"""
-        # To remove the case from issue test, go to TestData.POSITIVE_VALUES and remove comment simbol "#" from relavant type
-        test_from = ['decimal']
-        # test_from = ['float', 'double', 'int', 'decimal', 'tinyint', 'varint']
-        self._test_run(test_from, TestData.POSITIVE_VALUES, test_to=[
-                       'float'], test_types=['cast_sum', 'cast_avg'], exclude=False)
-        # test_types=['cast', 'sum', 'min', 'max', 'avg', 'cast_min', 'cast_max', 'cast_avg'], exclude=False)
+                       test_types=['avg'], exclude=False)
 
     def _udt_test_run(self, test_from, data_dict, test_to=None, test_types=None, exclude=True, compare_error=False):
         """
