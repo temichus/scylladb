@@ -273,14 +273,17 @@ def fixture_dtest_setup(request,
                              setup_overrides=fixture_dtest_setup_overrides,
                              cluster_name=fixture_dtest_cluster_name)
 
-    if request.node.get_closest_marker('single_node'):
-        dtest_setup.cluster_options.setdefault('skip_wait_for_gossip_to_settle', 0)
+    cassandra_v4_cluster = dtest_config.cassandra_version and dtest_config.cassandra_version >= '4'
 
-    # Reduce waiting time for the nodes to hear from others before joining the ring.
-    # Since all test cases run on localhost and there are no large test clusters
-    # it's safe to reduce the value to save a lot of time while testing.
-    # (Default value for the option is 30s)
-    dtest_setup.cluster_options.setdefault('ring_delay_ms', 10000)
+    if not cassandra_v4_cluster:
+        if request.node.get_closest_marker('single_node'):
+            dtest_setup.cluster_options.setdefault('skip_wait_for_gossip_to_settle', 0)
+
+        # Reduce waiting time for the nodes to hear from others before joining the ring.
+        # Since all test cases run on localhost and there are no large test clusters
+        # it's safe to reduce the value to save a lot of time while testing.
+        # (Default value for the option is 30s)
+        dtest_setup.cluster_options.setdefault('ring_delay_ms', 10000)
 
     dtest_setup.initialize_cluster(fixture_dtest_create_cluster_func)
 
