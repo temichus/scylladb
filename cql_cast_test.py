@@ -224,6 +224,16 @@ class TestCQLCast(CqlshPrepare):
 
                             actual_result = actual_result.split('\n')[3].strip() \
                                 if not compare_error and actual_result else err if compare_error else ''
+
+                            if to_type in ['text', 'varchar'] and from_type == 'timestamp':
+                                # scylla omit zero milliseconds
+                                actual_result = actual_result.removesuffix('.000Z')
+                                exp_result = str(exp_result).removesuffix('.000Z')
+                            if to_type in ['decimal', 'text', 'varchar']:
+                                # in cassandra decimal omits .0, so we compare without it
+                                # https://github.com/scylladb/scylladb/issues/3109
+                                actual_result = actual_result.removesuffix('.0')
+                                exp_result = str(exp_result).removesuffix('.0')
                             assert actual_result == str(exp_result), "casting from type {} to type {}: expected {} but got {}".format(
                                 from_type, to_type, exp_result, actual_result)
 
