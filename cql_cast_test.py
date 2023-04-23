@@ -219,8 +219,9 @@ class TestCQLCast(CqlshPrepare):
 
                         if exp_result and (not test_to or (test_to and to_type in test_to)) \
                                 and (exclude or (not exclude and (type_commented or test_commented))):
-                            actual_result, err = self._test_execute(self.TESTS[test][0], column_name, to_type, row_id,
-                                                                    table_name, from_type, test, exp_results=exp_results[0])
+                            actual_result, err, query = self._test_execute(self.TESTS[test][0], column_name, to_type, row_id,
+                                                                           table_name, from_type, test,
+                                                                           exp_results=exp_results[0])
 
                             actual_result = actual_result.split('\n')[3].strip() \
                                 if not compare_error and actual_result else err if compare_error else ''
@@ -234,8 +235,9 @@ class TestCQLCast(CqlshPrepare):
                                 # https://github.com/scylladb/scylladb/issues/3109
                                 actual_result = actual_result.removesuffix('.0')
                                 exp_result = str(exp_result).removesuffix('.0')
-                            assert actual_result == str(exp_result), "casting from type {} to type {}: expected {} but got {}".format(
-                                from_type, to_type, exp_result, actual_result)
+                            assert actual_result == str(exp_result), (
+                                f"test=[{test}] failed casting from type [{from_type}] to type [{to_type}]\n"
+                                f"\tquery=[{query}]")
 
     def is_commented(self, exclude, ttype):
         return True if not exclude and ttype.startswith('#') else False
@@ -280,7 +282,7 @@ class TestCQLCast(CqlshPrepare):
             result, err = self.node1.run_cqlsh(query, return_output=True)
         except Exception as e:
             logger.debug('FAILURE: test case failed. Error: {}'.format(str(e)))
-        return result, err
+        return result, err, query
 
     def _cast_single_value(self, column_name, to_type, row_id, table_name, from_type, test, exp_results):
         """Run cast select"""
