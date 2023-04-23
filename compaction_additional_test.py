@@ -609,7 +609,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
     @pytest.mark.parametrize("strategy1,strategy2", get_strategies_upgrade_options(), ids=generate_ids)
     def test_refresh_and_restart_after_compaction_strategy_change(self, strategy1, strategy2):
         """
-        This test tries to loade backup sstable by refresh and restart after changing the compaction strange.
+        This test tries to load backup sstable by refresh and restart after changing the compaction strategy.
         refreshing loads sstable from upload directory, and sstable in staging or main sstable directory will
         be loaded in cf populating during restart.
 
@@ -647,10 +647,10 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy1}")
 
         logger.debug("Insert test data by cassandra-stress and compact")
-        # Use multiple workload to generate multiple sstables, then it's easy to reach the threshold for reshaping
+        # Use multiple workloads to generate multiple sstables, then it's easy to reach the threshold for reshaping
 
         fill_data_by_cs(node1, n_range=[500, 550, 600, 650])
-        # Compact initiatively, make sure there are some compacted sstables before disable autocompaction
+        # Compact initially, make sure there are some compacted sstables before disable autocompaction
         node1.compact()
 
         # Here we disable autocompaction for leaving all sstables in level 0, then
@@ -662,7 +662,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         # Only in relaxed mode, all sstables will be mutated to level to 0, reshaping
         # will be trigger very easily.
 
-        logger.debug('disable autocompaction to leave all sstables to level 0')
+        logger.debug('disable autocompaction to leave all sstables in level 0')
         node1.nodetool('disableautocompaction keyspace1 standard1')
 
         logger.debug("Insert test data by cassandra-stress without compacting, leave it for next strategy")
