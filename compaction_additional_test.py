@@ -694,14 +694,14 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         def assert_reshape_and_verify_data(srcdir, log_mark, verify_reshape=True):
             """
-            Check Reshaping really happens and verify the loaded data by cs read
+            Check Reshaping or Resharding really happens and verify the loaded data by cs read
             """
             try:
-                res = node1.watch_log_for("Reshape keyspace1.standard1", timeout=5, from_mark=log_mark)
+                res = node1.watch_log_for(r"(Reshape|Reshard) keyspace1.standard1", timeout=30, from_mark=log_mark)
                 logger.debug(res)
             except TimeoutError:
                 res = None
-                msg = f"Reshape didn't occur after loading sstables from {srcdir} directory"
+                msg = f"Reshape or Reshard didn't occur after loading sstables from {srcdir} directory"
                 if (strategy2['class'] not in ['DateTieredCompactionStrategy', 'SizeTieredCompactionStrategy'] and verify_reshape):
                     if strategy2['class'] != strategy1['class']:
                         assert res is not None, f"Reshape didn't occurred in loading sstables from {srcdir} directory"
