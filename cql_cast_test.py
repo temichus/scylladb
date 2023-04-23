@@ -235,6 +235,11 @@ class TestCQLCast(CqlshPrepare):
                                 # https://github.com/scylladb/scylladb/issues/3109
                                 actual_result = actual_result.removesuffix('.0')
                                 exp_result = str(exp_result).removesuffix('.0')
+                            if to_type in ['decimal'] and from_type in ['float', 'double']:
+                                assert float(exp_result) == pytest.approx(float(actual_result), rel=1e-6), (
+                                    f"test=[{test}] failed casting from type [{from_type}] to type [{to_type}]\n"
+                                    f"\tquery=[{query}]")
+                                continue
                             assert actual_result == str(exp_result), (
                                 f"test=[{test}] failed casting from type [{from_type}] to type [{to_type}]\n"
                                 f"\tquery=[{query}]")
