@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import time
 import json
+import multiprocessing
 from pprint import pformat
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
@@ -748,6 +749,130 @@ class TestCompactionAdditional(CompactionAdditionalTester):
             strategy2['class'] == 'LeveledCompactionStrategy' and strategy1['class'] != 'LeveledCompactionStrategy')
         followed_by = r"Reshaped .* seconds"
         assert_reshape(srcdir='staging/', log_mark=mark, verify_reshape=verify_reshape, followed_by=followed_by)
+        verify_data(srcdir='staging/')
+
+        shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
+
+    @pytest.mark.single_node
+    @pytest.mark.parametrize("strategy1,strategy2", get_strategies_upgrade_options(), ids=generate_ids)
+    def test_reshard_after_compaction_strategy_and_smp_change(self, strategy1, strategy2):
+        """
+        This test tries to load backup sstable by refresh and restart after changing the compaction strategy and smp count.
+        refreshing loads sstable from upload directory, and sstable in staging or main sstable directory will
+        be loaded in cf populating during restart.
+        """
+
+        if multiprocessing.cpu_count() < 3:
+            pytest.skip("This test requires a minimum of 3 cpus")
+
+        cluster = self.cluster
+        cluster.populate(1)
+        node1 = cluster.nodelist()[0]
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
+
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        session.execute("DROP KEYSPACE IF EXISTS keyspace1")
+
+        logger.debug(f"Create test table with {strategy1}")
+        node1.stress(['write', 'n=0', 'no-warmup', '-schema', 'replication(factor=1)', '-rate', 'threads=1'])
+
+        session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy1}")
+
+        logger.debug("Insert test data by cassandra-stress and compact")
+        # Use multiple workloads to generate multiple sstables, then it's easy to reach the threshold for reshaping
+
+        fill_data_by_cs(node1, n_range=[500, 550, 600, 650])
+        # Compact initially, make sure there are some compacted sstables before disable autocompaction
+        node1.compact()
+
+        # Here we disable autocompaction for leaving all sstables in level 0, then
+        # it's easy to trigger reshape with small dataset during restart (strict mode).
+        # Actually it's not always necessary.
+        #
+        # Refreshing from upload will use strict mode reshape
+        # Only in relaxed mode, all sstables will be mutated to level to 0, reshaping
+        # will be trigger very easily.
+
+        logger.debug('disable autocompaction to leave all sstables in level 0')
+        node1.nodetool('disableautocompaction keyspace1 standard1')
+
+        logger.debug("Insert test data by cassandra-stress without compacting, leave it for next strategy")
+
+        if (strategy2['class'] == 'TimeWindowCompactionStrategy'):
+            # Prepare a sstable spans two 1 window, (window unit is 60 seconds)
+            fill_data_by_cs(node1, n_range=[], duration_range=[70],
+                            other_opt=['-rate', 'threads=1', '-col', 'size=FIXED(1024)'])
+        elif (strategy2['class'] == 'LeveledCompactionStrategy'):
+            # Need more than 10% overlapping sstables on same level
+            fill_data_by_cs(node1, n_range=[500, 550, 600, 650, 1000], start=5000)
+        elif (strategy2['class'] == 'SizeTieredCompactionStrategy'):
+            fill_data_by_cs(node1, n_range=[500, 550, 600, 650, 2000, 5000] * 2, start=10000)
+        else:
+            fill_data_by_cs(node1, n_range=[500, 550, 600, 650], start=5000)
+
+        cf_dir = get_node_cf_dir(node1, 'keyspace1', 'standard1', latest=True)
+        logger.debug(cf_dir)
+
+        # For troubleshot
+        backup_dir = os.path.join(cf_dir, f'./backup.{time.time()}/')
+        copy_files_to(cf_dir, backup_dir, files_only=True, create_to_dir=True)
+
+        # Prepare for refresh
+        copy_files_to(cf_dir, os.path.join(cf_dir, './upload/'), files_only=True)
+
+        logger.info(f"Change table compaction strategy to {strategy2}")
+        session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy2}")
+
+        def assert_reshard(srcdir, log_mark, followed_by=None):
+            """
+            Check Resharding really happened
+            """
+            exprs = [r"Reshard keyspace1.standard1"]
+            if followed_by:
+                exprs.append(followed_by)
+            res = node1.watch_log_for(exprs, timeout=30, from_mark=log_mark)
+            logger.debug(res)
+
+        def verify_data(srcdir):
+            """
+            Verify the loaded data by cs read
+            """
+            logger.info(f'Verify data is loaded from {srcdir} directory')
+            node1.stress(['read', 'n=100', 'no-warmup', '-rate', 'threads=10', '-col', 'size=FIXED(1024)'])
+
+        logger.debug("Clean test data & sstables before subtest by TRUNCATE")
+        session.execute("TRUNCATE keyspace1.standard1")
+
+        logger.debug("Re-enable autocompaction, otherwise compaction & reshape wont' work in restart and refresh")
+        node1.nodetool('enableautocompaction keyspace1 standard1')
+
+        node1.stop()
+        node1.start(jvm_args=['--smp', '3'])
+        session = self.patient_cql_connection(node1)
+
+        logger.info('Load data from upload directory by refresh')
+        mark = node1.mark_log()
+        logger.info('Refresh keyspace1.standard1 .....')
+        node1.nodetool("refresh -- keyspace1 standard1")
+        followed_by = r"Done loading new SSTables for keyspace=keyspace1.*table=standard1"
+        assert_reshard(srcdir='upload/', log_mark=mark, followed_by=followed_by)
+        verify_data(srcdir='upload/')
+
+        logger.debug("Clean test data & sstables before subtest by TRUNCATE")
+        session.execute("TRUNCATE keyspace1.standard1")
+        logger.info('Restart to load sstables from staging directory')
+        mark = node1.mark_log()
+        logger.info("Restart the node .....")
+        node1.stop(gently=True)
+
+        # Prepare for cf population from staging during restart
+        copy_files_to(backup_dir, os.path.join(cf_dir, './staging/'), files_only=True)
+
+        node1.start(wait_for_binary_proto=True, jvm_args=['--smp', '2'])
+        session = self.patient_cql_connection(node1)
+        followed_by = r"Resharded .* keyspace1.standard1"
+        assert_reshard(srcdir='staging/', log_mark=mark, followed_by=followed_by)
         verify_data(srcdir='staging/')
 
         shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
