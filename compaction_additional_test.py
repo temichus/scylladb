@@ -682,14 +682,12 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         cf_dir = get_node_cf_dir(node1, 'keyspace1', 'standard1', latest=True)
         logger.debug(cf_dir)
 
-        # Prepare for cf population during restart # subtest1
-        copy_files_to(cf_dir, os.path.join(cf_dir, './staging/'), files_only=True)
-        # Prepare for refresh  # subtest2
-        copy_files_to(cf_dir, os.path.join(cf_dir, './upload/'), files_only=True)
-
         # For troubleshot
-        copy_files_to(cf_dir, os.path.join(cf_dir, f'./backup.{time.time()}/'),
-                      files_only=True, create_to_dir=True)
+        backup_dir = os.path.join(cf_dir, f'./backup.{time.time()}/')
+        copy_files_to(cf_dir, backup_dir, files_only=True, create_to_dir=True)
+
+        # Prepare for refresh
+        copy_files_to(cf_dir, os.path.join(cf_dir, './upload/'), files_only=True)
 
         logger.info(f"Change table compaction strategy to {strategy2}")
         session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy2}")
@@ -731,6 +729,10 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         mark = node1.mark_log()
         logger.info("Restart the node .....")
         node1.stop(gently=True)
+
+        # Prepare for cf population from staging during restart
+        copy_files_to(backup_dir, os.path.join(cf_dir, './staging/'), files_only=True)
+
         node1.start(wait_for_binary_proto=True)
         session = self.patient_cql_connection(node1)
         verify_reshape = not (
