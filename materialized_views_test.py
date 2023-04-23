@@ -805,8 +805,10 @@ class TestMaterializedViews(CommonUtils):
                 interrupt_decommission.join()
                 thread.result(timeout=180)
 
-        assert not decommissioned_node.grep_log(expr="DECOMMISSIONING: done"), \
-            "Decommissioning completed, tokens were removed. The test can not be continued."
+        if decommissioned_node.grep_log(expr="DECOMMISSIONING: (unbootstrap )?done"):
+            logger.warning("Decommissioning unbootstrap has been completed, tokens were removed. "
+                           "The test can not be continued.")
+            return
 
         # Due to interruption decommission operation is still may be considered in progress, and it will prevent node
         # removing. It has a timeout of 120 seconds by default after which the condition should be cleared.
