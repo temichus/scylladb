@@ -692,12 +692,15 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         logger.info(f"Change table compaction strategy to {strategy2}")
         session.execute(f"ALTER TABLE keyspace1.standard1 WITH compaction={strategy2}")
 
-        def assert_reshape_and_verify_data(srcdir, log_mark, verify_reshape=True):
+        def assert_reshape(srcdir, log_mark, verify_reshape=True, followed_by=None):
             """
-            Check Reshaping or Resharding really happens and verify the loaded data by cs read
+            Check Reshaping or Resharding really happened
             """
             try:
-                res = node1.watch_log_for(r"(Reshape|Reshard) keyspace1.standard1", timeout=30, from_mark=log_mark)
+                exprs = [r"(Reshape|Reshard) keyspace1.standard1"]
+                if followed_by:
+                    exprs.append(followed_by)
+                res = node1.watch_log_for(exprs, timeout=30, from_mark=log_mark)
                 logger.debug(res)
             except TimeoutError:
                 res = None
@@ -708,6 +711,10 @@ class TestCompactionAdditional(CompactionAdditionalTester):
                     else:
                         logger.debug(msg + ", as expected.")
 
+        def verify_data(srcdir):
+            """
+            Verify the loaded data by cs read
+            """
             logger.info(f'Verify data is loaded from {srcdir} directory')
             node1.stress(['read', 'n=100', 'no-warmup', '-rate', 'threads=10', '-col', 'size=FIXED(1024)'])
 
@@ -721,7 +728,9 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         mark = node1.mark_log()
         logger.info('Refresh keyspace1.standard1 .....')
         node1.nodetool("refresh -- keyspace1 standard1")
-        assert_reshape_and_verify_data(srcdir='upload/', log_mark=mark)
+        followed_by = r"Done loading new SSTables for keyspace=keyspace1.*table=standard1"
+        assert_reshape(srcdir='upload/', log_mark=mark, followed_by=followed_by)
+        verify_data(srcdir='upload/')
 
         logger.debug("Clean test data & sstables before subtest by TRUNCATE")
         session.execute("TRUNCATE keyspace1.standard1")
@@ -737,7 +746,9 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         session = self.patient_cql_connection(node1)
         verify_reshape = not (
             strategy2['class'] == 'LeveledCompactionStrategy' and strategy1['class'] != 'LeveledCompactionStrategy')
-        assert_reshape_and_verify_data(srcdir='staging/', log_mark=mark, verify_reshape=verify_reshape)
+        followed_by = r"Reshaped .* seconds"
+        assert_reshape(srcdir='staging/', log_mark=mark, verify_reshape=verify_reshape, followed_by=followed_by)
+        verify_data(srcdir='staging/')
 
         shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
 
