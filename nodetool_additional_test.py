@@ -2364,11 +2364,12 @@ class TestNodetool(Tester):
         # Disable compaction
         session.execute(f"ALTER TABLE {ks}.{cf} WITH compaction = {{ 'class' : 'NullCompactionStrategy' }}")
         node.nodetool('flush')
+        node.stop()
 
-        logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
+        logger.debug('Copying the sstables with invalid fragment to table and restart node ...')
         cf_dir = get_node_cf_dir(node, ks_name=ks, cf_name=cf)
-        copy_files_to(f"test-sstables/sstable_with_invalid_fragment/ks/cf-test/", os.path.join(cf_dir, 'upload'))
-        node.nodetool(f"refresh -- {ks} {cf}")
+        copy_files_to(f"test-sstables/sstable_with_invalid_fragment/ks/cf-test/", cf_dir)
+        node.start()
 
         self._scrub_keyspace(node, ks=ks, cf=("" if scrub_keyspace else cf), mode=mode)
 
