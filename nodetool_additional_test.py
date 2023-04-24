@@ -2359,10 +2359,8 @@ class TestNodetool(Tester):
         session = self.patient_cql_connection(node)
         ks = "ks"
         cf = "cf"
-        cf2 = "cf2"
         self.create_table(session, {ks: {"rf": "1", "tables": {
-                          cf: {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
-                          cf2: {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
+                          cf: {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
         node.nodetool('flush')
 
         logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
