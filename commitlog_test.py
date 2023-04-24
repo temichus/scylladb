@@ -1064,13 +1064,13 @@ class TestCommitLog(Tester):
         # Recover from ENOSPC
         node1.stop(gently=False)
         tmpdir = tempfile.mkdtemp()
-        copy_files_to(commitlog_dir, tmpdir, files_only=True)
+        copy_files_to(commitlog_dir, tmpdir, files_only=False)
         logger.debug("Umount commitlog dir and restart node")
         exec_cmd(f'sudo umount {commitlog_dir}')
         exec_cmd('losetup -la', debug_output=True)
         exec_cmd(f'sudo losetup -d {loopdev}')
         exec_cmd('losetup -la', debug_output=True)
-        copy_files_to(tmpdir, commitlog_dir, files_only=True)
+        copy_files_to(tmpdir, commitlog_dir, files_only=False, dirs_exist_ok=True)
         exec_cmd(f'sudo chown -R {user}:{user} {commitlog_dir}')
 
         node1.start(wait_for_binary_proto=True)
