@@ -50,7 +50,7 @@ def size_of_files_in_dir(dir_name, verbose=True):
     return sum(os.path.getsize(f) for f in files)
 
 
-def copy_files_to(from_dir, to_dir, files_only=False, create_to_dir=False):
+def copy_files_to(from_dir, to_dir, files_only=False, create_to_dir=False, dirs_exist_ok=False):
     """
     Copy files from `from_dir` to `to_dir`, optionally create `to_dir`
 
@@ -63,7 +63,7 @@ def copy_files_to(from_dir, to_dir, files_only=False, create_to_dir=False):
         if os.path.isfile(os.path.join(from_dir, f)):
             shutil.copy2(os.path.join(from_dir, f), os.path.join(to_dir, f))
         elif not files_only:
-            shutil.copytree(os.path.join(from_dir, f), os.path.join(to_dir, f))
+            shutil.copytree(os.path.join(from_dir, f), os.path.join(to_dir, f), dirs_exist_ok=dirs_exist_ok)
 
 
 def get_sstables_files(cf_dir, f_type=''):
