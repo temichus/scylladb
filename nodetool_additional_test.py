@@ -2360,7 +2360,7 @@ class TestNodetool(Tester):
         ks = "ks"
         cf = "cf"
         cf2 = "cf2"
-        self.create_table(session, {ks: {"rf": "3", "tables": {
+        self.create_table(session, {ks: {"rf": "1", "tables": {
                           cf: {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"},
                           cf2: {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
         node.nodetool('flush')
