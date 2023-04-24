@@ -2373,12 +2373,11 @@ class TestNodetool(Tester):
         self._scrub_keyspace(node, ks=ks, cf=("" if scrub_keyspace else cf), mode=mode)
 
         timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        node.watch_log_for('Finished scrubbing', timeout=timeout)
         # Scrub messages changed in scylladb/scylla@f0e2f31839
         expected_errs = r'\[.* compaction ks.cf\] Invalid (clustering row fragment|partition)'
         if mode == "SKIP":
             expected_errs = rf"{expected_errs}|Skipping invalid (clustering row fragment|partition)"
-        node.watch_log_for(expected_errs, timeout=0)
+        node.watch_log_for([expected_errs, 'Finished scrubbing'], timeout=timeout)
 
     def test_scrub_sstable_with_invalid_fragment(self):
         """
