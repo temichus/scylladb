@@ -2361,6 +2361,8 @@ class TestNodetool(Tester):
         cf = "cf"
         self.create_table(session, {ks: {"rf": "1", "tables": {
                           cf: {"pk": "text", "ck": "int", "s": "int", "v": "int", "key": "pk, ck"}}}})
+        # Disable compaction
+        session.execute(f"ALTER TABLE {ks}.{cf} WITH compaction = {{ 'class' : 'NullCompactionStrategy' }}")
         node.nodetool('flush')
 
         logger.debug('Copying the sstables with invalid fragment to upload directory and Loading by refresh ...')
