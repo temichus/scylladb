@@ -571,7 +571,8 @@ class TestLWTBankingLoad(Tester):
         # Do batch inserts to speed up account setup
         bic_start = worker_n * slice_max                         # Starting bic
         bic_end = min((worker_n + 1) * slice_max, BICS)  # Last worker has smaller slice
-        session = self.patient_cql_connection(choice(self.cluster.nodelist()))
+        # Slow environments take very long to come up, wait up to 600 seconds (10 minutes)
+        session = self.patient_cql_connection(choice(self.cluster.nodelist()), timeout=600)
         account_stmt_cql = ["BEGIN BATCH\n"] + [INSERT_ACCOUNT] * INSERT_BATCH_LEN + ["APPLY BATCH"]
         account_stmt = session.prepare("".join(account_stmt_cql))
         account_stmt.consistency_level = ConsistencyLevel.ONE
