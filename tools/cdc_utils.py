@@ -99,7 +99,7 @@ class CDCTraceInfoMatcher:
     end_line = "CDC: Finished generating all log mutations.*$"
     # should be consistent with the way how dht::decorated_key is formatted in
     # scylladb
-    key_template = "{{key: pk{{.*?}}, token:{token_id}}}"
+    key_template = r"{{key:\s*pk{{.*?}},\s*token:\s*{token_id}}}"
 
     def __init__(self, tokens, preimage=False, postimage=False, splitting=False):
         self.tokens = tokens
