@@ -97,6 +97,9 @@ class CDCInitializeHelper:
 class CDCTraceInfoMatcher:
     start_line = "CDC: Started generating mutations for log rows.*$"
     end_line = "CDC: Finished generating all log mutations.*$"
+    # should be consistent with the way how dht::decorated_key is formatted in
+    # scylladb
+    key_template = "{{key: pk{{.*?}}, token:{token_id}}}"
 
     def __init__(self, tokens, preimage=False, postimage=False, splitting=False):
         self.tokens = tokens
@@ -107,24 +110,24 @@ class CDCTraceInfoMatcher:
     @property
     def preimage_pattern(self):
         if self.preimage or self.postimage:
-            return "CDC: Selecting preimage for {{key: pk{{.*?}}, token:{token_id}}}.*$"
+            return f"CDC: Selecting preimage for {self.key_template}.*$"
         else:
-            return "CDC: Preimage not enabled for the table, not querying current value of {{key: pk{{.*?}}, token:{token_id}}}.*$"
+            return f"CDC: Preimage not enabled for the table, not querying current value of {self.key_template}.*$"
 
     @property
     def generate_log_mutation_pattern(self):
-        return "CDC: Generating log mutations for {{key: pk{{.*?}}, token:{token_id}}}.*$"
+        return f"CDC: Generating log mutations for {self.key_template}.*$"
 
     @property
     def splitting_pattern(self):
         if self.splitting:
-            return "CDC: Splitting {{key: pk{{.*?}}, token:{token_id}}}.*$"
+            return f"CDC: Splitting {self.key_template}.*$"
         else:
-            return "CDC: No need to split {{key: pk{{.*?}}, token:{token_id}}}.*$"
+            return f"CDC: No need to split {self.key_template}.*$"
 
     @property
     def number_log_mutation_pattern(self):
-        return r"CDC: Generated [\d]+ log mutations from {{key: pk{{.*?}}, token:{token_id}}}.*$"
+        return rf"CDC: Generated [\d]+ log mutations from {self.key_template}.*$"
 
     def get_raw_cdc_lines(self, output: str) -> List[str]:
         cdc_lines = [line.strip() for line in output.splitlines() if "CDC:" in line]
