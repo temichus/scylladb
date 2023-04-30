@@ -2202,7 +2202,7 @@ class TestNodetool(Tester):
         logger.debug(f"Scrub output: {out}")
 
     def _scrub_with_one_node_expect_data_loss(self, mode: str = None):
-        cluster = self.run_cluster(nodes=1)
+        cluster = self.run_cluster(nodes=1, configuration={'abort_on_internal_error': '0'})
         node = cluster[0]
         session = self.patient_cql_connection(node)
         ks = "ks"
