@@ -472,15 +472,25 @@ class EncryptionAtRestBase(Tester):
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 class TestEncryptionAtRest(EncryptionAtRestBase):
+
+    """
+    # running specific case with parameter
+    > pytest encryption_at_rest_test.py::TestEncryptionAtRest::test_multiple_ks[kmip]
+    > pytest encryption_at_rest_test.py::TestEncryptionAtRest::test_encryption_table_compression[LZ4]
+    # or all tests with kmip parameter
+    > pytest encryption_at_rest_test.py::TestEncryptionAtRest -k kmip
+    """
     default_node_num = 1
 
-    def test_encryption_table_compression(self):
-        for i in [None, 'LZ4', 'Snappy', 'Deflate']:
-            logger.debug('---- Test with compression: %s -----' % i)
-            self._smoke_test(key_provider=KeyProviderEnum.local, ciphers={'AES/CBC/PKCS5Padding': [128]}, compression=i)
+    @pytest.mark.parametrize(argnames='compression', argvalues=(None, 'LZ4', 'Snappy', 'Deflate'))
+    def test_encryption_table_compression(self, compression):
+        logger.debug('---- Test with compression: %s -----' % compression)
+        self._smoke_test(key_provider=KeyProviderEnum.local, ciphers={
+                         'AES/CBC/PKCS5Padding': [128]}, compression=compression)
 
     @pytest.mark.timeout(4700)
-    def test_wrong_cipher_algorithm(self):
+    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    def test_wrong_cipher_algorithm(self, key_provider):
         errors = []
         # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
         # unexpected_success = []
@@ -490,33 +500,33 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
                           for a in ['Abc/', '/Abc', 'Abc']
                           for c in [oc + a, a + oc]
                           }
-        for value in KeyProviderEnum:
-            def handler(e, cipher, length):
-                try:
-                    raise e
-                except NoHostAvailable as exc_details:
-                    error_message_to_str = str(exc_details)
-                    logger.debug(error_message_to_str)
-                    assert (f"Invalid algorithm string: {cipher}" in error_message_to_str
-                            or (f"Invalid algorithm" in error_message_to_str and
-                                cipher in error_message_to_str)
-                            or 'Could not write key file' in error_message_to_str
-                            or ('[Server error] message=' in error_message_to_str and 'abc' in error_message_to_str)
-                            or 'non-supported padding option' in error_message_to_str
-                            # TODO: There are a few cases when we have nested exceptions that "hide" the original message
-                            # TODO: once it reaches cql layer. So the error message is returned empty
-                            # TODO: Issue: https://github.com/scylladb/scylla/issues/9497
-                            #  TODO: Remove next condition when the issue will be resolved
-                            or error_message_to_str == "('Unable to complete the operation against any hosts', {})"
-                            ), error_message_to_str
 
-                except Exception as exc:
-                    errors.append((f"Unexpected exception: {exc}. "
-                                   f"Encryption option: 'key_provider': '{value}', "
-                                   f"'cipher_algorithm': '{cipher}', "
-                                   f"'secret_key_strength': {length}"))
+        def handler(e, cipher, length):
+            try:
+                raise e
+            except NoHostAvailable as exc_details:
+                error_message_to_str = str(exc_details)
+                logger.debug(error_message_to_str)
+                assert (f"Invalid algorithm string: {cipher}" in error_message_to_str
+                        or (f"Invalid algorithm" in error_message_to_str and
+                            cipher in error_message_to_str)
+                        or 'Could not write key file' in error_message_to_str
+                        or ('[Server error] message=' in error_message_to_str and 'abc' in error_message_to_str)
+                        or 'non-supported padding option' in error_message_to_str
+                        # TODO: There are a few cases when we have nested exceptions that "hide" the original message
+                        # TODO: once it reaches cql layer. So the error message is returned empty
+                        # TODO: Issue: https://github.com/scylladb/scylla/issues/9497
+                        #  TODO: Remove next condition when the issue will be resolved
+                        or error_message_to_str == "('Unable to complete the operation against any hosts', {})"
+                        ), error_message_to_str
 
-            self._smoke_test(key_provider=value, ciphers=broken_ciphers, exception_handler=handler)
+            except Exception as exc:
+                errors.append((f"Unexpected exception: {exc}. "
+                               f"Encryption option: 'key_provider': '{key_provider}', "
+                               f"'cipher_algorithm': '{cipher}', "
+                               f"'secret_key_strength': {length}"))
+
+        self._smoke_test(key_provider=key_provider, ciphers=broken_ciphers, exception_handler=handler)
 
         # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
         # assert not unexpected_success, "Negative tests succeeded unexpectedly: %s" % '\n'.join(unexpected_success)
@@ -524,50 +534,50 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
         assert not errors, errors
 
     @pytest.mark.timeout(4000)
-    def test_supported_cipher_algorithms(self):
+    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    def test_supported_cipher_algorithms(self, key_provider):
         errors = []
 
-        for value in KeyProviderEnum:
-            def handler(e, cipher, length):
-                logger.debug(str(e))
-                errors.append(f"Test with configuration '{cipher}', length {length}, "
-                              f"key provider {value}' failed. Error {e}")
+        def handler(e, cipher, length):
+            logger.debug(str(e))
+            errors.append(f"Test with configuration '{cipher}', length {length}, "
+                          f"key provider {key_provider}' failed. Error {e}")
 
-            self._smoke_test(key_provider=value, ciphers=supported_cipher_algorithms, exception_handler=handler)
+        self._smoke_test(key_provider=key_provider, ciphers=supported_cipher_algorithms, exception_handler=handler)
 
         assert len(errors) == 0, errors
 
-    def test_abbreviated_supported_cipher_algorithms(self):
+    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    def test_abbreviated_supported_cipher_algorithms(self, key_provider):
         errors = []
         abbreviated = {c: l for c in supported_cipher_algorithms if c
                        for l in [supported_cipher_algorithms[c][:1]]
                        }
 
-        for value in KeyProviderEnum:
-            def handler(e, cipher, length):
-                logger.debug(str(e))
-                errors.append(f"Test with configuration '{cipher}', length {length}, "
-                              f"key provider {value}' failed. Error {e}")
+        def handler(e, cipher, length):
+            logger.debug(str(e))
+            errors.append(f"Test with configuration '{cipher}', length {length}, "
+                          f"key provider {key_provider}' failed. Error {e}")
 
-            self._smoke_test(key_provider=value, ciphers=abbreviated, exception_handler=handler)
+        self._smoke_test(key_provider=key_provider, ciphers=abbreviated, exception_handler=handler)
 
         assert len(errors) == 0, errors
 
-    def test_multiple_ks(self):
-        for value in KeyProviderEnum:
-            self._multiple_ks_test(key_provider=value)
+    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    def test_multiple_ks(self, key_provider):
+        self._multiple_ks_test(key_provider=key_provider)
 
-    def test_multiple_cf(self):
-        for value in KeyProviderEnum:
-            self._multiple_cf_test(key_provider=value)
+    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    def test_multiple_cf(self, key_provider):
+        self._multiple_cf_test(key_provider=key_provider)
 
-    def test_reboot(self):
-        for value in KeyProviderEnum:
-            self._reboot_test(key_provider=value)
+    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    def test_reboot(self, key_provider):
+        self._reboot_test(key_provider=key_provider)
 
-    def test_alter(self):
-        for value in KeyProviderEnum:
-            self._alter_test(key_provider=value)
+    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    def test_alter(self, key_provider):
+        self._alter_test(key_provider=key_provider)
 
 
 @pytest.mark.dtest_full
