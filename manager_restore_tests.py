@@ -40,17 +40,30 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
                                                keyspace_table_and_key_range=keyspace_table_and_key_range)
         return backup_task
 
-    def restore_and_verify(self, mgr_cluster, backup_task, healthy_node):
+    def restore_and_verify(self, mgr_cluster, backup_task, healthy_node, cluster=None):
+        target_cluster = cluster if cluster else self.cluster
         restore_task = mgr_cluster.run_restore_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                        restore_data=True,
                                                        snapshot_tag=backup_task.get_snapshot_tag())
         final_status = restore_task.wait_and_get_final_status(step=5)
         assert final_status == TaskStatus.DONE, f"Restore task failed: {restore_task.full_progress_string()}"
-        for node in self.cluster.nodelist():
+        for node in target_cluster.nodelist():
             if self._is_node_at_status(node.address(), functioning_node=healthy_node, desirable_status="UN",
                                        tolerate_missing=True):
                 node.nodetool("repair")
         self.verify_c1c2(node=healthy_node)
+
+    def restore_schema(self, mgr_cluster, backup_task, cluster=None):
+        target_cluster = cluster if cluster else self.cluster
+        restore_task = mgr_cluster.run_restore_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
+                                                       restore_schema=True,
+                                                       snapshot_tag=backup_task.get_snapshot_tag())
+        final_status = restore_task.wait_and_get_final_status(step=5)
+        assert final_status == TaskStatus.DONE, f"Restore task failed: {restore_task.full_progress_string()}"
+        for node in target_cluster.nodelist():
+            node.stop(wait_other_notice=True)
+            node.start(wait_other_notice=True, wait_for_binary_proto=True)
+            self.configure_agent(node)
 
     def restore_and_verify_using_stress(self, mgr_cluster, backup_task, healthy_node, number_of_rows, threads=5,
                                         batch_size=None):
@@ -230,6 +243,19 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         for node in first_dc_nodes:
             node.nodetool("drain")
         self.restore_and_verify(mgr_cluster, backup_task, second_dc_nodes[0])
+
+    @pytest.mark.parametrize(argnames=("backed_up_cluster_size", "target_cluster_size"),
+                             argvalues=[(2, 3), (3, 2), (2, 4), (5, 3)])
+    def test_restore_different_size_cluster(self, backed_up_cluster_size, target_cluster_size, secondary_cluster):
+        self.config_and_create_cluster(nodes=backed_up_cluster_size)
+        mgr_cluster1 = self._create_mgr_cluster(node=self.cluster.nodelist()[0], name=CLUSTER_NAME)
+        backup_task = self.insert_data_backup_and_cleanup(self.cluster.nodelist()[0], mgr_cluster1)
+
+        second_cluster_nodes = self.config_and_create_cluster(nodes=target_cluster_size, cluster=secondary_cluster)
+        mgr_cluster2 = self._create_mgr_cluster(node=second_cluster_nodes[0], name=CLUSTER_NAME+"2")
+        self.restore_schema(mgr_cluster=mgr_cluster2, backup_task=backup_task, cluster=secondary_cluster)
+        self.restore_and_verify(mgr_cluster=mgr_cluster2, backup_task=backup_task, healthy_node=second_cluster_nodes[0],
+                                cluster=secondary_cluster)
 
     def test_restore_using_nonexistent_snapshot_tag(self):
         node1, node2 = self.config_and_create_cluster(nodes=[2])
