@@ -3,13 +3,12 @@ import time
 import subprocess
 import os
 import shutil
-import re
 from enum import Enum
 import logging
 import docker
 
 import pytest
-from cassandra import ReadFailure, ConsistencyLevel
+from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
 
 from dtest_class import Tester, create_ks, create_cf
