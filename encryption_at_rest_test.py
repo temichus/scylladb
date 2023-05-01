@@ -10,6 +10,7 @@ import docker
 import pytest
 from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
+from cassandra.protocol import ConfigurationException
 
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2, query_c1c2, rows_to_list
@@ -504,7 +505,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
         def handler(e, cipher, length):
             try:
                 raise e
-            except NoHostAvailable as exc_details:
+            except (NoHostAvailable, ConfigurationException) as exc_details:
                 error_message_to_str = str(exc_details)
                 logger.debug(error_message_to_str)
                 assert (f"Invalid algorithm string: {cipher}" in error_message_to_str
@@ -513,18 +514,13 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
                         or 'Could not write key file' in error_message_to_str
                         or ('[Server error] message=' in error_message_to_str and 'abc' in error_message_to_str)
                         or 'non-supported padding option' in error_message_to_str
-                        # TODO: There are a few cases when we have nested exceptions that "hide" the original message
-                        # TODO: once it reaches cql layer. So the error message is returned empty
-                        # TODO: Issue: https://github.com/scylladb/scylla/issues/9497
-                        #  TODO: Remove next condition when the issue will be resolved
-                        or error_message_to_str == "('Unable to complete the operation against any hosts', {})"
-                        ), error_message_to_str
-
+                        or 'routines::unsupported' in error_message_to_str), error_message_to_str
             except Exception as exc:
                 errors.append((f"Unexpected exception: {exc}. "
                                f"Encryption option: 'key_provider': '{key_provider}', "
                                f"'cipher_algorithm': '{cipher}', "
                                f"'secret_key_strength': {length}"))
+                logger.debug(errors[-1])
 
         self._smoke_test(key_provider=key_provider, ciphers=broken_ciphers, exception_handler=handler)
 
