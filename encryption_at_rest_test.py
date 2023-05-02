@@ -241,14 +241,16 @@ class EncryptionAtRestBase(Tester):
         conn = self.patient_cql_connection(node, user=user, password=password)
         return conn
 
-    def create_ks(self, kss=['ks'], n=default_node_num):
+    def create_ks(self, kss=['ks'], n=None):
+        n = n if n else self.default_node_num
         session = self.get_session()
         for ks in kss:
             session.execute(
                 f"CREATE KEYSPACE IF NOT EXISTS {ks} WITH REPLICATION = {{'class' : 'SimpleStrategy', "
                 f"'replication_factor' : {n} }}")
 
-    def prepare(self, n=default_node_num, kss=['ks'], restart=False):
+    def prepare(self, n=None, kss=['ks'], restart=False):
+        n = n if n else self.default_node_num
         self.cluster.set_configuration_options({'system_key_directory': EncryptionAtRestBase.system_key_dir})
         logger.debug('set system_key_directory to %s', EncryptionAtRestBase.system_key_dir)
         if not self.cluster.nodelist():
@@ -490,6 +492,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
                          'AES/CBC/PKCS5Padding': [128]}, compression=compression)
 
     @pytest.mark.timeout(4700)
+    @pytest.mark.single_node
     @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
     def test_wrong_cipher_algorithm(self, key_provider):
         errors = []
@@ -530,6 +533,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
         assert not errors, errors
 
     @pytest.mark.timeout(4000)
+    @pytest.mark.single_node
     @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
     def test_supported_cipher_algorithms(self, key_provider):
         errors = []
@@ -543,6 +547,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
 
         assert len(errors) == 0, errors
 
+    @pytest.mark.single_node
     @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
     def test_abbreviated_supported_cipher_algorithms(self, key_provider):
         errors = []
@@ -559,10 +564,12 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
 
         assert len(errors) == 0, errors
 
+    @pytest.mark.single_node
     @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
     def test_multiple_ks(self, key_provider):
         self._multiple_ks_test(key_provider=key_provider)
 
+    @pytest.mark.single_node
     @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
     def test_multiple_cf(self, key_provider):
         self._multiple_cf_test(key_provider=key_provider)
@@ -571,6 +578,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
     def test_reboot(self, key_provider):
         self._reboot_test(key_provider=key_provider)
 
+    @pytest.mark.single_node
     @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
     def test_alter(self, key_provider):
         self._alter_test(key_provider=key_provider)
