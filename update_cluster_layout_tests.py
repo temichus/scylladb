@@ -327,7 +327,7 @@ class TestUpdateClusterLayout(Tester):
 
         expected_errors = [
             "Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true",
-            f"Node {node2.address()} has gossip status=UNKNOWN. Try fixing it before adding new node to the cluster",
+            f"Node .*{node2.address()} has gossip status=UNKNOWN. Try fixing it before adding new node to the cluster",
         ]
         self.ignore_log_patterns += expected_errors
 
