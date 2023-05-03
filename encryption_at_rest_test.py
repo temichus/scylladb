@@ -176,19 +176,12 @@ class KMSKeyProviderFactory(BaseKeyProviderFactory):
 
     def prepare_conf(self):
         local_kms_image = "nsmithuk/local-kms:3"
+
+        self.container = self.client.containers.run(local_kms_image, detach=True, ports={8080: None})
+        self.container.reload()
         if running_in_docker():
-            # not using same recipie as ldap_docker, etc, because this does not work for me in my container.
-            # instead, just don't map ports, but tell container to run in current containers network.
-            id = None
-            with open('/etc/hostname', 'r') as file:
-                id = file.read().rstrip()
-            self.container = self.client.containers.run(
-                local_kms_image, detach=True, network_mode="container:" + id)
-            self.endpoint_url = 'http://localhost:8080'
+            self.endpoint_url = f'http://{self.container.attrs["NetworkSettings"]["IPAddress"]}:8080'
         else:
-            # normal. not running in docket container, can run container as intended.
-            self.container = self.client.containers.run(local_kms_image, detach=True, ports={8080: None})
-            self.container.reload()
             ports = self.container.attrs['NetworkSettings']['Ports']
             port = ports['8080/tcp'][0]['HostPort']
             self.endpoint_url = 'http://localhost:' + port
