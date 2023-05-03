@@ -383,6 +383,15 @@ def dtest_config(request):
     yield dtest_config
 
 
+def pytest_sessionstart(session):
+    if session.config.pluginmanager.get_plugin("timeout"):
+        scylla_version = session.config.getoption('--scylla-version')
+        cassandra_dir = session.config.getoption("--cassandra-dir")
+        _scylla_mode = scylla_mode(cassandra_dir, scylla_version)
+        if _scylla_mode in ['debug', 'dev']:
+            session.config._env_timeout = 7200  # pylint: disable=protected-member
+
+
 def pytest_collection_modifyitems(items, config):
     """
     This function is called upon during the pytest test collection phase and allows for modification
