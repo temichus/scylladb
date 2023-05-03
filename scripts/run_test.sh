@@ -81,7 +81,7 @@ if [[ ${CASSANDRA_DIR} == */build/* ]]; then
     mode=$(echo $CASSANDRA_DIR | sed 's|.*/build/||')
 fi
 
-SCYLLA_PRODUCT=$(basename ${SCYLLA_ROOT_DIR})
+SCYLLA_PRODUCT=${SCYLLA_PRODUCT:-basename ${SCYLLA_ROOT_DIR}}
 export TOOLS_JAVA_DIR=$(
     { [ -n "${TOOLS_JAVA_DIR}" ] && echo "${TOOLS_JAVA_DIR}"; } ||
     { [ -d "${SCYLLA_ROOT_DIR}/tools/java" ] && echo "${SCYLLA_ROOT_DIR}/tools/java"; } ||
@@ -246,6 +246,7 @@ docker_cmd="docker run --init --detach=true \
     -e GITHUB_TOKEN \
     -e DTEST_REQUIRE \
     -e SCYLLA_ARCH \
+    -e SCYLLA_PRODUCT \
     -w ${DTEST_DIR} \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
