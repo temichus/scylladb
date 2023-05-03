@@ -33,6 +33,7 @@ class KeyProviderEnum(Enum):
     replicated = 'ReplicatedKeyProviderFactory'
     kmip = 'KmipKeyProviderFactory'
     kms = 'KmsKeyProviderFactory'
+    kms_real = 'KmsRealKeyProviderFactory'
 
 
 # default: 'AES/CBC/PKCS5Padding', length 128
@@ -223,6 +224,34 @@ class KMSKeyProviderFactory(BaseKeyProviderFactory):
         return True
 
 
+class KMSRealKeyProviderFactory(BaseKeyProviderFactory):
+    def __init__(self, tester):
+        BaseKeyProviderFactory.__init__(self, KeyProviderEnum.kms, tester)
+        self.master_key = "alias/kms_encryption_test"
+        self.kms_host = 'kms_test'
+
+    def prepare_conf(self):
+        options = {'master_key': self.master_key,
+                   'aws_region': 'us-east-1'}
+        self.cluster.set_configuration_options({'kms_hosts': {self.kms_host: options}})
+
+    def __enter__(self):
+        self.prepare_conf()
+        return self
+
+    def __exit__(self, exception_type, exception_value, exception_traceback):
+        pass
+
+    def additional_cf_options(self, ks=None):
+        return super().additional_cf_options(ks) | {'kms_host': self.kms_host}
+
+    def supported_cipher(self, cipher_algorithm, secret_key_strength):
+        return secret_key_strength >= 128
+
+    def require_restart(self):
+        return True
+
+
 class EncryptionAtRestBase(Tester):
     multiple_num = 3
     default_node_num = 2
@@ -246,7 +275,8 @@ class EncryptionAtRestBase(Tester):
         self.cluster.set_configuration_options({'system_key_directory': EncryptionAtRestBase.system_key_dir})
         logger.debug('set system_key_directory to %s', EncryptionAtRestBase.system_key_dir)
         if not self.cluster.nodelist():
-            self.cluster.populate(n).start(wait_for_binary_proto=True, wait_other_notice=True)
+            self.cluster.populate(n).start(wait_for_binary_proto=True, wait_other_notice=True,
+                                           jvm_args=['--logger-log-level', 'kms=trace'])
         elif restart:
             self.rolling_restart()
         session = self.get_session()
@@ -330,6 +360,8 @@ class EncryptionAtRestBase(Tester):
             ret = KmipKeyProviderFactory(self)
         elif key_provider == KeyProviderEnum.kms:
             ret = KMSKeyProviderFactory(self)
+        elif key_provider == KeyProviderEnum.kms_real:
+            ret = KMSRealKeyProviderFactory(self)
         elif key_provider is None:
             ret = DefaultKeyProviderFactory(self)
         else:
@@ -408,6 +440,9 @@ class EncryptionAtRestBase(Tester):
                 table_desc = get_table_description(node1, "ks", "cf")
                 if key_provider == None:
                     assert "key_provider" not in table_desc, f"key_provider isn't unspecified, schema:\n {table_desc}"
+                elif key_provider == KeyProviderEnum.kms_real:
+                    err_msg = f"key_provider isn't changed to KmsKeyProviderFactory, schema: \n {table_desc}"
+                    assert "'key_provider': 'KmsKeyProviderFactory'" in table_desc, err_msg
                 else:
                     err_msg = f"key_provider isn't changed to {key_provider.value}, schema: \n {table_desc}"
                     assert f"'key_provider': '{key_provider.value}'" in table_desc, err_msg
