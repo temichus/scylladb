@@ -33,7 +33,10 @@ clients = (
 
 
 @pytest.mark.dtest_full
-@pytest.mark.parametrize('strategy', ['SizeTieredCompactionStrategy', 'TimeWindowCompactionStrategy', 'LeveledCompactionStrategy'])
+@pytest.mark.parametrize('strategy',
+                         ['SizeTieredCompactionStrategy',
+                          'TimeWindowCompactionStrategy',
+                          'LeveledCompactionStrategy'])
 class TestWideRows(Tester):
     BLOB_SIZE_10k = 1024 * 10
     BLOB_SIZE_1MB = 1024 * 1024
@@ -123,11 +126,24 @@ class TestWideRows(Tester):
                                                                                              self.compaction_option)
         session.execute(create_table_query)
 
-    def create_too_many_collection_elements_table(self, session, table_name):
+    def create_too_many_collection_elements_table(self, session, table_name, collection_type='map'):
+        match collection_type:
+            case 'map':
+                col_type_str = 'kvmap map<text, text>'
+            case 'set':
+                col_type_str = 'myset set<text>'
+            case 'list':
+                col_type_str = 'mylist list<text>'
+            case _:
+                raise Exception(
+                    f"{collection_type=} is not supported by function 'create_too_many_elements_table' \n"
+                    f"Use only 'map', 'set', or 'list''")
+
         logger.debug('Create table {} with too many collection items'.format(table_name))
-        create_table_query = 'CREATE TABLE IF NOT EXISTS %s (userid text, event text, value0 blob, kvmap map<text, text>, ' \
+        create_table_query = f'CREATE TABLE IF NOT EXISTS %s (userid text, event text, value0 blob, {col_type_str}, ' \
                              'PRIMARY KEY (userid, event)) with compression = { } and %s' % (table_name,
                                                                                              self.compaction_option)
+        logger.debug(f'Running query: {create_table_query}')
         session.execute(create_table_query)
 
     def create_large_row_static_data(self, session, table_name, rows_num):
@@ -137,7 +153,7 @@ class TestWideRows(Tester):
         """
         large_data_1_mb = 'x' * 1024 * 1024
         logger.debug(f'Prefill table {table_name} with {rows_num} rows')
-        for index in range(1, rows_num+1):
+        for index in range(1, rows_num + 1):
             userid = f'user{index}'
             event = (self.date + datetime.timedelta(index)).strftime("%Y-%m-%d")
             # Default large data threshold for cells is 1 mb, for rows it is 10 mb.
@@ -162,7 +178,9 @@ class TestWideRows(Tester):
 
         return expected_rows
 
-    def create_too_many_rows_data(self, session, table_name, rows_num, columns_num, one_blob_size, partition_index, start_row_index, collection_elements=0, start_collection_element_index=0):
+    def create_too_many_rows_data(self, session, table_name, rows_num, columns_num, one_blob_size, partition_index,
+                                  start_row_index, collection_type='map', collection_elements=0,
+                                  start_collection_element_index=0):
         expected_rows = {}
         expected_row_size = columns_num * one_blob_size  # approximately row size
 
@@ -176,14 +194,29 @@ class TestWideRows(Tester):
                     "UPDATE {table_name} SET value{i} = textAsBlob('{value}') WHERE userid='{user}' and event='{event}'"
                     .format(**locals()))
             if collection_elements:
+                match collection_type:
+                    case 'map':
+                        collection_type_string = "kvmap['key{j}'] = 'val{j}'"
+                    case 'set':
+                        collection_type_string = "myset = myset + {{ 'cat{j}' }}"
+                    case 'list':
+                        collection_type_string = "mylist = mylist + [ '{j}' ]"
+                    case _:
+                        raise Exception(
+                            f"{collection_type=} is not supported by function 'create_too_many_rows_data' \n"
+                            f"Use only 'map', 'set', or 'list''")
                 for i in range(start_collection_element_index, start_collection_element_index + collection_elements):
+                    logger.debug(
+                        f"UPDATE {table_name} SET {collection_type_string.format(j=i)} WHERE userid='{user}' and event='{event}'")
                     session.execute(
-                        f"UPDATE {table_name} SET kvmap['key{i}'] = 'val{i}' WHERE userid='{user}' and event='{event}'")
+                        f"UPDATE {table_name} SET {collection_type_string.format(j=i)} WHERE userid='{user}' and event='{event}'")
             expected_rows['{}.{}'.format(user, event)] = expected_row_size
 
         return expected_rows
 
-    def delete_too_many_rows_data(self, session, table_name, rows_num, columns_num, start_col_index, partition_index, start_row_index, collection_elements=0, start_collection_element_index=0):
+    def delete_too_many_rows_data(self, session, table_name, rows_num, columns_num, start_col_index, partition_index,
+                                  start_row_index, collection_type='map', collection_elements=0,
+                                  start_collection_element_index=0):
         logger.debug(
             f'Delete from table {table_name} with {rows_num} rows, {columns_num} columns, and {collection_elements} collection items')
         for k in range(start_row_index, start_row_index + rows_num):
@@ -193,9 +226,22 @@ class TestWideRows(Tester):
                 for i in range(start_col_index, start_col_index + columns_num):
                     session.execute(f"DELETE value{i} FROM {table_name} WHERE userid='{user}' and event='{event}'")
             elif collection_elements:
+                match collection_type:
+                    case 'map':
+                        remove_collection_element_cmd = "DELETE kvmap['key{i}'] FROM {table_name} WHERE userid='{user}' and event='{event}'"
+                    case 'set':
+                        remove_collection_element_cmd = "UPDATE {table_name} SET myset = myset - {{ 'cat{i}' }} WHERE userid='{user}' and event='{event}'"
+                    case 'list':
+                        remove_collection_element_cmd = "DELETE mylist[{i}] FROM {table_name} WHERE userid='{user}' and event='{event}'"
+                    case _:
+                        raise Exception(
+                            f"{collection_type=} is not supported by function 'delete_too_many_rows_data' \n"
+                            f"Use only 'map', 'set', 'list''")
                 for i in range(start_collection_element_index, start_collection_element_index + collection_elements):
-                    session.execute(
-                        f"DELETE kvmap['key{i}'] FROM {table_name} WHERE userid='{user}' and event='{event}'")
+                    logger.debug(remove_collection_element_cmd.format(
+                        i=i, table_name=table_name, user=user, event=event))
+                    session.execute(remove_collection_element_cmd.format(
+                        i=i, table_name=table_name, user=user, event=event))
             else:
                 session.execute(f"DELETE FROM {table_name} WHERE userid='{user}' and event='{event}'")
 
@@ -522,7 +568,8 @@ class TestWideRows(Tester):
                                    expected_entity_data_size=(initial_rows_number + additional_rows_number))
 
     @pytest.mark.single_node
-    def test_too_many_collection_elements(self):
+    @pytest.mark.parametrize('collection_type', ['map', 'set', 'list'])
+    def test_too_many_collection_elements(self, collection_type):
         """
         Test the sstables holding a collection with number of items over the threshold
         is recorded in system.large_cells
@@ -534,10 +581,12 @@ class TestWideRows(Tester):
         entity_type = 'cell'
 
         session = self.prepare_cluster(nodes=1, rf=1,
-                                       options_dict={'compaction_collection_elements_count_warning_threshold': initial_collection_elements_number})
+                                       options_dict={
+                                           'compaction_collection_elements_count_warning_threshold': initial_collection_elements_number})
         node1 = self.cluster.nodelist()[0]
 
-        self.create_too_many_collection_elements_table(session=session, table_name=self.TABLE_NAME)
+        self.create_too_many_collection_elements_table(
+            session=session, table_name=self.TABLE_NAME, collection_type=collection_type)
         gc_grace_seconds = 1
         session.execute(f"ALTER TABLE {self.TABLE_NAME} WITH gc_grace_seconds = {gc_grace_seconds}")
 
@@ -549,7 +598,8 @@ class TestWideRows(Tester):
                                        one_blob_size=128,
                                        partition_index=0,
                                        start_row_index=0,
-                                       collection_elements=initial_collection_elements_number)
+                                       collection_elements=initial_collection_elements_number,
+                                       collection_type=collection_type)
 
         self.cluster.flush()
         self.cluster.wait_for_compactions()
@@ -570,7 +620,8 @@ class TestWideRows(Tester):
                                        partition_index=0,
                                        start_row_index=0,
                                        collection_elements=additional_collection_elements_number,
-                                       start_collection_element_index=initial_collection_elements_number)
+                                       start_collection_element_index=initial_collection_elements_number,
+                                       collection_type=collection_type)
 
         self.cluster.flush()
         self.cluster.compact()
@@ -596,7 +647,8 @@ class TestWideRows(Tester):
                                        columns_num=0,
                                        start_col_index=0,
                                        collection_elements=1,
-                                       start_collection_element_index=start_collection_element_index)
+                                       start_collection_element_index=start_collection_element_index,
+                                       collection_type=collection_type)
 
         self.cluster.flush()
 
