@@ -2273,6 +2273,47 @@ class TestUpdateClusterLayout(Tester):
         node4.start(wait_for_binary_proto=True)
         logger.info("done")
 
+    @pytest.mark.require('scylladb/scylladb#13775')
+    def test_replace_after_changing_node_ip(self):
+        """ Changes to cluster topology after node ip changed"""
+
+        cluster = self.cluster
+        logger.info("starting cluster")
+        cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        logger.info("stopping node3")
+        node1, node2, node3 = cluster.nodelist()
+        node3_host_id = node3.hostid()
+        node3.stop(gently=True)
+
+        logger.info("replace node3 address")
+        old_ip3 = node3.address()
+        ip3 = f'{old_ip3}3'
+        node3.set_configuration_options(values={'listen_address': ip3, 'rpc_address': ip3, 'api_address': ip3})
+        node3.network_interfaces = {k: (ip3, v[1]) for k, v in node3.network_interfaces.items()}
+        node3.start(wait_for_binary_proto=True, wait_other_notice=True)
+
+        logger.info("stop node3")
+        node3.stop(wait_other_notice=True)
+
+        def is_shutdown(endpoint=old_ip3):
+            found = False
+            for node in [node1, node2]:
+                gs = nodetool_gossipinfo(node)
+                if endpoint in gs:
+                    logger.debug(gs[endpoint])
+                    if not "shutdown" in gs[endpoint]['STATUS']:
+                        found |= True
+            return not found
+
+        logger.info(f"Waiting for {old_ip3} gossip status=shutdown")
+        timeout = self.cql_timeout(120)
+        wait_for(is_shutdown, step=10, timeout=timeout)
+
+        logger.info("Replace node3 with node4")
+        node4 = new_node(cluster, bootstrap=True, token=None, remote_debug_port='0', data_center=None)
+        node4.start(wait_for_binary_proto=True, replace_node_host_id=node3_host_id)
+
     def test_change_node_ip_full_cluster_down(self):
         """
         Start 3 nodes
