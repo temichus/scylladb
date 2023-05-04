@@ -1141,8 +1141,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT ALL PERMISSIONS ON ks.t1 TO mike")
         assert_one(mike, "SELECT * from ks.t1 WHERE k=blobasint(intasblob(1))", [1, 1])
 
-    # Issue: UDF premissions
-    @pytest.mark.require('#5572')
+    @pytest.mark.next_gating
     def test_disallow_grant_revoke_on_builtin_functions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
