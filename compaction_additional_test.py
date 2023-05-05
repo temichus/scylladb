@@ -2576,12 +2576,12 @@ class TestValidationCompaction(CompactionAdditionalTester):
                   debug_query=True)
         node.flush()
         cf_dir = Path(get_node_cf_dir(node=node, ks_name=self.KS, cf_name=self.CF))
-        upload_dir = cf_dir / "upload"
         quarantined_sstables_dir = cf_dir / "quarantine"
         logger.debug("Copying the sstables with invalid fragment from source directory:"
-                     " %s to upload directory: %s...", self.CORRUPT_DATA_FILE_DIR, upload_dir)
-        copy_files_to(self.CORRUPT_DATA_FILE_DIR, upload_dir)
-        node.nodetool(f"refresh -- {self.KS} {self.CF}")
+                     " %s to table directory: %s...", self.CORRUPT_DATA_FILE_DIR, cf_dir)
+        node.stop()
+        copy_files_to(self.CORRUPT_DATA_FILE_DIR, cf_dir)
+        node.start()
         pre_scrub_file_list = [item for item in cf_dir.glob("*") if item.is_file()]
         storage_service_client.scrub_ks_cf(keyspace=self.KS, cf=self.CF, scrub_mode="VALIDATE")
         quarantined_file_list = [item for item in quarantined_sstables_dir.glob("*") if item.is_file()]
