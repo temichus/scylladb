@@ -2572,6 +2572,7 @@ class TestValidationCompaction(CompactionAdditionalTester):
                   key_name="pk",
                   key_type="text",
                   primary_key="pk, ck",
+                  compaction_strategy="NullCompactionStrategy",
                   debug_query=True)
         node.flush()
         cf_dir = Path(get_node_cf_dir(node=node, ks_name=self.KS, cf_name=self.CF))
@@ -2579,7 +2580,6 @@ class TestValidationCompaction(CompactionAdditionalTester):
         quarantined_sstables_dir = cf_dir / "quarantine"
         logger.debug("Copying the sstables with invalid fragment from source directory:"
                      " %s to upload directory: %s...", self.CORRUPT_DATA_FILE_DIR, upload_dir)
-        node.nodetool(f"disableautocompaction -- {self.KS} {self.CF}")
         copy_files_to(self.CORRUPT_DATA_FILE_DIR, upload_dir)
         node.nodetool(f"refresh -- {self.KS} {self.CF}")
         pre_scrub_file_list = [item for item in cf_dir.glob("*") if item.is_file()]
