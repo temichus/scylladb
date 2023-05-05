@@ -2588,14 +2588,14 @@ class TestValidationCompaction(CompactionAdditionalTester):
 
         assert check_file_lists_are_equal(file_list_a=pre_scrub_file_list, file_list_b=quarantined_file_list), \
             "Pre scrub file list was expected to be the same as quarantined file list, but was not"
-        assert all(self._grep_log_patterns(
+        self.validate_log_patterns(
             node=node,
             patterns=[
                 self.REGEX_PATTERNS["validation_start"],
                 self.REGEX_PATTERNS["invalid_partition"],
                 self.REGEX_PATTERNS["invalid_clustering_row"],
                 self.REGEX_PATTERNS["validation_finish_invalid"]
-            ])), "Some regex patterns were not found in the logs."
+            ])
 
     def test_validation_compaction_with_valid_sstable(self):
         """
@@ -2626,12 +2626,12 @@ class TestValidationCompaction(CompactionAdditionalTester):
         assert check_file_lists_are_equal(file_list_a=pre_compaction_sstable_file_list,
                                           file_list_b=post_compaction_sstable_file_list), \
             "Pre-scrub file list was expected to be the same as post-scrub file list, but was not"
-        assert all(self._grep_log_patterns(
+        self.validate_log_patterns(
             node=node,
             patterns=[
                 self.REGEX_PATTERNS["validation_start"],
                 self.REGEX_PATTERNS["validation_finish_valid"]
-            ])), "Some regex patterns were not found in the logs."
+            ])
 
     def _prepare(self):
         [node], session = self.prepare(1)
@@ -2639,8 +2639,13 @@ class TestValidationCompaction(CompactionAdditionalTester):
         return node, session, storage_service_client
 
     @staticmethod
-    def _grep_log_patterns(node: Node, patterns: List[str]):
-        return [node.grep_log(pattern) for pattern in patterns]
+    def validate_log_patterns(node: Node, patterns: List[str]):
+        all_found = True
+        for pattern in patterns:
+            if not node.grep_log(pattern):
+                node.error(f"Could not find pattern in log: {pattern}")
+                all_found = False
+        assert all_found
 
 
 class TestLCSSSTablePromotion(CompactionAdditionalTester):
