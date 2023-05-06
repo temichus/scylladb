@@ -2529,15 +2529,15 @@ class TestValidationCompaction(CompactionAdditionalTester):
     DATA_FILE_NAME = "md-1-big-Data.db"
     REGEX_PATTERNS = {
         "validation_start": r"compaction - Scrubbing in validate mode",
-        "invalid_partition": r"Invalid partition \x19\x00\x00\x00 \(\{key:\s*pk\{000419000000},\s*"
-                             r"token:\s*-5674409923619649499}\),?\s*partition is out-of-order compared to previous "
-                             r"partition \x06\x00\x00\x00 \(\{key:\s*pk\{000406000000},\s*"
-                             r"token:\s*-5566252076597558760}\)",
+        "invalid_partition": r"Invalid partition \x19\x00\x00\x00 \(\{key:\s*pk\{000419000000\},\s*"
+                             r"token:\s*-5674409923619649499\}\),?\s*partition is out-of-order compared to previous "
+                             r"partition \x06\x00\x00\x00 \(\{key:\s*pk\{000406000000\},\s*"
+                             r"token:\s*-5566252076597558760\}\)",
         "invalid_clustering_row": r"Invalid clustering row fragment with key 3 \(\{position:\s*clustered,\s*"
-                                  r"ckp\{000400000003},\s*0}\) in partition .* \(\{key:\s*pk\{000406000000},\s*"
-                                  r"token:\s*-5566252076597558760}\),?\s*fragment is out-of-order compared to "
+                                  r"ckp\{000400000003\},\s*0\}\) in partition .* \(\{key:\s*pk\{000406000000\},\s*"
+                                  r"token:\s*-5566252076597558760\}\),?\s*fragment is out-of-order compared to "
                                   r"previous clustered fragment with key 5 \(\{position:\s*clustered,\s*"
-                                  r"ckp\{000400000005},\s*0}\)",
+                                  r"ckp\{000400000005\},\s*0\}\)",
         "validation_finish_invalid": r"Finished scrubbing in validate mode.*sstable\(s\) are invalid",
         "validation_finish_valid": r"Finished scrubbing in validate mode.*sstable\(s\) are valid"
     }
