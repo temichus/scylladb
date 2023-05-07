@@ -319,10 +319,8 @@ class TestCompaction(Tester):
             assert total_tombstones_num_after_repair == total_tombstones_num_before_repair
 
         logger.debug("Starting node4")
-        log_mark = node4.mark_log()
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
-        node4.watch_log_for(f"Done with off-strategy compaction for {self.FULL_TABLE_NAME}", timeout=300,
-                            from_mark=log_mark, verbose=True)
+
         with self.patient_cql_connection(node4, consistency_level=ConsistencyLevel.QUORUM) as session:
             logger.debug("Running a repair on all nodes")
             log_mark = node4.mark_log()
@@ -332,6 +330,7 @@ class TestCompaction(Tester):
             repair_history = list(session.execute("SELECT table_name from system.repair_history"))
             assert any("cf" in repair for repair in repair_history)
 
+            logger.debug("Running offstrategy compaction on node4")
             run_rest_api(node4, f"/storage_service/keyspace_offstrategy_compaction/{ks}?cf={cf}")
             node4.watch_log_for(f"Done with off-strategy compaction for {self.FULL_TABLE_NAME}", from_mark=log_mark)
 
