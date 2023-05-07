@@ -406,6 +406,7 @@ class MigrationTestBase(BaseHelpers):
 
     # Test that scylla's issue 1212 is fixed, look: https://github.com/scylladb/scylla/issues/1212
     # Refresh procedure should ask row cache to evict some rows covered by new sstables.
+    @pytest.mark.next_gating
     def test_migrate_sstable_to_check_consistency(self):
         node1 = self.start_cluster_and_get_node1()
 
