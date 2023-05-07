@@ -274,6 +274,7 @@ class TestCompaction(Tester):
             self.verify_deleted(session, node1, 10)
             self.verify_deleted(session, node2, 10)
 
+    @pytest.mark.next_gating
     def test_delete_tombstone_gc_node_down(self):
         """
         Test compaction drop tombstones correctly in 'repair' tombstone_gc_mode mode
