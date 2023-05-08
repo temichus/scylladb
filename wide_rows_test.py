@@ -581,8 +581,8 @@ class TestWideRows(Tester):
         entity_type = 'cell'
 
         session = self.prepare_cluster(nodes=1, rf=1,
-                                       options_dict={
-                                           'compaction_collection_elements_count_warning_threshold': initial_collection_elements_number})
+                                       options_dict={'compaction_collection_elements_count_warning_threshold':
+                                                     initial_collection_elements_number})
         node1 = self.cluster.nodelist()[0]
 
         self.create_too_many_collection_elements_table(
