@@ -2,7 +2,7 @@ import os.path
 import logging
 
 import pytest
-from cassandra import ConsistencyLevel, InvalidRequest
+from cassandra import ConsistencyLevel, InvalidRequest, Unauthorized
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodeError
 
@@ -11,6 +11,10 @@ from dtest_class import Tester, create_ks
 from tools.data import rows_to_list
 
 logger = logging.getLogger(__name__)
+
+
+class AuditRowMustNotExist(Exception):
+    pass
 
 
 class AuditTester(Tester):
@@ -87,7 +91,7 @@ class TestCQLAudit(AuditTester):
             logger.debug("last audit row: %s", res_list[-1])
             self.assertAuditRow(res_list[-1], category, statement, table, ks, user, cl, error)
             if not match:
-                raise Exception(f'row: {res_list[-1]} shouldn\'t match')
+                raise AuditRowMustNotExist(f'row: {res_list[-1]} shouldn\'t match')
         except AssertionError:
             if match:
                 raise
@@ -154,7 +158,7 @@ class TestCQLAudit(AuditTester):
 
         session.execute("ALTER TABLE test1 ADD v2 int")
         self.assertLastAuditRow(session, "DDL", "ALTER TABLE test1 ADD v2 int", "test1",
-                                match='DML' in audit_settings['audit_categories'])
+                                match='DDL' in audit_settings['audit_categories'])
 
         for i in range(0, 10):
             session.execute("INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i))
@@ -501,11 +505,12 @@ class TestCQLAudit(AuditTester):
         self.assertLastAuditRow(session, "QUERY", "SELECT * FROM ks.test1", table="test1", user="test")
         try:
             test_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (2, 2)")
-            assert False
-        except Exception as e:
-            print(e)
+            assert False, "user `test` query should have failed"
+        except Unauthorized as e:
+            logger.debug(e)
+
         self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (2, 2)", table="test1",
-                                user="test", error=True, match=False)
+                                user="test", error=True, match=True)
 
     def batch_test(self):
         """
