@@ -81,17 +81,24 @@ class TestCQLAudit(AuditTester):
         res = session.execute("SELECT * FROM audit.audit_log")
         res_list = rows_to_list(res)
 
+        res_list.sort(key=lambda x: x[0])  # sort by timestamp
         assert len(res_list) > 0
         try:
-            self.assertAuditRow(res_list[len(res_list) - 1], category, statement, table, ks, user, cl, error)
-            assert match
-        except:
-            assert not match
+            logger.debug("last audit row: %s", res_list[-1])
+            self.assertAuditRow(res_list[-1], category, statement, table, ks, user, cl, error)
+            if not match:
+                raise Exception(f'row: {res_list[-1]} shouldn\'t match')
+        except AssertionError:
+            if match:
+                raise
 
     def getAuditEntriesCount(self, session):
         res = session.execute("SELECT * FROM audit.audit_log")
         res_list = rows_to_list(res)
-        logger.debug('Printing audit table content: {}'.format(res_list))
+        res_list.sort(key=lambda x: x[0])
+        logger.debug('Printing audit table content:')
+        for row in res_list:
+            logger.debug('  %s', row)
         return len(res_list)
 
     def verify_keyspace(self, audit_settings=None):
