@@ -1607,15 +1607,20 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         node2 = new_node(self.cluster)
         node2.start(wait_for_binary_proto=True)
         full_table_name = f"{self.keyspace_name}.{self.table_name}"
-        node2.watch_log_for(f"Done with off-strategy compaction for {full_table_name}", timeout=300)
+        expected = [f"Done with off-strategy compaction for {full_table_name}"] * node2._smp
+        node2.watch_log_for(expected, timeout=300)
 
         # get sstables count taken by off-strategy to compact.
-        lines = list(node2.grep_log(
-            fr"Starting off-strategy compaction for {full_table_name}.*([\d]+) candidates were found"))
-        sstables_for_compaction_count = int(lines[0][1].groups()[0])
+        pattern = fr"Starting off-strategy compaction for {full_table_name}.*([\d]+) candidates were found"
+        expected = [pattern] * node2._smp
+        # set timeout=0 since the "Starting" message actually precedes the "Done"
+        # message that we already watched for above
+        matchings = node2.watch_log_for(expected, timeout=0)
+        for l, m in matchings:
+            sstables_for_compaction_count = int(m.groups()[0])
 
-        # verify there's limited number of sstables for compaction
-        assert sstables_for_compaction_count <= 30, "There were too many sstables for off-strategy compaction. #9199"
+            # verify there's limited number of sstables for compaction
+            assert sstables_for_compaction_count <= 30, f"There were too many sstables for off-strategy compaction. #9199\n{l}"
 
         # verify data is segregated
         self._sstable_count_is_close_to_time_windows_multiplied_by_shards_count(node2, duration_minutes,
