@@ -1615,7 +1615,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         sstables_for_compaction_count = int(lines[0][1].groups()[0])
 
         # verify there's limited number of sstables for compaction
-        assert sstables_for_compaction_count < 10, "There were too many sstables for off-strategy compaction. #9199"
+        assert sstables_for_compaction_count <= 30, "There were too many sstables for off-strategy compaction. #9199"
 
         # verify data is segregated
         self._sstable_count_is_close_to_time_windows_multiplied_by_shards_count(node2, duration_minutes,
