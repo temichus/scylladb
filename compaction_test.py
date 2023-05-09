@@ -22,6 +22,8 @@ from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
 from tools.stress import fill_data_by_cs
 from tools.cluster import parallel_nodetool, run_rest_api
+from tools.data import rows_to_list
+from tools.misc import require
 
 logger = logging.getLogger(__file__)
 
@@ -154,6 +156,14 @@ class TestCompaction(Tester):
         assert count == num_deleted_rows, "Error: expected {} deleted partitions but found {}:\n{}".format(
             num_deleted_rows, count, jsoninfo)
 
+    def validate_rows_in_range_exist(self, session, num_start, num_end):
+        res = session.execute(f'select * from {self.FULL_TABLE_NAME};')
+        res = sorted(rows_to_list(res))
+        logger.debug(f'all rows = {res}')
+        for idx in range(num_start, num_end):
+            logger.debug(f"Check key={idx}")
+            assert_one(session, f'select * from {self.FULL_TABLE_NAME} where key = {idx}', [idx, 1])
+
     def count_deleted(self, session, node):
         """
             Count number of tombstones on node.
@@ -223,6 +233,48 @@ class TestCompaction(Tester):
                 node.flush()
             for idx in range(0, num):
                 assert_none(session, f'select * from {self.FULL_TABLE_NAME} where key = {idx}')
+
+    @pytest.mark.parametrize("tombstone_gc_mode", ['repair', 'timeout', 'disabled', 'immediate'])
+    def test_keys_with_ttl_present(self, tombstone_gc_mode):
+        """
+        Start 2 node cluster
+        Create table with RF 2 and tombstone_gc_mode option
+        Insert partition_num (100) rows with big TTL number
+        Run flush and compact
+        Restart nodes
+        Check all keys are present
+        """
+        node_num = 2
+        r_factor = node_num
+        partition_num = 100
+        gc_grace_seconds = 5
+
+        cluster = self.cluster
+        cluster.populate(node_num).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+
+        session = self.patient_cql_connection(node1)
+        create_ks(session, self.KEYSPACE_NAME, rf=r_factor)
+
+        logger.debug(f'Create table with tombstone_gc = mode ={tombstone_gc_mode}')
+        session.execute(f"create table {self.FULL_TABLE_NAME} (key int PRIMARY KEY, val int) "
+                        f"with tombstone_gc = {{'mode':'{tombstone_gc_mode}', 'propagation_delay_in_seconds':'{self.PROPAGATION_DELAY_IN_SECONDS}'}} "
+                        f"and compaction = {{'class':'{self.strategy}'}} and gc_grace_seconds = {gc_grace_seconds};")
+
+        for x in range(0, partition_num):
+            session.execute(f'insert into {self.FULL_TABLE_NAME} (key, val) values ({x},1) USING TTL 100000')
+
+        for node in cluster.nodelist():
+            node.flush()
+            node.compact()
+            node.stop()
+            logger.debug(f"Stopped {node.name}")
+            node.start(wait_for_binary_proto=True)
+            logger.debug(f"Started {node.name}")
+
+        logger.debug("Verify the keys that are still present after compaction and restart")
+        session = self.patient_cql_connection(node1)
+        self.validate_rows_in_range_exist(session, 0, partition_num)
 
     @pytest.mark.parametrize("tombstone_gc_mode", ['repair', 'timeout', 'disabled', 'immediate'])
     def test_compaction_delete_tombstone_gc(self, tombstone_gc_mode):
