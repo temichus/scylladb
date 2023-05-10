@@ -31,6 +31,8 @@ from cassandra.cluster import NoHostAvailable
 from ccmlib.scylla_cluster import ScyllaCluster
 from ccmlib.node import NodetoolError
 from tools.stress import format_cs_output, assert_cs_success
+from tools.files import get_node_cf_dir, remove_files_in_folder
+
 
 import logging
 
@@ -3317,8 +3319,12 @@ class TestMaterializedViews(CommonUtils):
 
         logger.debug('Shutdown node1')
         node1.stop(wait_other_notice=True)
+
         logger.debug('Delete node1 data')
-        node1.clear(clear_all=True)
+        for tname in ["t_by_v", "t"]:
+            table_folder = get_node_cf_dir(node=node1, ks_name="ks", cf_name=tname)
+            logger.info(f"Removing SSTables from folder '{table_folder}'")
+            remove_files_in_folder(table_folder)
 
         # This code is taken from Cassandra. Not relevant for us
         # jvm_args = []
