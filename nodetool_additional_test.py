@@ -2183,6 +2183,8 @@ class TestNodetool(Tester):
             'Adding missing partition-end to the end of the stream',
             'compaction failed: std::runtime_error',
             '[Ss]crubbing',
+            '(Invalid|out-of-order) (partition|clustering row)',
+            "mismatching index/data",
         ]
 
         self.ignore_cores_log_patterns += [
