@@ -2536,19 +2536,20 @@ class TestValidationCompaction(CompactionAdditionalTester):
     CORRUPT_DATA_FILE_DIR = Path("test-sstables/sstable_with_invalid_fragment/ks/cf-test")
     CORRUPT_DATA_FILE_PATH = CORRUPT_DATA_FILE_DIR / CORRUPT_DATA_FILE_NAME
     DATA_FILE_NAME = "md-1-big-Data.db"
+    PK19_PATTERN = r"\x19\x00\x00\x00 \(\{key:\s*pk\{000419000000\},\s*token:\s*-5674409923619649499\}\)"
+    PK06_PATTERN = r"\x06\x00\x00\x00 \(\{key:\s*pk\{000406000000\},\s*token:\s*-5566252076597558760\}\)"
+    CK3_PATTERN = r"\{position:\s*clustered,\s*ckp\{000400000003\},\s*0\}"
+    CK5_PATTERN = r"\{position:\s*clustered,\s*ckp\{000400000005\},\s*0\}"
     REGEX_PATTERNS = {
         "validation_start": r"compaction - Scrubbing in validate mode",
-        "invalid_partition": r"Invalid partition \x19\x00\x00\x00 \(\{key:\s*pk\{000419000000\},\s*"
-                             r"token:\s*-5674409923619649499\}\),?\s*partition is out-of-order compared to previous "
-                             r"partition \x06\x00\x00\x00 \(\{key:\s*pk\{000406000000\},\s*"
-                             r"token:\s*-5566252076597558760\}\)",
-        "invalid_clustering_row": r"Invalid clustering row fragment with key 3 \(\{position:\s*clustered,\s*"
-                                  r"ckp\{000400000003\},\s*0\}\) in partition .* \(\{key:\s*pk\{000406000000\},\s*"
-                                  r"token:\s*-5566252076597558760\}\),?\s*fragment is out-of-order compared to "
-                                  r"previous clustered fragment with key 5 \(\{position:\s*clustered,\s*"
-                                  r"ckp\{000400000005\},\s*0\}\)",
-        "validation_finish_invalid": r"Finished scrubbing in validate mode.*sstable\(s\) are invalid",
-        "validation_finish_valid": r"Finished scrubbing in validate mode.*sstable\(s\) are valid"
+        "invalid_partition": rf"Invalid partition {PK19_PATTERN},?\s*partition is out-of-order compared to previous partition {PK06_PATTERN}"
+                             rf"|out-of-order partition key {PK19_PATTERN},?\s*previous partition key was {PK06_PATTERN}",
+        "invalid_clustering_row": rf"Invalid clustering row fragment with key 3 \({CK3_PATTERN}\) in partition {PK06_PATTERN},?\s*"
+                                  rf"fragment is out-of-order compared to previous clustered fragment with key 5 \({CK5_PATTERN}\)"
+                                  rf"|out-of-order clustering row at position {CK3_PATTERN} in partition {PK06_PATTERN},?\s*"
+                                  rf"previous clustering element was {CK5_PATTERN} at position clustering row",
+        "validation_finish_invalid": r"Finished scrubbing in validate mode.*(sstable(\(s\)|s) are|sstable is) invalid",
+        "validation_finish_valid": r"Finished scrubbing in validate mode.*(sstable(\(s\)|s) are|sstable is) valid"
     }
 
     def test_validation_compaction_detects_sstable_corruption(self):
@@ -2569,8 +2570,8 @@ class TestValidationCompaction(CompactionAdditionalTester):
         in the logs.
         """
         self.ignore_log_patterns += [
-            '[Ii]nvalid clustering row fragment',
-            '[Ii]nvalid partition',
+            '([Ii]nvalid|out-of-order) clustering row',
+            '([Ii]nvalid|out-of-order) partition',
             '(Sscrub) compaction ks.cf.*'
         ]
 
