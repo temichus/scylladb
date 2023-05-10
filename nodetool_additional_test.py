@@ -2338,14 +2338,19 @@ class TestNodetool(Tester):
         copy_files_to(f"test-sstables/sstable_with_invalid_fragment/ks/cf-test/", cf_dir)
         node.start()
 
+        expected_errs = [
+            r'\[.* compaction ks.cf\] (Invalid|out-of-order) (clustering row|partition)',
+            r'\[.* compaction ks.cf\]  mismatching index/data'
+        ]
+        if mode == "SKIP":
+            expected_errs.append(rf"Skipping invalid (clustering row|partition)")
+        self.ignore_log_patterns.extend(expected_errs)
+
         self._scrub_keyspace(node, ks=ks, cf=("" if scrub_keyspace else cf), mode=mode)
 
         timeout = 30 if self.cluster.scylla_mode != 'debug' else 90
-        # Scrub messages changed in scylladb/scylla@f0e2f31839
-        expected_errs = r'\[.* compaction ks.cf\] Invalid (clustering row fragment|partition)'
-        if mode == "SKIP":
-            expected_errs = rf"{expected_errs}|Skipping invalid (clustering row fragment|partition)"
-        node.watch_log_for([expected_errs, 'Finished scrubbing'], timeout=timeout)
+        expected_pattern = '|'.join(expected_errs)
+        node.watch_log_for([expected_pattern, 'Finished scrubbing'], timeout=timeout)
 
     @pytest.mark.single_node
     def test_scrub_sstable_with_invalid_fragment(self):
