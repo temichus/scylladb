@@ -2486,6 +2486,43 @@ class TestNodetool(Tester):
         logger.info("Verifying node 3 process is not running")
         assert node3_process.is_running() is False, "Node 3 process didn't stop/exit correctly"
 
+    @pytest.mark.single_node
+    def test_sstable_info(self):
+        """
+        print out SSTables of specified the table(s)
+        """
+        cluster = self.run_cluster(nodes=1)
+        node = cluster[0]
+        session = self.patient_cql_connection(node)
+        ks = "ks1"
+        tbl = "tbl1"
+        self.create_table(session, {ks: {"tables": {tbl: {"col1": "int", "col2": "text", "key": "col1"}}}})
+        self.populate_data(session, {ks: {tbl: [{"col1": 4, "col2": "abc"}]}})
+        node.nodetool("flush")
+        out = node.nodetool("sstableinfo ks1 tbl1")[0]
+        # sstableinfo prints the per-table SSTable info and attributes as a
+        # tabular instead of in a more machine-parsable format, so we just
+        # perform minimal verifications here. a typical output of the command
+        # under test looks like:
+        #
+        # keyspace : ks1
+        #    table : tbl1
+        # sstables :
+        #        0 :
+        #               data size : 34
+        #             filter size : 12
+        #              generation : 3
+        #              index size : 8
+        #                   level : 0
+        #                    size : 5246
+        #                 version : me
+        #               timestamp : Fri May 12 15:19:21 CST 2023
+        #     extended properties :
+        #              compression_parameters :
+        #                         sstable_compression : org.apache.cassandra.io.compress.LZ4Compressor
+        assert ks in out
+        assert tbl in out
+
 
 # example for input "Current trace probability: 0.001\n"
 REGEX_GET_TRACE_RESP = re.compile('Current trace probability: (?P<probability>[0-9.eE]+)(\\n)*$')
