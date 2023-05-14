@@ -1533,13 +1533,15 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         node2 = new_node(self.cluster)
         node2.start(wait_for_binary_proto=True)
 
-        msg = f"Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}"
         shard_count = node2._smp
-        offstrategy_count = len(node2.grep_log(msg))
-        assert offstrategy_count % shard_count == 0, f"'{msg}' was logged {offstrategy_count} times which is not a multiple of shard_count={shard_count}"
-        assert offstrategy_count >= shard_count, f"'{msg}' was logged {offstrategy_count} times which is less than shard_count={shard_count}"
+        msgs = [
+            rf"\[shard {i}+\].*Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}" for i in range(0, shard_count)]
+        matchings = node2.watch_log_for(msgs, timeout=60)
+        offstrategy_count = len(matchings)
+        assert offstrategy_count % shard_count == 0, f"'{matchings}' wer logged {offstrategy_count} times which is not a multiple of shard_count={shard_count}"
+        assert offstrategy_count >= shard_count, f"'{matchings}' were logged {offstrategy_count} times which is less than shard_count={shard_count}"
         assert offstrategy_count <= shard_count * \
-            2, f"'{msg}' was logged {offstrategy_count} times which is more than twice of shard_count={shard_count}"
+            2, f"'{matchings}' were logged {offstrategy_count} times which is more than twice of shard_count={shard_count}"
 
         # After streaming the new node should also have at max one window per sstable.
         self._check_sstable_timestamps(node2)
