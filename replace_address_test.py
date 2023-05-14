@@ -200,8 +200,14 @@ class TestReplaceAddress(Tester):
         node4.start(replace_node_host_id=replace_node_host_id, replace_address=replace_address, no_wait=True,
                     jvm_args=['--logger-log-level', 'stream_session=debug'])
 
-        node4.watch_log_for("Starting to bootstrap")
-        node4.watch_log_for("Beginning stream session|sync data for keyspace=ks, status=started")
+        log_timeout = 600
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == 'debug':
+            log_timeout *= 3
+
+        node4.watch_log_for([
+            "Starting to bootstrap",
+            "Beginning stream session|sync data for keyspace=ks, status=started"
+        ], timeout=log_timeout)
 
         logger.debug("Insert 1000 rows more.")
         for i in range(keys, keys + 10):
