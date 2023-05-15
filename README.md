@@ -225,10 +225,18 @@ requirements:
 1) Java Version:
 
 
-    scylla-jmx requires a JDK8 launcher (JDK11 or higher will not work).
-    To control which java executable is used to run scylla-jmx you can
-    set the JAVA_HOME variable to point to an appropriate jre/jdk.
-
+    scylla-jmx requires the JRE-8 or JRE-11 (higher versions will not work).
+    By default it launches scylla-jmx using `/usr/bin/java`, but this might
+    not work, because the version `/usr/bin/java` is always much higher than 11.
+    To control which java executable is used to run scylla-jmx, you can
+    set the `JAVA_HOME` variable to point to an appropriate jre/jdk. On a
+    recent fedora machine, the command might look like:
+    ```bash
+    JAVA_HOME=/usr/lib/jvm/jre-11 pytest \
+      --cassandra-dir $HOME/scylladb/build/debug \
+      nodetool_additional_test.py::TestNodetool::test_sstable_info
+    ```
+    where `$HOME/scylladb/build/debug` is the build directory.
 2) directory of dynamic .so files. Please see https://github.com/scylladb/scylla-dtest/blob/next/docs/working-with-dbuild.md for more info
 ```bash
 export SCYLLA_DIR=/absolute/path/to/scylla-next
