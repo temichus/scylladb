@@ -317,6 +317,29 @@ To skip all tests and just check that all modules are found:
 
      pytest --collect-only
 
+> **Note**
+> Sometimes, when running tests, we could have warnings like:
+> ```
+> nodetool_additional_test.py:2489
+>  /home/kefu/dev/scylla-dtest/nodetool_additional_test.py:2489: PytestUnknownMarkWarning: Unknown pytest.mark.single_node - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/mark.html
+>    @pytest.mark.single_node
+> ```
+> Because `pytest` always looks for the `pytest.ini` in the so called "rootdir",
+> which is in general the common ancestor directory of the specified arguments
+> recognized as paths. In this case, `pytest` would search for `pytest.ini` in
+> the parent directory of `nodetool_additional_test.py`. But it won't be able to
+> find it there if the test in question is in the root directory of the scylla-dtest
+> project. So we have to specify the path to the `pytest.ini` manually so
+> apply the configurations, like
+>
+> ```bash
+> pytest -c $PWD/pytest.ini \
+> --cassandra-dir $HOME/scylladb/build/debug \
+> nodetool_additional_test.py::TestNodetool::test_sstable_info
+> ```
+> Please see [pytest document](https://docs.pytest.org/en/stable/reference/customize.html#initialization-determining-rootdir-and-configfile)
+> for more details.
+
 To change Scylla CPU and memory configuration:
 
     SCYLLA_EXT_OPTS="--smp 2 --memory 1G"
