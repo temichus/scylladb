@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # @pytest.mark.dtest_full
 class TestAlternatorStreams(BaseAlternatorStream):
 
+    @pytest.mark.next_gating
     def test_verify_all_nodes_have_same_stream(self):
         num_of_items = NUM_OF_ITEMS
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -103,6 +104,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
         self.cluster.remove(node4, wait_other_notice=True)
         _verify_items(_node=node5, _expected_table_data=expected_table_data, _num_of_requests=2 * len(new_items))
 
+    @pytest.mark.next_gating
     def test_list_streams_limit_parameter(self):
         """
         Test the list_streams command limit parameter.
@@ -139,6 +141,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
         assert len(empty_streams_list) == 0, \
             f"Got unexpected list of Streams after the last evaluated Stream: {empty_streams_list}"
 
+    @pytest.mark.next_gating
     def test_updated_shards_during_add_decommission_node(self):
         """
         The tests verify Streams handles topology changes of decommission a node and adding new node.
@@ -173,6 +176,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
         wait_for_open_shards_diff()
         decommission_thread.join()
 
+    @pytest.mark.next_gating
     def test_sequence_numbers_during_add_decommission_node(self):
         """
         Verify shards sequence numbers on topology changes.
@@ -226,6 +230,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
 
         decommission_thread.join()
 
+    @pytest.mark.next_gating
     def test_added_node_gets_closed_shards(self):
         """
         test scenario:

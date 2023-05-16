@@ -49,6 +49,7 @@ class SlowQueriesLoggingError(Exception):
 # pylint:disable=too-many-public-methods
 class TesterAlternator(BaseAlternator):
 
+    @pytest.mark.next_gating
     def test_load_older_snapshot_and_refresh(self):
         """
         The test loading older snapshot files and checking the refresh command works
@@ -69,6 +70,7 @@ class TesterAlternator(BaseAlternator):
         diff = self.compare_table_data(table_name=table_name, expected_table_data=table_data, node=node1)
         assert not diff, f"The following items are missing:\n{pformat(diff)}"
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_create_snapshot_and_refresh(self, request):
         """
@@ -99,6 +101,7 @@ class TesterAlternator(BaseAlternator):
         diff = self.compare_table_data(table_name=table_name, expected_table_data=data_before_refresh, node=node1)
         assert not diff, f"The following items are missing:\n{pformat(diff)}"
 
+    @pytest.mark.next_gating
     def test_dynamo_gsi(self):
         self.prepare_dynamodb_cluster(num_of_nodes=4)
         node1 = self.cluster.nodelist()[0]
@@ -120,6 +123,7 @@ class TesterAlternator(BaseAlternator):
         diff_result = DeepDiff(t1=result_items, t2=expected_items, ignore_order=True)
         assert not diff_result, f"The following items differs:\n{pformat(diff_result)}"
 
+    @pytest.mark.next_gating
     def test_drain_during_dynamo_load(self):
         """
         1. Create a load of read + update-items delete-set-elements
@@ -138,6 +142,7 @@ class TesterAlternator(BaseAlternator):
         logger.info('Drain finished')
         read_and_delete_set_elements_thread.join()
 
+    @pytest.mark.next_gating
     def test_decommission_during_dynamo_load(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
@@ -170,6 +175,7 @@ class TesterAlternator(BaseAlternator):
                            match='Could not connect to the endpoint URL'):
             self.get_table_items(table_name=TABLE_NAME, node=node2, num_of_items=10, consistent_read=True)
 
+    @pytest.mark.next_gating
     def test_dynamo_reads_after_repair(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, node2 = self.cluster.nodelist()[:2]
@@ -190,6 +196,7 @@ class TesterAlternator(BaseAlternator):
         logger.info(f"Reading Alternator queries from node {node2.name}")
         self.get_table_items(table_name=TABLE_NAME, node=node2)
 
+    @pytest.mark.next_gating
     def test_dynamo_queries_on_multi_dc(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3, is_multi_dc=True)
         dc1_node = self.cluster.nodelist()[0]
@@ -205,6 +212,7 @@ class TesterAlternator(BaseAlternator):
                                                           node=dc2_node, consistent_read=False),
                  timeout=5 * 60, text="Waiting until the DC2 will contain all items that insert in DC1")
 
+    @pytest.mark.next_gating
     def test_dynamo_reads_after_new_node_repair(self):
         self.prepare_dynamodb_cluster(num_of_nodes=3)
         node1, node2, node3 = self.cluster.nodelist()
@@ -249,6 +257,7 @@ class TesterAlternator(BaseAlternator):
         diff_result = DeepDiff(t1=items, t2=got_condition_items, ignore_order=True)
         assert not diff_result, f"The following items differs:\n{pformat(diff_result)}"
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_batch_with_auto_snapshot_false(self):
         """Test triggers scylladb/scylla#6995"""
@@ -319,6 +328,7 @@ class TesterAlternator(BaseAlternator):
             conf['write_stress'].join()
             conf['read_stress'].join()
 
+    @pytest.mark.next_gating
     def test_update_condition_unused_entries_short_circuit(self):
         """
         A test for https://github.com/scylladb/scylla/issues/6572 plus a multi DC configuration
@@ -435,6 +445,7 @@ class TesterAlternator(BaseAlternator):
                               ConditionExpression='attribute_not_exists (a)',
                               ExpressionAttributeValues={':val': 4})
 
+    @pytest.mark.next_gating
     def test_modified_tag_is_propagated_to_other_dc(self):
         self.prepare_dynamodb_cluster(num_of_nodes=1, is_multi_dc=True)
         node1 = self.cluster.nodelist()[0]
@@ -525,6 +536,7 @@ class TesterAlternator(BaseAlternator):
             diff = self.compare_table_data(table_name=TABLE_NAME, expected_table_data=all_items, node=node1)
             assert not diff, f"The following items are missing:\n{pformat(diff)}"
 
+    @pytest.mark.next_gating
     def test_read_system_tables_via_dynamodb_api(self):
         """
         make sure we could only read system tables via dynamodb api
@@ -712,6 +724,7 @@ class TesterAlternator(BaseAlternator):
         logger.info(f"Executing the following command '{cmd}'")
         node1.nodetool(cmd)
 
+    @pytest.mark.next_gating
     def test_table_name_with_dot_prefix(self):
         valid_dynamodb_chars = (list(string.digits) + list(string.ascii_uppercase) + ["_", "-", "."])
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -735,6 +748,7 @@ class TesterAlternator(BaseAlternator):
         logger.info(f"Executing the following command '{cmd}'")
         node1.nodetool(cmd)
 
+    @pytest.mark.next_gating
     def test_putitem_contention(self):  # pylint:disable=too-many-locals
         """
         This test reproduces issue #7218, where PutItem operations sometimes
@@ -805,6 +819,7 @@ class TesterAlternator(BaseAlternator):
         assert n_items == total_items
         assert n_bad_items == 0
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_tls_connection(self):
         """
@@ -955,6 +970,7 @@ class TesterAlternator(BaseAlternator):
         try_checking_all_events()
 
     @pytest.mark.parametrize("sttableloder_flag", ['', '-v', '-nb'], ids=['without_flag', 'v_flag', 'nb_flag'])
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_sstableloder_scenario(self, sttableloder_flag):
         table_name = TABLE_NAME
@@ -1021,6 +1037,7 @@ class TesterAlternator(BaseAlternator):
         assert not diff, f"The following items are missing:\n{pformat(diff)}"
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_limit_concurrent_requests(self):
         """
             Test Support limiting the number of concurrent requests in alternator.
@@ -1135,7 +1152,7 @@ class TesterAlternator(BaseAlternator):
             if not self.is_found_in_slow_queries_log(name=table, log_result=create_table_results):
                 raise SlowQueriesLoggingError(f'Table {table} not found in slow-query-log full-scan')
 
-    # @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_slow_query_logging(self):
         """
             Test slow query logging for alternator queries.
@@ -1282,6 +1299,7 @@ class TesterAlternator(BaseAlternator):
             assert result[0]["value"] == expected_item["value"], \
                 "The value of the result is not equal to the sum of the values added through the threads"
 
+    @pytest.mark.next_gating
     def test_delete_elements_from_a_set(self):
         """
             Verifies https://github.com/scylladb/scylla/commit/253387ea07962d4fd8cb221eb90298b9127caf9f

@@ -24,6 +24,7 @@ from tools.retrying import retrying
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 class TestAlternatorTTL(BaseAlternator):
     @pytest.mark.parametrize('with_down_node', [False, True], ids=['all_nodes_up', 'one_node_down'])
