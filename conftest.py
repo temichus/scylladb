@@ -25,6 +25,7 @@ from tools.keystore import KeyStore
 from tools.log_utils import log_per_process_data, TestNameFilter
 from tools.env import GITHUB_TOKEN, DTEST_REQUIRE
 from tools.marks import get_version, is_enterprise, scylla_mode
+from collect_test_info import ElkTestHistory
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,9 @@ def pytest_addoption(parser):
                      help="enable consistent_cluster_management a.k.a raft")
     parser.addoption("--collect-required", action="store_true", default=False,
                      help="collect a report on require tests")
+
+    parser.addoption("--tests-outcome", action="store", default=None, type=int,
+                     help="collect test history from ELK - number of days to look backwards")
 
     parser.addoption("--from-file", action="store", type=argparse.FileType('r', encoding='UTF-8'), default=None,
                      help='Get list of tests to run from file')
@@ -546,6 +550,24 @@ def pytest_collection_modifyitems(items, config):
     items[:] = selected_items
     if collect_require:
         pytest.exit(msg="--collect-required was used", returncode=0)
+
+
+def pytest_collection_finish(session: pytest.Session):
+    if days := session.config.getoption("--tests-outcome"):
+        es_credentials = KeyStore().get_elasticsearch_credentials()
+        history = ElkTestHistory(es_address=es_credentials['es_url'],
+                                 es_username=es_credentials['es_user'],
+                                 es_password=es_credentials['es_password'],
+                                 es_index_name='dtest_test_data')
+
+        test_history_data = history.fetch_test_outcomes(
+            [item.nodeid.replace("::()", "") for item in session.items],
+            time_range=f'now-{days}d/d'
+        )
+        print(f"Stable test in the last {days} days:")
+        for item in test_history_data:
+            if len(item['buckets']) == 1 and item['buckets'][0].get('key') == 'passed':
+                print(f"{item['test_name']}")
 
 
 def pytest_markeval_namespace():
