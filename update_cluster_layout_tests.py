@@ -279,11 +279,12 @@ class TestUpdateClusterLayout(Tester):
         cluster.add(node3, is_seed=False)
         node3.start(no_wait=True)
         # lets check that it detected there was another bootstrapping in progress
-        logger.debug("Waiting until node3 notices other node was booting")
-        detect_msg = rf"Checking bootstrapping/leaving.* sleep 1 second and check again"
-        expr = '|'.join([detect_msg] + expected_errors)
-        res = node3.watch_log_for(expr)
-        logger.debug(f"Log messages: {res}")
+        if not late_start:
+            logger.debug("Waiting until node3 notices other node was booting")
+            detect_msg = rf"Checking bootstrapping/leaving.* sleep 1 second and check again"
+            expr = '|'.join([detect_msg] + expected_errors)
+            res = node3.watch_log_for(expr)
+            logger.debug(f"Log messages: {res}")
 
         # In all cases node3 may fail to start
         msg = 'init - Startup failed'
