@@ -239,29 +239,35 @@ class TestUpdateClusterLayout(Tester):
         logger.debug("Starting node2")
         node2.start(no_wait=True)
         node2.watch_log_for("BOOTSTRAP")
+        mark = node2.mark_log()
 
         # Select a random test case that determines when to start node3
         # relative to node2's timeline
         #
         # case 0: start immediately after node2 reaches "BOOTSTRAP"
         #         in this case node3 is expected to fail to start, as reported by "Startup failed" message
-        # case 1: wait up to 60 seconds after node2 reaches "Waiting for pending range setup"
-        # case 2: wait up to 60 seconds after node2 reaches "Starting to bootstrap"
+        # case 1: wait 5-30 seconds after node2 starts "BOOSTSTRAP"
+        # case 2: wait up to 30 seconds after node2 reaches "Starting to bootstrap"
         #         If starting late (cases 1 or 2), node3 may or may not succeed to start.
         test_case = random.choice([0, 1, 2])
         late_start = test_case > 0
         logger.debug(f"Testing case {test_case}: late_start={late_start}")
 
-        if late_start:
-            time.sleep(1)
-            mark = node2.mark_log()
-            msg = "Waiting for pending range setup" if test_case == 1 else "Starting to bootstrap"
-            timeout = random.random() * 60
+        if test_case == 1:
+            timeout = 5 + random.random() * 25
+            logger.debug(f"Waiting for {timeout:.2f} seconds")
+            time.sleep(timeout)
+        elif test_case == 2:
+            msg = "Starting to bootstrap"
+            timeout = 30
             logger.debug(f"Watching {node2.name} log for msg='{msg}': timeout={timeout:.2f} seconds")
             try:
                 node2.watch_log_for(msg, from_mark=mark, timeout=timeout)
             except TimeoutError:
                 pass
+            timeout = random.random() * 30
+            logger.debug(f"Waiting for {timeout:.2f} seconds")
+            time.sleep(timeout)
 
         expected_errors = [
             "Other bootstrapping/leaving/moving nodes detected, cannot bootstrap while consistent_rangemovement is true",
