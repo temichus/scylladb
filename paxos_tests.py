@@ -296,7 +296,7 @@ class TestPaxos(Tester):
             loaders[node].stop()
             del loaders[node]
 
-    @pytest.mark.require('#7087')
+    @pytest.mark.require('scylladb/scylla-dtest#3170')
     def test_topology_change_in_presence_of_down_node(self):
         session = self.prepare(nodes=6, rf=4)
         lower_node_limit = 3
