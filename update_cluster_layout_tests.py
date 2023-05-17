@@ -206,7 +206,8 @@ class TestUpdateClusterLayout(Tester):
         """
         self._iterative_add_decommission(node_count=3, iterations=2, rf=2)
 
-    def test_simple_add_two_nodes_in_parallel(self):
+    @pytest.mark.parametrize("test_case", [0, 1, 2], ids=['case_0', 'case_1', 'case_2'])
+    def test_simple_add_two_nodes_in_parallel(self, test_case):
         """
         Test bootstrapped node streams all data
         1. Create a cluster with a single node with rf=3, insert data
@@ -249,7 +250,6 @@ class TestUpdateClusterLayout(Tester):
         # case 1: wait 5-30 seconds after node2 starts "BOOSTSTRAP"
         # case 2: wait up to 30 seconds after node2 reaches "Starting to bootstrap"
         #         If starting late (cases 1 or 2), node3 may or may not succeed to start.
-        test_case = random.choice([0, 1, 2])
         late_start = test_case > 0
         logger.debug(f"Testing case {test_case}: late_start={late_start}")
 
