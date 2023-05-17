@@ -2421,6 +2421,10 @@ class TestUpdateClusterLayout(Tester):
             logger.info(stdout)
             logger.info(stderr)
 
+        self.ignore_log_patterns += [
+            r'decommission.*failed',
+        ]
+
         logger.info("try to decommission node3")
         try:
             node3.decommission()
