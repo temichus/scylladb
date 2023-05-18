@@ -505,30 +505,38 @@ class TestLWTSchemaModification(Tester):
                            loops=2, run_s=10)
 
     def test_lwt_truncate(self):
+        smp = 8 if self.cluster.scylla_mode != "debug" else 4
+        nodes = 8 if self.cluster.scylla_mode != "debug" else 4
         self._test_combine([LWTLoad(end=1),
                             Truncate(name="truncate"),
                             InsertRows(name="insert", wait_for="truncate", start_value=10000),
                             LWTLoad(wait_for="truncate", row_start=100, row_end=999),
                             ReadRows(wait_for="insert")],
-                           smp=8, nodes=8, loops=1, run_s=10)
+                           smp=smp, nodes=nodes, loops=1, run_s=10)
 
     def test_lwt_load(self):
+        smp = 8 if self.cluster.scylla_mode != "debug" else 4
+        nodes = 8 if self.cluster.scylla_mode != "debug" else 4
+        loops = 4 if self.cluster.scylla_mode != "debug" else 2
         self._test_combine([ReadRows(row_start=0, row_end=1000),
                             LWTLoad(row_start=1001, row_end=9999)],
-                           smp=8, nodes=8, nrows=10000, loops=4,
+                           smp=smp, nodes=nodes, nrows=10000, loops=loops,
                            run_s=30)
 
     def test_lwt_batch_insert(self):
+        smp = 8 if self.cluster.scylla_mode != "debug" else 4
+        nodes = 8 if self.cluster.scylla_mode != "debug" else 4
         self._test_combine([LWTLoad(end=1),
                             BatchInserts(node=1)],
-                           smp=8, nodes=8, loops=1, run_s=10)
+                           smp=smp, nodes=nodes, loops=1, run_s=10)
 
     @pytest.mark.next_gating
     def test_index_drop_add(self):
+        loops = 4 if self.cluster.scylla_mode != "debug" else 2
         self._test_combine([LWTLoad(row_start=1001, row_end=9999),
                             ReadRows(row_end=1000),
                             IndexDropAdd(inter_delay=.5)],
-                           nrows=10000, loops=4, run_s=10)
+                           nrows=10000, loops=loops, run_s=10)
 
     def test_materialized_view(self):
         self._test_combine([LWTLoad(row_start=1001, row_end=9999),
@@ -536,6 +544,8 @@ class TestLWTSchemaModification(Tester):
                            nrows=10000, loops=1, run_s=10)
 
     def test_lwt_load_check(self):
+        smp = 8 if self.cluster.scylla_mode != "debug" else 4
+        nodes = 8 if self.cluster.scylla_mode != "debug" else 4
         self._test_combine([LWTLoad(row_start=1, row_end=99),
                             LWTLoadCheck(row_start=100, row_end=99999999)],
-                           smp=8, nodes=8, nrows=0, loops=1, run_s=30, rf=3)
+                           smp=smp, nodes=nodes, nrows=0, loops=1, run_s=30, rf=3)
