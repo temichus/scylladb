@@ -785,7 +785,7 @@ class TestLwtReadLinearizability(Tester):  # pylint: disable=too-few-public-meth
 
         # 2. run a write(V) that suppose to succeed
         # 3. write will fail because B and C will fail
-        with self.assertRaises(WriteFailure):
+        with pytest.raises(WriteFailure):
             ret = session_a.execute("INSERT INTO ks.t (id, v) VALUES (1, 1) IF NOT EXISTS").current_rows
             assert ret[0].applied is False
 
