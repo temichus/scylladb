@@ -461,3 +461,33 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         final_status = restore_task.wait_and_get_final_status(step=5)
         assert final_status == TaskStatus.DONE
         self.verify_c1c2(keyspace_table_and_key_range={keyspace_name: {table_name: complete_key_range}}, node=node1)
+
+    def test_restore_schema_with_mv(self, secondary_cluster):
+        view_name = 'view_specific_rows'
+        node1, node2 = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        self.insert_data_from_ranges(healthy_node=node1,
+                                     keyspace_table_and_key_range=DEFAULT_KEYSPACE_TABLE_AND_KEY_RANGE)
+        keyspace_name = list(DEFAULT_KEYSPACE_TABLE_AND_KEY_RANGE.keys())[0]
+        table_name = list(DEFAULT_KEYSPACE_TABLE_AND_KEY_RANGE[keyspace_name].keys())[0]
+        with self.patient_cql_cluster_session(node1) as session:
+            session.execute(f"CREATE MATERIALIZED VIEW {keyspace_name}.{view_name} AS "
+                            f"SELECT * FROM {keyspace_name}.{table_name} WHERE key = 'k1'"
+                            f"PRIMARY KEY (key);")
+        backup_task = mgr_cluster.run_backup_command(keyspace_list=[keyspace_name],
+                                                     location_list=[f"s3:{DESTINATION_BUCKET}"],
+                                                     retention=2)
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
+
+        cluster2_node1, _ = self.config_and_create_cluster(nodes=2, cluster=secondary_cluster)
+        mgr_cluster2 = self._create_mgr_cluster(node=cluster2_node1, name=CLUSTER_NAME+"2")
+        self.restore_schema(mgr_cluster=mgr_cluster2, backup_task=backup_task, cluster=secondary_cluster)
+        with self.patient_cql_cluster_session(cluster2_node1) as session:
+            result = session.execute(f"select * from system_schema.views where view_name='{view_name}'")
+            assert len(list(result)) == 1, "After the schema restoration, the view was not created in the new cluster"
+            self.restore_and_verify(mgr_cluster=mgr_cluster2, backup_task=backup_task, healthy_node=cluster2_node1,
+                                    cluster=secondary_cluster)
+            result = session.execute(f"select * from {keyspace_name}.{view_name}")
+            assert len(list(result)) == 1, f"There was suppose to be only one row in the Mview after the restore, " \
+                                           f"but instead there were {len(list(result))} lines"
+        self.verify_c1c2(node=cluster2_node1, keyspace_table_and_key_range={keyspace_name: {view_name: (1, 2)}})
