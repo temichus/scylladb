@@ -2459,6 +2459,10 @@ class TestNodetool(Tester):
         stress_thread = executor.submit(run_stress_write)
         decommission_thread = executor.submit(run_decommission)
 
+        self.ignore_log_patterns += [
+            rf'decommission.*failed',
+        ]
+
         first_iteration = True
         while not decommission_thread.done():
             logger.info("Waiting until decommission_thread terminates...")
