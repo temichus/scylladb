@@ -17,6 +17,13 @@ aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-stro
 aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-strong-dtest-asg-spot.json --region us-east-1
 ```
 
+## upload cloud-init script (if it changed)
+
+```bash
+aws s3 cp cloud-init-dtest-storage-only.sh  s3://downloads.scylladb.com/userData/cloud-init-dtest-storage-only.sh
+aws s3 cp cloud-init-dtest.sh  s3://downloads.scylladb.com/userData/cloud-init-dtest.sh
+```
+
 ## jenkins configuration
 
 Go to https://jenkins.scylladb.com/configureClouds
