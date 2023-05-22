@@ -11,12 +11,13 @@ import pytest
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
-from dtest_class import Tester, create_ks, create_cf
+from dtest_class import Tester, create_ks, create_cf, get_ip_from_node
 from thrift_bindings.thrift010.Cassandra import ColumnParent, KeyRange, SlicePredicate, SliceRange
 from tools.assertions import assert_unavailable, assert_none
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, insert_columns, rows_to_list
 from tools.paging import PageFetcher
 from tools.thrift import get_thrift_client
+from tools.metrics import get_node_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -504,6 +505,8 @@ class TestAccuracy(TestHelper):
             write_cl = self.write_cl
             read_cl = self.read_cl
             serial_cl = self.serial_cl
+            session_nodes = self.outer.cluster.nodelist()
+            ips = [get_ip_from_node(node) for node in session_nodes]
 
             def check_all_sessions(session_idx, counter_id, val):
                 write_nodes, _, strong_consistency = self.get_num_nodes(session_idx)
@@ -520,12 +523,21 @@ class TestAccuracy(TestHelper):
                     "Failed to read value from sufficient number of nodes, required %d but got %d - [%d, %s]\n\n%s" \
                     % (write_nodes, num, counter_id, val, "\n".join(messages))
 
+            def wait_for_bg_writes_to_complete(node_ip, timeout=30):
+                started = time.time()
+                while get_node_metrics(node_ip, ["background_writes"])["background_writes"] != 0.0:
+                    assert (time.time() - started) < timeout, "Timed out waiting for background writes to settle."
+                    time.sleep(0.01)
+
             for idx in range(start, end):
                 counter_value = outer.read_counter(sessions[0], idx, ConsistencyLevel.ALL)
                 for session_idx, session in enumerate(sessions):
                     counter_value = counter_value + 1
                     outer.update_counter(session, idx, write_cl, serial_cl)
                     check_all_sessions(session_idx, idx, counter_value)
+                    # wait for background writes to complete so the new counter value
+                    # propagates to all of the other nodes see: https://github.com/scylladb/scylladb/issues/10479
+                    wait_for_bg_writes_to_complete(ips[session_idx])
 
     def _run_test_function_in_parallel(self, valid_fcn, nodes, rf_factors, combinations):
         """
