@@ -1,16 +1,14 @@
-import pytest
 import logging
 import os
 import platform
 import copy
 import inspect
 import re
-from itertools import zip_longest
 from datetime import datetime
-from packaging.version import Version
 from pkg_resources import parse_version
 import argparse
 
+import pytest
 import github
 from psutil import virtual_memory
 from botocore.exceptions import ClientError as AwsClientError
@@ -18,7 +16,6 @@ from botocore.exceptions import BotoCoreError
 import netifaces as ni
 from netifaces import AF_INET
 
-import ccmlib.repository
 from ccmlib.common import validate_install_dir, get_version_from_build
 
 from dtest_config import DTestConfig
@@ -101,6 +98,9 @@ def pytest_addoption(parser):
 
     parser.addoption("--from-file", action="store", type=argparse.FileType('r', encoding='UTF-8'), default=None,
                      help='Get list of tests to run from file')
+
+    parser.addoption('--report-to-elk', action='store_true', default=False,
+                     help="if true would send test report to ELK")
 
 
 def pytest_configure(config):
@@ -393,6 +393,20 @@ def pytest_sessionstart(session):
         _scylla_mode = scylla_mode(cassandra_dir, scylla_version)
         if _scylla_mode in ['debug', 'dev']:
             session.config._env_timeout = 7200  # pylint: disable=protected-member
+    elk_reporter = session.config.pluginmanager.get_plugin("elk-reporter-runtime")
+    if elk_reporter and session.config.getoption('--report-to-elk'):
+        # if we don't have the credentials just skip this part
+        try:
+            es_credentials = KeyStore().get_elasticsearch_credentials()
+
+            elk_reporter.es_address = es_credentials['es_url']
+            elk_reporter.es_username = es_credentials['es_user']
+            elk_reporter.es_password = es_credentials['es_password']
+            elk_reporter.es_index_name = 'dtest_test_data'
+
+        except (BotoCoreError, AwsClientError) as ex:
+            logger.warning("couldn't configure configure_es, results won't be sent out:")
+            logger.warning("%s", str(ex))
 
 
 def pytest_collection_modifyitems(items, config):
@@ -534,24 +548,6 @@ def pytest_markeval_namespace():
         parse_version=parse_version,
         get_version=get_version,
     )
-
-
-def pytest_plugin_registered(plugin, manager):
-    from pytest_elk_reporter import ElkReporter
-
-    if isinstance(plugin, ElkReporter):
-        # if we don't have the credentials just skip this part
-        try:
-            es_credentials = KeyStore().get_elasticsearch_credentials()
-
-            plugin.es_address = es_credentials['es_url']
-            plugin.es_username = es_credentials['es_user']
-            plugin.es_password = es_credentials['es_password']
-            plugin.es_index_name = 'dtest_test_data'
-
-        except (BotoCoreError, AwsClientError) as ex:
-            logger.warning("couldn't configure configure_es, results won't be sent out:")
-            logger.warning("%s", str(ex))
 
 
 @pytest.fixture(scope='session', autouse=True)

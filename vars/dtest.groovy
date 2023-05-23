@@ -186,7 +186,7 @@ def splitAndCopyDtestJobs (Map args) {
 
     dir ("$WORKSPACE/scylla-dtest") {
         sh "env"
-        sh(script: "./scripts/run_test.sh ${includeTests} ${excludeTests} --scylla-version=${env.SCYLLA_VERSION} --collect-only -q --es-slices --es-max-splice-time=${splitTimeTarget} --es-default-test-time=${defaultTestTimeSec}")
+        sh(script: "./scripts/run_test.sh ${includeTests} ${excludeTests} --scylla-version=${env.SCYLLA_VERSION} --collect-only -q --es-slices --es-max-splice-time=${splitTimeTarget} --es-default-test-time=${defaultTestTimeSec} --report-to-elk")
     }
     int numOfSplitFiles = sh(returnStdout: true, script: "ls $WORKSPACE/scylla-dtest/include_* -1 | wc -l") as Integer
 
@@ -312,7 +312,6 @@ def doParallelDtest (Map args) {
                                     error("split file missing - ${splitFileName}")
                                 }
                                 String localIncludeTests = " --from-file=$splitFileName"
-                                String dtestRunTestSh = "$WORKSPACE/scylla-dtest/scripts/run_test.sh"
                                 String dtestParameters = setDtestParams (
                                     dryRun: dryRun,
                                     dtestMode: args.dtestMode,

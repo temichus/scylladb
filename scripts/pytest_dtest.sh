@@ -270,7 +270,7 @@ else
 		export tests="$tests --exclude `echo $excluded_tests | sed s/' '/'\|'/g`"
 	fi
 fi
-PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml  --delete-logs=passed --log-file=${LOG_SAVED_DIR}/dtest.log"
+PYTEST_FLAGS="-v --junit-xml=$WORKSPACE/scylla-dtest.$dtest_type.$mode.$NODE_INDEX.xml  --delete-logs=passed --report-to-elk --log-file=${LOG_SAVED_DIR}/dtest.log"
 
 if [[ -n "$random" ]]; then
     echo "Selecting $random random tests"
