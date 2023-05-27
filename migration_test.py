@@ -706,7 +706,7 @@ class MigrationTestBase(BaseHelpers):
     def get_sstable_version(self, cf_dir, assert_only_one_version=True):
         file_list = os.listdir(cf_dir)
         logger.info("{}".format(file_list))
-        sstable_version_regex = re.compile(r'(\w+)-\d+-(.+)\.(db|txt|sha1|crc32)')
+        sstable_version_regex = re.compile(r'(\w+)-[^-]+-(.+)\.(db|txt|sha1|crc32)')
 
         sstable_versions = list(
             set([sstable_version_regex.search(f).group(1) for f in file_list if sstable_version_regex.search(f)]))
