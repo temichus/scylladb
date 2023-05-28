@@ -27,7 +27,7 @@ from dtest_setup_overrides import DTestSetupOverrides
 from tools.cluster import new_node
 from tools.data import rows_to_list, insert_c1c2, insert_c1c2_no_prepared, get_node_sstables_compression
 from tools.assertions import PytestRegex
-from tools.misc import ImmutableMapping
+from tools.misc import ImmutableMapping, retry_till_success
 from tools.files import copy_files_to, get_node_cf_dir
 from tools.status import nodetool_gossipinfo
 
@@ -1195,23 +1195,25 @@ class TestNodetool(Tester):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True)
         node = cluster.nodelist()[0]
-        gi = nodetool_gossipinfo(node)
 
-        assert 2 == len(gi), "wrong number of nodes"
-        for k in gi:
-            info = gi[k]
-            assert "generation" in info
-            assert "heartbeat" in info
-            assert "STATUS" in info
-            assert "HOST_ID" in info
-            assert "RELEASE_VERSION" in info
-            assert "SCHEMA" in info
-            assert "NET_VERSION" in info
-            assert "LOAD" in info
-            assert "RACK" in info
-            assert "RPC_ADDRESS" in info
-            assert "DC" in info
-            # self.assertIn("SEVERITY", info)
+        def verify_gossip():
+            gi = nodetool_gossipinfo(node)
+
+            assert 2 == len(gi), "wrong number of nodes"
+            for _, info in gi.items():
+                assert "generation" in info
+                assert "heartbeat" in info
+                assert "STATUS" in info
+                assert "HOST_ID" in info
+                assert "RELEASE_VERSION" in info
+                assert "SCHEMA" in info
+                assert "NET_VERSION" in info
+                assert "LOAD" in info
+                assert "RACK" in info
+                assert "RPC_ADDRESS" in info
+                assert "DC" in info
+
+        retry_till_success(verify_gossip)
 
     @staticmethod
     def _verify_nodes_schema_versions(node, expected_versions_number):
