@@ -2295,7 +2295,7 @@ class TestNodetool(Tester):
             'malformed_sstable_exception',
             'SSTables with Cassandra-style shadowable deletion cannot be read by Scylla',
             'Adding missing partition-end to the end of the stream',
-            '[Ss]crubbing',
+            '[Ss]crub',
         ]
 
         self.ignore_cores_log_patterns += [
