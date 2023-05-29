@@ -35,6 +35,8 @@ def fixture_set_cluster_settings(fixture_dtest_setup):
 @pytest.mark.single_node
 @pytest.mark.usefixtures("fixture_set_cluster_settings")
 class TestAuthRoles(Tester):
+
+    @pytest.mark.next_gating
     def test_create_drop_role(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -46,6 +48,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP ROLE role1")
         assert_one(cassandra, "LIST ROLES", cassandra_role)
 
+    @pytest.mark.next_gating
     def test_conditional_create_drop_role(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -59,6 +62,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP ROLE IF EXISTS role1")
         assert_one(cassandra, "LIST ROLES", cassandra_role)
 
+    @pytest.mark.next_gating
     def test_create_drop_role_validation(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -175,6 +179,7 @@ class TestAuthRoles(Tester):
                                        cassandra,
                                        "LIST ALL PERMISSIONS")
 
+    @pytest.mark.next_gating
     def test_create_and_grant_roles_with_superuser_status(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -198,6 +203,7 @@ class TestAuthRoles(Tester):
                                                       ['non_superuser', False, False, {}],
                                                       ['role1', False, False, {}]])
 
+    @pytest.mark.next_gating
     def test_drop_and_revoke_roles_with_superuser_status(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -217,6 +223,7 @@ class TestAuthRoles(Tester):
         mike.execute("DROP ROLE non_superuser")
         mike.execute("DROP ROLE role1")
 
+    @pytest.mark.next_gating
     def test_drop_role_removes_memberships(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -239,6 +246,7 @@ class TestAuthRoles(Tester):
         assert_one(cassandra, "LIST ROLES OF mike", mike_role)
         assert_all(cassandra, "LIST ROLES", [cassandra_role, mike_role, role2_role])
 
+    @pytest.mark.next_gating
     def test_drop_role_revokes_permissions_granted_on_it(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -257,6 +265,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("DROP ROLE role2")
         assert len(list(cassandra.execute("LIST ALL PERMISSIONS OF mike"))) == 0
 
+    @pytest.mark.next_gating
     def test_grant_revoke_roles(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -276,6 +285,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE role1 FROM role2")
         assert_one(cassandra, "LIST ROLES OF role2", role2_role)
 
+    @pytest.mark.next_gating
     def test_grant_revoke_role_validation(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -312,6 +322,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE role1 FROM john")
         mike.execute("REVOKE role2 from john")
 
+    @pytest.mark.next_gating
     def test_list_roles(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -594,6 +605,7 @@ class TestAuthRoles(Tester):
                        "You are not authorized to view john's permissions",
                        Unauthorized)
 
+    @pytest.mark.next_gating
     def test_role_caching_authenticated_user(self):
         # This test is to show that the role caching in AuthenticatedUser
         # works correctly and revokes the roles from a logged in user
@@ -625,7 +637,7 @@ class TestAuthRoles(Tester):
 
         assert unauthorized is not None
 
-    def drop_non_existent_role_should_not_update_cache(self):
+    def test_drop_non_existent_role_should_not_update_cache(self):
         # The su status check during DROP ROLE IF EXISTS <role>
         # should not cause a non-existent role to be cached (CASSANDRA-9189)
         self.prepare(roles_expiry=10000)
@@ -643,6 +655,7 @@ class TestAuthRoles(Tester):
         mike = self.get_session(user='mike', password='12345')
         mike.execute("SELECT * FROM ks.cf")
 
+    @pytest.mark.next_gating
     def test_prevent_circular_grants(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -660,6 +673,7 @@ class TestAuthRoles(Tester):
                        "mike already includes role role2.",
                        InvalidRequest)
 
+    @pytest.mark.next_gating
     def test_create_user_as_alias_for_create_role(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -669,6 +683,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE USER super_user WITH PASSWORD '12345' SUPERUSER")
         assert_one(cassandra, "LIST ROLES OF super_user", ["super_user", True, True, {}])
 
+    @pytest.mark.next_gating
     def test_role_name(self):
         """ Simple test to verify the behavior of quoting when creating roles & users
         @jira_ticket CASSANDRA-10394
@@ -703,6 +718,7 @@ class TestAuthRoles(Tester):
         self.get_session(user='USER2', password='12345')
         self.assert_unauthenticated("Username and/or password are incorrect", 'User2', '12345')
 
+    @pytest.mark.next_gating
     def test_role_requires_login_privilege_to_authenticate(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -743,6 +759,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("ALTER ROLE mike WITH PASSWORD = '12345'")
         self.get_session(user='mike', password='12345')
 
+    @pytest.mark.next_gating
     def test_superuser_status_is_inherited(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -762,6 +779,7 @@ class TestAuthRoles(Tester):
                                         ["db_admin", True, False, {}],
                                         mike_role])
 
+    @pytest.mark.next_gating
     def test_list_users_considers_inherited_superuser_status(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1131,6 +1149,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT function_user TO mike")
         assert_one(mike, select, [1, 1, 2])
 
+    @pytest.mark.next_gating
     def test_builtin_functions_require_no_special_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
@@ -1160,6 +1179,7 @@ class TestAuthRoles(Tester):
                        "Altering permissions on builtin functions is not supported",
                        InvalidRequest)
 
+    @pytest.mark.next_gating
     def test_disallow_grant_execute_on_non_function_resources(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
