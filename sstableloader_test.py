@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 @pytest.mark.single_node
 @pytest.mark.parametrize("version", ['2_1_x', '2_2_x', '3_0_x', '3_0_mc', '3_0_md'])
 @pytest.mark.parametrize("prepared", ['-nx', ''])
@@ -89,7 +90,6 @@ class TestMigrationWith(MigrationTestBase):
                " does not match system partitioner" + \
                " org.apache.cassandra.dht.Murmur3Partitioner"
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_migrate_sstable_with_wrong_partitioner(self):
         """
@@ -119,7 +119,6 @@ class TestMigrationWith(MigrationTestBase):
                                   'with_wrong_partitioner',
                                   partitioner='org.apache.cassandra.dht.RandomPartitioner')
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_load_migrated_table_with_old_counter(self):
         """
@@ -146,7 +145,6 @@ class TestMigrationWith(MigrationTestBase):
         self.load_migrated_tables(node1, 'with_old_format_counter',
                                   extra_sstableloader_args=['--ignore-dropped-counter-data'])
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_load_migrated_table_with_counter(self):
         """
