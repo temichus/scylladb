@@ -48,6 +48,7 @@ class SLATester(Tester):
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestSLA(SLATester):
     @staticmethod
     def _validate_sla(service_level: ServiceLevel):
@@ -463,6 +464,7 @@ class TestSLA(SLATester):
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
+@pytest.mark.next_gating
 class TestSLANegativeTests(SLATester):
     def test_update_not_existing_sla(self):
         """
