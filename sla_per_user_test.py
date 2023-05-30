@@ -505,6 +505,8 @@ class TestSLANegativeTests(SLATester):
             ServiceLevel(session=session, name='sla1', shares=shares).create()
 
 
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestSLATimeouts(SLATester):
     KEY_NUM = 1000
 
@@ -617,8 +619,9 @@ class TestSLATimeouts(SLATester):
             logger.debug("Read result: %s", len(read_result.all()))
 
 
+@pytest.mark.dtest_full
+@pytest.mark.single_node
 class TestSLTimeoutsNegative(SLATester):
-    @pytest.mark.require('scylladb/scylla#10286')
     @pytest.mark.parametrize(argnames=["timeout", "expected_exception_msg"],
                              argvalues=[
                                  [ScyllaDuration(days=1), "Timeout values cannot be expressed in days/months"],
