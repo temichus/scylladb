@@ -13,12 +13,14 @@ from cassandra.cluster import NoHostAvailable
 
 from dtest_class import Tester, create_ks, create_cf
 from tools.ldap_docker import LdapDocker
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
+@pytest.mark.next_gating
 class TestLdap(Tester):
     _multiprocess_can_split_ = False
     LDAP_USER = 'scylla-qa'
@@ -278,6 +280,7 @@ class TestLdap(Tester):
             self.check_user_permissions(permission_dict=permission_dict)
             logger.info(f'Finished with {k}')
 
+    @unmark.next_gating
     def test_hard_restart_scylla(self):
         self.prepare()
         self.add_role_to_ldap()
@@ -354,6 +357,7 @@ class TestLdap(Tester):
         permission['permissions'] = actions_list[:]
         self.check_user_permissions(permission_dict=permission)
 
+    @unmark.next_gating
     def test_add_ldap_after_regular_work(self):
         self.prepare(create_role=False, configure_ldap=False)
         cassandra_session = self.patient_cql_connection(node=self.nodes[0], user='cassandra', password='cassandra')
@@ -518,6 +522,7 @@ class TestLdap(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
+@pytest.mark.next_gating
 class TestLdapSaslAuth(TestLdap):
     use_saslauth = True
 
