@@ -356,7 +356,7 @@ class TestIcsCompaction(Tester):
     def test_check_default_compaction_strategy(self):
         session = self.create_cluster(num_of_nodes=1)
         create_ks(session=session, name=KEYSPACE_NAME, rf=1)
-        create_cf(session=session, name=TABLE_NAME, columns={'c1': 'text', 'c2': 'text'})
+        create_cf(session=session, name=TABLE_NAME, columns={'c1': 'text', 'c2': 'text'}, compaction_strategy=None)
         compaction = self._get_table_compaction_strategy()
         assert compaction == CompactionStrategy.INCREMENTAL, "Default compaction is: {}".format(compaction)
 

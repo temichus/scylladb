@@ -337,11 +337,9 @@ def create_cf(session, name, key_type="varchar", speculative_retry=None,
               paxos_grace_seconds=None, dclocal_read_repair_chance=None,
               scylla_encryption_options=None, key_name: str = "key"):
 
-    compaction_fragment = "compaction = {'class': '%s', 'enabled': 'true'}"
-    if compaction_strategy == '':
-        compaction_fragment = compaction_fragment % 'SizeTieredCompactionStrategy'
-    else:
-        compaction_fragment = compaction_fragment % compaction_strategy
+    compaction_fragment = None
+    if compaction_strategy:
+        compaction_fragment = "compaction = {'class': '%s', 'enabled': 'true'}" % compaction_strategy
 
     additional_columns = ""
     if columns is not None:
