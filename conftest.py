@@ -24,7 +24,7 @@ from dtest_setup_overrides import DTestSetupOverrides
 from tools.keystore import KeyStore
 from tools.log_utils import log_per_process_data, TestNameFilter
 from tools.env import GITHUB_TOKEN, DTEST_REQUIRE
-from tools.marks import get_version, is_enterprise, scylla_mode
+from tools.marks import get_version, is_enterprise, scylla_mode, UnmarkedLocals
 from collect_test_info import ElkTestHistory
 
 logger = logging.getLogger(__name__)
@@ -471,6 +471,8 @@ def pytest_collection_modifyitems(items, config):
     sufficient_system_resources_resource_intensive = sufficient_system_resources_for_resource_intensive_tests()
     logger.debug("has sufficient resources? %s" % sufficient_system_resources_resource_intensive)
 
+    matchexpr = config.option.markexpr
+
     for item in items:
         deselect_test = False
         if re.search(r'''[$!#&"()|<>`\;'\s+"']''', item.nodeid):
@@ -536,6 +538,11 @@ def pytest_collection_modifyitems(items, config):
             scylla_ext_opt = os.environ.get("SCYLLA_EXT_OPTS", '')
             if "raft" in scylla_ext_opt or "raft" in experimental_features or \
                     consistent_cluster_management:
+                deselect_test = True
+
+        if matchexpr:
+            if eval(matchexpr, {}, UnmarkedLocals(item.keywords)):
+                print("Deselecting %r (mark removed by @unmark)" % item)
                 deselect_test = True
 
         if not deselect_test and test_list_file:
