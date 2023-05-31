@@ -66,8 +66,6 @@ class DTestConfig:
             ccm_repo_cache_dir, _ = ccmlib.repository.setup(self.cassandra_version)
             return get_version_from_build(ccm_repo_cache_dir)
         elif self.scylla_version is not None:
-            if self.manager_package:
-                os.environ['SCYLLA_MANAGER_PACKAGE'] = self.manager_package
             ccm_repo_cache_dir, _ = ccmlib.scylla_repository.setup(version=self.scylla_version)
             return get_version_from_build(ccm_repo_cache_dir)
         elif self.cassandra_dir is not None:
