@@ -59,7 +59,7 @@ ERROR_INJECTIONS = [
 COUNTRY_CODE = ["AR", "BR", "FR", "GB", "IL", "PL", "RU", "US"]
 
 CREATE_KS = f"""CREATE KEYSPACE IF NOT EXISTS {KEYSPACE}
-WITH REPLICATION = {{ 'class': 'SimpleStrategy', 'replication_factor' : {RF} }}
+WITH REPLICATION = {{ 'class': 'NetworkTopologyStrategy', 'replication_factor' : {RF} }}
 AND DURABLE_WRITES=true"""
 
 USE_KS = f"""USE {KEYSPACE}"""
