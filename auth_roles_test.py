@@ -153,7 +153,8 @@ class TestAuthRoles(Tester):
 
         mike = self.get_session(user='mike', password='12345')
         # mike should automatically be granted permissions on any resource he creates, i.e. tables or roles
-        mike.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        mike.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         mike.execute("CREATE TABLE ks.cf (id int primary key, val int)")
         mike.execute("CREATE ROLE role1 WITH PASSWORD = '11111' AND SUPERUSER = false AND LOGIN = true")
         mike.execute("""CREATE FUNCTION ks.state_function_1(a int, b int)
@@ -362,7 +363,8 @@ class TestAuthRoles(Tester):
     def test_grant_revoke_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
         cassandra.execute("CREATE ROLE role1")
@@ -393,7 +395,8 @@ class TestAuthRoles(Tester):
     def test_filter_granted_permissions_by_resource_type(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
         cassandra.execute("CREATE ROLE role1 WITH SUPERUSER = false AND LOGIN = false")
@@ -502,7 +505,8 @@ class TestAuthRoles(Tester):
     def test_list_permissions(self):
         self.prepare()
         cassandra = self.get_session(user='cassandra', password='cassandra')
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
         cassandra.execute("CREATE ROLE role1")
@@ -572,7 +576,8 @@ class TestAuthRoles(Tester):
         self.prepare()
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
         cassandra.execute("CREATE ROLE john WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
@@ -612,7 +617,8 @@ class TestAuthRoles(Tester):
         # works correctly and revokes the roles from a logged in user
         self.prepare(roles_expiry=2000)
         cassandra = self.get_session(user='cassandra', password='cassandra')
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
         cassandra.execute("CREATE ROLE mike WITH PASSWORD = '12345' AND SUPERUSER = false AND LOGIN = true")
         cassandra.execute("CREATE ROLE role1")
@@ -643,7 +649,8 @@ class TestAuthRoles(Tester):
         # should not cause a non-existent role to be cached (CASSANDRA-9189)
         self.prepare(roles_expiry=10000)
         cassandra = self.get_session(user='cassandra', password='cassandra')
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
 
         # Dropping a role which doesn't exist should be a no-op. If we cache the fact
@@ -1300,7 +1307,8 @@ class TestAuthRoles(Tester):
         assert_all(cassandra, "LIST ROLES OF mike", [mike_role, role1_role])
 
     def setup_table(self, session):
-        session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute(
+            "CREATE KEYSPACE ks WITH REPLICATION = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         session.execute("CREATE TABLE ks.t1 (k int PRIMARY KEY, v int)")
 
     def assert_unauthenticated(self, message, user, password):
