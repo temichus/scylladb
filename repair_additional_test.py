@@ -2673,7 +2673,7 @@ class RepairAdditionalBase(Tester):
         session = self.patient_cql_connection(node1)
 
         session.execute(
-            "CREATE KEYSPACE ks WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };")
+            "CREATE KEYSPACE ks WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 3 };")
         session.execute("CREATE TABLE ks.tb (pk int, ck int, c0 int, c1 int, PRIMARY KEY(pk, ck));")
 
         nr_rows = 3
