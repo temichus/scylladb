@@ -364,7 +364,8 @@ class TestAuth(Tester):
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER test WITH PASSWORD '12345'")
         cassandra.execute("CREATE USER test2 WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key)")
 
         logger.info("Verify `test` user doesn't have SELECT/AUTHORIZE permissions")
@@ -533,10 +534,11 @@ class TestAuth(Tester):
         cathy = self.get_session(user='cathy', password='12345')
         self.assertUnauthorized("User cathy has no CREATE permission on <all keyspaces> or any of its parents",
                                 cathy,
-                                "CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+                                "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
 
         cassandra.execute("GRANT CREATE ON ALL KEYSPACES TO cathy")
-        cathy.execute("""CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}""")
+        cathy.execute(
+            """CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}""")
 
     @pytest.mark.single_node
     @pytest.mark.next_gating
@@ -551,7 +553,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
 
         cathy = self.get_session(user='cathy', password='12345')
         self.assertUnauthorized("User cathy has no CREATE permission on <keyspace ks> or any of its parents",
@@ -599,7 +602,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key)")
 
         cathy = self.get_session(user='cathy', password='12345')
@@ -641,7 +645,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key)")
 
         cathy = self.get_session(user='cathy', password='12345')
@@ -680,7 +685,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, value text)")
 
         # Try CREATE MV without ALTER permission on base table
@@ -725,7 +731,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
 
         cathy = self.get_session(user='cathy', password='12345')
         self.assertUnauthorized("User cathy has no DROP permission on <keyspace ks> or any of its parents",
@@ -747,7 +754,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key)")
 
         cathy = self.get_session(user='cathy', password='12345')
@@ -770,7 +778,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
 
         cathy = self.get_session(user='cathy', password='12345')
@@ -824,7 +833,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
 
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
 
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
@@ -889,7 +899,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
 
         assert_invalid(cassandra, "GRANT ALL ON KEYSPACE nonexistent TO cathy", "<keyspace nonexistent> doesn't exist")
 
@@ -913,7 +924,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
         cassandra.execute("GRANT ALL ON ks.cf TO cathy")
 
@@ -940,7 +952,8 @@ class TestAuth(Tester):
 
         # drop and recreate the keyspace, make sure permissions are gone
         cassandra.execute("DROP KEYSPACE ks")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
 
         self.assertUnauthorized("User cathy has no MODIFY permission on <table ks.cf> or any of its parents",
@@ -972,7 +985,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
 
         cathy = self.get_session(user='cathy', password='12345')
@@ -1051,7 +1065,8 @@ class TestAuth(Tester):
 
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
 
         cathy = self.get_session(user='cathy', password='12345')
         self.assertUnauthorized("User cathy has no CREATE permission on <keyspace ks> or any of its parents",
@@ -1497,7 +1512,8 @@ class TestAuth(Tester):
         cassandra = self.get_session(user='cassandra', password='cassandra')
         cassandra.execute("CREATE USER cathy WITH PASSWORD '12345'")
         cassandra.execute("CREATE USER philip WITH PASSWORD 'strongpass'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int PRIMARY KEY)")
         cassandra.execute("GRANT ALL ON ks.cf to philip")
 
@@ -1535,12 +1551,12 @@ class TestAuth(Tester):
                 InvalidRequest,
                 match=r'Error from server: code=2200 \[Invalid query\] message="system keyspace is not user-modifiable"'):
             session.execute(
-                "create KEYSPACE SyStEM WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+                "create KEYSPACE SyStEM WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1}")
 
         for name in ['SYSTEM_tRaCeS', 'SYSTEM_aUtH']:
             with pytest.raises(AlreadyExists, match="Keyspace '%s' already exists" % name.lower()):
                 session.execute(
-                    "create KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}" % name)
+                    "create KEYSPACE %s WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1}" % name)
                 pytest.fail("Keyspace %s shouldn't be created")
 
         with pytest.raises(
@@ -1651,7 +1667,8 @@ class TestAuth(Tester):
         cassandra.execute("CREATE USER dave WITH PASSWORD '12345'")
         cassandra.execute("CREATE USER anna WITH PASSWORD '12345'")
         cassandra.execute("CREATE USER chuk WITH PASSWORD '12345'")
-        cassandra.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        cassandra.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         cassandra.execute("CREATE TABLE ks.cf (id int primary key, val int)")
         cassandra.execute("CREATE TABLE ks.cf2 (id int primary key, val int)")
 
@@ -1840,7 +1857,8 @@ class TestAuth(Tester):
                                 "LIST USERS")
 
         logger.info('STEP: check default permissions (CREATE/ALTER/DROP/SELECT/MODIFY) of all users')
-        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         session.execute("CREATE TABLE ks.cf (id int primary key)")
         session.execute("SELECT * FROM ks.cf")
         self.assertUnauthorized("You have to be logged in and not anonymous to perform this request",
@@ -1919,7 +1937,8 @@ class TestAuth(Tester):
         logger.info('STEP: check permissions (LIST/CREATE/GRANT/REVOKE) of normal user')
         session = self.get_session(user='normal', password='123456')
         session.execute('LIST USERS')
-        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         session.execute("CREATE TABLE ks.cf (id int primary key)")
         self.assertUnauthorized("User normal has no AUTHORIZE permission on <table ks.cf> or any of its parents",
                                 session, "GRANT ALTER ON ks.cf TO normal")
