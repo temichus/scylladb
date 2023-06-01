@@ -21,6 +21,7 @@ import tools.commitlog as commitlog
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 class TestBackupRestore(Tester):
 
@@ -342,7 +343,6 @@ class TestBackupRestore(Tester):
         logger.debug("Checking rows on node1...")
         self.check_rows_on_node(node1, num_keys, found=keys, c1_values=c1_values, c2_values=c2_values)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_restore_snapshot_using_old_token_ownership(self):
         """
@@ -422,7 +422,6 @@ class TestBackupRestore(Tester):
         logger.debug("Check that we may query ks.cf on node1...")
         session.execute(SimpleStatement("SELECT COUNT(*) FROM ks.cf"))
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_incremental_backup(self):
@@ -496,7 +495,6 @@ class TestBackupRestore(Tester):
         # should not change after a compaction
         assert backups1_files == backups2_files, "backup contents changed after a compaction"
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_restore_snapshot_from_cassandra(self):
