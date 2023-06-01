@@ -1205,7 +1205,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         node1, node2, node3 = cluster.nodelist()
         session = self.patient_exclusive_cql_connection(node3)
         session.max_trace_wait = 120
-        session.execute("CREATE KEYSPACE ks WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
+        session.execute(
+            "CREATE KEYSPACE ks WITH REPLICATION = {'class': 'NetworkTopologyStrategy', 'replication_factor': '1'};")
         session.execute("CREATE TABLE ks.cf (a text PRIMARY KEY, b text);")
         session.execute("CREATE INDEX b_index ON ks.cf (b);")
         num_rows = 100
