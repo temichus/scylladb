@@ -912,7 +912,7 @@ class TestCountersStress(Tester):
         session = self.patient_cql_connection(self.node)
         session.execute("""
             CREATE KEYSPACE keyspace1
-            WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '2'} AND durable_writes = true;
+            WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': '2'} AND durable_writes = true;
         """)
         session.execute("""
             CREATE TABLE keyspace1.counter1 (
