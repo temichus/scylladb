@@ -134,7 +134,7 @@ class TestPerPartitionRateLimiter(Tester):
         session.execute(
             """
             CREATE KEYSPACE IF NOT EXISTS %s
-            WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': '1' }
+            WITH replication = { 'class': 'NetworkTopologyStrategy', 'replication_factor': '1' }
             """
             % KEYSPACE
         )
