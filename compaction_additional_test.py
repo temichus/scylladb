@@ -1478,7 +1478,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         if window_size is None:
             window_size = self.window_size
 
-        session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'SimpleStrategy', 'replication_factor': {}}}".format(
+        session.execute("CREATE KEYSPACE {} WITH replication = {{'class': 'NetworkTopologyStrategy', 'replication_factor': {}}}".format(
             self.keyspace_name, rf))
         session.execute(
             f"CREATE TABLE {keyspace_name}.{table_name} (pk int, ck int, v blob, PRIMARY KEY(pk, ck)) "
