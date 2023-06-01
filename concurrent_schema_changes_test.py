@@ -140,7 +140,7 @@ class TestConcurrentSchemaChanges(Tester):
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
         session.execute(
-            "create keyspace lots_o_tables WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+            "create keyspace lots_o_tables WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_tables")
         wait(5)
 
@@ -170,7 +170,7 @@ class TestConcurrentSchemaChanges(Tester):
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
         session.execute(
-            "create keyspace lots_o_alters WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+            "create keyspace lots_o_alters WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_alters")
         for n in range(10):
             session.execute("create table base_{0} (id uuid primary key)".format(n))
@@ -207,7 +207,7 @@ class TestConcurrentSchemaChanges(Tester):
         node1, node2 = cluster.nodelist()
         session = self.cql_connection(node1)
         session.execute(
-            "create keyspace lots_o_indexes WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+            "create keyspace lots_o_indexes WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_indexes")
         for n in range(5):
             session.execute("create table base_{0} (id uuid primary key, c1 int, c2 int)".format(n))
@@ -256,7 +256,7 @@ class TestConcurrentSchemaChanges(Tester):
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
         session.execute(
-            "create keyspace lots_o_views WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+            "create keyspace lots_o_views WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_views")
         wait(10)
         session.execute(
@@ -340,7 +340,7 @@ class TestConcurrentSchemaChanges(Tester):
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
         session.execute(
-            "create keyspace lots_o_churn WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+            "create keyspace lots_o_churn WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_churn")
 
         self._do_lots_of_schema_actions(session)
@@ -358,7 +358,7 @@ class TestConcurrentSchemaChanges(Tester):
         node1, node2, node3 = cluster.nodelist()
         session = self.cql_connection(node1)
         session.execute(
-            "create keyspace lots_o_churn WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};")
+            "create keyspace lots_o_churn WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};")
         session.execute("use lots_o_churn")
 
         node2.stop()
