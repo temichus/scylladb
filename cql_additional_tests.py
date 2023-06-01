@@ -1672,16 +1672,16 @@ class TestCQL(Tester):
                        expected=SyntaxException,
                        matching="code=2000")
         session.execute(
-            "CREATE KEYSPACE test2 WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+            "CREATE KEYSPACE test2 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 }")
         assert_invalid(
-            session, "CREATE KEYSPACE My_much_much_too_long_identifier_that_should_not_work WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+            session, "CREATE KEYSPACE My_much_much_too_long_identifier_that_should_not_work WITH replication = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 }")
 
         session.execute("DROP KEYSPACE test2")
         assert_invalid(session, "DROP KEYSPACE non_existing",
                        expected=ConfigurationException,
                        matching="code=2300")
         session.execute(
-            "CREATE KEYSPACE test2 WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+            "CREATE KEYSPACE test2 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 }")
 
     @pytest.mark.single_node
     def test_table(self):
@@ -1896,7 +1896,7 @@ class TestCQL(Tester):
 
         # Example from #3505
         session.execute(
-            "CREATE KEYSPACE ks1 with replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
+            "CREATE KEYSPACE ks1 with replication = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 };")
         session.execute("USE ks1")
         session.execute("""
             CREATE COLUMNFAMILY users (
@@ -5730,7 +5730,7 @@ class TestCQL(Tester):
         # create and confirm
         session.execute("""
             CREATE KEYSPACE IF NOT EXISTS my_test_ks
-            WITH replication = {'class':'SimpleStrategy', 'replication_factor':1} and durable_writes = true
+            WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1} and durable_writes = true
             """)
         assert_one(session, "select durable_writes from system.schema_keyspaces where keyspace_name = 'my_test_ks';",
                    [True], cl=ConsistencyLevel.ALL)
@@ -5738,7 +5738,7 @@ class TestCQL(Tester):
         # unsuccessful create since it's already there, confirm settings don't change
         session.execute("""
             CREATE KEYSPACE IF NOT EXISTS my_test_ks
-            WITH replication = {'class':'SimpleStrategy', 'replication_factor':1} and durable_writes = false
+            WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1} and durable_writes = false
             """)
 
         assert_one(session, "select durable_writes from system.schema_keyspaces where keyspace_name = 'my_test_ks';",
@@ -5962,7 +5962,7 @@ class TestCQL(Tester):
         node1 = self.cluster.nodelist()[0]
 
         session.execute(
-            "CREATE  KEYSPACE space1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+            "CREATE  KEYSPACE space1 WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1}")
         session.execute("CREATE  TABLE space1.table1(a int, b int, c text,primary key(a,b))")
         session.execute("INSERT INTO space1.table1(a,b,c) VALUES(1,1,'1')")
         node1.nodetool('flush')
@@ -7148,7 +7148,8 @@ class TestsCQLAdditional(Tester):
         session = self.patient_cql_connection(node)
 
         logger.debug('creating table')
-        session.execute("create keyspace ks with replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+        session.execute(
+            "create keyspace ks with replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1}")
         session.execute("create table ks.t (pk int, ck int, primary key (pk, ck))"
                         " with compaction = {'class': 'TimeWindowCompactionStrategy'} and bloom_filter_fp_chance = 1;")
 
@@ -7191,7 +7192,7 @@ class TestsCQLAdditional(Tester):
 
         logger.debug("Preparing keyspace and table")
         session.execute("CREATE KEYSPACE IF NOT EXISTS ks WITH "
-                        "REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 3}")
+                        "REPLICATION = {'class': 'NetworkTopologyStrategy', 'replication_factor': 3}")
         table_stmt = SimpleStatement(
             "CREATE TABLE IF NOT EXISTS ks.tab (pk int, ck text, v int, v2 int, v3 text, PRIMARY KEY (pk, ck))",
             consistency_level=ConsistencyLevel.ALL
@@ -7836,7 +7837,7 @@ class TestLWTWithCQL(Tester):
     def get_lwttester_session(self):
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
-        session.execute("""CREATE KEYSPACE IF NOT EXISTS ks WITH REPLICATION={'class':'SimpleStrategy',
+        session.execute("""CREATE KEYSPACE IF NOT EXISTS ks WITH REPLICATION={'class':'NetworkTopologyStrategy',
             'replication_factor':1}""")
         session.execute("USE ks")
         return session
