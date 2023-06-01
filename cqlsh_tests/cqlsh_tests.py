@@ -95,7 +95,7 @@ class TestCqlsh(CqlshVersionMixing):
         node1, = self.cluster.nodelist()
 
         node1.run_cqlsh(cmds="""
-            CREATE KEYSPACE simple WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+            CREATE KEYSPACE simple WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
             use simple;
             create TABLE simple (id int PRIMARY KEY , value text ) ;
             insert into simple (id, value) VALUES (1, 'one');
@@ -117,7 +117,7 @@ class TestCqlsh(CqlshVersionMixing):
         node1, = self.cluster.nodelist()
 
         node1.run_cqlsh(cmds="""
-            CREATE KEYSPACE simple WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+            CREATE KEYSPACE simple WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
             use simple;
             create TABLE simpledate (id int PRIMARY KEY , value timestamp ) ;
             insert into simpledate (id, value) VALUES (1, '2143-04-19 11:21:01+0000');
@@ -261,7 +261,7 @@ class TestCqlsh(CqlshVersionMixing):
 
         node1, = self.cluster.nodelist()
 
-        node1.run_cqlsh(cmds="""create KEYSPACE testks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+        node1.run_cqlsh(cmds="""create KEYSPACE testks WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
 use testks;
 
 CREATE TABLE varcharmaptable (
@@ -398,7 +398,7 @@ UPDATE varcharmaptable SET varcharvarintmap['Vitrum edere possum, mihi non nocet
 
         node1, = self.cluster.nodelist()
 
-        node1.run_cqlsh(cmds="""create keyspace  CASSANDRA_7196 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1} ;
+        node1.run_cqlsh(cmds="""create keyspace  CASSANDRA_7196 WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1} ;
 
 use CASSANDRA_7196;
 
@@ -551,7 +551,8 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         node1.watch_log_for('Created default superuser')
 
         conn = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
-        conn.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+        conn.execute(
+            "CREATE KEYSPACE ks WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         conn.execute("CREATE TABLE ks.t1 (k int PRIMARY KEY, v int)")
         conn.execute("CREATE USER user1 WITH PASSWORD 'user1'")
         conn.execute("GRANT ALL ON ks.t1 TO user1")
@@ -612,7 +613,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
         self.execute(
             cql="""
-                CREATE KEYSPACE test WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : 1};
+                CREATE KEYSPACE test WITH REPLICATION = {'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1};
                 CREATE TABLE test.users ( userid text PRIMARY KEY, firstname text, lastname text, age int);
                 CREATE INDEX myindex ON test.users (age);
                 CREATE TABLE test.test (id int, col int, val text, PRIMARY KEY(id, col));
@@ -745,7 +746,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
         self.execute(
             cql="""
-                CREATE KEYSPACE test WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : 1};
+                CREATE KEYSPACE test WITH REPLICATION = {'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1};
                 CREATE TABLE test.users (username varchar, password varchar, gender varchar,
                 session_token varchar, state varchar, birth_year bigint, PRIMARY KEY (username));
                 CREATE MATERIALIZED VIEW test.users_by_state AS
@@ -770,7 +771,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.execute(cql='USE test; DESCRIBE "users_by_state"', expected_output=self.get_users_by_state_mv_output())
 
     def get_keyspace_output(self):
-        return ("CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}  AND durable_writes = true;" +
+        return ("CREATE KEYSPACE test WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': '1'}  AND durable_writes = true;" +
                 self.get_test_table_output() +
                 self.get_users_table_output())
 
@@ -980,7 +981,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         node1, = self.cluster.nodelist()
 
         stdout, stderr = self.run_cqlsh(node1, cmds="""
-            CREATE KEYSPACE formatting WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+            CREATE KEYSPACE formatting WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
             use formatting;
             create TABLE values ( part text, id int, val1 double, val2 float, PRIMARY KEY (part, id) );
             insert into values (part, id, val1, val2) VALUES ('+', 1, 0.00000006, 0.00000006);
@@ -1158,7 +1159,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         node1, = self.cluster.nodelist()
 
         stdout, stderr = self.run_cqlsh(node1, cmds="""
-            CREATE KEYSPACE int_checks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+            CREATE KEYSPACE int_checks WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
             USE int_checks;
             CREATE TABLE values (part text, val1 int, val2 bigint, val3 smallint, val4 tinyint, PRIMARY KEY (part));
             INSERT INTO values (part, val1, val2, val3, val4) VALUES ('1', 1, 1, 1, 1);
@@ -1198,7 +1199,7 @@ CREATE TABLE int_checks.values (
         node1, = self.cluster.nodelist()
 
         stdout, stderr = self.run_cqlsh(node1, cmds="""
-            CREATE KEYSPACE datetime_checks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+            CREATE KEYSPACE datetime_checks WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
             USE datetime_checks;
             CREATE TABLE values (d date, t time, PRIMARY KEY (d, t));
             INSERT INTO values (d, t) VALUES ('9800-12-31', '23:59:59.999999999');
@@ -1247,7 +1248,7 @@ CREATE TABLE datetime_checks.values (
         node1, = self.cluster.nodelist()
 
         stdout, stderr = self.run_cqlsh(node1, cmds="""
-            CREATE KEYSPACE tracing_checks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+            CREATE KEYSPACE tracing_checks WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
             USE tracing_checks;
             CREATE TABLE test (id int, val text, PRIMARY KEY (id));
             INSERT INTO test (id, val) VALUES (1, 'adfad');
@@ -1283,7 +1284,7 @@ Tracing session:""")
         node1, = self.cluster.nodelist()
 
         stdout, stderr = self.run_cqlsh(node1, cmds="""
-            CREATE KEYSPACE client_warnings WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+            CREATE KEYSPACE client_warnings WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
             USE client_warnings;
             CREATE TABLE test (id int, val text, PRIMARY KEY (id))""")
 
@@ -1320,7 +1321,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         node2.stop(wait_other_notice=True)
 
         stdout, stderr = self.run_cqlsh(node1, cmds="""
-              CREATE KEYSPACE training WITH replication={'class':'SimpleStrategy','replication_factor':1};
+              CREATE KEYSPACE training WITH replication={'class':'NetworkTopologyStrategy','replication_factor':1};
               DESCRIBE KEYSPACES""")
         assert "training" in stdout
         assert "Warning: schema version mismatch detected" in stderr
@@ -1481,7 +1482,7 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         node1, = self.cluster.nodelist()
 
         stdout, stderr = self.run_cqlsh(node1, cmds="""
-            CREATE KEYSPACE Excelsior  WITH REPLICATION={'class':'SimpleStrategy','replication_factor':1};
+            CREATE KEYSPACE Excelsior  WITH REPLICATION={'class':'NetworkTopologyStrategy','replication_factor':1};
             CREATE TABLE excelsior.data (id int primary key);
             BEGIN BATCH INSERT INTO excelsior.data (id) VALUES (0); APPLY BATCH""")
 
@@ -1658,7 +1659,7 @@ class TestCqlshSmoke(Tester):
         assert u'created' not in self.get_keyspace_names()
 
         self.node1.run_cqlsh("CREATE KEYSPACE created WITH replication = "
-                             "{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+                             "{ 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 }")
         assert u'created' in self.get_keyspace_names()
 
     @pytest.mark.single_node
