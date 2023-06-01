@@ -409,7 +409,7 @@ class TestReshardingVariants(ReshardingBase):
         self._remove_existent_ks(session=session, keyspace_name=keyspace_name)
         session.execute("""
             CREATE KEYSPACE %s
-            WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'};
+            WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': '1'};
         """ % keyspace_name)
         session.execute("""
             CREATE TABLE %s.counter1 (
