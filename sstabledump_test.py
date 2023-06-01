@@ -80,7 +80,7 @@ class TestSSTableDump(SSTableDump):
 
         session = self.patient_cql_connection(self.node)
         session.execute("""CREATE KEYSPACE ks
-            WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };
+            WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 };
         """)
         session.execute("""CREATE TABLE ks.cf (
             name text PRIMARY KEY,
@@ -111,7 +111,7 @@ class TestSSTableDump(SSTableDump):
 
         session = self.patient_cql_connection(self.node)
         session.execute("""CREATE KEYSPACE ks
-            WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };
+            WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 };
         """)
         session.execute("""CREATE TABLE ks.cf (
             pk INT PRIMARY KEY,
