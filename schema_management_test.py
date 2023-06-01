@@ -81,7 +81,7 @@ class TestSchemaManagement(Tester):
         session = self.patient_cql_connection(node1)
 
         session.execute(
-            "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+            "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 }")
         for i in range(8):
             session.execute(f"CREATE TABLE testxyz.test_{i} (k int, c int, PRIMARY KEY (k),)")
         session.execute("drop keyspace testxyz")
@@ -89,7 +89,7 @@ class TestSchemaManagement(Tester):
         for node in self.cluster.nodelist():
             s = self.patient_cql_connection(node)
             s.execute(
-                "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
+                "CREATE KEYSPACE testxyz WITH replication = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1 }")
             s.execute("drop keyspace testxyz")
 
     def test_multiple_create_table_in_parallel(self):
