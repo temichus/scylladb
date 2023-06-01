@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 class TestBatch(Tester):
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_empty_batch_throws_no_error(self):
         """
         @jira_ticket CASSANDRA-10711
@@ -26,6 +27,7 @@ class TestBatch(Tester):
         """)
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_counter_batch_accepts_counter_mutations(self):
         """ Test that counter batch accepts counter mutations """
         session = self.prepare()
@@ -116,6 +118,7 @@ class TestBatch(Tester):
             assert list(res[i]) == expected, "Expected %s, got %s" % (expected, res[i])
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_logged_batch_accepts_regular_mutations(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
@@ -182,6 +185,7 @@ class TestBatch(Tester):
         assert 1 == len(warning), "Cannot find the gc_grace_seconds warning message."
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_unlogged_batch_gcgs_below_threshold_should_not_print_warning(self):
         """ Test that logged batch accepts regular mutations """
         session = self.prepare()
@@ -199,6 +203,7 @@ class TestBatch(Tester):
         assert 0 == len(warning), "Cannot find the gc_grace_seconds warning message."
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_logged_batch_rejects_counter_mutations(self):
         """ Test that logged batch rejects counter mutations """
         session = self.prepare()
@@ -213,6 +218,7 @@ class TestBatch(Tester):
             """, matching=err)
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_unlogged_batch_accepts_regular_mutations(self):
         """ Test that unlogged batch accepts regular mutations """
         session = self.prepare()
@@ -228,6 +234,7 @@ class TestBatch(Tester):
         assert [list(res[0]), list(res[1])] == expected, f"expected={expected}, got {res}"
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def def_unlogged_batch_rejects_counter_mutations(self):
         """ Test that unlogged batch rejects counter mutations """
         session = self.prepare()
@@ -241,6 +248,7 @@ class TestBatch(Tester):
             APPLY BATCH
             """, matching=err)
 
+    @pytest.mark.next_gating
     def test_logged_batch_throws_uae(self):
         """ Test that logged batch throws UAE if there aren't enough live nodes """
         session = self.prepare(nodes=3)
@@ -254,6 +262,7 @@ class TestBatch(Tester):
             APPLY BATCH
         """)
 
+    @pytest.mark.next_gating
     def test_logged_batch_doesnt_throw_uae(self):
         """ Test that logged batch DOES NOT throw UAE if there are at least 2 live nodes """
         session = self.prepare(nodes=3)
@@ -278,7 +287,6 @@ class TestBatch(Tester):
             APPLY BATCH
         """, ConsistencyLevel.ONE, received_responses=0)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_acknowledged_by_batchlog_set_when_batchlog_write_succeeds(self):
         """ Test that acknowledged_by_batchlog is True if batchlog can be written """
@@ -293,6 +301,7 @@ class TestBatch(Tester):
             APPLY BATCH
         """, ConsistencyLevel.THREE, received_responses=2)
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_batch_uses_proper_timestamp(self):
         """ Test that each statement will be executed with provided BATCH timestamp """
@@ -309,6 +318,7 @@ class TestBatch(Tester):
         expected = [[0, 1111111111111111, 1111111111111111], [1, 1111111111111111, 1111111111111111]]
         assert [list(res[0]), list(res[1])] == expected, f"expected={expected}, got {res}"
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_only_one_timestamp_is_valid(self):
         """ Test that TIMESTAMP must not be used in the statements within the batch. """
@@ -320,6 +330,7 @@ class TestBatch(Tester):
             APPLY BATCH
         """, matching="Timestamp must be set either on BATCH or individual statements")
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_each_statement_in_batch_uses_proper_timestamp(self):
         """ Test that each statement will be executed with its own timestamp """
@@ -336,6 +347,7 @@ class TestBatch(Tester):
         expected = [[0, 1111111111111111, 1111111111111111], [1, 1111111111111112, 1111111111111112]]
         assert [list(res[0]), list(res[1])] == expected, f"expected={expected}, got {res}"
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_multi_table_batch_for_10554(self):
         """ Test a batch on 2 tables having different columns, restarting the node afterwards, to reproduce CASSANDRA-10554 """
