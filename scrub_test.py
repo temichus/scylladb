@@ -481,7 +481,7 @@ class TestScrub(TestHelper):
 
         session = self.patient_cql_connection(node1)
         session.execute(
-            "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1 };")
+            "CREATE KEYSPACE test WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1 };")
         session.execute("use test;")
         session.execute("CREATE TYPE point_t (x double, y double);")
 
