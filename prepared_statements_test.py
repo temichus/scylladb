@@ -25,7 +25,7 @@ class TestPreparedStatements(Tester):
         session = self.patient_cql_connection(node)
         session.execute("""
             CREATE KEYSPACE IF NOT EXISTS %s
-            WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': '1' }
+            WITH replication = { 'class': 'NetworkTopologyStrategy', 'replication_factor': '1' }
             """ % KEYSPACE)
 
         session.set_keyspace(KEYSPACE)
@@ -68,7 +68,7 @@ class TestPreparedStatements(Tester):
         # create key space and table
         session1.execute("""
              CREATE KEYSPACE IF NOT EXISTS %s
-             WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': '1' }
+             WITH replication = { 'class': 'NetworkTopologyStrategy', 'replication_factor': '1' }
              """ % KEYSPACE)
 
         session1.set_keyspace(KEYSPACE)
