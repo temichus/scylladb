@@ -179,7 +179,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         if (request.param == "Single_cluster"):
             nodes = 3
             DC_SIZE = [nodes]
-            DC_REPL = f"{{'class': 'SimpleStrategy', 'replication_factor': {DC_SIZE[0]}}}"
+            DC_REPL = f"{{'class': 'NetworkTopologyStrategy', 'replication_factor': {DC_SIZE[0]}}}"
         else:
             if type(self.cluster) is ScyllaCluster and self.cluster.scylla_mode == "debug":
                 dcs = 2
@@ -882,7 +882,7 @@ class TestCdcWithCompactStorage(Tester, CDCInitializeHelper):
         self.preimage = preimage
         self.postimage = postimage
         self.use_reg_column = use_regular_column
-        create_ks_query = "CREATE KEYSPACE ks1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : 2};"
+        create_ks_query = "CREATE KEYSPACE ks1 WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor' : 2};"
 
         self.populate_sequentially(n=2, wait_other_notice=True)
         cluster: ScyllaCluster = self.cluster
