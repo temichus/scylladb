@@ -75,7 +75,7 @@ class TestBatch(Tester):
                                                           "IF val=?")
                                           ):
         session.execute("CREATE KEYSPACE IF NOT EXISTS %s WITH replication = "
-                        "{ 'class': 'SimpleStrategy', 'replication_factor': '1' }" % KEYSPACE)
+                        "{ 'class': 'NetworkTopologyStrategy', 'replication_factor': '1' }" % KEYSPACE)
 
         session.set_keyspace(KEYSPACE)
         session.execute("CREATE TABLE clustering (id int, clustering1 int, "
@@ -226,7 +226,7 @@ class TestBatch(Tester):
         session = self.prepare()
 
         session.execute("CREATE KEYSPACE IF NOT EXISTS %s WITH replication = "
-                        "{ 'class': 'SimpleStrategy', 'replication_factor': '1' }" % KEYSPACE)
+                        "{ 'class': 'NetworkTopologyStrategy', 'replication_factor': '1' }" % KEYSPACE)
 
         session.set_keyspace(KEYSPACE)
         session.execute("CREATE TABLE clustering_static (id int, "
