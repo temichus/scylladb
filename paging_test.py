@@ -2823,7 +2823,7 @@ class TestUnpagedQueryLimit(Tester):
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         session.execute("CREATE KEYSPACE TestUnpagedQueryLimit"
-                        " WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+                        " WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1}")
         session.execute("CREATE TABLE TestUnpagedQueryLimit.test_unpaged_large_partition"
                         " (pk int, ck int, v text, PRIMARY KEY (pk, ck) )")
 
@@ -2877,7 +2877,7 @@ class TestUnpagedQueryLimit(Tester):
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1)
         session.execute("CREATE KEYSPACE TestUnpagedQueryLimit"
-                        " WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+                        " WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 1}")
         session.execute("CREATE TABLE TestUnpagedQueryLimit.test_unpaged_large_partition"
                         " (pk int, ck int, v text, PRIMARY KEY (pk, ck) )")
 
