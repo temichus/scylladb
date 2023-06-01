@@ -23,7 +23,7 @@ class JsonTester(Tester):
         nodes = self.cluster.nodelist()
         with self.patient_cql_connection(nodes[0]) as conn:
             conn.execute(
-                "CREATE KEYSPACE {} WITH REPLICATION = {{'class': 'SimpleStrategy', 'replication_factor': 1}};".format(default_ks_name))
+                "CREATE KEYSPACE {} WITH REPLICATION = {{'class': 'NetworkTopologyStrategy', 'replication_factor': 1}};".format(default_ks_name))
 
     @staticmethod
     def waiting_mv_prefill_finish(node: Node, cmds: str) -> str:
