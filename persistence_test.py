@@ -56,7 +56,8 @@ class TestPersistence(Tester):
         6) Query table, compare with previous result.
         """
         session = self.prepare()
-        session.execute("CREATE KEYSPACE ks WITH replication={'class':'SimpleStrategy', 'replication_factor':1}")
+        session.execute(
+            "CREATE KEYSPACE ks WITH replication={'class':'NetworkTopologyStrategy', 'replication_factor':1}")
         session.execute("CREATE COLUMNFAMILY ks.cf (p1 text, c1 text, r1 int, PRIMARY KEY (p1, c1)) WITH compaction={"
                         "'class': 'SizeTieredCompactionStrategy'}")
         session.execute("INSERT INTO ks.cf (p1, c1, r1) VALUES ('key1', 'a', 1)")
@@ -85,7 +86,7 @@ class TestPersistence(Tester):
         https://github.com/scylladb/scylla-enterprise/issues/909
         Data loss issue with "map" type and empty key in the map.
 
-        1) CREATE KEYSPACE ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'} AND
+        1) CREATE KEYSPACE ks WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': '1'} AND
             durable_writes = true;
         2) CREATE TABLE ks.user_stats3 ( user_id text PRIMARY KEY, clients_usage map<text, text>, last_seen timestamp );
         3) Insert into ks.user_stats3(user_id, clients_usage) values ('Piotr', {'':'2019-05-05T04:14:16.954407'});
@@ -97,7 +98,7 @@ class TestPersistence(Tester):
         """
         keyspace_name = "keyspace1"
         table_name = f"{keyspace_name}.user_stats3"
-        keyspace_cmd = "CREATE KEYSPACE %s WITH replication = {'class': 'SimpleStrategy', 'replication_factor': " \
+        keyspace_cmd = "CREATE KEYSPACE %s WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': " \
                        "'1'}  AND durable_writes = true;" % keyspace_name
         new_table_cmd = f"CREATE TABLE {table_name} ( user_id text PRIMARY KEY, clients_usage map<text, text>, " \
                         f"last_seen timestamp );"
