@@ -56,7 +56,8 @@ class TestJMX(Tester):
 
         session = self.patient_cql_connection(node1)
 
-        session.execute("CREATE KEYSPACE test WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':3}")
+        session.execute(
+            "CREATE KEYSPACE test WITH REPLICATION = {'class':'NetworkTopologyStrategy', 'replication_factor':3}")
         session.execute("CREATE TABLE test.tab(key int primary key, val int);")
 
         try:
