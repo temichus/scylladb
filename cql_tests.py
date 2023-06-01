@@ -725,7 +725,7 @@ class TestTruncate(CQLTester):
 
     @staticmethod
     def create_schema(session, rf=1):
-        session.execute("CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':%d} "
+        session.execute("CREATE KEYSPACE ks WITH replication = { 'class':'NetworkTopologyStrategy', 'replication_factor':%d} "
                         "AND DURABLE_WRITES = true" % rf)
         session.execute("CREATE TABLE ks.test1 (k int PRIMARY KEY, v1 int)")
 
