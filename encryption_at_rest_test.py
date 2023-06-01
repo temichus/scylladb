@@ -238,7 +238,7 @@ class EncryptionAtRestBase(Tester):
         session = self.get_session()
         for ks in kss:
             session.execute(
-                f"CREATE KEYSPACE IF NOT EXISTS {ks} WITH REPLICATION = {{'class' : 'SimpleStrategy', "
+                f"CREATE KEYSPACE IF NOT EXISTS {ks} WITH REPLICATION = {{'class' : 'NetworkTopologyStrategy', "
                 f"'replication_factor' : {n} }}")
 
     def prepare(self, n=None, kss=['ks'], restart=False):
