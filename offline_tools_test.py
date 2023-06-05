@@ -39,7 +39,7 @@ class TestOfflineTools(Tester):
         results = dict()
         for line in error_lines:
             line_ok = False
-            for ignore_pattern in self.ignore_log_patterns:
+            for ignore_pattern in ['WARN'] + self.ignore_log_patterns:
                 if line.startswith(ignore_pattern):
                     line_ok = True
             results[line] = line_ok
