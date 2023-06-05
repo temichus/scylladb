@@ -1705,6 +1705,8 @@ class TestMutations(ThriftTester):
                         'system_distributed', 'system_schema', 'system_traces']
             if parse_version(self.cluster.version()) >= parse_version('2022.1'):
                 expected += ['audit', 'system_distributed_everywhere']
+            if parse_version(self.cluster.version()) >= parse_version('2023.1'):
+                expected += ['system_replicated_keys']
             assert sorted(ksnames) == sorted(expected)
         elif isinstance(self.cluster, ScyllaCluster) \
                 and parse_version(self.cluster.version()) >= parse_version('4.6.dev'):
