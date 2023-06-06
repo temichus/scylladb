@@ -5,9 +5,10 @@ import os
 import shutil
 from enum import Enum
 import logging
-import docker
 
+import docker
 import pytest
+import boto3
 from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
 from cassandra.protocol import ConfigurationException
@@ -18,10 +19,8 @@ from tools.snapshots import get_table_description
 from tools.misc import flush_by_node
 from tools.assertions import assert_one
 from tools.log_utils import wait_for_any_log
-
-import boto3
-from botocore.exceptions import ClientError
 from tools.ldap_docker import running_in_docker
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
 
@@ -467,6 +466,7 @@ class EncryptionAtRestBase(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
+@pytest.mark.next_gating
 class TestEncryptionAtRest(EncryptionAtRestBase):
 
     """
@@ -572,6 +572,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
         self._reboot_test(key_provider=key_provider)
 
     @pytest.mark.single_node
+    @unmark.next_gating
     @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
     def test_alter(self, key_provider):
         self._alter_test(key_provider=key_provider)
@@ -579,6 +580,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
+@pytest.mark.next_gating
 class TestSystemInfoEncryption(EncryptionAtRestBase):
     def _grep_database_files(self, pattern, path, expect=None, skip=False, debug_detail=True):
         """
@@ -658,6 +660,7 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
         logger.debug('GREP_DB_FILES: Check table comment in sstable file ....')
         self._grep_database_files(rand_comment.replace('comment_', ''), 'data/system_schema/', expect=True)
 
+    @unmark.next_gating
     def test_system_auth_encryption(self, key_provider=KeyProviderEnum.local):
         options = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
                    'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'
@@ -682,6 +685,7 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
             logger.debug("Re-verify system info after system_info_encryption is enabled")
             self.verify_system_info(session, kp, ks_suffix='encrypt', expect=False)
 
+    @unmark.next_gating
     def test_reboot(self):
         """
         The test is used to reproduce a scylla crash, enable commitlog encryption and reboot.
