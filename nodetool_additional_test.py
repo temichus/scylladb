@@ -29,7 +29,7 @@ from tools.data import rows_to_list, insert_c1c2, insert_c1c2_no_prepared, get_n
 from tools.assertions import PytestRegex
 from tools.misc import ImmutableMapping, retry_till_success
 from tools.files import copy_files_to, get_node_cf_dir
-from tools.status import nodetool_gossipinfo
+from tools.status import nodetool_gossipinfo, nodetool_status
 
 logger = logging.getLogger(__name__)
 
@@ -195,18 +195,6 @@ class TestNodetool(Tester):
         except:
             return val
 
-    def nodetool_status(self, node, keyspace=""):
-        res = {}
-        out = node.nodetool("status " + keyspace, True)[0]
-        logger.info(out)
-        m = re.findall(r'Datacenter: ([^\s]+)', out, re.MULTILINE)
-        if m:
-            res['Datacenter'] = m[0]
-        m = re.findall(
-            r'^([UDNLJM]+)\s+([\d\.]+)\s+([^\s]+\s+[^\s]+)\s+([^\s]+)\s+([^\s]+)(?:\s[^\s]{2})?\s+([^\s]+)\s+([^\s]+)\s*$', out, re.MULTILINE)
-        res["nodes"] = sorted([self._list2status(s) for s in m], key=lambda s: s["address"])
-        return res
-
     def nodetool_info(self, node):
         res = {}
         out = node.nodetool("info", True)[0]
@@ -240,10 +228,10 @@ class TestNodetool(Tester):
         cluster = self.cluster
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         [node1, node2] = cluster.nodelist()
-        status = self.nodetool_status(node1)
+        status = nodetool_status(node1)
         assert 2 == len(status["nodes"]), "wrong number of nodes"
         node2.nodetool("decommission")
-        status = self.nodetool_status(node1)
+        status = nodetool_status(node1)
         assert 1 == len(status["nodes"]), "wrong number of nodes"
 
     def cfstats(self, node=None, ks=""):
@@ -1376,7 +1364,7 @@ class TestNodetool(Tester):
     def verify_status(self, node=None):
         if node is None:
             node = self.cluster.nodelist()[0]
-        self.nodetool_status(node)
+        nodetool_status(node)
 
     def _verify_status_node(self, n):
         for h in ["status", "address", "load", "tokens", "owns", "host id", "rack"]:
@@ -1400,13 +1388,13 @@ class TestNodetool(Tester):
         self.run_cluster()
         node = self.cluster.nodelist()[0]
         self.stress_write(node)
-        status = self.nodetool_status(node)
+        status = nodetool_status(node)
         assert 2 == len(status["nodes"]), "expecting 2 nodes got " + str(len(status["nodes"]))
         self.assertMapEqual(status, "Datacenter", "datacenter1")
         for n in status["nodes"]:
             self._verify_status_node(n)
             self.assertMapEqual(n, "owns", "?")
-        status = self.nodetool_status(node, "keyspace1")
+        status = nodetool_status(node, "keyspace1")
         assert 2 == len(status["nodes"]), "expecting 2 nodes got " + str(len(status["nodes"]))
         self.assertMapEqual(status, "Datacenter", "datacenter1")
         for n in status["nodes"]:
@@ -2479,8 +2467,7 @@ class TestNodetool(Tester):
             time.sleep(10)
 
         logger.info('Get node 3 status')
-        test_node_tool = TestNodetool()
-        status = test_node_tool.nodetool_status(node2)
+        status = nodetool_status(node2)
         node_3_status = None
         for s in status["nodes"]:
             if s['address'] == node3.address():
