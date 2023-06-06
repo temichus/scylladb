@@ -59,7 +59,7 @@ class CdcLogOperations(IntEnum):
 
 class CDCInitializeHelper:  # pylint: disable=no-member
 
-    def populate_sequentially(self, n: Union[list, int], wait_other_notice: bool = False):
+    def populate_sequentially(self, n: Union[list, int], wait_other_notice: bool = True):
         cluster = self.cluster  # pylint: disable=no-member
         jvm_args = ['--blocked-reactor-notify-ms', '100' if cluster.scylla_mode != "debug" else '1000000']
         logger.debug('Starting node 1')
@@ -80,7 +80,7 @@ class CDCInitializeHelper:  # pylint: disable=no-member
         else:
             self.populate_sequentially_multidc(n, wait_other_notice, jvm_args=jvm_args)
 
-    def populate_sequentially_multidc(self, n: list, wait_other_notice: bool = False, jvm_args: list[str] = []):
+    def populate_sequentially_multidc(self, n: list, wait_other_notice: bool = True, jvm_args: list[str] = []):
         cluster: ScyllaCluster = self.cluster
         first_nodes_in_multidc = [1] * len(n)
         logger.debug(f"Starting first_nodes_in_multidc={first_nodes_in_multidc}")
