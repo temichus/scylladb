@@ -12,6 +12,7 @@ from tools.scylla_defines import TABLE_NAME, KEYSPACE_NAME, CompactionStrategy, 
 from tools.files import get_sstables_files, get_node_cf_dir
 from tools.snapshots import make_snapshot, restore_snapshot_with_refresh, restore_snapshot_with_sstableloader
 from tools.stress import format_cs_output, assert_cs_success
+from tools.marks import unmark
 
 NUM_OF_NODES = 2
 RF = NUM_OF_NODES
@@ -59,6 +60,7 @@ def create_table(session, compaction_strategy=None,
 
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
+@pytest.mark.next_gating
 class TestIcsCompaction(Tester):
 
     #######################   Helper Functions Start  ###########################################################################
@@ -353,6 +355,7 @@ class TestIcsCompaction(Tester):
 
     #######################   Helper Functions End  ###########################################################################
 
+    @unmark.next_gating
     def test_check_default_compaction_strategy(self):
         session = self.create_cluster(num_of_nodes=1)
         create_ks(session=session, name=KEYSPACE_NAME, rf=1)
@@ -406,6 +409,7 @@ class TestIcsCompaction(Tester):
         """
         self.basic_snapshot_and_restore(use_sstableloader=True)
 
+    @unmark.next_gating
     def test_ics_snapshot_and_restore_with_refresh(self):
         """
         Test snapshot and restore with ICS and nodetool refresh.
