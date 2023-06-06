@@ -304,14 +304,19 @@ class TestMultiShardReader(Tester):
 
         # Row(source='127.0.68.1', activity='Creating shard reader on shard: 1', thread='shard 1')
         # Row(source='127.0.68.1', activity='node1/data/ks/cf-567d60d0242511ec80c5342185a9b495/md-3-big-Index.db:
-        # scheduling bulk DMA read of size 33 at offset 0', thread='shard 1')
+        # scheduling bulk DMA read of size 33 at offset 0', thread='shard 1/sl:default')
 
         shards_by_source = defaultdict(set)
         for activity in ['Creating shard reader on shard', 'scheduling bulk DMA read',
                          'Reading partition range']:
             for event in events:
                 if activity in event.activity:
-                    shards_by_source[event.source].update(event.thread.replace('shard ', ''))
+                    # `thread` has one of the following formats (depending on Scylla's version):
+                    # - "shard {shard_nr}" (e.g. "shard 1")
+                    # - "shard {shard_nr}/{scheduling_group_name}" (e.g. "shard 1/sl:default")
+                    # The below expression should extract shard_nr from either of the above.
+                    shard = event.thread.split("/")[0].replace('shard ', '')
+                    shards_by_source[event.source].update(shard)
 
         assert shards_by_source, f"Failed to find reader shards from tracing events for session {session_id}. " \
                                  f"Events: {events}"
