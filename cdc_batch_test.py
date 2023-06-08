@@ -1,4 +1,3 @@
-import time
 import pytest
 import re
 import logging
@@ -205,17 +204,26 @@ def get_generator(data_type):
             return subclass
 
 
+checking_types = ["int", "bigint", "text", "varchar",
+                  "frozen<set<int>>", "frozen<set<text>>", "frozen<list<int>>",
+                  "list<int>", "set<int>", "map<int,int>", "map<text,blob>"]
+
+
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class CDCBatchesSimple(Tester, CDCInitializeHelper):
+class TestCDCBatchesSimple(Tester, CDCInitializeHelper):
     keyspace = "ks"
     table = "cf"
     num_of_columns = 10
     num_of_rows = 3
     num_of_partitions = 5
-    columns_type = "int"
-    data_generator_class = IntDataGenerator
-    __test__ = False
+    columns_type: str = "int"
+    data_generator_class = None
+
+    @pytest.fixture(scope="function", params=[pytest.param(t, id=mkident(t)) for t in checking_types], autouse=True)
+    def select_data_type(self, request):
+        self.columns_type = request.param
+        self.data_generator_class = get_generator(request.param)
 
     def prepare_cluster(self, num_nodes=1, rf=1) -> Tuple[ScyllaNode, Session]:
         self.populate_sequentially(num_nodes)
@@ -591,16 +599,3 @@ class CDCBatchesSimple(Tester, CDCInitializeHelper):
                 assert actual_column_value == expected_column.value, \
                     (f"Column {expected_column.name} has different value in cdc_row: {actual_column_value} "
                      f"vs expected {expected_column.value}\n {row} \n {expected_row}")
-
-
-checking_types = ["int", "bigint", "text", "varchar",
-                  "frozen<set<int>>", "frozen<set<text>>", "frozen<list<int>>",
-                  "list<int>", "set<int>", "map<int,int>", "map<text,blob>"]
-
-
-for data_type in checking_types:
-    cls_name = ('TestCDCSimpleBatch_with_{}'.format(mkident(data_type)))
-    vars()[cls_name] = type(cls_name, (CDCBatchesSimple,),
-                            {'__test__': True,
-                             'columns_type': data_type,
-                             'data_generator_class': get_generator(data_type)})
