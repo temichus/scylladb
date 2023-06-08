@@ -211,6 +211,7 @@ checking_types = ["int", "bigint", "text", "varchar",
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestCDCBatchesSimple(Tester, CDCInitializeHelper):
     keyspace = "ks"
     table = "cf"
