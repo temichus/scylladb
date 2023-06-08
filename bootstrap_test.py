@@ -126,6 +126,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         cluster.stop()
         logger.info("done")
 
+    @pytest.mark.next_gating
     def test_off_strategy_during_bootstrap(self):
         """
         Compaction will be disabled during repair-based bootstrap and replace.
@@ -175,6 +176,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         session = self.patient_cql_connection(node2)
         assert_one(session, "SELECT count(*) from ks.cf", [keys], cl=ConsistencyLevel.ONE)
 
+    @pytest.mark.next_gating
     def test_simple_bootstrap(self):
         cluster = self.cluster
         tokens = cluster.balanced_tokens(2)
@@ -402,6 +404,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         assert original_rows == current_rows
 
     @pytest.mark.scylla_mode('!debug')
+    @pytest.mark.next_gating
     def test_local_quorum_bootstrap(self):
         """Test that CL local_quorum works while a node is bootstrapping. CASSANDRA-8058"""
 
@@ -850,6 +853,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
     # With Raft on, the entire cluster simply doesn't boot,
     # so it's impossible to observe the effects observed in the test.
     @pytest.mark.gossip_only
+    @pytest.mark.next_gating
     def test_smallest_ip_join_late(self):
         """
         The first node has smallest ip in seeds list, it always skips the bootstrap.
