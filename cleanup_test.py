@@ -61,6 +61,7 @@ class TestCleanup(Tester):
 
         assert rows.one()[0] == num_keys
 
+    @pytest.mark.next_gating
     def test_cluster_cleanup(self):
         num_keys = 100000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != "debug" else 10000
         timeout = self.cql_timeout(300)
@@ -126,6 +127,7 @@ class TestCleanup(Tester):
                                          f"before={size_before} and after={size_after}"
 
     # Reproducer for https://github.com/scylladb/scylladb/issues/1239
+    @pytest.mark.next_gating
     def test_cluster_cleanup_no_resurrection(self):
         """
         - Write data to 2-node cluster
@@ -267,6 +269,7 @@ class TestCleanup(Tester):
         assert restored == existing
 
     @pytest.mark.single_node
+    @pytest.mark.next_gating
     def test_drop_table_during_cleanup(self):
         """
         Reproducer for https://github.com/scylladb/scylladb/issues/12007
