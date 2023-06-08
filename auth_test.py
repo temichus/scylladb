@@ -1358,7 +1358,6 @@ class TestAuth(Tester):
         logger.info('Check if the first session still works')
         self._check_session_available(session, expect_auth_err=True, expect_invalid_req=True)
 
-    @pytest.mark.next_gating
     def test_kill_all_nodes_with_the_auth_info_except_one(self):
         """
         **Description:** Set RF of system_auth to 3, kill two nodes.
