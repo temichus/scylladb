@@ -16,6 +16,7 @@ NUM_OF_QUERY_EXECUTIONS = 100
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestBypassCache(Tester):
     '''
     Test that will verify if the select statement will skip cache during its read
