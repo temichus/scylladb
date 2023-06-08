@@ -28,6 +28,7 @@ logger = logging.getLogger(__file__)
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestBatch(Tester):
     """
     Tests for pushed native protocol notification from Cassandra.
@@ -41,7 +42,6 @@ class TestBatch(Tester):
         session = self.fixture_dtest_setup.patient_cql_connection(node1)
         return session
 
-    @pytest.mark.dtest_full
     def test_batch_prepared_with_slow_query_log(self):
         """
         batch prepared in combination of slow query should not fail with error.
