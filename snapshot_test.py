@@ -166,6 +166,10 @@ class TestSnapshot(SnapshotTester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
+    # disable "uuid_sstable_identifier_enabled", as sstableloader is not
+    # able to parse the sstable component's file name if the sstable uses
+    # uuid-based identifier instead the integer-based generation.
+    @pytest.mark.cluster_option(uuid_sstable_identifier=False)
     def test_basic_snapshot_and_restore_with_sstableloader(self):
         """
         Test basic snapshot and restore using an sstable loader.
@@ -190,6 +194,10 @@ class TestSnapshot(SnapshotTester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
+    # disable "uuid_sstable_identifier_enabled", as sstableloader is not
+    # able to parse the sstable component's file name if the sstable uses
+    # uuid-based identifier instead the integer-based generation.
+    @pytest.mark.cluster_option(uuid_sstable_identifier=False)
     def test_basic_mulitple_tables_snapshot_and_restore_with_sstableloader(self):
         """
         Test basic snapshot and restore using an sstable loader.

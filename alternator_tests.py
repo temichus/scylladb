@@ -972,6 +972,10 @@ class TesterAlternator(BaseAlternator):
     @pytest.mark.parametrize("sttableloder_flag", ['', '-v', '-nb'], ids=['without_flag', 'v_flag', 'nb_flag'])
     @pytest.mark.next_gating
     @pytest.mark.single_node
+    # disable "uuid_sstable_identifier_enabled", as sstableloader is not
+    # able to parse the sstable component's file name if the sstable uses
+    # uuid-based identifier instead the integer-based generation.
+    @pytest.mark.cluster_option(uuid_sstable_identifier=False)
     def test_sstableloder_scenario(self, sttableloder_flag):
         table_name = TABLE_NAME
         num_of_items = 100
