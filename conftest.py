@@ -285,6 +285,11 @@ def fixture_dtest_setup(request,
         # (Default value for the option is 30s)
         dtest_setup.cluster_options.setdefault('ring_delay_ms', 10000)
 
+    cluster_options = request.node.get_closest_marker('cluster_options')
+    if cluster_options:
+        for name, value in cluster_options.kwargs.items():
+            dtest_setup.cluster_options.setdefault(name, value)
+
     dtest_setup.initialize_cluster(fixture_dtest_create_cluster_func)
 
     # at this point we're done with our setup operations in this fixture
