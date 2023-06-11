@@ -49,7 +49,7 @@ class TestAlternatorTTL(BaseAlternator):
         indeed happens. Reproduces issue #9787.
         """
         self.prepare_dynamodb_cluster(num_of_nodes=5,
-                                      extra_config={'experimental_features': ['alternator-ttl'], 'alternator_ttl_period_in_seconds': 1})
+                                      extra_config={'alternator_ttl_period_in_seconds': 1})
         node1, *_, node5 = self.cluster.nodelist()
 
         if with_down_node:
@@ -98,8 +98,7 @@ class TestAlternatorTTL(BaseAlternator):
         """
         ttl_polling_interval = 4
         self.prepare_dynamodb_cluster(num_of_nodes=4,
-                                      extra_config={'experimental_features': ['alternator-ttl'],
-                                                    'alternator_ttl_period_in_seconds': ttl_polling_interval})
+                                      extra_config={'alternator_ttl_period_in_seconds': ttl_polling_interval})
         node1, *_ = self.cluster.nodelist()
         table = self.create_table(node=node1)
         # Enable TTL for table
