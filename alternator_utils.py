@@ -908,8 +908,9 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
         dynamodb_api = self.get_dynamodb_api(node=node)
         # According to the following https://github.com/scylladb/scylla/issues/6929 issue, there is a delay of 10
         #  seconds between the insertion until the stream is updated
-        alternator_streams_time_window = 15
-        timeout = timeout or alternator_streams_time_window
+        soft_timeout = 60
+        alternator_streams_time_window = 60 * 5
+        hard_timeout = timeout or alternator_streams_time_window
 
         def get_responses():
             logger.debug(f'Search "{num_of_requests}" requests in "{node.name}"')
@@ -931,7 +932,12 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
             _start_time = time.time()
             while len(_responses) < num_of_requests and not is_loop_stop:
                 for shard_iterator in shard_iterators:
-                    if (time.time() - _start_time) > timeout:
+                    elapsed_time = time.time() - _start_time
+                    if elapsed_time > soft_timeout:
+                        logger.error(f"Did not get all shard iterators by timeout threshold of {soft_timeout}")
+                        time.sleep(10)
+                    if elapsed_time > hard_timeout:
+                        logger.error(f"Did not get all shard iterators by timeout threshold of {hard_timeout}")
                         is_loop_stop = True
                         break
                     response = dynamodb_api.stream.get_records(ShardIterator=shard_iterator, Limit=1000)
@@ -949,13 +955,13 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
         is_continue_loop = True
         while len(responses) < num_of_requests and is_continue_loop:
             logger.info(f'Founding "{len(responses)}" responses and not "{num_of_requests}" responses.')
-            time_diff = timeout - (time.time() - start_time)
+            time_diff = hard_timeout - (time.time() - start_time)
             if time_diff > 0:
                 logger.info(f'Sleeping  "{time_diff:.4}", and searching the missing "{num_of_requests - len(responses)}"'
                             f' responses.')
                 time.sleep(time_diff)
             responses.extend(get_responses())
-            is_continue_loop = (timeout - (time.time() - start_time)) > 0
+            is_continue_loop = (hard_timeout - (time.time() - start_time)) > 0
 
         logger.info(f'Finding "{len(responses)}" response after "{(time.time() - start_time):.6}"')
         return responses
@@ -964,10 +970,17 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
                                      node: ScyllaNode = None, ignore_order: bool = True, consistent_read: bool = True,
                                      table_data: List[Dict[str, str]] = None, **kwargs) -> DeepDiff:
         if table_data is None:
+            logger.debug("No table data was requested, running a table scan to get it")
             table_data = self.scan_table(table_name=table_name, node=node, ConsistentRead=consistent_read, **kwargs)
         expected_table_data = [{self._table_primary_key: item[self._table_primary_key]} for item in expected_table_data]
-        return DeepDiff(t1=expected_table_data, t2=table_data, ignore_order=ignore_order,
+        diff = DeepDiff(t1=expected_table_data, t2=table_data, ignore_order=ignore_order,
                         ignore_numeric_type_changes=True)
+        if diff:
+            logger.debug("Found a diff in the following comparison:")
+            logger.debug(f"expected table data: {expected_table_data}")
+            logger.debug(f"Actual received data: {table_data}")
+            logger.debug(f"The following keys are missing '{pformat(diff)}'")
+        return diff
 
 
 def random_string(length: int, chars=string.ascii_uppercase + string.digits):
