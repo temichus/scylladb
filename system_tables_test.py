@@ -1024,6 +1024,16 @@ class TestConfigTable(SystemTableBase):
             assert scylla_yaml_content.get(row.name), f"Could not find the parameter '{row.name}' in scylla.yaml!"
 
             row_value = row.value.strip('"').replace('"', "'")
+
+            # Configuration options of type `restriction mode` are specified using `false`,
+            # `warn` and `true` in scylla.yaml, but in system.config the corresponding values
+            # are `0`, `warn` and `1`. Convert 0 -> false and 1 -> true for the check to pass.
+            if row.type == "restriction mode":
+                if row_value == "1":
+                    row_value = "true"
+                if row_value == "0":
+                    row_value = "false"
+
             scylla_yaml_value = "seed_provider_type" if row.name == "seed_provider" else scylla_yaml_content[row.name]
             assert scylla_yaml_value == row_value, \
                 f"Wrong value for name='{row.name}' in the table {self.KEYSPACE_NAME}.{self.TABLE_NAME}. " \
