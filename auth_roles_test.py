@@ -12,6 +12,7 @@ from tools.assertions import assert_one, assert_all, assert_invalid
 from tools.log_utils import wait_for_any_log
 from tools.permission import data_resource_creator_permissions, role_creator_permissions, \
     function_resource_creator_permissions
+from tools.misc import minimum_scylla_version
 
 
 logger = logging.getLogger(__name__)
@@ -1166,18 +1167,33 @@ class TestAuthRoles(Tester):
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
         cassandra.execute("CREATE ROLE mike")
-        assert_invalid(cassandra, "GRANT EXECUTE ON FUNCTION system.intasblob(int) TO mike",
-                       "Altering permissions on builtin functions is not supported",
-                       InvalidRequest)
-        assert_invalid(cassandra, "REVOKE ALL PERMISSIONS ON FUNCTION system.intasblob(int) FROM mike",
-                       "Altering permissions on builtin functions is not supported",
-                       InvalidRequest)
-        assert_invalid(cassandra, "GRANT EXECUTE ON ALL FUNCTIONS IN KEYSPACE system TO mike",
-                       "Altering permissions on builtin functions is not supported",
-                       InvalidRequest)
-        assert_invalid(cassandra, "REVOKE ALL PERMISSIONS ON ALL FUNCTIONS IN KEYSPACE system FROM mike",
-                       "Altering permissions on builtin functions is not supported",
-                       InvalidRequest)
+        if minimum_scylla_version(self.cluster.version(), '5.3', '2023.2'):
+            assert_invalid(cassandra, "GRANT EXECUTE ON FUNCTION system.intasblob(int) TO mike",
+                           "Altering permissions on builtin functions is not supported",
+                           InvalidRequest)
+            assert_invalid(cassandra, "REVOKE ALL PERMISSIONS ON FUNCTION system.intasblob(int) FROM mike",
+                           "Altering permissions on builtin functions is not supported",
+                           InvalidRequest)
+            assert_invalid(cassandra, "GRANT EXECUTE ON ALL FUNCTIONS IN KEYSPACE system TO mike",
+                           "Altering permissions on builtin functions is not supported",
+                           InvalidRequest)
+            assert_invalid(cassandra, "REVOKE ALL PERMISSIONS ON ALL FUNCTIONS IN KEYSPACE system FROM mike",
+                           "Altering permissions on builtin functions is not supported",
+                           InvalidRequest)
+        else:
+            # UDF premissions aren't supported before 5.3 (https://github.com/scylladb/scylladb/issues/5572)
+            assert_invalid(cassandra, "GRANT EXECUTE ON FUNCTION system.intasblob(int) TO mike",
+                           "Error from server: code=2000 [Syntax error in CQL query]",
+                           SyntaxException)
+            assert_invalid(cassandra, "REVOKE ALL PERMISSIONS ON FUNCTION system.intasblob(int) FROM mike",
+                           "Error from server: code=2000 [Syntax error in CQL query]",
+                           SyntaxException)
+            assert_invalid(cassandra, "GRANT EXECUTE ON ALL FUNCTIONS IN KEYSPACE system TO mike",
+                           "Error from server: code=2000 [Syntax error in CQL query]",
+                           SyntaxException)
+            assert_invalid(cassandra, "REVOKE ALL PERMISSIONS ON ALL FUNCTIONS IN KEYSPACE system FROM mike",
+                           "Error from server: code=2000 [Syntax error in CQL query]",
+                           SyntaxException)
 
     @pytest.mark.next_gating
     def test_disallow_grant_execute_on_non_function_resources(self):

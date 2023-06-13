@@ -11,6 +11,7 @@ import string
 import hashlib
 import logging
 from collections.abc import Mapping
+from ccmlib.utils.version import parse_version
 
 import pytest
 
@@ -334,3 +335,11 @@ def seconds_to_micros(seconds):
 
 def micros_to_seconds(micros):
     return micros // (1000 * 1000)
+
+
+def minimum_scylla_version(version, oss_version, enterprise_version):
+    v = parse_version(version)
+    if v >= parse_version('2000'):
+        return v >= parse_version(enterprise_version)
+    else:
+        return v >= parse_version(oss_version)
