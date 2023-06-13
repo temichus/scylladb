@@ -1,9 +1,11 @@
 import time
 
 import pytest
-from dtest_class import Tester, create_ks
+from dtest_class import Tester, create_ks, create_cf
 from tools.assertions import assert_invalid, assert_all, assert_one
 from cassandra.concurrent import execute_concurrent
+
+from tools.scylla_defines import CompactionStrategy
 
 
 @pytest.mark.dtest_full
@@ -83,10 +85,9 @@ class TestSchema(Tester):
         # rows = session.execute("SELECT * FROM cf WHERE c2 = 5")
         # self.assertEqual([[3, 4, 5]], rows_to_list(rows))
 
-    def prepare(self):
+    def prepare(self, nodes_num: int = 1):
         cluster = self.cluster
-        cluster.populate(1).start()
-        time.sleep(.5)
+        cluster.populate(nodes_num).start(wait_other_notice=True, wait_for_binary_proto=True)
         nodes = cluster.nodelist()
         session = self.patient_cql_connection(nodes[0])
         # It is forbidden to re-add a column with client-side timestamps
@@ -114,3 +115,32 @@ class TestSchema(Tester):
         session = self.patient_cql_connection(nodes[0])
         session.execute("select * from ks.cf_0")
         session.execute("select * from ks.cf_{}".format(n_tables - 1))
+
+    def test_alter_keyspace_then_table_with_udt(self):
+        """
+        This subtest is used to reproduce issue https://github.com/scylladb/scylla-enterprise/issues/2989
+        The sequence of schema changes is this:
+
+        Create keyspace ks
+        Add UDT "my_type"
+        Create table "cf"
+        Alter keyspace replication-factor
+        Alter table "cf" (change compaction strategy option) <- this used to fail on multiple nodes,
+         which are missing the type.
+        Failure example:
+        E   cassandra.InvalidRequest: Error from server: code=2200 [Invalid query] message="Unknown type ks.my_type"
+        """
+
+        with self.prepare(nodes_num=2) as session:
+            keyspace_name = 'ks'
+            udt_name = "my_type"
+            session.execute(f"CREATE TYPE IF NOT EXISTS {keyspace_name}.{udt_name} (md5 text, basename text)")
+            stcs_compaction = {'class': CompactionStrategy.SIZE_TIERED.value}
+            table_name = f'{keyspace_name}.cf'
+            create_cf(session=session, name=table_name, compaction=stcs_compaction,
+                      columns={'c1': 'text', 'c2': f'{keyspace_name}.{udt_name} '})
+            session.execute(f"ALTER KEYSPACE {keyspace_name} WITH replication = "
+                            "{'class': 'SimpleStrategy', 'replication_factor': 2};")
+            lcs_compaction = {'class': CompactionStrategy.LEVELED.value, 'sstable_size_in_mb': 1}
+
+            session.execute(f"ALTER TABLE {table_name} WITH compaction={lcs_compaction}")
