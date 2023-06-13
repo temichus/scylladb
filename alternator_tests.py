@@ -975,7 +975,7 @@ class TesterAlternator(BaseAlternator):
     # disable "uuid_sstable_identifier_enabled", as sstableloader is not
     # able to parse the sstable component's file name if the sstable uses
     # uuid-based identifier instead the integer-based generation.
-    @pytest.mark.cluster_option(uuid_sstable_identifier=False)
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_sstableloder_scenario(self, sttableloder_flag):
         table_name = TABLE_NAME
         num_of_items = 100

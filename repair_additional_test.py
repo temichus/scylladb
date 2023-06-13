@@ -2778,7 +2778,7 @@ class TestRepairAdditional(RepairAdditionalBase):
     # sstabledump under the hood, but sstabledump is not able to parse the sstable
     # component's file name if the sstable uses uuid-based identifier instead of
     # the integer-based generation.
-    @pytest.mark.cluster_options(disable_uuid_sstable_identifiers=False)
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_repair_ttl_update(self):
         return self._repair_ttl_update_test()
 

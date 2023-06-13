@@ -64,7 +64,7 @@ class SSTableDump(Tester):
 # sstabledump under the hood, but sstabledump is not able to parse the sstable
 # component's file name if the sstable uses uuid-based identifier instead of
 # the integer-based generation.
-@pytest.mark.cluster_options(disable_uuid_sstable_identifiers=False)
+@pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
 class TestSSTableDump(SSTableDump):
 
     @pytest.mark.next_gating
@@ -149,7 +149,7 @@ class TestSSTableDump(SSTableDump):
 # sstabledump under the hood, but sstabledump is not able to parse the sstable
 # component's file name if the sstable uses uuid-based identifier instead of
 # the integer-based generation.
-@pytest.mark.cluster_options(disable_uuid_sstable_identifiers=False)
+@pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
 class TestSSTableDumpAllDatatypes(CqlshPrepare, SSTableDump):
 
     @pytest.mark.next_gating
