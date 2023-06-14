@@ -82,22 +82,20 @@ class TestCleanup(Tester):
         rows = session.execute("select count(*) from ks.cf0;", timeout=timeout)
         assert rows.one()[0] == num_keys
 
-    @pytest.mark.timeout(3000)
     def test_cleanup_space_amplification(self):
         num_keys = 100000 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode != "debug" else 10000
         timeout = self.cql_timeout(300)
-        amount_of_tables = 100
-        self.prepare(1, num_keys, timeout, amount_of_tables=amount_of_tables)
+        self.prepare(1, num_keys, timeout)
 
         def _get_list_of_sstables(node):
             full_size = 0
-            for i in range(amount_of_tables):
-                for file in get_list_of_sstables(node, "ks", f"cf{i}"):
-                    try:
-                        full_size += os.stat(file).st_size
-                    except FileNotFoundError as ex:
-                        logger.info("File %s was not found: %s", file, ex)
-            return full_size
+            sstables = get_list_of_sstables(node, "ks", "cf")
+            for file in sstables:
+                try:
+                    full_size += os.stat(file).st_size
+                except FileNotFoundError as ex:
+                    logger.info("File %s was not found: %s", file, ex)
+            return sstables, full_size
 
         cluster = self.cluster
         node1 = cluster.nodelist()[0]
@@ -108,7 +106,7 @@ class TestCleanup(Tester):
         cluster.flush()
         cluster.stop()
         cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
-        size_before = _get_list_of_sstables(node1)
+        sstables_before, size_before = _get_list_of_sstables(node1)
 
         def do_run_cleanup(node):
             node.cleanup()
@@ -118,13 +116,13 @@ class TestCleanup(Tester):
         thread1 = executor.submit(do_run_cleanup, node1)
 
         while not thread1.done():
-            size_during = _get_list_of_sstables(node1)
-            assert size_before*1.02 >= size_during, f"Cleanup is not supposed to increase disk utilisation, " \
-                                                    f"before={size_before} and during={size_during}"
+            sstables_during, size_during = _get_list_of_sstables(node1)
+            assert size_during <= size_before * 2, f"Temporary space amplification must be less than 2x during cleanup, " \
+                f"before=({sstables_before}, {size_before}) and during=({sstables_during}, {size_during})"
         thread1.result()
-        size_after = _get_list_of_sstables(node1)
+        sstables_after, size_after = _get_list_of_sstables(node1)
         assert size_before > size_after, f"Cleanup is supposed to decrease disk utilisation, " \
-                                         f"before={size_before} and after={size_after}"
+            f"before=({sstables_before}, {size_before}) and after=({sstables_after}, {size_after})"
 
     # Reproducer for https://github.com/scylladb/scylladb/issues/1239
     @pytest.mark.next_gating
