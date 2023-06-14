@@ -3877,7 +3877,7 @@ class TestMaterializedViews(CommonUtils):
         node2.stop(wait_other_notice=True)
         session.execute(
             ("CREATE MATERIALIZED VIEW mv AS "
-             "SELECT a,b FROM tab WHERE a IS NOT NULL AND b IS NOT NULL "
+             "SELECT a,b FROM tab WHERE a IS NOT NULL "
              "PRIMARY KEY (a)"))
         # Because the above materialized views has the same key columns
         # as the base table and an unselected column (c), it will have c
