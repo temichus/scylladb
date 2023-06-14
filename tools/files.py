@@ -131,7 +131,7 @@ def copy_directory(srcdir, destdir, ignore_subdir=True):
             shutil.copy2(srcfile, destdir)
 
 
-def get_list_of_sstables(node, keyspace_name, table_name, suffix='-Statistics.db'):
+def get_list_of_sstables(node, keyspace_name, table_name, suffix='-Data.db'):
     ks_path = os.path.join(node.get_path(), 'data', keyspace_name)
     statistics_files = []
     for dirpath, dirnames, filenames in os.walk(ks_path):
