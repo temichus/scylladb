@@ -89,13 +89,21 @@ class TestCleanup(Tester):
 
         def _get_list_of_sstables(node):
             full_size = 0
-            sstables = get_list_of_sstables(node, "ks", "cf")
+            sstables = get_list_of_sstables(node, "ks", "cf0")
+            ret = {}
             for file in sstables:
                 try:
-                    full_size += os.stat(file).st_size
+                    # measure blocks and not logical size since
+                    # scylla extends the file size and then write in place
+                    # to reduce metadata change overhead for each write
+                    # and eventually it truncates the size to the real length
+                    blocks = os.stat(file).st_blocks
+                    size = blocks * 512
+                    ret[file] = size
+                    full_size += size
                 except FileNotFoundError as ex:
                     logger.info("File %s was not found: %s", file, ex)
-            return sstables, full_size
+            return ret, full_size
 
         cluster = self.cluster
         node1 = cluster.nodelist()[0]
