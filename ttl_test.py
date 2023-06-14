@@ -783,7 +783,7 @@ class TestDistributedTTL(Tester):
         print_sstable(self.node1, 'ks', 'ttl_table')
         print_sstable(self.node2, 'ks', 'ttl_table')
 
-        self.node2.stop()
+        self.node2.stop(wait_other_notice=True)
         ttl_start = time.time()
         ttl_session1 = self.session1.execute('SELECT ttl(col1) FROM ttl_table;').one()[0]
         assert_all(
