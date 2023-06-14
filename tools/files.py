@@ -133,19 +133,19 @@ def copy_directory(srcdir, destdir, ignore_subdir=True):
 
 def get_list_of_sstables(node, keyspace_name, table_name, suffix='-Data.db'):
     ks_path = os.path.join(node.get_path(), 'data', keyspace_name)
-    statistics_files = []
+    files = []
     for dirpath, dirnames, filenames in os.walk(ks_path):
         elems = os.path.split(dirpath)
         # We are in the table's dir
         if elems[-1].startswith(table_name):
-            statistics_files += [os.path.join(dirpath, f) for f in filenames if f.endswith(suffix)]
+            files += [os.path.join(dirpath, f) for f in filenames if f.endswith(suffix)]
 
         # prune all dirs that are not a table dir
         for dirname in dirnames:
             if not dirname.startswith(table_name):
                 dirnames.remove(dirname)
 
-    return statistics_files
+    return files
 
 
 def check_file_lists_are_equal(file_list_a: List[Path], file_list_b: List[Path]) -> bool:
