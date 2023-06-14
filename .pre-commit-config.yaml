@@ -171,7 +171,8 @@ repos:
                 nodetool_additional_test.py|
                 global_row_key_cache_test.py|
                 cql_additional_tests.py|
-                throughput_limits_test.py
+                throughput_limits_test.py|
+                test_distributed_aggregates.py
             )$
         language: system
         types: [python]
