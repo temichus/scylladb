@@ -23,9 +23,7 @@ class TestClusteringKeyFilter(Tester):
 
     @pytest.fixture(scope="function")
     def strategy_string(self, strategy: str):
-        # FIXME: min threshold == 999 is another way to disable minor compaction for this test.
-        #  Use enabled property instead once it's available
-        return "\'class\':\'" + strategy + "\', \'min_threshold\' : \'999\'"
+        return "\'class\':\'" + strategy + "\', \'enabled\' : \'false\'"
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
