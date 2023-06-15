@@ -5104,6 +5104,7 @@ class TestCQL(Tester):
         assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS",
                    [True, None, None, None])
 
+    @pytest.mark.require('scylladb/scylla-dtest#2995')
     @pytest.mark.single_node
     def test_whole_list_conditional(self):
         session = self.prepare()
