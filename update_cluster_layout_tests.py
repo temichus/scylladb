@@ -2767,7 +2767,8 @@ class TestLargeScaleCluster(Tester):
         starting_size = 3
         rf = 1
 
-        logger.info(f"Test adding {node_count} nodes under load: starting_size={starting_size} rf={rf}")
+        nodes_str = f'up to {node_count}' if debug_mode else f'{node_count}'
+        logger.info(f"Test adding {nodes_str} nodes under load: starting_size={starting_size} rf={rf}")
 
         timeout = self.cql_timeout(120)
 
@@ -2783,13 +2784,25 @@ class TestLargeScaleCluster(Tester):
         cluster.populate(starting_size).start()
         node2 = cluster.nodelist()[1]
 
-        n = '300000' if not debug_mode else 60000
+        keys = 0
+        max_keys = 1000000000 if not debug_mode else 60000
+        stress_done = False
+        add_nodes_done = False
 
         def run():
-            logger.debug(f"Stress: write {n} keys: starting")
-            node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
-                          '-pop seq=1..%s' % n, '-rate threads=2 limit=100/s'])
-            logger.debug(f"Stress: write {n} keys: done")
+            nonlocal keys, max_keys, stress_done, add_nodes_done
+            # each iteration just writes a small batch
+            # so we check add_nodes_done in a reasonable frequently
+            n = 1000
+
+            logger.debug(f"Stress: starting to write up to {max_keys} keys in batches of {n}")
+            while keys < max_keys and not add_nodes_done:
+                logger.debug(f"Stress: writing keys {keys}..{keys + n}")
+                node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
+                              f'-pop seq={keys}..{keys + n}', '-rate threads=2 limit=100/s'])
+                keys += n
+            logger.debug(f"Stress: wrote {keys} keys: add_nodes_done={add_nodes_done}")
+            stress_done = True
 
         executor = ThreadPoolExecutor(max_workers=1)
         t = executor.submit(run)
@@ -2805,6 +2818,7 @@ class TestLargeScaleCluster(Tester):
         insert_c1c2(session, keys=range(starting_size * 100 + 1000), consistency=ConsistencyLevel.ONE)
 
         query = SimpleStatement("SELECT key FROM ks.cf", fetch_size=100, consistency_level=consistency)
+        logger.debug(f"Starting to add nodes {starting_size + 1} to {node_count + 1}")
         for i in range(starting_size + 1, node_count + 1):
             node_i = new_node(cluster)
             node_i.start(wait_for_binary_proto=True, wait_other_notice=True)
@@ -2817,8 +2831,14 @@ class TestLargeScaleCluster(Tester):
             assert len(result) == i * 100 + 1000, "data loss after increasing size to %d expecting %d rows %d" % \
                 (len(cluster.nodelist()), i * 100 + 1000, len(result))
 
+            if stress_done:
+                break
+        logger.debug(f"Done adding nodes: stress_done={stress_done}")
+        add_nodes_done = True
+
         t.result()
 
+        n = keys
         logger.debug(f"Stress: read {n} keys: starting")
-        node2.stress(['read', 'cl=ONE', 'n=%s' % n, 'no-warmup', '-pop seq=1..%s' % n, '-rate threads=20'])
+        node2.stress(['read', 'cl=ONE', 'n=%s' % n, 'no-warmup', f'-pop seq=0..{n - 1}', '-rate threads=20'])
         logger.debug(f"Stress: read {n} keys: done")
