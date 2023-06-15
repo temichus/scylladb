@@ -177,7 +177,7 @@ if [[ ! "${SCYLLA_ARCH}" == "$(uname -m)" ]]; then
 fi
 
 
-export DOCKER_NETWORK_PARAM="--network=bridge"  # TODO: Enhancement: replace the bridge with a network
+export DOCKER_NETWORK_PARAM="--network=host"  # TODO: Enhancement: replace the bridge with a network
 
 echo
 env | grep -E '^((DTEST|CCM|SCYLLA_ROOT|CASSANDRA|TOOLS_JAVA|JMX|SCYLLA_DBUILD_SO|LOG_SAVED)_DIR|HOME|SCYLLA_.*|CLUSTER_.*|DRY_.*|NODE_.*|AWS_.*)='
@@ -202,7 +202,7 @@ AWS_OPTIONS=$(env | grep AWS_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
 # export all JENKINS_* env vars into the docker run
 JENKINS_OPTIONS=$(env | grep JENKINS_ | cut -d "=" -f 1 | xargs -i echo "--env {}")
 
-DOCKER_CONFIG_MNT="-v $(eval echo ~${USER})/.docker:${HOME}/.docker"
+DOCKER_CONFIG_MNT="-v $(eval echo ~${USER})/.docker:$(eval echo ~${USER})/.docker"
 
 group_args=()
 for gid in $(id -G); do
