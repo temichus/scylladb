@@ -1167,7 +1167,7 @@ class TestAuthRoles(Tester):
         cassandra = self.get_session(user='cassandra', password='cassandra')
         self.setup_table(cassandra)
         cassandra.execute("CREATE ROLE mike")
-        if minimum_scylla_version(self.cluster.version(), '5.3', '2023.2'):
+        if minimum_scylla_version(self.cluster.version(), '5.3~rc0', '2023.2~rc0'):
             assert_invalid(cassandra, "GRANT EXECUTE ON FUNCTION system.intasblob(int) TO mike",
                            "Altering permissions on builtin functions is not supported",
                            InvalidRequest)
