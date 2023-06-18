@@ -1092,20 +1092,23 @@ class ManagerTask(ScyllaManagerBase):
         return complete_list
 
     def info(self, **kwargs):
-        # Info example:
-        # Name:	repair/56b7df19-1348-48fb-925a-1e731579ea73
+        # Name:	backup/80789574-3695-4cda-9974-8f9d5ce331b5
+        # Cron:   no activations scheduled
         # Tz:	Asia/Jerusalem
-        # Retry:	3 (initial backoff 10m)
+        # Retry:	11 (initial backoff 10m)
         #
         # Properties:
-        # - intensity: 2
-        # - keyspace: keyspace1,keyspace12
-        # - parallel: 1
+        # - keyspace: 'new_keyspace1'
+        # - location: 's3:newbackup-bucket'
+        # - rate-limit: '1'
+        # - retention: 12
+        # - snapshot-parallel: '1,2,3'
+        # - upload-parallel: '4,5,6'
         #
         # +--------------------------------------+------------------------+----------+--------+
         # | ID                                   | Start time             | Duration | Status |
         # +--------------------------------------+------------------------+----------+--------+
-        # | df682dbb-b4f0-11ec-8cf1-f4ee08c9cc47 | 05 Apr 22 17:58:37 IDT | 1s       | …      |
+        # | a8b559b0-0df6-11ee-8609-f4ee08c9cc47 | 18 Jun 23 19:39:13 IDT | 0s       | DONE   |
         # +--------------------------------------+------------------------+----------+--------+
         cmd = f"info {self.id} -c {self.cluster_id}"
         stdout, _ = self.sctool.run(cmd=cmd, is_verify_errorless_result=True, **kwargs)
@@ -1115,16 +1118,16 @@ class ManagerTask(ScyllaManagerBase):
     def properties(self):
         def parse_line(line_string):
             name, value = [string.strip() for string in line_string.split(": ")]
-            final_value = value
             if "- " in name:  # Like "- intensity: 2"
                 name = name[2:]
+            value = value.replace("'", "")
             if " (" in value:  # Like "Retry:	3 (initial backoff 10m)"
-                final_value = value[:value.find(" (")]
+                value = value[:value.find(" (")]
             if "," in value:  # Like "- keyspace: keyspace1,keyspace12"
-                final_value = [int(i) if i.isdigit() else i for i in value.split(",")]
-            if value.isdigit():  # Like "- parallel: 1"
-                final_value = int(value)
-            return name, final_value
+                value = [int(i) if i.isdigit() else i for i in value.split(",")]
+            if type(value) is str and value.isdigit():  # Like "- parallel: 1"
+                value = int(value)
+            return name, value
 
         properties_dict = {}
         info_lines = self.info()
