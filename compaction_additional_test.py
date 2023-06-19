@@ -301,6 +301,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         logger.debug(f"Delete {deleted_keys} rows")
         concurrent.execute_concurrent_with_args(session, delete_stmt, [[k] for k in range(deleted_keys)])
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compact_tombstones_when_memtable_flush_one_node(self):
         """
         Test for commit :
@@ -1721,8 +1722,19 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         executor = ThreadPoolExecutor(max_workers=1)
         thread1 = executor.submit(do_run_nodetool_decommission)
 
-        sstable_files = sorted(node1.get_sstables(keyspace=self.keyspace_name, column_family=None),
-                               key=lambda x: int(os.path.basename(x).split('-')[1]))
+        try:
+            # if the sstable identifiers are represented using integer, sort them as integer
+            sstable_files = sorted(node1.get_sstables(keyspace=self.keyspace_name, column_family=None),
+                                   key=lambda x: int(os.path.basename(x).split('-')[1]))
+        except ValueError:
+            # otherwise, sort them as timeuuid. please note, the string representation of the timeuuid
+            # in the sstable identifier allows us to sort it by its create time, as the timestamp
+            # in the identifier are encoded using base36, like
+            # f"{base36(days):0>4}_{base36(secs):0>4}_{base36(decimicrosecs):0>5}{base36(lsb):0>13}".
+            # this allows us to sort the identifiers lexicographically and expect that the result list
+            # is sorted by the create time
+            sstable_files = sorted(node1.get_sstables(keyspace=self.keyspace_name, column_family=None),
+                                   key=lambda x: os.path.basename(x).split('-')[1])
 
         res = []
         # check the 10 first and 10 last sstables only
