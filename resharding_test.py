@@ -258,6 +258,7 @@ class TestReshardingTombstonesSingleNode(Tester):
 
         return jsoninfo.count("marked_deleted")
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_disable_tombstone_removal_during_reshard(self, node_count, compaction_strategy, murmur3):
         """
         Test that data is not resurected when shared sstables

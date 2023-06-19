@@ -86,6 +86,7 @@ class TestCompaction(Tester):
         assert numfound == 10, "Error: expected {} deleted partitions but found {}:\n{}".format(
             10, numfound, jsoninfo)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_delete(self):
         """
         Test that executing a delete properly tombstones a row.
@@ -93,6 +94,7 @@ class TestCompaction(Tester):
         """
         self._test_compaction_delete()
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_delete_2(self):
         """
         Test that executing a delete properly tombstones a row.
@@ -277,6 +279,7 @@ class TestCompaction(Tester):
         self.validate_rows_in_range_exist(session, 0, partition_num)
 
     @pytest.mark.parametrize("tombstone_gc_mode", ['repair', 'timeout', 'disabled', 'immediate'])
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_delete_tombstone_gc(self, tombstone_gc_mode):
         """
         Test compaction drop tombstones correctly in different tombstone_gc_mode mode

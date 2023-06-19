@@ -32,6 +32,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
             diff = self.compare_table_keys_only_data(expected_table_data=expected_items, table_data=records)
             assert not diff, f"The following keys are missing '{pformat(diff)}'"
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_verify_stream_records_after_topology_changed(self):
         """
         The tests verify the data after topology changes - Stream during maintenance operations that alter topology

@@ -1033,30 +1033,35 @@ class TestSchemaFileInSnapshot(SnapshotTester):
 
             assert desc == restored_table_desc
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restore_snapshot_by_table_schema_file_with_sstableloader(self):
         self.create_restore_data_with_snapshot(use_sstableloader=True)
 
     def test_restoring_by_schema_file_with_refresh(self):
         self.create_restore_data_with_snapshot(use_sstableloader=False)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restoring_by_schema_with_mv_use_sstableloader(self):
         self.create_restore_data_with_snapshot_with_mv(use_sstableloader=True, multiple_tables=False)
 
     def test_restoring_by_schema_with_mv_use_refresh(self):
         self.create_restore_data_with_snapshot_with_mv(use_sstableloader=False, multiple_tables=False)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restoring_by_schema_with_mv_use_sstableloader_multiple_tables(self):
         self.create_restore_data_with_snapshot_with_mv(use_sstableloader=True, multiple_tables=True)
 
     def test_restoring_by_schema_with_mv_use_refresh_multiple_tables(self):
         self.create_restore_data_with_snapshot_with_mv(use_sstableloader=False, multiple_tables=True)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restoring_snapshot_with_indexes_use_sstableloader(self):
         self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=True, multiple_tables=False)
 
     def test_restoring_snapshot_with_indexes_use_refresh(self):
         self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=False, multiple_tables=False)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restoring_snapshot_with_indexes_use_sstableloader_multiple_tables(self):
         self.create_and_restore_data_with_snapshot_and_si(use_sstableloader=True, multiple_tables=True)
 
@@ -1098,6 +1103,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
         assert restored_altered_table_desc != table_desc
         assert self.read_schema_from_file(schema_file) != self.read_schema_from_file(new_schema_file)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restore_data_for_all_native_data_types_from_snapshot_with_sstablesloader(self):
         self.create_and_restore_data_all_native_datatypes(use_sstableloader=True)
 
@@ -1111,6 +1117,7 @@ class TestSchemaFileInSnapshot(SnapshotTester):
     def test_restore_data_from_snapshot_with_udt_with_refresh(self):
         self.create_and_restore_udt_from_snapshot(use_sstableloader=False)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restore_data_from_snapshot_with_frozen_udt_with_sstablesloader(self):
         self.create_and_restore_udt_from_snapshot(use_sstableloader=True, use_frozen=True)
 

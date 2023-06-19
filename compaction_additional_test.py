@@ -331,6 +331,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         assert actual_rows_after_flush == expected_row_after_flush, \
             f"Expected {expected_row_after_flush} rows after flush, but actually got {actual_rows_after_flush}"
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compact_tombstones_when_memtable_flush_one_node_stopped(self):
         """
         Test for commit :
@@ -1249,6 +1250,7 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
     def fixture_set_cs(self, request):
         self.strategy = request.param
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_is_started_on_boot(self):
         [node1], session = self.prepare(1)
         create_ks(session, 'ks', 1)
@@ -1692,6 +1694,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             time.sleep(1)
         thread1.result()
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_twcs_multiple_sstables_during_decommission(self):
         synthetic_minutes = 20
         [node1, node2], session = self.prepare(2)
@@ -2026,6 +2029,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             f"Some rows were resurrected {len(current_rows)}"
 
     @pytest.mark.single_node
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_remove_deleted_rows_in_previous_time_window(self):
         """
         Verify major compaction processes delete mutations for the same rows in different

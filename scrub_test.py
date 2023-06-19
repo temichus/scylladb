@@ -210,6 +210,7 @@ class TestScrubIndexes(TestHelper):
         assert len(ret) == 8, "Invalid number of records in table 'users'"
         return ret
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_scrub_static_table(self):
         cluster = self.cluster
         cluster.populate(1).start(jvm_args=['--smp', '1'])
@@ -281,6 +282,7 @@ class TestScrubIndexes(TestHelper):
         users = self.query_users(session)
         assert initial_users == users, "List of users before and after scrub are different"
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_scrub_collections_table_without_indexes(self):
         cluster = self.cluster
         cluster.populate(1).start()
@@ -363,6 +365,7 @@ class TestScrub(TestHelper):
         assert len(ret) == 5, "Amount of users is different"
         return ret
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_nodetool_scrub(self):
         cluster = self.cluster
         cluster.populate(1).start()

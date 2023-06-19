@@ -6184,6 +6184,7 @@ class TestCQL(Tester):
         self.mc_validate_data(session=cassandra_session, table_name=table_name, data_amount=data_amount, dataset=dataset,
                               columns=columns, keys_columns_amount=keys_columns_amount)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_mc_sstables_case_sensitive_insert(self, request, compaction_strategy_for_migration):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
@@ -6206,6 +6207,7 @@ class TestCQL(Tester):
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
                                             data_amount=data_amount, request=request)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_mc_sstables_case_sensitive_update_value(self, request, compaction_strategy_for_migration):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
@@ -6248,6 +6250,7 @@ class TestCQL(Tester):
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
                                             data_amount=data_amount, request=request)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_mc_sstables_case_sensitive_delete_value(self, request, compaction_strategy_for_migration):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive
@@ -6282,6 +6285,7 @@ class TestCQL(Tester):
         self.mc_migrate_scylla_to_cassandra(keyspace_name=keyspace_name, table_name=table_name, dataset=dataset,
                                             data_amount=data_amount, request=request)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_mc_sstables_case_sensitive_add_column(self, request, compaction_strategy_for_migration):
         """
         Test how the mc SSTAbles files format works when the column names are case sensitive

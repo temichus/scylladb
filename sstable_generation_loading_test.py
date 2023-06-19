@@ -310,9 +310,11 @@ class TestSSTableGenerationAndLoading(Tester):
     @pytest.mark.parametrize("pre_compression,post_compression",
                              [(None, None), (None, 'Snappy'), (None, 'Deflate'), ('Snappy', None), ('Snappy', 'Snappy'),
                               ('Snappy', 'Deflate'), ('Deflate', None), ('Deflate', 'Snappy'), ('Deflate', 'Deflate')])
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_sstableloader_compression(self, pre_compression, post_compression):
         self.load_sstable_with_configuration(pre_compression=pre_compression, post_compression=post_compression)
 
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_sstableloader_case_sensitive_with_quotas(self):
         """
         The test checks that can load data from column with quotes without errors
