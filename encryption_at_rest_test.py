@@ -567,7 +567,11 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
     def test_multiple_cf(self, key_provider):
         self._multiple_cf_test(key_provider=key_provider)
 
-    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames='key_provider', argvalues=[
+        pytest.param(p, marks=unmark.next_gating if p.name == 'replicated' else None)
+        for p in KeyProviderEnum
+    ],
+        ids=lambda x: x.name)
     def test_reboot(self, key_provider):
         self._reboot_test(key_provider=key_provider)
 
