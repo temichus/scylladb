@@ -678,7 +678,8 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
         with self.get_key_provider(key_provider) as kp:
             self.verify_system_info(session, kp, ks_suffix='orig', expect=True)
 
-            options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
+            options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'},
+                       'system_key_directory': EncryptionAtRestBase.system_key_dir}
             self.cluster.set_configuration_options(options)
             logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
             session = self.rolling_restart(user='cassandra', password='cassandra')
