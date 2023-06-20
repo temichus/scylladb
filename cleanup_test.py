@@ -308,7 +308,7 @@ class TestCleanup(Tester):
             cf = f"cf{i}"
             num_keys = table_keys[i]
             flush_every = num_keys // 10
-            compaction_options = "{'class': 'SizeTieredCompactionStrategy', 'max_threshold': 1}"
+            compaction_options = "{'class': 'SizeTieredCompactionStrategy', 'max_threshold': 1, 'min_threshold': 1}"
             create_c1c2_table(session, cf=cf, compaction=compaction_options)
             cluster.nodetool(f'disableautocompaction {ks} {cf}')
 
