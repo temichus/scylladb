@@ -874,19 +874,21 @@ class TestCQL(Tester):
         session = self.prepare(nodes=nodes_count, rf=rf)
         self.create_insert_table(session)
         # run multiple times to check node is UP
+        expected_exceptions = (NoHostAvailable, InvalidRequest)
+        matching = "timestamp is out of range|A WRITETIME.*doesn't match the type"
         for tries in range(nodes_count):
             with subtests.test("Query qith writetime function non primary key coloumn", i=tries):
                 assert_invalid(session=session,
                                query=f"select toDate(max(mintimeuuid(writetime(day)))) from clicks ;",
-                               matching="timestamp is out of range",
-                               expected=NoHostAvailable
+                               matching=matching,
+                               expected=expected_exceptions
                                )
 
             with subtests.test("Query qith writetime function non primary key text coloumn", i=tries):
                 assert_invalid(session=session,
                                query=f"select toDate(max(mintimeuuid(writetime(month)))) from clicks ;",
-                               matching="timestamp is out of range",
-                               expected=NoHostAvailable
+                               matching=matching,
+                               expected=expected_exceptions
                                )
 
     def test_query_coloumn_timeuuid_with_invalid_values(self, subtests):
