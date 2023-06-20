@@ -248,7 +248,6 @@ class TestBatch(Tester):
             APPLY BATCH
             """, matching=err)
 
-    @pytest.mark.next_gating
     def test_logged_batch_throws_uae(self):
         """ Test that logged batch throws UAE if there aren't enough live nodes """
         session = self.prepare(nodes=3)
