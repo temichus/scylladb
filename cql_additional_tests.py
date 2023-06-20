@@ -873,7 +873,8 @@ class TestCQL(Tester):
         rf = 3
         session = self.prepare(nodes=nodes_count, rf=rf)
         self.create_insert_table(session)
-        # run multiple times to check node is UP
+        # run multiple times to check if node is still UP after serving the query
+        # see https://github.com/scylladb/scylla/issues/5552
         expected_exceptions = (NoHostAvailable, InvalidRequest)
         matching = "timestamp is out of range|A WRITETIME.*doesn't match the type"
         for tries in range(nodes_count):
