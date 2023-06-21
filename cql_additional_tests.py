@@ -4261,7 +4261,7 @@ class TestCQL(Tester):
 
         # test that select throws a meaningful exception for aliases in where clause
         assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE user_id = 0',
-                       matching="Aliases aren't allowed in the where clause")
+                       matching="Aliases aren't allowed in the WHERE clause")
 
         # test that select throws a meaningful exception for aliases in order by clause
         assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE id IN (0) ORDER BY user_name',
