@@ -1206,20 +1206,20 @@ class TestAuthRoles(Tester):
         # can't grant EXECUTE on data or role resources
         # Resource type DataResource does not support any of the requested permissions
         assert_invalid(cassandra, "GRANT EXECUTE ON ALL KEYSPACES TO mike",
-                       "syntax error",
+                       "Resource <all keyspaces> does not support any of the requested permissions",
                        SyntaxException)
         assert_invalid(cassandra, "GRANT EXECUTE ON KEYSPACE ks TO mike",
-                       "syntax error",
+                       "Resource <keyspace ks> does not support any of the requested permissions",
                        SyntaxException)
         assert_invalid(cassandra, "GRANT EXECUTE ON TABLE ks.t1 TO mike",
-                       "syntax error",
+                       "Resource <table ks.t1> does not support any of the requested permissions",
                        SyntaxException)
         # Resource type RoleResource does not support any of the requested permissions
         assert_invalid(cassandra, "GRANT EXECUTE ON ALL ROLES TO mike",
-                       "syntax error",
+                       "Resource <all roles> does not support any of the requested permissions",
                        SyntaxException)
         assert_invalid(cassandra, "GRANT EXECUTE ON ROLE mike TO role1",
-                       "syntax error",
+                       "Resource <role mike> does not support any of the requested permissions",
                        SyntaxException)
 
     # Issue: Convert user-defined functions to lua #2175
