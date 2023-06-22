@@ -308,7 +308,6 @@ class TestIcsCompaction(Tester):
                                                 table=TABLE_NAME)
         else:
             restore_snapshot_with_refresh(snapshot_dir, node1, KEYSPACE_NAME, TABLE_NAME)
-        node1.nodetool('refresh {} {}'.format(KEYSPACE_NAME, TABLE_NAME))
         # Check that the number of table entries on snapshot is restored.
         logger.debug("Verifying data")
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=4)
