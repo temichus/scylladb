@@ -411,6 +411,7 @@ class TestIcsCompaction(Tester):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.TIME_WINDOW)
 
+    @unmark.next_gating
     @pytest.mark.single_node
     def test_ics_snapshot_and_restore_with_sstableloader(self):
         """
