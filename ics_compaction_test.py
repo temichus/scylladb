@@ -363,6 +363,7 @@ class TestIcsCompaction(Tester):
         compaction = self._get_table_compaction_strategy()
         assert compaction == CompactionStrategy.INCREMENTAL, "Default compaction is: {}".format(compaction)
 
+    @pytest.mark.single_node
     def test_alter_table_stcs_to_lcs_to_ics(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.LEVELED,
                                                 original_compaction=CompactionStrategy.SIZE_TIERED)
@@ -371,6 +372,7 @@ class TestIcsCompaction(Tester):
         node1.compact()
         node1.wait_for_compactions()
 
+    @pytest.mark.single_node
     def test_alter_table_stcs_to_ics_to_stcs(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.SIZE_TIERED)
@@ -379,30 +381,37 @@ class TestIcsCompaction(Tester):
         node1.compact()
         node1.wait_for_compactions()
 
+    @pytest.mark.single_node
     def test_alter_table_ics_to_stcs(self):
         self._create_table_and_alter_compaction(original_compaction=CompactionStrategy.INCREMENTAL,
                                                 new_compaction=CompactionStrategy.SIZE_TIERED)
 
+    @pytest.mark.single_node
     def test_alter_table_ics_to_lcs(self):
         self._create_table_and_alter_compaction(original_compaction=CompactionStrategy.INCREMENTAL,
                                                 new_compaction=CompactionStrategy.LEVELED)
 
+    @pytest.mark.single_node
     def test_alter_table_ics_to_time_window(self):
         self._create_table_and_alter_compaction(original_compaction=CompactionStrategy.INCREMENTAL,
                                                 new_compaction=CompactionStrategy.TIME_WINDOW)
 
+    @pytest.mark.single_node
     def test_alter_table_stcs_to_ics(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.SIZE_TIERED)
 
+    @pytest.mark.single_node
     def test_alter_table_lcs_to_ics(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.LEVELED)
 
+    @pytest.mark.single_node
     def test_alter_table_time_window_to_ics(self):
         self._create_table_and_alter_compaction(new_compaction=CompactionStrategy.INCREMENTAL,
                                                 original_compaction=CompactionStrategy.TIME_WINDOW)
 
+    @pytest.mark.single_node
     def test_ics_snapshot_and_restore_with_sstableloader(self):
         """
         Test snapshot and restore with ICS and sstable-loader.
@@ -410,12 +419,14 @@ class TestIcsCompaction(Tester):
         self.basic_snapshot_and_restore(use_sstableloader=True)
 
     @unmark.next_gating
+    @pytest.mark.single_node
     def test_ics_snapshot_and_restore_with_refresh(self):
         """
         Test snapshot and restore with ICS and nodetool refresh.
         """
         self.basic_snapshot_and_restore(use_sstableloader=False)
 
+    @pytest.mark.single_node
     def test_time_window_to_ics_snapshot_refresh(self):
         """
         Test snapshot restore with ICS and nodetool refresh of source Time-Window sstables.
@@ -430,6 +441,7 @@ class TestIcsCompaction(Tester):
                                       table=TABLE_NAME)
         self._read_generated_sstables_data(increasing_write_size=True)
 
+    @pytest.mark.single_node
     def test_lcs_to_ics_snapshot_refresh(self):
         """
         Test snapshot restore with ICS and nodetool refresh of source LCS sstables.
@@ -444,6 +456,7 @@ class TestIcsCompaction(Tester):
                                       table=TABLE_NAME)
         self._read_generated_sstables_data(increasing_write_size=True)
 
+    @pytest.mark.single_node
     def test_stcs_to_ics_snapshot_refresh(self):
         """
         Test snapshot restore with ICS and nodetool refresh of source STCS sstables.
@@ -458,6 +471,7 @@ class TestIcsCompaction(Tester):
                                       table=TABLE_NAME)
         self._read_generated_sstables_data(increasing_write_size=True)
 
+    @pytest.mark.single_node
     def test_ics_refresh_with_big_sstable_files(self):
         """
 
@@ -519,6 +533,7 @@ class TestIcsCompaction(Tester):
         logger.debug("removing snapshot_dir: " + snapshot_dir)
         shutil.rmtree(snapshot_dir)
 
+    @pytest.mark.single_node
     def test_ics_sstables_refresh_with_collisions(self):
         """
 
@@ -585,6 +600,7 @@ class TestIcsCompaction(Tester):
         assert max_found_file_size <= max_expected_file_size, \
             "Maximum file size exceeds expected limit of {}: {}".format(max_expected_file_size, max_found_file_size)
 
+    @pytest.mark.single_node
     def test_lcs_major_compaction_then_ics_major_compaction(self):
         """
         Check number and size of incremental compaction strategy sstables after generating load and running a major compaction via nodetool.
@@ -672,6 +688,7 @@ class TestIcsCompaction(Tester):
         self.cluster.flush()
         assert_row_count(session=session, table_name=FULL_TABLE_NAME, expected=total_rows)
 
+    @pytest.mark.single_node
     def test_space_amplification_goal_trigger(self):
         """
         Check that space_amplification_goal triggers a compaction of 2 tiers appropriately when threshold is met.
@@ -700,13 +717,14 @@ class TestIcsCompaction(Tester):
         assert sorted(files_size) == [1, 10], "Cross-tier compaction was not triggered after " \
             "space_amplification_goal is exceeded!"
 
+    @pytest.mark.single_node
     def test_space_amplification_goal_3_buckets(self):
         """
         Check that space_amplification_goal triggers a compaction of 2 tiers appropriately when threshold is met.
         """
         sstable_size_in_mb = 10
         # Create a table with 1.20 goal and compaction min thereshold of 6.
-        jvm_args = ["--smp", "1"]
+
         self.prepare(num_of_nodes=1, r_factor=1, compaction_strategy=CompactionStrategy.INCREMENTAL,
                      sstable_size_in_mb=sstable_size_in_mb,
                      compaction_additional_params={'space_amplification_goal': '1.70', 'min_threshold': '4',
