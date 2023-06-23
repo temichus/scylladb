@@ -7,7 +7,7 @@ from dtest_class import Tester, create_ks
 from tools.assertions import assert_one
 from tools.data import rows_to_list
 from tools.datahelp import ColumnType
-
+from tools.timeuuid import TimeUUID
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +46,15 @@ class TestGroupFunctions(Tester):
         session.execute(query)
 
     def check_results(self, session, table_name, single_type):
+        # In case of timeuuid the values will be of type `UUID`, but they should
+        # be sorted as `TimeUUID`. `TimeUUID` sorts by timestamp, not raw uuid bytes.
+        if single_type == 'timeuuid':
+            def sort_key(row_with_uuid): return TimeUUID(row_with_uuid[0])
+        else:
+            sort_key = None
+
         full_res = sorted(
-            rows_to_list(session.execute('select {} from {};'.format('my_{}'.format(single_type), table_name))))
+            rows_to_list(session.execute('select {} from {};'.format('my_{}'.format(single_type), table_name))), key=sort_key)
         assert_one(session, 'select count({}) from {}'.format('my_{}'.format(single_type), table_name), [len(full_res)],
                    cl=ConsistencyLevel.QUORUM)
         assert_one(session, 'select min({}) from {}'.format('my_{}'.format(single_type), table_name), full_res[0],
