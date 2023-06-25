@@ -1869,7 +1869,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
     def _get_list_of_sstables(self, node):
 
-        return get_list_of_sstables(node, self.keyspace_name, self.table_name)
+        return get_list_of_sstables(node, self.keyspace_name, self.table_name, suffix='-Statistics.db')
 
     def test_memtable_flush(self):
         '''
