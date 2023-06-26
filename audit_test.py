@@ -348,8 +348,8 @@ class TestCQLAudit(AuditTester):
         session = self.prepare(create_keyspace=False,
                                audit_settings={'audit': 'table', 'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
                                                'audit_keyspaces': 'audit'})
-
-        self.assertLastAuditRow(session, "QUERY", "SELECT * FROM audit.audit_log", ks="audit", table="audit_log")
+        session.execute(self.AUDIT_LOG_QUERY)
+        self.assertLastAuditRow(session, "QUERY", self.AUDIT_LOG_QUERY, ks="audit", table="audit_log")
 
     @pytest.mark.single_node
     def test_audit_categories_invalid(self):
