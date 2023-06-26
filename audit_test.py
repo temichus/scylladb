@@ -3,6 +3,7 @@ import logging
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest, Unauthorized
+from cassandra.query import named_tuple_factory
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodeError
 
@@ -65,24 +66,43 @@ class TestCQLAudit(AuditTester):
     """
     Make sure CQL statements are audited
     """
+    AUDIT_LOG_QUERY = "SELECT * FROM audit.audit_log"
+
+    def getAuditLogList(self, session):
+        """_summary_
+            returns a sorted list of audit log, the logs are sorted by the event times (time-uuid)
+            with the node as tie breaker.
+        """
+        # We would like to have named tuples as results so we can verify the
+        # order in which the fields are returned as the tests make assumptions about this.
+        assert session.row_factory == named_tuple_factory
+        res = session.execute(self.AUDIT_LOG_QUERY)
+        res_list = list(res)
+        res_list.sort(key=lambda row: (row.event_time, row.node))
+        return res_list
+
+    # This assert is added just in order to still fail the test if the order of columns is changed, this is an implied assumption
+    def assertAuditRowFields(self, row):
+        expected_fields = ['date', 'node', 'event_time', 'category', 'consistency',
+                           'error', 'keyspace_name', 'operation', 'source', 'table_name', 'username']
+        assert list(row._fields) == expected_fields
 
     def assertAuditRow(self, row, category, statement, table="", ks="ks", user="anonymous", cl="ONE", error=False):
-        assert row[1] == self.cluster.get_node_ip(1)
-        assert row[3] == category
-        assert row[4] == cl
-        assert row[5] == error
-        assert row[6] == ks
-        assert row[7] == statement
-        assert row[8] == "127.0.0.1"
-        assert row[9] == table
-        assert row[10] == user
+        self.assertAuditRowFields(row)
+        assert row.node == self.cluster.get_node_ip(1)
+        assert row.category == category
+        assert row.consistency == cl
+        assert row.error == error
+        assert row.keyspace_name == ks
+        assert row.operation == statement
+        assert row.source == "127.0.0.1"
+        assert row.table_name == table
+        assert row.username == user
 
     def assertLastAuditRow(self, session, category, statement, table="", ks="ks", user="anonymous", cl="ONE",
                            error=False, match=True):
-        res = session.execute("SELECT * FROM audit.audit_log")
-        res_list = rows_to_list(res)
+        res_list = self.getAuditLogList(session)
 
-        res_list.sort(key=lambda x: x[0])  # sort by timestamp
         assert len(res_list) > 0
         try:
             logger.debug("last audit row: %s", res_list[-1])
@@ -94,9 +114,7 @@ class TestCQLAudit(AuditTester):
                 raise
 
     def getAuditEntriesCount(self, session):
-        res = session.execute("SELECT * FROM audit.audit_log")
-        res_list = rows_to_list(res)
-        res_list.sort(key=lambda x: x[0])
+        res_list = self.getAuditLogList(session)
         logger.debug('Printing audit table content:')
         for row in res_list:
             logger.debug('  %s', row)
@@ -532,8 +550,7 @@ class TestCQLAudit(AuditTester):
             APPLY BATCH;
         """, consistency_level=ConsistencyLevel.QUORUM)
         session.execute(query)
-        res = session.execute("SELECT * FROM audit.audit_log")
-        res_list = rows_to_list(res)
+        res_list = self.getAuditLogList(session)
 
         assert len(res_list) > 3
 
