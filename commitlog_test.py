@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestCommitLog(Tester):
     """ CommitLog Tests """
 
@@ -197,7 +198,6 @@ class TestCommitLog(Tester):
         except:
             logger.debug("Stress failed as expected")
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_commitlog_replay_on_startup(self):
         """ Test commit log replay """
@@ -258,7 +258,6 @@ class TestCommitLog(Tester):
         res = session.execute("SELECT * FROM Test. users")
         assert_lists_equal_ignoring_order(rows_to_list(res), [['gandalf', 1955, 'male', 'p@$$', 'WA']])
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_commitlog_replay_with_alter_table(self):
         """
@@ -380,7 +379,6 @@ class TestCommitLog(Tester):
         # Scylla: Unknown option commitlog_compression
         self._segment_size_test(5, compressed=True)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_stop_failure_policy(self):
         """ Test the stop commitlog failure policy (default one) """
