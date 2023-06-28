@@ -182,3 +182,36 @@ class TestUpdateableConfig(Tester):
         os.rename('%s.backup' % config_file_path, config_file_path)
         self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', True, 'true')
         self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', False, 'false')
+
+    @pytest.mark.single_node
+    @pytest.mark.parametrize("live_cql_updates_enabled", (True, False))
+    def test_blocking_config_runtime_updates(self, live_cql_updates_enabled):
+        """
+        Tests if users are allowed to update configuration parameters' values via CQL,
+        i.e. by updating system.config virtual table.
+        Modifying configuration parameters by other means, i.e. by sending a signal or calling API, is still allowed.
+        """
+        self.cluster.set_configuration_options(
+            values={'live_updatable_config_params_changeable_via_cql': live_cql_updates_enabled})
+
+        self.cluster.populate([1]).start()
+        node1 = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+
+        # updates through config file reload are allowed
+        self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', True, 'true')
+        self.change_and_verify_config(node1, 'compaction_enforce_min_threshold', False, 'false')
+
+        # updates through API calls are allowed
+        requests.post(f'http://{node1.address()}:10000/task_manager/ttl?ttl=5')
+        orig_value = requests.post(f'http://{node1.address()}:10000/task_manager/ttl?ttl=6')
+        prev_value = requests.post(f'http://{node1.address()}:10000/task_manager/ttl?ttl=7')
+
+        assert orig_value.text != prev_value.text
+
+        # updates via CQL will not work if the configuration option is set to False
+        if live_cql_updates_enabled:
+            session.execute("UPDATE system.config SET value='2' WHERE name='task_ttl_in_seconds'")
+        else:
+            with pytest.raises(Exception):
+                session.execute("UPDATE system.config SET value='2' WHERE name='task_ttl_in_seconds'")
