@@ -2782,36 +2782,45 @@ class TestLargeScaleCluster(Tester):
         cluster.set_configuration_options(
             values=config_options, batch_commitlog=True)
         cluster.populate(starting_size).start()
-        node2 = cluster.nodelist()[1]
+        sessions = dict()
+        for n in cluster.nodelist():
+            sessions[n] = self.patient_exclusive_cql_connection(n)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        create_ks(session, 'ks', rf)
+        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        create_cf(session, 'test', columns={'val': 'int'})
 
         keys = 0
         max_keys = 1000000000 if not debug_mode else 60000
         stress_done = False
         add_nodes_done = False
+        test_keys = 10000
+        values = {}
+        for i in range(test_keys):
+            values[i] = None
 
         def run():
-            nonlocal keys, max_keys, stress_done, add_nodes_done
+            nonlocal cluster, sessions, keys, max_keys, stress_done, add_nodes_done, values
             # each iteration just writes a small batch
             # so we check add_nodes_done in a reasonable frequently
             n = 1000
 
             logger.debug(f"Stress: starting to write up to {max_keys} keys in batches of {n}")
             while keys < max_keys and not add_nodes_done:
-                logger.debug(f"Stress: writing keys {keys}..{keys + n}")
-                node2.stress(['write', 'cl=QUORUM',  'n=%s' % n, 'no-warmup',
-                              f'-pop seq={keys}..{keys + n}', '-rate threads=2 limit=100/s'])
+                node = random.choice(list(sessions.keys()))
+                session = sessions[node]
+                logger.debug(f"Stress: writing keys {keys}..{keys + n} using {node.name}")
+                for k in random.choices(range(test_keys), k=n):
+                    v = (values[k] or random.randint(0, 1000000)) + 1
+                    session.execute(f"INSERT INTO ks.test (key, val) VALUES ('key{k}', {v})")
+                    values[k] = v
                 keys += n
             logger.debug(f"Stress: wrote {keys} keys: add_nodes_done={add_nodes_done}")
             stress_done = True
 
         executor = ThreadPoolExecutor(max_workers=node_count)
         t = executor.submit(run)
-
-        node1 = cluster.nodelist()[0]
-
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', rf)
-        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
         consistency = ConsistencyLevel.ALL
         logger.debug("just before first insert")
@@ -2822,9 +2831,10 @@ class TestLargeScaleCluster(Tester):
         for i in range(starting_size + 1, node_count + 1):
             node_i = new_node(cluster)
             node_i.start(wait_for_binary_proto=True, wait_other_notice=True)
-            session_i = self.patient_exclusive_cql_connection(node_i)
-            session_i.execute("use ks;")
-            insert_c1c2(session_i, keys=range(100000 + i * 2000, 100000 + i * 2000 + 100), consistency=consistency)
+            sessions[node_i] = self.patient_exclusive_cql_connection(node_i)
+            sessions[node_i].execute("use ks;")
+            insert_c1c2(sessions[node_i], keys=range(100000 + i * 2000,
+                        100000 + i * 2000 + 100), consistency=consistency)
             logger.debug("added %s" % node_i.name)
 
             result = list(session.execute(query, timeout=timeout))
@@ -2848,5 +2858,11 @@ class TestLargeScaleCluster(Tester):
 
         n = keys
         logger.debug(f"Stress: read {n} keys: starting")
-        node2.stress(['read', 'cl=ONE', 'n=%s' % n, 'no-warmup', f'-pop seq=0..{n - 1}', '-rate threads=20'])
+        for k in range(test_keys):
+            res = list(session.execute(f"SELECT val FROM ks.test WHERE key = 'key{k}'"))
+            if values[k] is not None:
+                assert len(res) == 1
+                assert res[0].val == values[k]
+            else:
+                assert len(res) == 0
         logger.debug(f"Stress: read {n} keys: done")
