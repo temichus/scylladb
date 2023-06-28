@@ -2765,7 +2765,7 @@ class TestLargeScaleCluster(Tester):
         debug_mode = isinstance(cluster, ScyllaCluster) and cluster.scylla_mode == "debug"
         node_count = 40 if not debug_mode else 10
         starting_size = 3
-        rf = 1
+        rf = 3
 
         nodes_str = f'up to {node_count}' if debug_mode else f'{node_count}'
         logger.info(f"Test adding {nodes_str} nodes under load: starting_size={starting_size} rf={rf}")
@@ -2804,7 +2804,7 @@ class TestLargeScaleCluster(Tester):
             logger.debug(f"Stress: wrote {keys} keys: add_nodes_done={add_nodes_done}")
             stress_done = True
 
-        executor = ThreadPoolExecutor(max_workers=1)
+        executor = ThreadPoolExecutor(max_workers=node_count)
         t = executor.submit(run)
 
         node1 = cluster.nodelist()[0]
@@ -2837,6 +2837,14 @@ class TestLargeScaleCluster(Tester):
         add_nodes_done = True
 
         t.result()
+
+        logger.debug(f"Cleanup on all nodes: starting")
+        cleanup_futures = []
+        for n in cluster.nodelist():
+            cleanup_futures.append(executor.submit(n.cleanup))
+        for t in cleanup_futures:
+            t.result()
+        logger.debug(f"Cleanup on all nodes: done")
 
         n = keys
         logger.debug(f"Stress: read {n} keys: starting")
