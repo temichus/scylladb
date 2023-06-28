@@ -504,6 +504,8 @@ class TestLWTSchemaModification(Tester):
                             DeleteRows(row_start=100, row_end=1000, lwt=True)],
                            loops=2, run_s=10)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_lwt_truncate(self):
         smp = 8 if self.cluster.scylla_mode != "debug" else 4
         nodes = 8 if self.cluster.scylla_mode != "debug" else 4
@@ -514,6 +516,8 @@ class TestLWTSchemaModification(Tester):
                             ReadRows(wait_for="insert")],
                            smp=smp, nodes=nodes, loops=1, run_s=10)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_lwt_load(self):
         smp = 8 if self.cluster.scylla_mode != "debug" else 4
         nodes = 8 if self.cluster.scylla_mode != "debug" else 4
@@ -523,6 +527,8 @@ class TestLWTSchemaModification(Tester):
                            smp=smp, nodes=nodes, nrows=10000, loops=loops,
                            run_s=30)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_lwt_batch_insert(self):
         smp = 8 if self.cluster.scylla_mode != "debug" else 4
         nodes = 8 if self.cluster.scylla_mode != "debug" else 4
@@ -543,6 +549,8 @@ class TestLWTSchemaModification(Tester):
                             MaterializedView(row_max=1000)],
                            nrows=10000, loops=1, run_s=10)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_lwt_load_check(self):
         smp = 8 if self.cluster.scylla_mode != "debug" else 4
         nodes = 8 if self.cluster.scylla_mode != "debug" else 4

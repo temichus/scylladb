@@ -969,6 +969,8 @@ class TestCommitLog(Tester):
         self._test_total_space_limit_of_commitlog(commitlog_segment_size_in_mb=-1,
                                                   commitlog_total_space_in_mb=-1)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_total_space_limit_of_commitlog_with_large_limit(self):
         """
         Test with 512M commitlog files, total space limit is 3096M

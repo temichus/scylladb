@@ -1502,6 +1502,8 @@ class TestCqlshCopy(CqlshPrepare):
                                         f"but got {lines_num}"
 
     @pytest.mark.single_node
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_copy_to_with_child_process_crashing(self):
         """
         Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,

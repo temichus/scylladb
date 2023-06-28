@@ -2320,6 +2320,8 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         self.run_flow_generate_and_reshape_twcs_sstables()
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_enable_disable_optimized_query_for_twcs(self):
         """
         Enable/disable optimized algorithimns for timewindow queries

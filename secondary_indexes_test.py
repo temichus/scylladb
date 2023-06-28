@@ -1448,6 +1448,8 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
     # @pytest.mark.next_gating - https://github.com/scylladb/scylla/issues/4724
     # @pytest.mark.dtest_debug - https://github.com/scylladb/scylla/issues/4384
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_stop_node_during_index_build(self):
         """
         Stop one node during index building and read data by index

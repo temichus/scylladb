@@ -1145,6 +1145,8 @@ class TestMaterializedViews(CommonUtils):
                                                          groupby_column1=mv.mv_columns_list[-1],
                                                          groupby_column2=mv.mv_columns_list[-1]))
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_multi_mvs_on_different_base_tables(self):
         """ Few keyspaces and every keyspace has a few tables and every table has a few MVs.
             MVs are created on the empty base tables
@@ -4369,6 +4371,8 @@ class TestInterruptBuildProcess(CommonUtils):
         # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
         self._do_resharding_test(self._half_shards(), self._max_shards())
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_interrupt_build_process_with_resharding_max_to_half_test(self):
         """Test that an interrupted MV build process is resumed, with resharding cpu_count() -> cpu_count() // 2"""
         # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
@@ -4378,12 +4382,16 @@ class TestInterruptBuildProcess(CommonUtils):
         """Test that an interrupted MV build process is resumed, with resharding cpu_count() // 2 -> 1"""
         self._do_resharding_test(self._half_shards(), self._low_shards())
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_interrupt_build_process_and_resharding_low_to_half_test(self):
         """Test that an interrupted MV build is resumed after interrupted resharding,
         with resharding 1 -> cpu_count() // 2"""
         self._do_resharding_test(self._low_shards(), self._half_shards(),
                                  interrupt_resharding=True)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_interrupt_build_process_and_resharding_half_to_max_test(self):
         """Test that an interrupted MV build process is resumed after interrupted resharding,
         with resharding cpu_count() // 2 -> cpu_count()"""
@@ -4391,6 +4399,8 @@ class TestInterruptBuildProcess(CommonUtils):
         self._do_resharding_test(self._half_shards(), self._max_shards(),
                                  interrupt_resharding=True)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_interrupt_build_process_and_resharding_max_to_half_test(self):
         """Test that an interrupted MV build process is resumed after interrupted resharding,
         with resharding cpu_count() -> cpu_count() // 2"""
@@ -4398,6 +4408,8 @@ class TestInterruptBuildProcess(CommonUtils):
         self._do_resharding_test(self._max_shards(), self._half_shards(),
                                  interrupt_resharding=True)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_interrupt_build_process_and_resharding_half_to_low_test(self):
         """Test that an interrupted MV build process is resumed after interrupted resharding,
         with resharding cpu_count() // 2 -> 2"""

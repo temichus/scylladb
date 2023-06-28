@@ -341,6 +341,8 @@ class TestCdc(Tester, CDCInitializeHelper):
         logger.debug('Test finished')
 
     @pytest.mark.next_gating
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_cluster_reduction_with_cdc(self, request, cluster_config):
         self.cluster_reduction_with_cdc_template(request=request, cluster_size=cluster_config.size,
                                                  replication=cluster_config.replication, with_preimage=False)

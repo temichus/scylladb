@@ -55,6 +55,8 @@ class TestRandomPaxos(Tester):
         if docstring:
             report.nodeid = docstring
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_topology_add_decommission_reboot(self, request: pytest.FixtureRequest):
         """
         Test on add, decommission and reboot node
@@ -129,6 +131,8 @@ class TestRandomPaxos(Tester):
         test_info.randomize()
         test_info.execute(tester=self)
 
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_topology_replace(self, request: pytest.FixtureRequest):
         """
         Test on node replacing

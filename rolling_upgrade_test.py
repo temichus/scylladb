@@ -17,6 +17,8 @@ class RollingUpgradeBase(UpgradeTester):
     __test__ = False
 
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
+    # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
+    @pytest.mark.scylla_mode('!debug')
     def test_rolling_upgrade(self, dtest_config):
         self.clone_upgrade_path(dtest_config)
 
