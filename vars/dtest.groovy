@@ -193,9 +193,17 @@ def splitAndCopyDtestJobs (Map args) {
     echo "Number Of Split Files:$numOfSplitFiles"
     stash(name: "${dtestType}-dtest-split-files", includes:"scylla-dtest/include_*", useDefaultExcludes: false)
     if (splitMaxNodes < numOfSplitFiles) {
-        error("Build failed because splitMaxNodes(${splitMaxNodes}) < numOfSplitFiles(${numOfSplitFiles})")
+        String warning = "WARNING: splitMaxNodes(${splitMaxNodes}) < numOfSplitFiles(${numOfSplitFiles}), \n would use only ${splitMaxNodes} instances, and some of the tests won't be running."
+        echo(warning)
+        if (!currentBuild.description) {
+            currentBuild.description = ''
+        }
+        currentBuild.description += "\n${warning}\n"
+
+        return splitMaxNodes
+    } else {
+        return numOfSplitFiles
     }
-    return numOfSplitFiles
 }
 
 boolean publishTestResults (String testsWildcardFiles, String baseDir) {
