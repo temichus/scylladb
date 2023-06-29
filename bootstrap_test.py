@@ -875,7 +875,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         skip_shadow_round_msg = "All nodes.* are down.* Skip ShadowRound"
         start_failure_msgs = [
             "Startup failed: .*Failed to learn about other nodes' tokens during bootstrap"
-            "|Timed out waiting for other live nodes to show up in gossip",
+            "|Timed out waiting for.*live nodes to show up in gossip",
             f"Startup failed: .*Node {node2.address()} has gossip status=UNKNOWN",
         ]
 
