@@ -20,13 +20,7 @@ from ccmlib import common
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.dtest_full
-@pytest.mark.single_node
-class TestNativeTransportSSL(Tester):
-    """
-    Native transport integration tests, specifically for ssl and port configurations.
-    """
-
+class BaseSslTester(Tester):
     def _create_cluster_session(self, node_to_connect, port=9042, use_ssl=False, ca_certs=None):
         ssl_context, ssl_options = None, {}
         if use_ssl or ca_certs:
@@ -47,6 +41,75 @@ class TestNativeTransportSSL(Tester):
             ssl_context=ssl_context,
             ssl_options=ssl_options)
         return cluster_connection.connect()
+
+    def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False,
+                         requireAuth=False, useRevocation=False, nodes_num=1):
+        cluster = self.cluster
+
+        if enableSSL:
+            generate_ssl_stores(self.test_path)
+            is_scylla = common.isScylla(cluster.get_install_dir())
+            # C* versions before 3.0 (CASSANDRA-10559) do not know about
+            # 'client_encryption_options.optional' - so we must not add that parameter
+            # Note: does of course not work with scylla, we dont support "optional" (3.x feature)
+            options = {'enabled': True}
+            if sslOptional:
+                options['optional'] = sslOptional
+            if is_scylla:
+                options.update({
+                    'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
+                    'keyfile': os.path.join(self.test_path, 'ccm_node.key')
+                })
+                if requireAuth:
+                    options.update({
+                        'truststore': os.path.join(self.test_path, 'ccm_node.cer'),
+                        'require_client_auth': True
+                    })
+                if useRevocation:
+                    options.update({
+                        'certficate_revocation_list': os.path.join(self.test_path, 'ccm_node.crl'),
+                    })
+
+            else:
+                options.update({
+                    'keystore': os.path.join(self.test_path, 'keystore.jks'),
+                    'keystore_password': 'cassandra',
+                })
+                if requireAuth:
+                    options.update({
+                        'truststore': os.path.join(self.test_path, 'truststore.jks'),
+                        'truststore_password': 'cassandra',
+                        'require_client_auth': True
+                    })
+
+            cluster.set_configuration_options({'client_encryption_options': options})
+
+        if nativePort is not None:
+            cluster.set_configuration_options({
+                'native_transport_port': nativePort
+            })
+
+        if nativePortSSL is not None:
+            cluster.set_configuration_options({
+                'native_transport_port_ssl': nativePortSSL
+            })
+
+        cluster.populate(nodes_num)
+        return cluster
+
+    @staticmethod
+    def _putget(cluster, session, ks='ks', cf='cf'):
+        create_ks(session, ks, 1)
+        create_cf(session, cf, compression=None)
+        putget(cluster, session, cl=ConsistencyLevel.ONE)
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestNativeTransportSSL(BaseSslTester):
+    """
+    Native transport integration tests, specifically for ssl and port configurations.
+    """
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
@@ -200,66 +263,6 @@ class TestNativeTransportSSL(Tester):
             self._putget(cluster, session)
         finally:
             shutil.rmtree(tmpdir)
-
-    def _populateCluster(self, enableSSL=False, nativePort=None, nativePortSSL=None, sslOptional=False,
-                         requireAuth=False, useRevocation=False, nodes_num=1):
-        cluster = self.cluster
-
-        if enableSSL:
-            generate_ssl_stores(self.test_path)
-            is_scylla = common.isScylla(cluster.get_install_dir())
-            # C* versions before 3.0 (CASSANDRA-10559) do not know about
-            # 'client_encryption_options.optional' - so we must not add that parameter
-            # Note: does of course not work with scylla, we dont support "optional" (3.x feature)
-            options = {'enabled': True}
-            if sslOptional:
-                options['optional'] = sslOptional
-            if is_scylla:
-                options.update({
-                    'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
-                    'keyfile': os.path.join(self.test_path, 'ccm_node.key')
-                })
-                if requireAuth:
-                    options.update({
-                        'truststore': os.path.join(self.test_path, 'ccm_node.cer'),
-                        'require_client_auth': True
-                    })
-                if useRevocation:
-                    options.update({
-                        'certficate_revocation_list': os.path.join(self.test_path, 'ccm_node.crl'),
-                    })
-
-            else:
-                options.update({
-                    'keystore': os.path.join(self.test_path, 'keystore.jks'),
-                    'keystore_password': 'cassandra',
-                })
-                if requireAuth:
-                    options.update({
-                        'truststore': os.path.join(self.test_path, 'truststore.jks'),
-                        'truststore_password': 'cassandra',
-                        'require_client_auth': True
-                    })
-
-            cluster.set_configuration_options({'client_encryption_options': options})
-
-        if nativePort is not None:
-            cluster.set_configuration_options({
-                'native_transport_port': nativePort
-            })
-
-        if nativePortSSL is not None:
-            cluster.set_configuration_options({
-                'native_transport_port_ssl': nativePortSSL
-            })
-
-        cluster.populate(nodes_num)
-        return cluster
-
-    def _putget(self, cluster, session, ks='ks', cf='cf'):
-        create_ks(session, ks, 1)
-        create_cf(session, cf, compression=None)
-        putget(cluster, session, cl=ConsistencyLevel.ONE)
 
     def test_disable_regular_port_while_encryption_enabled(self):
         """
