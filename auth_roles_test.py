@@ -518,7 +518,7 @@ class TestAuthRoles(Tester):
                                 ("role1", "<table ks.cf>", "SELECT"),
                                 ("role2", "<table ks.cf>", "ALTER"),
                                 ("role2", "<role role1>", "ALTER")]
-        expected_permissions.extend(data_resource_creator_permissions('cassandra', '<keyspace ks>', support_func=True))
+        expected_permissions.extend(data_resource_creator_permissions('cassandra', '<keyspace ks>', support_func=False))
         expected_permissions.extend(data_resource_creator_permissions('cassandra', '<table ks.cf>'))
         expected_permissions.extend(role_creator_permissions('cassandra', '<role mike>'))
         expected_permissions.extend(role_creator_permissions('cassandra', '<role role1>'))
