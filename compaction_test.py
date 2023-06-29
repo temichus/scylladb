@@ -904,9 +904,9 @@ class TestCompaction(Tester):
             pytest.skip("Skipping redundant runs as this test does not depend on preset compaction strategy.")
 
         TWCS = {'class': 'TimeWindowCompactionStrategy', 'compaction_window_size': 1,
-                'compaction_window_unit': 'MINUTES', 'max_threshold': 1, 'min_threshold': 1}
+                'compaction_window_unit': 'MINUTES', 'max_threshold': 2, 'min_threshold': 2}
         STCS = {'class': 'SizeTieredCompactionStrategy', 'bucket_high': 1.5, 'bucket_low': 0.5,
-                'min_sstable_size': 1, 'max_threshold': 1, 'min_threshold': 1}
+                'min_sstable_size': 1, 'max_threshold': 2, 'min_threshold': 2}
         ks = "keyspace1"
         cf = "standard1"
         node, session = self._prepare_reshape_testbed()
