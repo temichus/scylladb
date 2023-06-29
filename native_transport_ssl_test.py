@@ -360,3 +360,46 @@ class TestNativeTransportSSL(BaseSslTester):
     @pytest.mark.skip('require scylladb/scylla#7500, require scylladb/scylla#7783')
     def test_listen_ports_conf(self):
         self._listen_ports_conf_template(disable_value=None)
+
+
+class TestServerEncryption(BaseSslTester):
+
+    # @pytest.mark.require('scylladb/scylladb#14299')
+    def test_server_encryption_and_restart_node(self):
+        """
+        reproducer for https://github.com/scylladb/scylladb/issues/14299
+
+        restart a node configured with server encryption
+        """
+        generate_ssl_stores(self.test_path)
+
+        options = dict(internode_encryption='all')
+
+        options.update({
+            'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
+            'keyfile': os.path.join(self.test_path, 'ccm_node.key')
+        })
+        options.update({
+            'truststore': os.path.join(self.test_path, 'ccm_node.cer'),
+            'require_client_auth': False
+        })
+
+        self.cluster.set_configuration_options({'server_encryption_options': options,
+                                                'consistent_cluster_management': True,
+                                                })
+
+        cluster = self._populateCluster(nodes_num=2)
+        node1, *_ = cluster.nodelist()
+
+        cluster.start()
+
+        session = self._create_cluster_session(node1)
+        self._putget(cluster, session)
+
+        node1.stop()
+        node1.start()
+
+        node1.stop()
+        node1.start()
+
+        self._putget(cluster, session)
