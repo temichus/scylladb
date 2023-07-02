@@ -1155,7 +1155,7 @@ class TestAuth(Tester):
                                    password='cassandra')
 
         logger.info('Kill src node(%s: %s) to break Auth info' % (src_node.name, src_node.address()))
-        src_node.stop(gently=False)
+        src_node.stop(gently=False, wait_other_notice=True)
 
         logger.info('Try to re-get session from first rf endpoint(%s: %s)' % (rf_node.name, rf_address))
         try:
