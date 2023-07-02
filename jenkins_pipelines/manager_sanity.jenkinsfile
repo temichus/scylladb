@@ -22,6 +22,10 @@ pipeline {
                description: 'manager build path',
                name: 'scylla_manager_package')
 
+        string(defaultValue: '',
+               description: 'specific test to run (format: file::class::test)',
+               name: 'specific_test_to_run')
+
         string(defaultValue: '720',
                description: 'timeout for jenkins job in minutes',
                name: 'timeout')
@@ -84,7 +88,12 @@ pipeline {
 
                             echo "start test ......."
                             export PYTEST_CAPTURE=" " # make sure capturing is on, so mail would have the full errors in the attachments
-                            ./scripts/run_test.sh -m="scylla_manager" manager_*.py --junit-xml="\$HOME/results.xml" --scylla-version=\${SCYLLA_VERSION} --scylla-manager-package=${params.scylla_manager_package} \
+                            export TEST_FILTER="manager_*.py"
+                            if [[ ! -z "${params.specific_test_to_run}" ]]
+                            then
+                                export TEST_FILTER="${params.specific_test_to_run}"
+                            fi
+                            ./scripts/run_test.sh -m="scylla_manager" \${TEST_FILTER} --junit-xml="\$HOME/results.xml" --scylla-version=\${SCYLLA_VERSION} --scylla-manager-package=${params.scylla_manager_package} \
                                 --html=report.html --email ${params.email_address} --self-contained-html --delete-logs=passed
 
                             echo "end test ....."
