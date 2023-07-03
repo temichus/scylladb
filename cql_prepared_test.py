@@ -135,6 +135,13 @@ class TestCQL(Tester):
             assert_one_prepared(session, stmt, [True, init_val], query_args)
             assert_one_prepared(session, stmt, [False, upd_v], query_args)
 
+    # This test tries to perform the following operation:
+    # INSERT INTO boolean_update_test_table (k, value) VALUES (2, null)
+    # UPDATE boolean_update_test_table SET value=:upd_v WHERE k=2 IF value in :v;
+    # where :v = (None,)
+    # The update should be applied as `value`` is in the [null] list, but it doesn't work
+    # because of a python driver bug, which sends [empty] instead of [null].
+    @pytest.mark.require('scylladb/python-driver#201')
     def test_lwt_update_prepared(self):
         """
         Test that the most common IF condition patterns with parameter markers work as expected
