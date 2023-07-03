@@ -5107,7 +5107,6 @@ class TestCQL(Tester):
         assert_one(session, "INSERT INTO lock(partition, key, owner) VALUES ('a', 'c', 'x') IF NOT EXISTS",
                    [True, None, None, None])
 
-    @pytest.mark.require('scylladb/scylla-dtest#2995')
     @pytest.mark.single_node
     def test_whole_list_conditional(self):
         session = self.prepare()
@@ -5169,7 +5168,7 @@ class TestCQL(Tester):
                     table, condition), expected=expected)
                 assert_one(session, "SELECT * FROM {}".format(table), [0, ['foo', 'bar', 'foobar']])
 
-            check_invalid("l = [null]")
+            check_does_not_apply("l = [null]")
             check_invalid("l < null")
             check_invalid("l <= null")
             check_invalid("l > null")
@@ -5198,8 +5197,8 @@ class TestCQL(Tester):
 
             session.execute("INSERT INTO tlist(k, l) VALUES (0, ['foo', 'bar', 'foobar'])")
 
-            assert_invalid(session, "DELETE FROM tlist WHERE k=0 IF l[null] = 'foobar'")
-            assert_invalid(session, "DELETE FROM tlist WHERE k=0 IF l[-2] = 'foobar'")
+            assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[null] = 'foobar'", [False, ['foo', 'bar', 'foobar']])
+            assert_one(session, "DELETE FROM tlist WHERE k=0 IF l[-2] = 'foobar'", [False, ['foo', 'bar', 'foobar']])
             if parse_version(self.cluster.version()) < parse_version("2.1"):
                 # no longer invalid after CASSANDRA-6839
                 assert_invalid(session, "DELETE FROM tlist WHERE k=0 IF l[3] = 'foobar'")
@@ -5282,7 +5281,7 @@ class TestCQL(Tester):
             check_invalid("l[1] IN (1, 2, 3)")
             check_invalid("l[1] CONTAINS 367", expected=SyntaxException)
             check_invalid("l[1] CONTAINS KEY 367", expected=SyntaxException)
-            check_invalid("l[null] = null")
+            check_applies("l[null] = null")
 
     @pytest.mark.single_node
     def test_whole_set_conditional(self):
@@ -5441,7 +5440,7 @@ class TestCQL(Tester):
                 )""" % ("frozen<map<text, text>>" if frozen else "map<text, text>",))
 
             session.execute("INSERT INTO tmap(k, m) VALUES (0, {'foo' : 'bar'})")
-            assert_invalid(session, "DELETE FROM tmap WHERE k=0 IF m[null] = 'foo'")
+            assert_one(session, "DELETE FROM tmap WHERE k=0 IF m[null] = 'foo'", [False, {'foo': 'bar'}])
             assert_one(session, "DELETE FROM tmap WHERE k=0 IF m['foo'] = 'foo'", [False, {'foo': 'bar'}])
             assert_one(session, "DELETE FROM tmap WHERE k=0 IF m['foo'] = null", [False, {'foo': 'bar'}])
             assert_one(session, "SELECT * FROM tmap", [0, {'foo': 'bar'}])
@@ -5529,7 +5528,7 @@ class TestCQL(Tester):
             check_invalid("m['foo'] IN (1, 2, 3)")
             check_invalid("m['foo'] CONTAINS 367", expected=SyntaxException)
             check_invalid("m['foo'] CONTAINS KEY 367", expected=SyntaxException)
-            check_invalid("m[null] = null")
+            check_applies("m[null] = null")
 
     @pytest.mark.single_node
     def test_cas_and_list_index(self):
