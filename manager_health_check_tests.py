@@ -115,7 +115,7 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
                 assert node_details.rest.status == HostRestStatus.UP, f"The REST is not in '{HostRestStatus.UP}' status"
                 assert str(node_details.scylla_version).startswith(scylla_version), \
                     f"The Scylla version does not contain the '{scylla_version}' prefix"
-                assert str(agent_version).startswith(str(node_details.agent_version)), \
+                assert str(agent_version).replace("-dev-", "").startswith(str(node_details.agent_version)), \
                     f"The agent version does not contain the '{node_details.agent_version}' prefix"
             else:
                 node_status = NodeStatus.DOWN
