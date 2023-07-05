@@ -380,11 +380,9 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
 
         restore_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
         current_tombstone_gc_mode = self._get_tombstone_gc_mode(node1, "keyspace1", "standard1")
-        # TODO: Once https://github.com/scylladb/scylla-manager/issues/3363 is solved, expect that the gc mode
-        # will revert back to its original state
-        assert current_tombstone_gc_mode == "disabled", \
+        assert current_tombstone_gc_mode == initial_gc_mode, \
             f"After the restore was completed, the value tombstone_gc mode of the restored table did not " \
-            f"stay at 'disabled', and instead remained at {current_tombstone_gc_mode}"
+            f"went back to original '{initial_gc_mode}' value, and instead remained at {current_tombstone_gc_mode}"
 
     def test_restore_alter_batch_size(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
