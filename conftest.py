@@ -356,22 +356,6 @@ def fixture_require_version(request, fixture_dtest_setup):
             pytest.skip(f"require: {issue}")
 
 
-@pytest.fixture(autouse=True)
-def fixture_skip_scylla_mode(request, fixture_dtest_setup):
-    marker = request.node.get_closest_marker('scylla_mode')
-    if marker is not None:
-        modes = marker.args[0]
-        mode = fixture_dtest_setup.dtest_config.scylla_mode
-        assert mode is not None, f"dtest_config does not contain scylla_mode"
-        found = (modes.find(mode) != -1)
-        if modes[0] != '!':
-            do_skip = not found
-        else:
-            do_skip = found
-        if do_skip:
-            pytest.skip(f'Test disabled for scylla {mode}')
-
-
 @pytest.fixture(scope='session', autouse=True)
 def install_debugging_signal_handler():
     import faulthandler
@@ -437,8 +421,10 @@ def pytest_collection_modifyitems(items, config):
     if test_list_file:
         test_list_file = test_list_file.read().splitlines()
 
+    _scylla_mode = scylla_mode(cassandra_dir, scylla_version)
+    _scylla_mode = _scylla_mode or 'release'
+
     if elk_reporter := config.pluginmanager.get_plugin("elk-reporter-runtime"):
-        _scylla_mode = scylla_mode(cassandra_dir, scylla_version)
         # TEMP: for now we'll look at the build_tag, since we have enough history with that.
         # once we'll enough infor with
         if not _scylla_mode == 'debug':
@@ -543,6 +529,14 @@ def pytest_collection_modifyitems(items, config):
         if matchexpr:
             if eval(matchexpr, {}, UnmarkedLocals(item.keywords)):
                 print("Deselecting %r (mark removed by @unmark)" % item)
+                deselect_test = True
+
+        if marker := item.get_closest_marker('scylla_mode'):
+            modes = marker.args[0]
+            found = (modes.find(_scylla_mode) != -1)
+            do_skip = not found if modes[0] != '!' else found
+            if do_skip:
+                print(f'Test disabled for scylla in {_scylla_mode} mode')
                 deselect_test = True
 
         if not deselect_test and test_list_file:
