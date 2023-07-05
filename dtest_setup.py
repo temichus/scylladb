@@ -21,7 +21,7 @@ from cassandra.policies import WhiteListRoundRobinPolicy
 from ccmlib.common import is_win
 from ccmlib.cluster import Cluster
 from ccmlib.scylla_cluster import ScyllaCluster
-from ccmlib.scylla_repository import setup_scylla_manager
+from ccmlib.scylla_repository import setup_scylla_manager, get_manager_release_url
 
 from dtest_class import (get_ip_from_node, make_execution_profile, get_auth_provider, get_port_from_node,
                          get_eager_protocol_version)
@@ -222,21 +222,19 @@ class DTestSetup:
         self.runners = []
         self.base_cql_timeout = 10  # seconds
         self.cql_request_timeout = None
-        self.manager_install_dir = None
-
-        self.prepare_scylla_manager()
 
     def prepare_scylla_manager(self):
-        if self.dtest_config.manager_package is None:
-            return
+        manager_package = self.dtest_config.manager_package
+        if manager_package is None:
+            manager_package = get_manager_release_url(version="3.1")
 
-        if (self.dtest_config.manager_package.startswith('http://') or
-                self.dtest_config.manager_package.startswith('https://')):
+        if (manager_package.startswith('http://') or
+                manager_package.startswith('https://')):
             # Download the manager package from a remote repository
-            self.manager_install_dir = setup_scylla_manager(self.dtest_config.manager_package)
+            return setup_scylla_manager(manager_package)
         else:
             # Manager package is in a local directory
-            self.manager_install_dir = self.dtest_config.manager_package
+            return self.dtest_config.manager_package
 
     def get_test_path(self, prefix='dtest-'):
         # we can not work /tmp
@@ -774,7 +772,7 @@ class DTestSetup:
             logger.debug("Jacoco agent not found or is not file. Execution will not be recorded.")
 
     @staticmethod
-    def create_ccm_cluster(dtest_setup, skip_manager_server=False):
+    def create_ccm_cluster(dtest_setup, skip_manager_server=False, manager_install_dir=None):
         logger.info("cluster ccm directory: " + dtest_setup.test_path)
         version = dtest_setup.dtest_config.cassandra_version
 
@@ -789,14 +787,14 @@ class DTestSetup:
         elif scylla_version:
             cluster = ScyllaCluster(dtest_setup.test_path, dtest_setup.cluster_name,
                                     cassandra_version=scylla_version, force_wait_for_cluster_start=True,
-                                    manager=dtest_setup.manager_install_dir,
+                                    manager=manager_install_dir,
                                     skip_manager_server=skip_manager_server)
         else:
             if isScylla(dtest_setup.dtest_config.cassandra_dir):
                 cluster = ScyllaCluster(dtest_setup.test_path, dtest_setup.cluster_name,
                                         force_wait_for_cluster_start=True,
                                         install_dir=dtest_setup.dtest_config.cassandra_dir,
-                                        manager=dtest_setup.manager_install_dir,
+                                        manager=manager_install_dir,
                                         skip_manager_server=skip_manager_server)
             else:
                 cluster = Cluster(dtest_setup.test_path, dtest_setup.cluster_name,

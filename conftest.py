@@ -294,7 +294,8 @@ def fixture_dtest_setup(request,
         for name, value in cluster_options.kwargs.items():
             dtest_setup.cluster_options.setdefault(name, value)
 
-    dtest_setup.initialize_cluster(fixture_dtest_create_cluster_func)
+    manager_install_dir = dtest_setup.prepare_scylla_manager() if request.node.get_closest_marker('scylla_manager') else None
+    dtest_setup.initialize_cluster(fixture_dtest_create_cluster_func, manager_install_dir=manager_install_dir)
 
     # at this point we're done with our setup operations in this fixture
     # yield to allow the actual test to run

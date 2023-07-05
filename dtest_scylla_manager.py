@@ -1873,7 +1873,9 @@ class ScyllaManagerMixin:
                                  setup_overrides=DTestSetupOverrides(),
                                  cluster_name="test",
                                  prefix="dtest-secondary-")
-        dtest_setup.initialize_cluster(DTestSetup.create_ccm_cluster, skip_manager_server=True)
+        manager_install_dir = dtest_setup.prepare_scylla_manager() if request.node.get_closest_marker('scylla_manager') else None
+        dtest_setup.initialize_cluster(DTestSetup.create_ccm_cluster,
+                                       skip_manager_server=True, manager_install_dir=manager_install_dir)
         dtest_setup.cluster.set_configuration_options(values={'ring_delay_ms': 10000})
 
         yield dtest_setup.cluster
