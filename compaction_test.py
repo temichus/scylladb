@@ -9,6 +9,7 @@ from typing import Dict
 
 import pytest
 from cassandra import ConsistencyLevel
+from cassandra.query import SimpleStatement
 from packaging.version import Version
 
 from ccmlib.node import NodetoolError
@@ -213,26 +214,28 @@ class TestCompaction(Tester):
             for idx in range(0, num):
                 assert_none(session, f'select * from {self.FULL_TABLE_NAME} where key = {idx}')
 
+    @pytest.mark.single_node
     @pytest.mark.parametrize("tombstone_gc_mode", ['repair', 'timeout', 'disabled', 'immediate'])
     def test_keys_with_ttl_present(self, tombstone_gc_mode):
         """
-        Start 2 node cluster
+        Start 1 node cluster
         Create table with RF 2 and tombstone_gc_mode option
         Insert partition_num (100) rows with big TTL number
         Run flush and compact
         Restart nodes
         Check all keys are present
         """
-        node_num = 2
-        r_factor = node_num
+        node_num = 1
+        r_factor = 2
         partition_num = 100
         gc_grace_seconds = 5
+        cl = ConsistencyLevel.ONE
 
         cluster = self.cluster
         cluster.populate(node_num).start(wait_for_binary_proto=True)
         node1 = cluster.nodelist()[0]
 
-        session = self.patient_cql_connection(node1)
+        session = self.patient_cql_connection(node1, consistency_level=cl)
         create_ks(session, self.KEYSPACE_NAME, rf=r_factor)
 
         logger.debug(f'Create table with tombstone_gc = mode ={tombstone_gc_mode}')
@@ -241,7 +244,9 @@ class TestCompaction(Tester):
                         f"and compaction = {{'class':'{self.strategy}'}} and gc_grace_seconds = {gc_grace_seconds};")
 
         for x in range(0, partition_num):
-            session.execute(f'insert into {self.FULL_TABLE_NAME} (key, val) values ({x},1) USING TTL 100000')
+            statement = SimpleStatement(
+                f'insert into {self.FULL_TABLE_NAME} (key, val) values ({x},1) USING TTL 100000', consistency_level=cl)
+            session.execute(statement)
 
         for node in cluster.nodelist():
             node.flush()
@@ -252,7 +257,7 @@ class TestCompaction(Tester):
             logger.debug(f"Started {node.name}")
 
         logger.debug("Verify the keys that are still present after compaction and restart")
-        session = self.patient_cql_connection(node1)
+        session = self.patient_cql_connection(node1, consistency_level=cl)
         self.validate_rows_in_range_exist(session, 0, partition_num)
 
     @pytest.mark.parametrize("tombstone_gc_mode", ['repair', 'timeout', 'disabled', 'immediate'])
