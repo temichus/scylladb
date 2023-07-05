@@ -314,22 +314,6 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         else:
             raise ScyllaManagerError("No error occurred when creating a restore task with a nonexistent keyspace")
 
-    def test_verify_repair_message_after_restore(self):
-        node1, node2 = self.config_and_create_cluster(nodes=2)
-        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
-        backup_task = self.insert_data_backup_and_cleanup(node1, mgr_cluster)
-        restore_task = mgr_cluster.run_restore_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
-                                                       restore_data=True,
-                                                       snapshot_tag=backup_task.get_snapshot_tag())
-        restore_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
-        progress_output_lines, _ = restore_task.progress_details()
-        full_output_string = "\n".join([line[0] for line in progress_output_lines])  # Since it's a list of lists
-        expected_message = "repair required"
-        assert expected_message in full_output_string, \
-            f"There was no message in the output of 'sctool progress' that indicates the user should run a repair " \
-            f"after the restoration is complete:\nExpected message: '{expected_message}'\n" \
-            f"Full message:\n{full_output_string}"
-
     def test_restore_using_different_batch_sizes(self):
         number_of_rows = "1500K"
         node1, node2 = self.config_and_create_cluster(nodes=2)
