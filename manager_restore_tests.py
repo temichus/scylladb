@@ -423,8 +423,8 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         assert final_status == TaskStatus.ERROR,\
             f"Even though the restored keyspace was dropped while the restore task was paused, the task did not fail," \
             f" but it instead reached the status of {final_status}: {restore_task.full_progress_string()}"
-        assert "unconfigured table" in restore_task.full_progress_string(), \
-            f'The expected message "unconfigured table" did not appear in the output of task progress: ' \
+        assert "validate table keyspace1.standard1 still exists: not found" in restore_task.full_progress_string(), \
+            f'The expected message "not found" did not appear in the output of task progress: ' \
             f'{restore_task.full_progress_string()}'
 
     def test_restore_after_deleting_file_from_s3(self):
