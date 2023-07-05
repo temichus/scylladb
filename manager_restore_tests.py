@@ -265,7 +265,7 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
                                             restore_data=True,
                                             snapshot_tag="sm_20190126161112UTC")
         except ScyllaManagerError as err:
-            expected_error_string = "no snapshot with given tag"
+            expected_error_string = "no snapshot with tag sm_20190126161112utc"
             assert expected_error_string in err.args[0].lower(), \
                 f"Create a restore task with a nonexistent snapshot tag failed, as expected, " \
                 f"but with an improper error message: {err.args[0]}\n\nExpected: '{expected_error_string}'"
