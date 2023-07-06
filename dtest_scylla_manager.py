@@ -1590,6 +1590,14 @@ class ManagerCluster(ScyllaManagerBase):
         logger.debug("Created task id is: {}".format(task_id))
         return BackupTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.scylla_manager)
 
+    # scylla-manager does track cluster state, as result there are scenarios
+    # when scylla-manager know only dead nodes of the cluster, so you have to point it to a live node to catch up
+    def update_cluster_host(self, host):
+        cmd = "cluster update -c {} --host {}".format(self.id, host)
+        _, stderr = self.sctool.run(cmd=cmd, parse_table_res=False)
+        if stderr:
+            raise ScyllaManagerError(f"sctool '{cmd}' returned error {stderr}")
+
     def run_backup_validate_command(self, delete_orphaned_files=None,
                                     location_list=None,
                                     num_retries=None,

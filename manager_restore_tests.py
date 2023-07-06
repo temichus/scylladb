@@ -6,12 +6,11 @@ import pytest
 from dtest_scylla_manager import ScyllaManagerError, TaskStatus, ScyllaManagerMixin, C1_PREFIX, C2_PREFIX
 from dtest_class import Tester
 from manager_backup_tests import ManagerBackupMixin, minio_docker
-
+from tools.misc import remove_node
 
 CLUSTER_NAME = 'cluster1'
 DESTINATION_BUCKET = 'backup-bucket'
 DEFAULT_KEYSPACE_TABLE_AND_KEY_RANGE = {"ks": {"cf1": (1, 21)}}
-
 
 logger = logging.getLogger(__name__)
 
@@ -240,8 +239,14 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
                                                              cluster=secondary_cluster)
             second_dc_nodes.append(new_node)
             new_node.nodetool("repair")
+            self.configure_agent(new_node)
+
+        mgr_cluster.update_cluster_host(second_dc_nodes[0].address())
+
         for node in first_dc_nodes:
-            node.nodetool("drain")
+            node.nodetool("decommission")
+            secondary_cluster.remove(node, other_nodes=second_dc_nodes)
+
         self.restore_and_verify(mgr_cluster, backup_task, second_dc_nodes[0])
 
     @pytest.mark.parametrize(argnames=("backed_up_cluster_size", "target_cluster_size"),
@@ -335,7 +340,7 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         session = self.patient_cql_connection(healthy_node)
         result = session.execute(f"select extensions from system_schema.tables "
                                  f"where keyspace_name = '{keyspace}' and table_name = '{table}';")
-        tombstone_gc_mode = 'N\A'
+        tombstone_gc_mode = 'N\\A'
         if "tombstone_gc" in result.current_rows[0].extensions:
             tombstone_gc_raw_string = result.current_rows[0].extensions["tombstone_gc"].decode()
             tombstone_gc_mode = re.search(r"(repair|timeout|immediate|disabled)", tombstone_gc_raw_string)[0]
@@ -402,7 +407,7 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         self._drop_table_and_delete_table_dir(keyspace_name="keyspace1", table_name="standard1", up_normal_node=node1)
         restore_task.start(continue_task=True)
         final_status = restore_task.wait_and_get_final_status(step=5)
-        assert final_status == TaskStatus.ERROR,\
+        assert final_status == TaskStatus.ERROR, \
             f"Even though the restored keyspace was dropped while the restore task was paused, the task did not fail," \
             f" but it instead reached the status of {final_status}: {restore_task.full_progress_string()}"
         assert "validate table keyspace1.standard1 still exists: not found" in restore_task.full_progress_string(), \
