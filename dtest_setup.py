@@ -738,6 +738,7 @@ class DTestSetup:
         if not cassandra_v4_cluster:
             if self.dtest_config.consistent_cluster_management:
                 values['consistent_cluster_management'] = True
+                values['force_schema_commit_log'] = True
             else:
                 values['consistent_cluster_management'] = False
 
