@@ -174,7 +174,8 @@ repos:
                 global_row_key_cache_test.py|
                 cql_additional_tests.py|
                 throughput_limits_test.py|
-                test_distributed_aggregates.py
+                test_distributed_aggregates.py|
+                internode_compression_test.py
             )$
         language: system
         types: [python]
