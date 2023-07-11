@@ -28,6 +28,7 @@ class NodeUnavailable(Exception):
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 @pytest.mark.parametrize("rbo_status", [True, False], ids=["rbo_enabled", "rbo_disabled"])
 class TestReplaceAddress(Tester):
@@ -259,7 +260,6 @@ class TestReplaceAddress(Tester):
         node4.start(wait_for_binary_proto=True, replace_node_host_id=replace_node_host_id,
                     replace_address=replace_address)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
     def test_replace_active_node(self, use_host_id: bool):
