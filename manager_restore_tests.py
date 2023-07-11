@@ -44,12 +44,8 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         restore_task = mgr_cluster.run_restore_command(location_list=["s3:{}".format(DESTINATION_BUCKET)],
                                                        restore_data=True,
                                                        snapshot_tag=backup_task.get_snapshot_tag())
-        final_status = restore_task.wait_and_get_final_status(step=5)
+        final_status = restore_task.wait_and_get_final_status(timeout=1200, step=5)
         assert final_status == TaskStatus.DONE, f"Restore task failed: {restore_task.full_progress_string()}"
-        for node in target_cluster.nodelist():
-            if self._is_node_at_status(node.address(), functioning_node=healthy_node, desirable_status="UN",
-                                       tolerate_missing=True):
-                node.nodetool("repair")
         self.verify_c1c2(node=healthy_node)
 
     def restore_schema(self, mgr_cluster, backup_task, cluster=None):
