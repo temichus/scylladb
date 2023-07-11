@@ -12,6 +12,7 @@ from tools.stress import format_cs_output, assert_cs_success
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 class TestNodetool(Tester):
 
