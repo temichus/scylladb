@@ -216,6 +216,43 @@ class TestUpdateClusterLayout(Tester):
         """
         self._iterative_add_decommission(node_count=3, iterations=2, rf=2)
 
+    def test_decommission_last_node_in_rack(self):
+        """
+        reproducer for the following issues:
+        - https://github.com/scylladb/scylla-enterprise/issues/3106
+        - https://github.com/scylladb/scylladb/issues/14184
+        - https://github.com/scylladb/scylla-operator/issues/1271
+
+        1) create 3 nodes in rack1
+        2) change one keyspace to `NetworkTopologyStrategy`
+        3) add node4 in rack2
+        4) decommission node4
+        """
+        cluster = self.cluster
+
+        cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
+
+        cluster.populate(3)
+        for node in cluster.nodelist():
+            with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
+                for line in ["dc={}".format(node.data_center), "rack=rack1", "prefer_local = false"]:
+                    snitch_file.write(line + os.linesep)
+
+        cluster.start()
+        node1, *_ = cluster.nodelist()
+
+        cql = "ALTER KEYSPACE system_auth WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': '3'}"
+        with self.patient_cql_connection(node1) as session:
+            session.execute(cql)
+
+        node4 = new_node(cluster)
+        with open(os.path.join(node4.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
+            for line in ["dc={}".format(node4.data_center), "rack=rack2", "prefer_local = false"]:
+                snitch_file.write(line + os.linesep)
+
+        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node4.decommission()
+
     @pytest.mark.parametrize("test_case", [0, 1, 2], ids=['case_0', 'case_1', 'case_2'])
     def test_simple_add_two_nodes_in_parallel(self, test_case):
         """
