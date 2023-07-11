@@ -242,6 +242,7 @@ class RepairBasedNodeOperationsScenarios:
                 self.tester.cluster.remove(node=tested_node, wait_other_notice=True, remove_node_dir=False)
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 class TestRepairBasedNodeOperations(Tester):
     jvm_args = None
