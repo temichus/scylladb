@@ -41,6 +41,7 @@ def generate_test_name(val):
     return val.replace(" ", "_")
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 class TestUpdateClusterLayout(Tester):
 
@@ -328,7 +329,6 @@ class TestUpdateClusterLayout(Tester):
         node.watch_log_for(exprs, timeout=log_timeout)
         logger.debug(f"Bootstrap {node.name}: started streaming/repair")
 
-    @pytest.mark.next_gating
     def test_simple_kill_streaming_node_while_bootstrapping(self):
         """
         Test bootstrapped node streams all data
@@ -936,7 +936,6 @@ class TestUpdateClusterLayout(Tester):
         result = list(session_node1.execute("SELECT * FROM ks.cf"))
         assert len(result) == 0, "expected 0 lines got %d" % len(result)
 
-    @pytest.mark.next_gating
     def test_simple_kill_node_while_decommissioning(self):
         """
         Test a decommissioning node killed is able to rejoin the cluster with data
@@ -1150,7 +1149,6 @@ class TestUpdateClusterLayout(Tester):
     def test_simple_decommission_node_while_query_info_2(self):
         self._simple_decommission_node_while_query_info(2)
 
-    @pytest.mark.next_gating
     def test_simple_removenode_1(self):
         """
         Test removenode with rf>1 (no data should be lost)
@@ -1470,7 +1468,6 @@ class TestUpdateClusterLayout(Tester):
     def test_add_new_node_while_add_new_table_before_bootstrapping(self):
         self._add_new_node_while_add_new_table("before")
 
-    @pytest.mark.next_gating
     def test_add_new_node_while_add_new_table_during_bootstrapping(self):
         self._add_new_node_while_add_new_table("during")
 
