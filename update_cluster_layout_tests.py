@@ -29,6 +29,7 @@ from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, query_c1c2_co
 from tools.cluster import new_node, get_group0_members, get_token_ring_members
 from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status, nodetool_gossipinfo
 from tools.data import rows_to_list
+from tools.marks import unmark
 from iptables import IPTable, IPTableRule
 
 
@@ -2582,6 +2583,9 @@ class TestUpdateClusterLayout(Tester):
             logger.debug("Node3 is not a voter, it could be removed from cluster with removenode")
             retry_till_success(verification_node.nodetool, f"removenode {garbage_host_id}", timeout=120)
 
+    # The test is current flaky
+    # See https://github.com/scylladb/scylla-dtest/issues/3256
+    @unmark.next_gating
     @pytest.mark.scylla_mode('!debug')
     @pytest.mark.parametrize("log_message,is_removed_from_token_ring",
                              [("left token ring", True),
