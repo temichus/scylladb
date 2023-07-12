@@ -2321,7 +2321,6 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         self.run_flow_generate_and_reshape_twcs_sstables()
 
     # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
-    @pytest.mark.scylla_mode('!debug')
     def test_enable_disable_optimized_query_for_twcs(self):
         """
         Enable/disable optimized algorithimns for timewindow queries
@@ -2337,9 +2336,15 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         [node1, node2], session = self.prepare(2)
         self._create_ks_cl_with_twcs(session, rf=2)
+        # The test uses 5-minute windows, and run for a duration of 60 min
+        # To minimize write amplification, as a result of flushing too often,
+        # we want to limit the amount of flushes performed throughout the
+        # test. A flush frequency of 100s is enough to trigger STCS on each
+        # window, while not generating a ton of compaction work. So the test
+        # can complete in a timely manner
         pks, _ = self._simulate_write_process_in_minutes(session,
                                                          duration_minutes=60,
-                                                         flush_period_seconds=15,
+                                                         flush_period_seconds=100,
                                                          num_pks=30)
 
         tw_query_result["enabled"] = self.get_tw_query_results(session, pks)
