@@ -2334,8 +2334,13 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             "disabled": []
         }
 
+        # Target 20 time windows = 6000s. let's increase default TTL making sure
+        # that rows won't be expired while performing the test to  compare query
+        # results with optimization enabled and disabled.
+        default_ttl = 5 * 60 * 20
+
         [node1, node2], session = self.prepare(2)
-        self._create_ks_cl_with_twcs(session, rf=2)
+        self._create_ks_cl_with_twcs(session, rf=2, ttl=default_ttl)
         # The test uses 5-minute windows, and run for a duration of 60 min
         # To minimize write amplification, as a result of flushing too often,
         # we want to limit the amount of flushes performed throughout the
