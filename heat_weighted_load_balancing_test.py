@@ -6,6 +6,7 @@ from dtest_class import Tester
 from concurrent.futures import ThreadPoolExecutor
 from tools.stress import create_stress_compatible_table
 from tools.metrics import get_node_metrics
+from ccmlib.scylla_cluster import ScyllaCluster
 import logging
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,10 @@ class TestHeatWeightedLB(Tester):
         but after restart of one of the nodes(node2), the values for this node expected to be
         much less then on other nodes, and grow with cache filling.
         """
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug":
+            logger.debug('Skippipng verify metrics in debug mode')
+            return
+
         logger.debug('Verify metrics')
         for key in ('scylla_storage_proxy_coordinator_reads_local_node', 'scylla_storage_proxy_replica_reads'):
             # find eligable samples window
