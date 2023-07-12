@@ -548,3 +548,34 @@ class TestCQLAudit(AuditTester):
         self.assertAuditRow(res_list[-2], "DML", "INSERT INTO test8 (userid, password) VALUES (user4, ch@ngem3c)",
                             "test8", cl="QUORUM")
         self.assertAuditRow(res_list[-1], "DML", "DELETE name FROM test8 WHERE userid = user1", "test8", cl="QUORUM")
+
+    def test_service_level_statements(self):
+        """
+        Test auditing service level statements - ones that use the ADMIN audit category.
+        """
+        session = self.prepare(user='cassandra', password='cassandra',
+                               audit_settings={'audit': 'table', 'audit_categories': 'ADMIN'})
+
+        # Create role to which a service level can be attached.
+        session.execute("CREATE ROLE test_role")
+
+        queries = [
+            "CREATE SERVICE_LEVEL test_service_level WITH SHARES = 1",
+
+            "ATTACH SERVICE_LEVEL test_service_level TO test_role",
+            "DETACH SERVICE_LEVEL FROM test_role",
+
+            "LIST SERVICE_LEVEL test_service_level",
+            "LIST ALL SERVICE_LEVELS",
+            "LIST ATTACHED SERVICE_LEVEL OF test_role",
+            "LIST ALL ATTACHED SERVICE_LEVELS",
+
+            "ALTER SERVICE_LEVEL test_service_level WITH SHARES = 2",
+            "DROP SERVICE_LEVEL test_service_level",
+        ]
+
+        # Execute previously defined service level statements.
+        # Validate that the audit log contains the expected entries.
+        for query in queries:
+            session.execute(query)
+            self.assertLastAuditRow(session, "ADMIN", query, ks="", user="cassandra")
