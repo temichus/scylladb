@@ -45,6 +45,7 @@ class CassandraCluster:
         self.cluster = self.dtest_setup.cluster
         # remove flags that cassandra doesn't support`
         self.cluster._config_options.pop('consistent_cluster_management', None)
+        self.cluster._config_options.pop('force_schema_commit_log', None)
         self.cluster.set_configuration_options(values=config_options)
         logger.debug("Starting a Cassandra cluster of {} node(s) with options {}...".format(nodes, config_options))
         self.cluster.populate(nodes)
