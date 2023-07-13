@@ -75,11 +75,14 @@ class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
         repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, cron=intended_run_time_cron)
 
         mgr_cluster.suspend()
+
+        # Wait 2 minutes plus to make sure that is started unless suspended
         time.sleep(200)
-        repair_task_next_run = repair_task.next_run
-        assert repair_task_next_run == "[SUSPENDED]", \
+        repair_task_status = repair_task.status
+        assert repair_task_status == TaskStatus.NEW, \
             f'Task that was set to run while the manager was suspended has a Next Run value of ' \
-            f'"{repair_task_next_run}" instead of the expected [SUSPENDED]'
+            f'"{repair_task_status}" instead of the expected `NEW`'
+
         mgr_cluster.resume()
 
         assert not len(repair_task.history), f"The task has ran while the manager was suspended"

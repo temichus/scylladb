@@ -9,7 +9,8 @@ from re import findall
 from pprint import pformat
 from ast import literal_eval
 from typing import Union, List, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from dateutil.parser import parse
 
 from cassandra import ConsistencyLevel
 
@@ -1143,14 +1144,21 @@ class ManagerTask(ScyllaManagerBase):
         """
         Gets the task's next run value
         """
-        # ╭──────────────────────────────────────────────────┬───────────────────────────────┬──────┬────────────┬────────│
-        # │ task                                             │ next run                      │ ret. │ properties │ status │
-        # ├──────────────────────────────────────────────────┼───────────────────────────────┼──────┼────────────┼────────│
-        # │ healthcheck/7fb6f1a7-aafc-4950-90eb-dc64729e8ecb │ 18 Nov 18 20:32:08 UTC (+15s) │ 0    │            │ NEW    │
-        # │ repair/22b68423-4332-443d-b8b4-713005ea6049      │ 19 Nov 18 00:00:00 UTC (+7d)  │ 3    │            │ NEW    │
-        # ╰──────────────────────────────────────────────────┴───────────────────────────────┴──────┴────────────┴────────╯
+        # ╭──────────────────────────────────────────────┬──────────────┬────────┬──────────┬─────────┬───────┬────────────────────────┬────────────┬─────────┬────────────────────────╮
+        # │ Task                                         │ Schedule     │ Window │ Timezone │ Success │ Error │ Last Success           │ Last Error │ Status  │ Next                   │
+        # ├──────────────────────────────────────────────┼──────────────┼────────┼──────────┼─────────┼───────┼────────────────────────┼────────────┼─────────┼────────────────────────┤
+        # │ backup/d569639a-897a-4a86-9ce1-3be1a94f0389  │              │        │ Etc/UTC  │ 1       │ 0     │ 04 Jul 23 18:20:37 UTC │            │ DONE    │                        │
+        # │ healthcheck/cql                              │ @every 15s   │        │ Etc/UTC  │ 52      │ 0     │ 04 Jul 23 18:33:36 UTC │            │ DONE    │ 04 Jul 23 18:33:51 UTC │
+        # │ healthcheck/rest                             │ @every 1m0s  │        │ Etc/UTC  │ 13      │ 0     │ 04 Jul 23 18:33:33 UTC │            │ DONE    │ 04 Jul 23 18:34:33 UTC │
+        # │ healthcheck/alternator                       │ @every 15s   │        │ Etc/UTC  │ 51      │ 0     │ 04 Jul 23 18:33:22 UTC │            │ DONE    │ 04 Jul 23 18:33:37 UTC │
+        # │ repair/all-weekly                            │ 0 23 * * SAT │        │ Etc/UTC  │ 0       │ 0     │                        │            │ NEW     │ 08 Jul 23 23:00:00 UTC │
+        # │ restore/489d544d-afe6-494d-bbad-a3b273d042de │              │        │ Etc/UTC  │ 0       │ 0     │                        │            │ RUNNING │                        │
+        # ╰──────────────────────────────────────────────┴──────────────┴────────┴──────────┴─────────┴───────┴────────────────────────┴────────────┴─────────┴────────────────────────╯
         stdout, _ = self.task_list()
-        return self.get_property(parsed_table=stdout, column_name='Next')
+        time_str = self.get_property(parsed_table=stdout, column_name='Next')
+        if not time_str:
+            return None
+        return parse(time_str).astimezone(timezone.utc)
 
     @property
     def status(self):

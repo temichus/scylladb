@@ -6,7 +6,7 @@ import shutil
 import logging
 from glob import glob
 from time import sleep
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pprint import pformat
 from pathlib import Path
 import uuid
@@ -18,7 +18,6 @@ import pytest
 
 from dtest_scylla_manager import ScyllaManagerTool, ScyllaManagerError, TaskStatus, ScyllaManagerMixin, \
     C1_PREFIX, C2_PREFIX
-from tools.data import run_in_parallel
 from dtest_class import Tester, wait_for, create_ks, create_cf
 from tools.files import get_sstables_files
 from tools.minio import MinioDocker
@@ -282,8 +281,7 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
                                                            r"*",
                                                            r"*"]
                                                      )
-        next_run_string = backup_task.next_run
-        next_run_delta = self.time_diff_string_to_timedelta(next_run_string)
+        next_run_delta = backup_task.next_run - datetime.now(timezone.utc)
         assert next_run_delta < timedelta(seconds=60), "The next run time is as requested"
 
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.DONE], timeout=100, step=2)
@@ -294,24 +292,6 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=100, step=5)
         self.clean_restore_and_verify_backup(backup_task, self.cluster.nodelist(), mgr_cluster, node1,
                                              keyspace_table_and_key_range)
-
-    @staticmethod
-    def time_diff_string_to_timedelta(time_diff_string):
-        if " " in time_diff_string:
-            time_diff_string = time_diff_string[time_diff_string.find(" ") + 1:]
-        days, hours, minutes, seconds = 0, 0, 0, 0
-        if "d" in time_diff_string:
-            days = int(time_diff_string[:time_diff_string.find("d")])
-            time_diff_string = time_diff_string[time_diff_string.find("d") + 1:]
-        if "h" in time_diff_string:
-            hours = int(time_diff_string[:time_diff_string.find("h")])
-            time_diff_string = time_diff_string[time_diff_string.find("h") + 1:]
-        if "m" in time_diff_string:
-            minutes = int(time_diff_string[:time_diff_string.find("m")])
-            time_diff_string = time_diff_string[time_diff_string.find("m") + 1:]
-        if "s" in time_diff_string:
-            seconds = int(time_diff_string[:time_diff_string.find("s")])
-        return timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
 
     def test_backup_multiple_keyspaces_and_tables(self):
         keyspace_table_and_key_range = {"ks1": {"cf1": (1, 21),

@@ -1,8 +1,7 @@
 import pytest
-import re
 import logging
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import os
 
 from dtest_scylla_manager import TaskStatus, ScyllaManagerTool, ScyllaManagerMixin, CqlStatus, HostRestStatus, Memory, \
@@ -12,7 +11,6 @@ from tools.retrying import retrying
 from alternator_utils import ALTERNATOR_PORT, WriteIsolation
 from iptables import IPTable, IPTableRule
 from tools.misc import generate_ssl_stores
-
 CLUSTER_NAME = 'cluster1'
 
 logger = logging.getLogger(__name__)
@@ -43,7 +41,7 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
             healthcheck_task = manager_cluster.get_healthcheck_task()
         else:
             healthcheck_task = manager_cluster.get_healthcheck_alternator_task()
-        next_run_seconds = int(re.search(r"\d+", healthcheck_task.next_run)[0])
+        next_run_seconds = (healthcheck_task.next_run - datetime.now(timezone.utc)).seconds
         assert next_run_seconds < default_interval
         assert TaskStatus.ERROR.value not in healthcheck_task.status.value
 

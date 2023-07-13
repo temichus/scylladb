@@ -55,7 +55,7 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         # Check for sctool status change after scylla node down
         sleep = 20
         node2.stop(wait_other_notice=True)
-        logger.debug("Health-check next run is: {}".format(healthcheck_task.next_run))
+        logger.debug("Health-check next run is: {}".format(healthcheck_task.next_run.isoformat()))
         logger.debug('Sleep {} seconds, waiting for health-check task to run after node down'.format(sleep))
         time.sleep(sleep)
 
