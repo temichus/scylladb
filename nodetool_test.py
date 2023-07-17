@@ -8,6 +8,7 @@ from ccmlib.node import NodetoolError
 
 from dtest_class import Tester
 from tools.stress import format_cs_output, assert_cs_success
+from tools.rackdc import update_properties
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +49,7 @@ class TestNodetool(Tester):
             values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
 
         for idx, node in enumerate(cluster.nodelist()):
-            with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
-                for line in ["dc={}".format(node.data_center), "rack=rack{}".format(idx % 2)]:
-                    snitch_file.write(line + os.linesep)
+            update_properties(nodes=[node], properties={'rack': f'rack{idx % 2}'})
 
         cluster.start(wait_for_binary_proto=True)
 

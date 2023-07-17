@@ -7,6 +7,7 @@ from cassandra import ConsistencyLevel, OperationTimedOut, Timeout, Unavailable
 from cassandra.query import SimpleStatement
 from tools.assertions import assert_invalid, assert_one, assert_unavailable
 from dtest_class import Tester, create_ks
+from tools.rackdc import update_properties
 
 logger = logging.getLogger(__name__)
 
@@ -555,10 +556,8 @@ class TestBatch(Tester):
             values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch'})
 
         for i, node in enumerate(cluster.nodelist()):
-            with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
-                rack_name = rack_names[i % len(rack_names)]
-                for line in ["dc={}".format(node.data_center), "rack={}".format(rack_name)]:
-                    snitch_file.write(line + os.linesep)
+            rack_name = rack_names[i % len(rack_names)]
+            update_properties(nodes=[node], properties={'rack': rack_name})
 
         logger.debug('Restart scylla cluster to enable rack setup ...')
         cluster.start(wait_for_binary_proto=True)

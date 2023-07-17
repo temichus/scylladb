@@ -1,5 +1,4 @@
 # TODO: check this test compared to upstream casandra-dtest, lot of new test in there.
-import os
 import time
 import logging
 
@@ -9,7 +8,7 @@ from cassandra.query import SimpleStatement
 
 from dtest_class import Tester
 from tools.data import rows_to_list
-
+from tools.rackdc import update_properties
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +24,8 @@ class TestReadRepair(Tester):
         cluster.set_configuration_options(values={'hinted_handoff_enabled': False,
                                                   'endpoint_snitch': 'GossipingPropertyFileSnitch',
                                                   'dynamic_snitch': False})
-        for node in cluster.nodelist():
-            with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
-                snitch_file.write("dc=datacenter1" + os.linesep)
-                snitch_file.write("rack=rack1" + os.linesep)
-                snitch_file.write("prefer_local=true" + os.linesep)
-
+        update_properties(nodes=cluster.nodelist(), properties={
+                          'dc': 'datacenter1', 'rack': 'rack1', 'prefer_local': 'true'})
         cluster.start()
 
     def test_alter_rf_and_run_read_repair(self, fixture_set_cluster_settings):

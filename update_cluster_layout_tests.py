@@ -30,6 +30,7 @@ from tools.cluster import new_node, get_group0_members, get_token_ring_members
 from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status, nodetool_gossipinfo
 from tools.data import rows_to_list
 from tools.marks import unmark
+from tools.rackdc import update_properties
 from iptables import IPTable, IPTableRule
 
 
@@ -233,10 +234,7 @@ class TestUpdateClusterLayout(Tester):
         cluster.set_configuration_options(values={'endpoint_snitch': 'GossipingPropertyFileSnitch'})
 
         cluster.populate(3)
-        for node in cluster.nodelist():
-            with open(os.path.join(node.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
-                for line in ["dc={}".format(node.data_center), "rack=rack1", "prefer_local = false"]:
-                    snitch_file.write(line + os.linesep)
+        update_properties(nodes=cluster.nodelist(), properties={'rack': 'rack1', 'prefer_local': 'false'})
 
         cluster.start()
         node1, *_ = cluster.nodelist()
@@ -246,9 +244,7 @@ class TestUpdateClusterLayout(Tester):
             session.execute(cql)
 
         node4 = new_node(cluster)
-        with open(os.path.join(node4.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
-            for line in ["dc={}".format(node4.data_center), "rack=rack2", "prefer_local = false"]:
-                snitch_file.write(line + os.linesep)
+        update_properties(nodes=[node4], properties={'rack': 'rack2', 'prefer_local': 'false'})
 
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
         node4.decommission()
