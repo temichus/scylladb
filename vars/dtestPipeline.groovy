@@ -77,8 +77,8 @@ def call(Map pipelineParams) {
 
             stage('Run Dtest Parallel Cloud Machines') {
                 environment {
-                    AWS_ACCESS_KEY_ID     = credentials('jenkins2-aws-secret-key-id')
-                    AWS_SECRET_ACCESS_KEY = credentials('jenkins2-aws-secret-access-key')
+                    AWS_ACCESS_KEY_ID     = credentials('qa-aws-secret-key-id')
+                    AWS_SECRET_ACCESS_KEY = credentials('qa-aws-secret-access-key')
                     GITHUB_TOKEN = credentials('github-api-access-token')
                 }
                 parallel {

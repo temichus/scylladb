@@ -46,8 +46,8 @@ def cleanWorkSpaceUponRequest(boolean preserveWorkSpace = false, boolean cleanRo
 def checkAndTagAwsInstance (String runningUserID) {
 	// TAG the spot instance with more tags
 		wrap([$class: 'BuildUser']) {
-			withCredentials([string(credentialsId: 'jenkins2-aws-secret-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-			string(credentialsId: 'jenkins2-aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+			withCredentials([string(credentialsId: 'qa-aws-secret-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+			string(credentialsId: 'qa-aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
             sh("""
                 INSTANCE_ID=`curl -s http://169.254.169.254/latest/meta-data/instance-id`
                 REGION_NAME=`curl -s http://169.254.169.254/latest/meta-data/placement/region`

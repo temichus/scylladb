@@ -35,8 +35,8 @@ def downloadArtifactFromS3(Map args) {
 	String targetPath = args.targetPath
 	String sourceUrl = args.sourceUrl
 
-    withCredentials([string(credentialsId: 'jenkins2-aws-secret-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-		string(credentialsId: 'jenkins2-aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+    withCredentials([string(credentialsId: 'qa-aws-secret-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+		string(credentialsId: 'qa-aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
 
         echo "downloading:  ${sourceUrl}/${artifact}"
         sh "aws s3 cp --only-show-errors ${sourceUrl}/${artifact} $targetPath/$artifact"
