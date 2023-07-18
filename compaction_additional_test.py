@@ -1659,7 +1659,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             rand_pks.add(random.randint(-2147483647, 2147483647))
 
         node3 = new_node(self.cluster)
-        node3.start(wait_for_binary_proto=False)
+        node3.start(wait_for_binary_proto=False, wait_other_notice=False)
 
         self.run_prepared_statement(node1, session, insert_statement, rand_pks, 0, synthetic_minutes)
         self._sstable_count_is_equal_or_greater_than_time_windows(node1, synthetic_minutes)

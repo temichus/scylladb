@@ -780,7 +780,7 @@ class TestReplaceAddress(Tester):
         replace_node_host_id = node5_hostid if use_host_id else None
         replace_address = ip5 if not use_host_id else None
         node6.start(wait_for_binary_proto=False, replace_node_host_id=replace_node_host_id,
-                    replace_address=replace_address)
+                    replace_address=replace_address, wait_other_notice=False)
 
         with_replacing_take_write_patch = True
         if with_replacing_take_write_patch:

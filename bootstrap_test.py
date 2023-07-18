@@ -921,7 +921,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         # can't add a new node to cluster if a node stop
         with pytest.raises(RuntimeError, match='The process is dead'):
             node4 = cluster.new_node(4)
-            node4.start(wait_other_notice=True)
+            node4.start(wait_other_notice=False)
 
         logger.info("starting node1 again")
         node1.start(wait_other_notice=True)

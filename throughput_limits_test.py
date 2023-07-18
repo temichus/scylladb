@@ -62,7 +62,7 @@ class TestStreamingLimitThroughput(ThroughputLimitTester):
 
         # add node to start streaming
         node2 = new_node(self.cluster)
-        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=False, wait_for_binary_proto=True)
         node2.watch_log_for("repair - bootstrap_with_repair: finished with keyspace=keyspace1")
         assert node2.grep_log(
             "stream_session - Set streaming bandwidth to 1MB/s"), "Failed to set up streaming bandwidth limit"
