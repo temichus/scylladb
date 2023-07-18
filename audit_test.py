@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import os.path
 import logging
 
@@ -119,6 +120,14 @@ class TestCQLAudit(AuditTester):
         for row in res_list:
             logger.debug('  %s', row)
         return len(res_list)
+
+    @contextmanager
+    def assert_no_audit_entries_were_added(self, session):
+        count_before = self.getAuditEntriesCount(session)
+        yield
+        count_after = self.getAuditEntriesCount(session)
+        assert count_before == count_after, \
+            "audit entries count changed (before: {} after: {})".format(count_before, count_after)
 
     def verify_keyspace(self, audit_settings=None):
         """
