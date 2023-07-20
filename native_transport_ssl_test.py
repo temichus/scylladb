@@ -8,14 +8,14 @@ import pytest
 
 from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable, Cluster
+from ccmlib import common
 
 from dtest_class import Tester, get_ip_from_node, create_ks, create_cf, wait_for
 from tools.files import safe_mkdtemp
 from tools.misc import generate_ssl_stores, is_port_used, revoke_certificate
 from tools.data import putget
 from tools.sslkeygen import wait_for_cert_reload
-from ccmlib import common
-
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
 
@@ -106,12 +106,12 @@ class BaseSslTester(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestNativeTransportSSL(BaseSslTester):
     """
     Native transport integration tests, specifically for ssl and port configurations.
     """
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_connect_to_ssl(self):
         """
@@ -349,7 +349,9 @@ class TestNativeTransportSSL(BaseSslTester):
             cluster.set_configuration_options(ports_conf)
             restart_and_verify_listen_ports(expected_ports=[v for k, v in ports_conf.items() if v not in [0, None]])
 
-    @pytest.mark.skip('require scylladb/scylla#7500, require scylladb/scylla#7783')
+    @pytest.mark.require("scylladb/scylladb#7500")
+    @pytest.mark.require("scylladb/scylladb#7783")
+    @unmark.next_gating
     def test_listen_ports_conf_by_zero(self):
         """
         Test native transport ports configuration, and verify the listening native transport ports after start.
@@ -357,14 +359,16 @@ class TestNativeTransportSSL(BaseSslTester):
         """
         self._listen_ports_conf_template(disable_value=0)
 
-    @pytest.mark.skip('require scylladb/scylla#7500, require scylladb/scylla#7783')
+    @pytest.mark.require("scylladb/scylladb#7500")
+    @pytest.mark.require("scylladb/scylladb#7783")
+    @unmark.next_gating
     def test_listen_ports_conf(self):
         self._listen_ports_conf_template(disable_value=None)
 
 
+@pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestServerEncryption(BaseSslTester):
-
-    # @pytest.mark.require('scylladb/scylladb#14299')
     def test_server_encryption_and_restart_node(self):
         """
         reproducer for https://github.com/scylladb/scylladb/issues/14299
