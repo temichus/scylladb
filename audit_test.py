@@ -1,12 +1,15 @@
 from contextlib import contextmanager
-import os.path
+from dataclasses import dataclass
 import logging
+import os.path
+from typing import Optional, Dict, List, Any
 
 import pytest
 from cassandra import ConsistencyLevel, InvalidRequest, Unauthorized
 from cassandra.query import named_tuple_factory
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodeError
+from cassandra.cluster import Session
 
 from tools.assertions import assert_invalid
 from dtest_class import Tester, create_ks
@@ -60,6 +63,17 @@ class AuditTester(Tester):
         return session
 
 
+@dataclass
+class AuditEntry:
+    category: str
+    statement: str
+    table: str
+    ks: str
+    user: str
+    cl: str
+    error: bool
+
+
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 @pytest.mark.single_node
@@ -88,7 +102,7 @@ class TestCQLAudit(AuditTester):
                            'error', 'keyspace_name', 'operation', 'source', 'table_name', 'username']
         assert list(row._fields) == expected_fields
 
-    def assertAuditRow(self, row, category, statement, table="", ks="ks", user="anonymous", cl="ONE", error=False):
+    def assertAuditRow(self,    row, category, statement, table="", ks="ks", user="anonymous", cl="ONE", error=False):
         self.assertAuditRowFields(row)
         assert row.node == self.cluster.get_node_ip(1)
         assert row.category == category
@@ -128,6 +142,79 @@ class TestCQLAudit(AuditTester):
         count_after = self.getAuditEntriesCount(session)
         assert count_before == count_after, \
             "audit entries count changed (before: {} after: {})".format(count_before, count_after)
+
+    def execute_and_validate_audit_entry(self, session: Session,
+                                         query: Any,
+                                         category: str,
+                                         audit_settings: Dict[str, str] = AuditTester.audit_default_settings,
+                                         table: str = "",
+                                         ks: str = "ks",
+                                         cl: str = "ONE",
+                                         user: str = "anonymous",
+                                         expected_error: Any = None,
+                                         bound_values: Optional[List[Any]] = None,
+                                         expect_new_audit_entry: bool = True,
+                                         expected_operation: str = None,
+                                         session_for_audit_entry_validation: Optional[Session] = None):
+        """
+        Execute a query and validate that an audit entry was added to the audit
+        log table. Use the audit_settings parameter in combination with category
+        to determine if the audit entry should be added or not. If the audit
+        entry is expected, validate that the audit entry's content is as
+        expected.
+        """
+
+        # In some cases, provided session does not have access to the audit
+        # table. In that case, session_for_audit_entry_validation should be
+        # provided.
+        if session_for_audit_entry_validation is None:
+            session_for_audit_entry_validation = session
+
+        if category in audit_settings['audit_categories'].split(',') and expect_new_audit_entry:
+            operation = query if expected_operation is None else expected_operation
+            error = expected_error is not None
+
+            expected_entries = [AuditEntry(category, operation, table, ks, user, cl, error)]
+        else:
+            expected_entries = []
+
+        with self.assert_entries_were_added(session_for_audit_entry_validation,
+                                            expected_entries):
+            if expected_error is None:
+                res = session.execute(query, bound_values)
+            else:
+                assert_invalid(session, query, expected=expected_error)
+                res = None
+
+        return res
+
+    @contextmanager
+    def assert_entries_were_added(self, session: Session, expected_entries: List[AuditEntry]):
+        # Get audit entries before executing the query, to later compare with
+        # audit entries after executing the query.
+        rows_before = self.getAuditLogList(session)
+        set_of_rows_before = set(rows_before)
+        assert len(set_of_rows_before) == len(rows_before), \
+            f"audit table contains duplicate rows: {rows_before}"
+
+        yield
+
+        # Remember audit entries after executing the query.
+        rows_after = self.getAuditLogList(session)
+        set_of_rows_after = set(rows_after)
+        assert len(set_of_rows_after) == len(rows_after), \
+            f"audit table contains duplicate rows: {rows_after}"
+
+        new_rows = rows_after[len(rows_before):]
+        assert set(new_rows) == set_of_rows_after - set_of_rows_before, \
+            f"new rows are not the last rows in the audit table: {rows_after}"
+
+        assert len(new_rows) == len(expected_entries), \
+            f"Expected {len(expected_entries)} new audit entries, but got {len(new_rows)} new entries: {new_rows}"
+
+        for row, entry in zip(new_rows, expected_entries):
+            self.assertAuditRow(row, entry.category, entry.statement,
+                                entry.table, entry.ks, entry.user, entry.cl, entry.error)
 
     def verify_keyspace(self, audit_settings=None):
         """
