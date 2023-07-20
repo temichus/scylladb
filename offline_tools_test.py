@@ -48,6 +48,7 @@ class TestOfflineTools(Tester):
     def verify_nodetool_stderr(self, error):
         assert not self._nodetool_stderr_has_error(error), f"Unexpected nodetool stderr: {error}"
 
+    @pytest.mark.next_gating
     @pytest.mark.single_node
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_sstablelevelreset(self):
@@ -219,6 +220,7 @@ class TestOfflineTools(Tester):
         # let's check sstables were promoted after releveling
         assert max(final_levels) > 1, "Level was not reached"
 
+    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     @pytest.mark.single_node
     def test_sstableverify(self):

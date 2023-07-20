@@ -59,6 +59,7 @@ class SSTableDump(Tester):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 @pytest.mark.single_node
 # disable "uuid_sstable_identifier_enabled", as node.run_sstable2json() uses
 # sstabledump under the hood, but sstabledump is not able to parse the sstable
@@ -143,6 +144,7 @@ class TestSSTableDump(SSTableDump):
         return res
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 @pytest.mark.single_node
 # disable "uuid_sstable_identifier_enabled", as node.run_sstable2json() uses

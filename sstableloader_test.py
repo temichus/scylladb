@@ -359,6 +359,7 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2])
         assert_all(session, f'SELECT key, c1, c3 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
+    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_ignore_missing_one_column_by_drop_table_from_backup(self):
         """
@@ -402,6 +403,7 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2])
         assert_all(session, f'SELECT key, c1, c3 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
+    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_ignore_missing_one_column_by_drop_column_from_backup(self):
         """
@@ -443,6 +445,7 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2])
         assert_all(session, f'SELECT key, c1, c3 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
+    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_ignore_missing_two_column_by_drop_column_from_backup(self):
         """
