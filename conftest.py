@@ -344,8 +344,7 @@ def fixture_require_version(request, fixture_dtest_setup):
                       - enabled : skip tests marked with @pytest.mark.require
                       - disabled : disable @pytest.mark.require decorator and run test (mostly for manual tests)
     """
-    marker = request.node.get_closest_marker('require')
-    if marker is not None:
+    for marker in request.node.iter_markers('require'):
         issue = marker.kwargs.get('require_pattern', next(iter(marker.args), None))
         if DTEST_REQUIRE == "disabled":
             logger.info(f"DTEST_REQUIRE is disabled. Test will be run")
