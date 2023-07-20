@@ -796,3 +796,15 @@ class TestCQLAudit(AuditTester):
                 ks="",
                 user="cassandra"
             )
+
+        # Create a session with the ADMIN category disabled to validate that
+        # the service level statements are not audited in that case.
+        session = self.prepare(user='cassandra', password='cassandra',
+                               audit_settings={'audit_categories': 'AUTH,QUERY,DML,DDL,DCL'},
+                               reload_config=True)
+
+        # Execute previously defined service level statements.
+        # Validate that the audit log does not contain any entries.
+        with self.assert_no_audit_entries_were_added(session):
+            for query in query_sequence:
+                session.execute(query)
