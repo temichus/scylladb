@@ -290,11 +290,13 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         logger.debug('Test finished')
 
+    @pytest.mark.no_boot_speedups
     @pytest.mark.next_gating
     def test_cluster_expansion_with_cdc(self, request, cluster_config):
         self.cluster_expansion_with_cdc_template(request, cluster_size=cluster_config.size,
                                                  replication=cluster_config.replication, with_preimage=False)
 
+    @pytest.mark.no_boot_speedups
     def test_cluster_expansion_with_cdc_and_preimage(self, request, cluster_config):
         self.cluster_expansion_with_cdc_template(request=request, cluster_size=cluster_config.size,
                                                  replication=cluster_config.replication, with_preimage=True)
@@ -341,12 +343,14 @@ class TestCdc(Tester, CDCInitializeHelper):
         logger.debug('Test finished')
 
     @pytest.mark.next_gating
+    @pytest.mark.no_boot_speedups
     # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
     @pytest.mark.scylla_mode('!debug')
     def test_cluster_reduction_with_cdc(self, request, cluster_config):
         self.cluster_reduction_with_cdc_template(request=request, cluster_size=cluster_config.size,
                                                  replication=cluster_config.replication, with_preimage=False)
 
+    @pytest.mark.no_boot_speedups
     def test_cluster_reduction_with_cdc_and_preimage(self, request, cluster_config):
         self.cluster_reduction_with_cdc_template(request=request, cluster_size=cluster_config.size,
                                                  replication=cluster_config.replication, with_preimage=True)
@@ -453,10 +457,12 @@ class TestCdc(Tester, CDCInitializeHelper):
         logger.debug('Test finished')
 
     @pytest.mark.next_gating
+    @pytest.mark.no_boot_speedups
     def test_change_field_type_with_cdc(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication)
 
+    @pytest.mark.no_boot_speedups
     def test_change_field_type_with_cdc_and_preimage(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication, with_preimage=True)
@@ -466,11 +472,13 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.schema_change_template(request, "ALTER TABLE ks.cf ADD c int",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication)
 
+    @pytest.mark.no_boot_speedups
     def test_add_field_with_cdc_and_preimage(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf ADD c int",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication, with_preimage=True)
 
     @pytest.mark.next_gating
+    @pytest.mark.no_boot_speedups
     def test_remove_field_with_cdc(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf DROP c",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication, additional_fields=["c int"])
@@ -512,7 +520,7 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         def check_and_repair():
             node.nodetool('checkAndRepairCdcStreams')
-        logger.debug(f'Running checkAndRepairCdcStreams...')
+        logger.debug('Running checkAndRepairCdcStreams...')
         p = multiprocessing.Process(target=check_and_repair)
         p.start()
 

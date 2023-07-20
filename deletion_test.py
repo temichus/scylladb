@@ -479,6 +479,7 @@ class TestRangeDeletion(Tester):
         assert_all(session=session, query=select_query, expected=data[:lower_index]+data[upper_index:],
                    cl=ConsistencyLevel.ALL, ignore_order=True)
 
+    @pytest.mark.no_boot_speedups
     def test_delete_when_node_stopped(self):
         """
          Task: https://trello.com/c/NHO1Gek9/1583-open-range-tombstones-new-tests-in-dtest

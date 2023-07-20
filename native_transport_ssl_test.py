@@ -406,4 +406,4 @@ class TestServerEncryption(BaseSslTester):
         node1.stop()
         node1.start()
 
-        self._putget(cluster, session)
+        putget(cluster, session)

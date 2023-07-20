@@ -151,6 +151,7 @@ class TestReplaceAddress(Tester):
         # FIXME: when https://github.com/scylladb/scylla/issues/5523 is fixed
         # need to verify that the node doesn't start listening
 
+    @pytest.mark.no_boot_speedups
     def test_replace_node_using_the_same_ip_then_shut_down(self):
         self._template_replace_node_then_shut_down(use_same_ip=True)
 
@@ -206,6 +207,7 @@ class TestReplaceAddress(Tester):
         assert_cs_success(results)
 
     @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    @pytest.mark.no_boot_speedups
     def test_serve_writes_during_bootstrap(self, use_host_id: bool):
         """
         When replacing a node, the new node should serve writes while data is streamed into it, ensuring that when

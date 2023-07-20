@@ -32,7 +32,6 @@ from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, query_c1c2_co
 from tools.cluster import new_node, get_group0_members, get_token_ring_members
 from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status, nodetool_gossipinfo
 from tools.data import rows_to_list
-from tools.marks import unmark
 from tools.rackdc import update_properties
 from iptables import IPTable, IPTableRule
 
@@ -262,6 +261,7 @@ class TestUpdateClusterLayout(Tester):
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
         node4.decommission()
 
+    @pytest.mark.no_boot_speedups
     @pytest.mark.parametrize("test_case", [0, 1, 2], ids=['case_0', 'case_1', 'case_2'])
     def test_simple_add_two_nodes_in_parallel(self, test_case):
         """
@@ -337,7 +337,7 @@ class TestUpdateClusterLayout(Tester):
         # lets check that it detected there was another bootstrapping in progress
         if not late_start:
             logger.debug("Waiting until node3 notices other node was booting")
-            detect_msg = rf"Checking bootstrapping/leaving.* sleep 1 second and check again"
+            detect_msg = r"Checking bootstrapping/leaving.* sleep 1 second and check again"
             expr = '|'.join([detect_msg] + expected_errors)
             res = node3.watch_log_for(expr)
             logger.debug(f"Log messages: {res}")
@@ -782,7 +782,7 @@ class TestUpdateClusterLayout(Tester):
 
         def run():
             query = SimpleStatement("DROP KEYSPACE ks")
-            result = list(session.execute(query))
+            list(session.execute(query))
 
             create_ks(session, 'ks1', rf)
             create_cf(session, 'cf1', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
@@ -798,7 +798,7 @@ class TestUpdateClusterLayout(Tester):
         self.wait_for_node_streaming(node4)
 
         self.ignore_log_patterns += [
-            rf"ks=ks, cf=cf, .*no_such_column_family",
+            r"ks=ks, cf=cf, .*no_such_column_family",
         ]
 
         t = executor.submit(run)
@@ -818,6 +818,7 @@ class TestUpdateClusterLayout(Tester):
         result = list(session.execute(query))
         assert len(result) == 100
 
+    @pytest.mark.no_boot_speedups
     def test_simple_add_new_node_while_schema_changes_with_repair(self):
         """
         Test bootstrapped node sync all data by repair, schema will be
@@ -1393,7 +1394,7 @@ class TestUpdateClusterLayout(Tester):
             node5.watch_log_for(f"Added node=.*{node2.address()} as leaving node, coordinator=.*{node1.address()}")
 
             logger.debug('Wait for node 5 to start to sync data')
-            node5.watch_log_for(f"Started to sync data for removing node")
+            node5.watch_log_for("Started to sync data for removing node")
 
             if kill_coordinator:
                 logger.debug('Stop node1 gently=False')
@@ -1517,6 +1518,7 @@ class TestUpdateClusterLayout(Tester):
     def test_add_new_node_while_add_new_table_before_bootstrapping(self):
         self._add_new_node_while_add_new_table("before")
 
+    @pytest.mark.no_boot_speedups
     def test_add_new_node_while_add_new_table_during_bootstrapping(self):
         self._add_new_node_while_add_new_table("during")
 
@@ -2298,6 +2300,7 @@ class TestUpdateClusterLayout(Tester):
             query_c1c2(session, k, ConsistencyLevel.TWO, ks='ks2')
             query_c1c2(session, k, ConsistencyLevel.THREE, ks='ks3')
 
+    @pytest.mark.no_boot_speedups
     def test_decommission_after_changing_node_ip(self):
         """ Changes to cluster topology after node ip changed"""
 
@@ -2326,7 +2329,7 @@ class TestUpdateClusterLayout(Tester):
                 gs = nodetool_gossipinfo(node)
                 if endpoint in gs:
                     logger.debug(gs[endpoint])
-                    if not "shutdown" in gs[endpoint]['STATUS']:
+                    if "shutdown" not in gs[endpoint]['STATUS']:
                         found |= True
             return not found
 
@@ -2367,7 +2370,7 @@ class TestUpdateClusterLayout(Tester):
                 gs = nodetool_gossipinfo(node)
                 if endpoint in gs:
                     logger.debug(gs[endpoint])
-                    if not "shutdown" in gs[endpoint]['STATUS']:
+                    if "shutdown" not in gs[endpoint]['STATUS']:
                         found |= True
             return not found
 
@@ -2684,7 +2687,7 @@ class TestUpdateClusterLayout(Tester):
         logger.debug("Abort decommission by killing the node")
         node3.stop(gently=False, wait=False)
 
-        if not "left token ring" in log_message:
+        if "left token ring" not in log_message:
             for n in cluster.nodelist():
                 if n != node3:
                     n.watch_log_for(
@@ -2763,7 +2766,7 @@ class TestStopNodeEarly(Tester):
 
         insert_c1c2(session, keys=range(1000), consistency=ConsistencyLevel.ALL)
 
-        logger.debug(f"Restarting node1")
+        logger.debug("Restarting node1")
         node1.stop(wait_other_notice=True)
         mark1 = node1.mark_log()
         other_marks = []
@@ -2789,7 +2792,7 @@ class TestStopNodeEarly(Tester):
         logger.debug(f"Stopping node1 early: gently={gently} wait_other_notice={wait_other_notice}")
         node1.stop(gently=gently, wait_other_notice=wait_other_notice)
 
-        logger.debug(f"Verifying data")
+        logger.debug("Verifying data")
         result = list(session.execute("SELECT * FROM cf"))
         assert len(result) == 1000
 
@@ -2908,13 +2911,13 @@ class TestLargeScaleCluster(Tester):
 
         t.result()
 
-        logger.debug(f"Cleanup on all nodes: starting")
+        logger.debug("Cleanup on all nodes: starting")
         cleanup_futures = []
         for n in cluster.nodelist():
             cleanup_futures.append(executor.submit(n.cleanup))
         for t in cleanup_futures:
             t.result()
-        logger.debug(f"Cleanup on all nodes: done")
+        logger.debug("Cleanup on all nodes: done")
 
         n = keys
         logger.debug(f"Stress: read {n} keys: starting")

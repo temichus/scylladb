@@ -1248,6 +1248,7 @@ class TestNodetool(Tester):
     # TODO: This test should be removed when issue #7811 will be fixed
     @pytest.mark.parametrize("strategy", ['TimeWindowCompactionStrategy', 'SizeTieredCompactionStrategy'])
     @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/14710
+    @pytest.mark.no_boot_speedups
     def test_resetlocalschema_api_issue_7811(self, strategy):
         self.ignore_log_patterns += ['find a column family with UUID']
         cluster = self.cluster

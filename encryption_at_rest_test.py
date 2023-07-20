@@ -610,6 +610,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
         for p in KeyProviderEnum
     ],
         ids=lambda x: x.name)
+    @pytest.mark.no_boot_speedups
     def test_reboot(self, key_provider):
         self._reboot_test(key_provider=key_provider)
 
@@ -785,6 +786,7 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
             self.verify_system_info(session, kp, ks_suffix='encrypt', expect=False)
 
     @unmark.next_gating
+    @pytest.mark.no_boot_speedups
     def test_reboot(self):
         """
         The test is used to reproduce a scylla crash, enable commitlog encryption and reboot.
@@ -806,7 +808,7 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
             # would not add anything
             for node in self.cluster.nodelist()[1:]:
                 logger.debug('Kill node {}, and restart'.format(node.name))
-                node.stop(gently=False)
+                node.stop(gently=False, wait_other_notice=False)
                 # ugh, disable wait_other_notice to avoid 120s timeout.
                 # restarting w. dirty commitlog can be somewhat tardy now.
                 # because of schema commitlog?

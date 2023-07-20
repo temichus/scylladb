@@ -982,6 +982,7 @@ class TestAbortedQueries(CQLTester):
         if not isinstance(cluster, ScyllaCluster):
             node.watch_log_for("Some operations timed out", from_mark=mark, timeout=60)
 
+    @pytest.mark.no_boot_speedups
     def test_remote_query(self):
         """
         Check that a query running on a node other than the coordinator times out

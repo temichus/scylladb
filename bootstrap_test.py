@@ -725,12 +725,15 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         for key in range(10000):
             query_c1c2(session, key, ConsistencyLevel.QUORUM)
 
+    @pytest.mark.no_boot_speedups
     def test_full_cluster_recovery_after_forcibly_stop_3_nodes_rf_3(self):
         self._full_cluster_recovery_after_stop(gently=False, num_of_nodes=3, rf=3)
 
+    @pytest.mark.no_boot_speedups
     def test_full_cluster_recovery_after_gentle_stop_5_nodes_rf_2(self):
         self._full_cluster_recovery_after_stop(gently=True, num_of_nodes=5, rf=2)
 
+    @pytest.mark.no_boot_speedups
     def test_full_cluster_recovery_after_forcibly_stop_4_nodes_rf_1(self):
         self._full_cluster_recovery_after_stop(gently=False, num_of_nodes=4, rf=1)
 
@@ -855,6 +858,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
     # so it's impossible to observe the effects observed in the test.
     @pytest.mark.gossip_only
     @pytest.mark.next_gating
+    @pytest.mark.no_boot_speedups
     def test_smallest_ip_join_late(self):
         """
         The first node has smallest ip in seeds list, it always skips the bootstrap.

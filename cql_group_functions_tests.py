@@ -114,6 +114,7 @@ class TestGroupFunctions(Tester):
             self.create_tables_and_run_group_functions(session=session, table_name=self.table_name,
                                                        single_type=single_type)
 
+    @pytest.mark.no_boot_speedups
     def test_dates_type_group(self):
         session = self.prepare()
         for single_type in self.dates_type_list:

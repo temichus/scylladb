@@ -284,6 +284,7 @@ class TestRepairBasedNodeOperations(Tester):
         for current_node in self.cluster.nodelist():
             current_node.flush()
 
+    @pytest.mark.no_boot_speedups
     def test_disable_rbno(self):
         """
         This test checks that if "--enable-repair-based-node-ops" is False, repair won't be started for all
@@ -296,6 +297,7 @@ class TestRepairBasedNodeOperations(Tester):
         rbnos = RepairBasedNodeOperationsScenarios(tester=self)
         rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops)
 
+    @pytest.mark.no_boot_speedups
     def test_enable_rbno_for_default_operation(self):
         """
         By default, --allowed-repair-based-node-ops is set for all node operations
@@ -311,6 +313,7 @@ class TestRepairBasedNodeOperations(Tester):
 
         rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops, scenarios=rbnos.operations_flow)
 
+    @pytest.mark.no_boot_speedups
     def test_enable_rbno_for_bootstrap(self):
         """
         By default, --allowed-repair-based-node-ops is set for all node operations
@@ -331,6 +334,7 @@ class TestRepairBasedNodeOperations(Tester):
 
         rbnos.run_scenarios(rbno_enabled=enable_repair_based_node_ops, scenarios=rbnos.operations_flow)
 
+    @pytest.mark.no_boot_speedups
     def test_disable_rbno_for_all_operations(self):
         """
         By default, --allowed-repair-based-node-ops is set for all node operations

@@ -1586,6 +1586,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         # window per sstable.
         self._check_sstable_timestamps(node2)
 
+    @pytest.mark.no_boot_speedups
     def test_streaming_on_repair(self):
         [node1, node2], session = self.prepare(2)
         self._create_ks_cl_with_twcs(session, rf=2)
@@ -1663,6 +1664,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
                 node.flush(timeout=180)
                 logger.debug("done flush: t=%d", t)
 
+    @pytest.mark.no_boot_speedups
     def test_twcs_multiple_sstables_during_bootstrap(self):
         synthetic_minutes = 20
         [node1, _], session = self.prepare(2)

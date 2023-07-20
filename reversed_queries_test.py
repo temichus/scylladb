@@ -535,6 +535,7 @@ class TestReversedQueriesSelectorsDuringUpgrade(UpgradeTester, BaseReversedQuery
     upgrade_path = upgrade_test.upgrade_matrix_from_last_release_version
     init_version = upgrade_path[0]
 
+    @pytest.mark.no_boot_speedups
     def test_queries_during_upgrade(self, dtest_config):
         """
         Test that reverse queries work on a mixed cluster

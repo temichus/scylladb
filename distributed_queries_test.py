@@ -46,6 +46,7 @@ class TestDistributedAggregations(Tester):
 
         return node1, session
 
+    @pytest.mark.no_boot_speedups
     def test_distributed_count_all(self):
         """
         Test the new feature flag for enabling parallelized aggregation

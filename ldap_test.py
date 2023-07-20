@@ -281,6 +281,7 @@ class TestLdap(Tester):
             logger.info(f'Finished with {k}')
 
     @unmark.next_gating
+    @pytest.mark.no_boot_speedups
     def test_hard_restart_scylla(self):
         self.prepare()
         self.add_role_to_ldap()

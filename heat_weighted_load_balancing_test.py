@@ -241,6 +241,7 @@ class TestHeatWeightedLB(Tester):
             logger.debug('Cancel stress read')
             thr.cancel()
 
+    @pytest.mark.no_boot_speedups
     def test_heat_weighted_load_balancing_cl_one(self):
         self.run_heat_weighted_load_balancing('ONE')
 

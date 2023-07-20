@@ -206,6 +206,7 @@ class TestMaterializedViews(CommonUtils):
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='decommission', exclude_errors=[
                                                        'mutation_write_timeout_exception'])
 
+    @pytest.mark.no_boot_speedups
     def test_remove_node_during_mv_insert_3_nodes(self):
         """ Test removing node during MV inserts
             Test starts with a starting size 3 and removes one node during inserts into base table that cause to update materialized view as well
@@ -216,6 +217,7 @@ class TestMaterializedViews(CommonUtils):
                                                        'mutation_write_timeout_exception'])
 
     @unmark.next_gating  # stress failing with hints overload: https://github.com/scylladb/scylla-dtest/issues/3372
+    @pytest.mark.no_boot_speedups
     def test_double_node_failure_during_mv_insert_4_nodes(self):
         """ Test stopping 2 nodes during MV inserts
             Test starts with a starting size 4 and stops 2 nodes during inserts into base table that cause to update materialized view as well
@@ -440,6 +442,7 @@ class TestMaterializedViews(CommonUtils):
         assert_row_count(session, 'users_by_first_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
         assert_row_count(session, 'users_by_last_name', exp_res, consistency_level=cl, num_attempts=num_attempts)
 
+    @pytest.mark.no_boot_speedups
     def test_add_dc_during_mv_update(self):
         """ Test expand cluster - add new DC during MV inserts
             Test starts with a starting size: one DCs with 4 nodes, and add new 2 nodes of second DC during update
@@ -741,6 +744,7 @@ class TestMaterializedViews(CommonUtils):
         """ Create 10 materialized views in parallel with a node restart """
         self._mv_populating_from_existing_data_during_changes_test('restart node')
 
+    @pytest.mark.no_boot_speedups
     @pytest.mark.parametrize("enable_repair_based_node_ops", [True, False], ids=["with_rbno", "without_rbno"])
     def test_mv_resurrected_rows_after_decommission_interrupt(self, enable_repair_based_node_ops):
         """
@@ -1013,6 +1017,7 @@ class TestMaterializedViews(CommonUtils):
                                                          mv_name_pref=mv_name_pref, mvs_count=mvs_count)
             assert not failed, f"Unexpectedly found not updated rows in views: {failed}"
 
+    @pytest.mark.no_boot_speedups
     def test_mv_alter_with_synchronous_updates(self):
         """
         Commit: https://github.com/scylladb/scylladb/commit/cb8a67dc98b60919ac9d5bbb6618e17f7d1602c7
@@ -1848,6 +1853,7 @@ class TestMaterializedViews(CommonUtils):
 
         self._add_dc_after_mv_test({'dc1': 1})
 
+    @pytest.mark.no_boot_speedups
     def test_add_node_after_mv(self):
         """
         @jira_ticket CASSANDRA-10978

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 class TestRaftRecoverProcedure(Tester):
 
     @pytest.mark.dtest_full
+    @pytest.mark.no_boot_speedups
     @pytest.mark.parametrize("num_of_nodes", (3, 4, 5))
     def test_raft_recovery_procedure(self, num_of_nodes):
         """Manual Recover Raft procedure

@@ -22,6 +22,7 @@ class RollingUpgradeBase(UpgradeTester):
     @unmark.next_gating  # https://github.com/scylladb/scylla-enterprise/issues/3233
     # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
     @pytest.mark.scylla_mode('!debug')
+    @pytest.mark.no_boot_speedups
     def test_rolling_upgrade(self, dtest_config):
         self.clone_upgrade_path(dtest_config)
 

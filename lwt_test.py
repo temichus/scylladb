@@ -137,6 +137,7 @@ class TestLwt(Tester):
         # scylla_storage_proxy_coordinator_cas_read_unfinished_commit
         # scylla_storage_proxy_coordinator_cas_write_unfinished_commit
 
+    @pytest.mark.no_boot_speedups
     def test_read_round_optimization(self):
         """
          3.5 Ensure read-round-optimization works: update the record using

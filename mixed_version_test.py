@@ -26,6 +26,7 @@ class TestSchemaChanges(UpgradeTester):
     cf = "cf"
 
     @unmark.next_gating  # https://github.com/scylladb/scylla-enterprise/issues/3237
+    @pytest.mark.no_boot_speedups
     def test_schema_and_data_on_mixed_versions_cluster(self, dtest_config):
         """
         After upgrading one of two nodes, create a new table (which will

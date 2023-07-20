@@ -98,6 +98,7 @@ class TestCqlSession(Tester):
         with self.cql_cluster_session(node1, exclusive=True) as session:
             self._test_session_after_node_restart(node2, session)
 
+    @pytest.mark.no_boot_speedups
     def test_data_integrity_with_down_nodes(self):
         num_nodes = 4
         rf = 3

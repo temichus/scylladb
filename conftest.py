@@ -281,7 +281,8 @@ def fixture_dtest_setup(request,
     cassandra_v4_cluster = dtest_config.cassandra_version and dtest_config.cassandra_version >= '4'
 
     if not cassandra_v4_cluster:
-        if request.node.get_closest_marker('single_node'):
+        if request.node.get_closest_marker('single_node') or \
+                not request.node.get_closest_marker('no_boot_speedups'):
             dtest_setup.cluster_options.setdefault('skip_wait_for_gossip_to_settle', 0)
 
         # Reduce waiting time for the nodes to hear from others before joining the ring.

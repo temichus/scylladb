@@ -199,6 +199,7 @@ class UpgradeTester(Tester):
 class BaseTests(UpgradeTester):
     __test__ = False
 
+    @pytest.mark.no_boot_speedups
     def test_cluster_upgrade(self, dtest_config):
         """
         Test upgrade all nodes in the cluster sequentially.
@@ -233,6 +234,7 @@ class BaseTests(UpgradeTester):
 
         session.cluster.shutdown()
 
+    @pytest.mark.no_boot_speedups
     def test_one_node_upgrade(self, dtest_config):
         """
         Test upgrade one node.
@@ -270,6 +272,7 @@ class BaseTests(UpgradeTester):
 
         session.cluster.shutdown()
 
+    @pytest.mark.no_boot_speedups
     def test_upgrade_cluster_nodes_with_twcs(self, dtest_config):
         """
         Test upgrade all nodes in the cluster sequentially.
@@ -393,7 +396,7 @@ class TestUpgradeWithExperimentalRaft(BaseTests):
     def test_one_node_upgrade(self, dtest_config):
         pass
 
-    @pytest.mark.next_gating
+    @pytest.mark.no_boot_speedups
     def test_upgrade_cluster_with_node_different_versions(self, dtest_config: DTestConfig):
         """
         Test scenario:
@@ -429,6 +432,7 @@ class TestUpgradeWithExperimentalRaft(BaseTests):
         self.insert_rows(session, start=100, end=200)
         self.validate_data(session, row_start_index=1, row_end_index=200, flush=True)
 
+    @pytest.mark.no_boot_speedups
     def test_enable_raft_after_upgrade(self, dtest_config: DTestConfig):
         """
         Test scenario:
@@ -447,6 +451,7 @@ class TestUpgradeWithExperimentalRaft(BaseTests):
         self.insert_rows(session, start=100, end=200)
         self.validate_data(session, row_start_index=1, row_end_index=200, flush=True)
 
+    @pytest.mark.no_boot_speedups
     def test_add_node_with_next_raft_enabling_to_upgraded_cluster_with_raft(self, dtest_config: DTestConfig):
         """
         Test scenario:

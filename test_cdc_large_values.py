@@ -145,6 +145,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                           check_oversize_allocation=prepare_statements)
 
     @pytest.mark.parametrize("prepare_statements", [True, False], ids=["prepared_statements", "unprepared_statements"])
+    @pytest.mark.no_boot_speedups
     def test_large_blob_in_map_delta_preimage_full(self, prepare_statements: bool):
         """test map type with large blob
 

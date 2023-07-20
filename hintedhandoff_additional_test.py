@@ -308,6 +308,7 @@ class TestHintedHandoff(Tester):
 
         assert actual_values == expected_values
 
+    @pytest.mark.no_boot_speedups
     def test_hintedhandoff_decom(self, fixture_dtest_setup):
         """
         Test hints draining when node is decommissioned (nodetool decommission).
