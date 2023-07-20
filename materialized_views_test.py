@@ -1,6 +1,7 @@
 import collections
 
 import os
+import subprocess
 import sys
 import time
 import traceback
@@ -3966,6 +3967,168 @@ class TestMaterializedViews(CommonUtils):
         self.eventually(lambda: assert_row_count_in_select(session, get_all, 20, ConsistencyLevel.ALL))
         self.eventually(lambda: assert_row_count_in_select(session2, get_all, 20, ConsistencyLevel.ALL))
 
+    def prepare_schema_for_range_tombstone_tests(self, session, keyspace_name, table_name, mv_name):
+        session.execute(f"CREATE TABLE {table_name} (id int, ck int, v2 int, v3 text, PRIMARY KEY(id, ck))")
+        session.execute(f"CREATE MATERIALIZED VIEW {mv_name} AS SELECT * FROM {table_name} "
+                        "WHERE ck IS NOT NULL  AND v2 is not null PRIMARY KEY (v2, id, ck)")
+        wait_for_view(cluster=self.cluster, session=session, ks=keyspace_name, view=mv_name)
+        session.cluster.control_connection.wait_for_schema_agreement()
+
+        logger.debug('Write initial data 300 rows')
+        for k in range(4):
+            for i in range(300):
+                session.execute(f"INSERT INTO {table_name} (id, ck, v2, v3) VALUES ({k}, {i}, {i}, '{10000 * ' '}')")
+        self.cluster.flush()
+
+    @staticmethod
+    def delete_range(where_clauses, session, table_name):
+        for where_clause in where_clauses:
+            logger.info(f'Delete range data with were clause {where_clause}')
+            session.execute(f"DELETE FROM {table_name} where {where_clause}")
+
+    @staticmethod
+    def delete_keyspace_sstables(node, keyspace_name, mv_name, table_name):
+        logger.debug(f'Delete {keyspace_name} sstables on node "{node.name}"')
+        for tname in [mv_name, table_name]:
+            table_folder = get_node_cf_dir(node=node, ks_name=keyspace_name, cf_name=tname)
+            logger.info(f"Removing SSTables from folder '{table_folder}'")
+            remove_files_in_folder(table_folder)
+
+    @staticmethod
+    def find_view_update_generator_error(node, table_name, mark):
+        errors = node.grep_log_for_errors(from_mark=mark)
+
+        expected_error = f"permit ks.{table_name}:view_update_generator: was not closed before destruction"
+        return [err for err in ["\n".join(err) for err in errors] if expected_error in err]
+
+    @pytest.mark.parametrize("where_clauses", [["id = 0 and ck >= 0"],
+                                               ["id = 0 and ck > 0 and ck < 300"],
+                                               ["id in (0, 1) and ck > 50 and ck < 290"],
+                                               ["id in (0, 1) and ck > 150"],
+                                               ["id = 0 and ck > 250",
+                                                "id in (0, 1) and ck > 250",
+                                                "id in (0, 1) and ck > 200 and ck < 250"]
+                                               ],
+                             ids=["delete_open_range",
+                                  "delete_close_range",
+                                  "delete_close_range_in_few_partitions",
+                                  "delete_open_range_in_few_partitions",
+                                  "run_few_delete_queries"])
+    @pytest.mark.next_gating
+    def test_range_tombstone_and_repair_test(self, where_clauses):
+        """
+        https://github.com/scylladb/scylladb/commit/c25201c1a311cdb23056404947af00c3237fc876
+
+        Reproducer for issue https://github.com/scylladb/scylla-enterprise/issues/3072#issuecomment-1605647790:
+
+        When a base table of a materialized view is updated, the affected rows are also changed in the materialized view.
+        For DELETE statements, many rows can be affected, and so the view update code splits the work into batches.
+        However, this split was not performed correctly when range tombstones were involved.
+        When the view_updating_consumer exceeds its buffer size limit, it flushes the mutation fragment stream in the middle of a partition.
+        But it doesn't take care to maintain range tombstones properly while doing this, and if the buffer limit is exceeded in the middle
+        of a range tombstone, the mutation fragment stream will end with an unclosed range tombstone, which is illegal.
+
+        This test will create range of tombstones by using different where clauses, every time on the new cluster
+        """
+        self.allow_log_errors = True
+        session = self.prepare(rf=2, nodes=2)
+        node1, node2 = self.cluster.nodelist()
+
+        keyspace_name = "ks"
+        table_name = "tombstone_table"
+        mv_name = "tombstone_mv_by_v2"
+        self.prepare_schema_for_range_tombstone_tests(
+            session=session, keyspace_name=keyspace_name, table_name=table_name, mv_name=mv_name)
+
+        self.delete_range(where_clauses=where_clauses, session=session, table_name=table_name)
+
+        logger.debug('Shutdown node2')
+        node2.stop(wait_other_notice=True)
+
+        self.delete_keyspace_sstables(node=node2, keyspace_name=keyspace_name, mv_name=mv_name, table_name=table_name)
+
+        logger.debug('Start node2')
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+        logger.debug('Starting repair on node2')
+        mark = node2.mark_log()
+        try:
+            node2.nodetool(f"repair {keyspace_name}", timeout=60)
+        except subprocess.TimeoutExpired:
+            pass
+
+        found_error = self.find_view_update_generator_error(node=node2, table_name=table_name, mark=mark)
+        assert not found_error, f"Found error during repair: {found_error}"
+
+        node1.stop(wait_other_notice=True)
+        session = self.patient_cql_connection(node2, keyspace_name)
+        logger.debug(f"Validate data in {mv_name} - expected same data as in {table_name}")
+        assert_two_queries_equal_ignore_order(session1=session, query1=f"select id, ck, v2, v3 from {table_name}",
+                                              session2=session, query2=f"select id, ck, v2, v3 from {mv_name}")
+
+        # Validate that tombstones were repaired and rows were deleted
+        for where_clause in where_clauses:
+            assert_none(query=f"select * from {mv_name} where {where_clause} ALLOW FILTERING", session=session)
+
+    @pytest.mark.next_gating
+    def test_range_tombstone_and_repair_multiple_cycles(self):
+        """
+        https://github.com/scylladb/scylladb/commit/c25201c1a311cdb23056404947af00c3237fc876
+
+        Reproducer for issue https://github.com/scylladb/scylla-enterprise/issues/3072#issuecomment-1605647790:
+
+        When a base table of a materialized view is updated, the affected rows are also changed in the materialized view.
+        For DELETE statements, many rows can be affected, and so the view update code splits the work into batches.
+        However, this split was not performed correctly when range tombstones were involved.
+        When the view_updating_consumer exceeds its buffer size limit, it flushes the mutation fragment stream in the middle of a partition.
+        But it doesn't take care to maintain range tombstones properly while doing this, and if the buffer limit is exceeded in the middle
+        of a range tombstone, the mutation fragment stream will end with an unclosed range tombstone, which is illegal.
+
+        This test will run create range of tombstones, delete sstables and repair the node a few times, the same node without
+        recreate a cluster
+        """
+        self.allow_log_errors = True
+        session = self.prepare(rf=2, nodes=2)
+        node1, node2 = self.cluster.nodelist()
+
+        keyspace_name = "ks"
+        table_name = "tombstone_table"
+        mv_name = "tombstone_mv_by_v2"
+        self.prepare_schema_for_range_tombstone_tests(
+            session=session, keyspace_name=keyspace_name, table_name=table_name, mv_name=mv_name)
+
+        for where_clause in ["id = 0 and ck >= 0", "id = 1 and ck > 0 and ck < 300",
+                             "id in (2, 3) and ck > 50 and ck < 150", "id in (2, 3) and ck > 150"]:
+            self.delete_range(where_clauses=[where_clause], session=session, table_name=table_name)
+
+            logger.debug('Shutdown node2')
+            node2.stop(wait_other_notice=True)
+
+            self.delete_keyspace_sstables(node=node2, keyspace_name=keyspace_name,
+                                          mv_name=mv_name, table_name=table_name)
+
+            logger.debug('Start node2')
+            node2.start(wait_other_notice=True, wait_for_binary_proto=True)
+
+            logger.debug('Starting repair on node2')
+            mark = node2.mark_log()
+            try:
+                node2.nodetool(f"repair {keyspace_name}", timeout=60)
+            except subprocess.TimeoutExpired:
+                pass
+
+            found_error = self.find_view_update_generator_error(node=node2, table_name=table_name, mark=mark)
+            assert not found_error, f"Found error during repair: {found_error}"
+
+            node1.stop(wait_other_notice=True)
+            session = self.patient_cql_connection(node2, keyspace_name)
+            logger.debug(f"Validate data in {mv_name} - expected same data as in {table_name}")
+            assert_two_queries_equal_ignore_order(session1=session, query1=f"select id, ck, v2, v3 from {table_name}",
+                                                  session2=session, query2=f"select id, ck, v2, v3 from {mv_name}")
+
+            # Validate that tombstones were repaired and rows were deleted
+            assert_none(query=f"select * from {mv_name} where {where_clause} ALLOW FILTERING", session=session)
+            node1.start(wait_other_notice=True, wait_for_binary_proto=True)
 
 # For read verification
 
