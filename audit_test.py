@@ -26,9 +26,9 @@ class AuditTester(Tester):
     audit_default_settings = {'audit': 'table',
                               'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
                               'audit_keyspaces': 'ks'}
-
-    def prepare(self, ordered=False, create_keyspace=True, use_cache=False, nodes=1, rf=1, protocol_version=None,
-                user=None, password=None, audit_settings=audit_default_settings, **kwargs):
+    def prepare(self, ordered=False, create_keyspace=True, use_cache=False,
+                nodes=1, rf=1, protocol_version=None, user=None, password=None,
+                audit_settings=audit_default_settings, reload_config=False, **kwargs):
         logger.debug(f"Preparing cluster with {nodes} node(s): rf={rf} ordered={ordered} use_cache={use_cache} "
                      f"audit_settings={audit_settings}")
 
@@ -51,6 +51,11 @@ class AuditTester(Tester):
                       'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
                       'permissions_validity_in_ms': 0}
             cluster.set_configuration_options(values=config)
+
+        if reload_config:
+            # The cluster is restarted to reload the config file.
+            cluster.stop()
+            cluster.start(wait_for_binary_proto=True)
 
         if not cluster.nodelist():
             cluster.populate([nodes]).start(wait_for_binary_proto=True)
