@@ -2618,9 +2618,6 @@ class TestUpdateClusterLayout(Tester):
             logger.debug("Node3 is not a voter, it could be removed from cluster with removenode")
             retry_till_success(verification_node.nodetool, f"removenode {garbage_host_id}", timeout=120)
 
-    # The test is current flaky
-    # See https://github.com/scylladb/scylla-dtest/issues/3256
-    @unmark.next_gating
     @pytest.mark.scylla_mode('!debug')
     @pytest.mark.parametrize("log_message,is_removed_from_token_ring",
                              [("left token ring", True),
@@ -2645,8 +2642,10 @@ class TestUpdateClusterLayout(Tester):
             'ring_delay_ms': 3000})
         logger.debug("populating cluster with three nodes")
         cluster: ScyllaCluster = self.cluster
+        debug_mode = cluster.scylla_mode == "debug"
+        nodeops_watchdog_timeout_seconds = 30 if debug_mode else 10
         cluster.set_configuration_options(
-            values={"consistent_cluster_management": True})
+            values={"consistent_cluster_management": True, "nodeops_watchdog_timeout_seconds": nodeops_watchdog_timeout_seconds})
         cluster.populate(3)
         logger.debug("starting cluster")
         cluster.start(wait_other_notice=True)
@@ -2661,11 +2660,20 @@ class TestUpdateClusterLayout(Tester):
         self.verify_group0_and_token_ring_members(node1, expected_num_of_members=3)
 
         logger.debug("Decommission node3 ...")
-        mark = node3.mark_log()
+        marks = {}
+        for node in cluster.nodelist():
+            marks[node] = node.mark_log()
         node3.nodetool("decommission", capture_output=False, wait=False)
-        node3.watch_log_for(log_message, from_mark=mark)
+        node3.watch_log_for(log_message, from_mark=marks[node3])
         logger.debug("Abort decommission by killing the node")
         node3.stop(gently=False, wait=False)
+
+        if not "left token ring" in log_message:
+            for n in cluster.nodelist():
+                if n != node3:
+                    n.watch_log_for(
+                        rf"decommission.*Removed node=.*{node3.address()} as leaving node", timeout=nodeops_watchdog_timeout_seconds*2,
+                        from_mark=marks[n])
 
         self.find_and_clean_garbage_from_group0(node1, node3_hostid, is_removed_from_token_ring)
 
