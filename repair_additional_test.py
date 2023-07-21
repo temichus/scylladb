@@ -3323,3 +3323,54 @@ class TestRepairAdditional(RepairAdditionalBase):
 
             assert_row_count(session=session, table_name=table, expected=rows,
                              consistency_level=ConsistencyLevel.QUORUM)
+
+    def test_repair_compacts_data(self):
+        cluster = self.cluster
+        cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1, node2 = cluster.nodelist()
+
+        session = self.patient_cql_connection(node1)
+        keyspace = 'ks'
+        table = 'tbl'
+        create_ks(session, keyspace, 2)
+        session.execute(
+            f"CREATE TABLE {keyspace}.{table} (pk int, ck int, v int, PRIMARY KEY (pk, ck)) WITH compaction = {{'class': 'NullCompactionStrategy'}}")
+
+        def write_data_to_node1(pk):
+            node2.stop(wait_other_notice=True)
+
+            for ck in range(10):
+                session.execute(f"INSERT INTO {keyspace}.{table} (pk, ck, v) VALUES ({pk}, {ck}, 0)")
+
+            node1.flush()
+
+            session.execute(f"DELETE FROM {keyspace}.{table} WHERE pk = {pk}")
+
+            node1.flush()
+
+            node2.start(wait_other_notice=True)
+
+        write_data_to_node1(0)
+
+        node1_base_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(1),
+                                              metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
+        node1.repair([keyspace, table])
+        self.verify_repair_tx_rx_rows(node_idx=1,
+                                      # with compaction, a single row (the tombstone) is sent over
+                                      expected_tx_row_nr=node1_base_metrics['tx_row_nr'] + 1,
+                                      expected_rx_row_nr=node1_base_metrics['rx_row_nr'],
+                                      list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
+
+        write_data_to_node1(1)
+
+        # Disable compaction on repair
+        session.execute("UPDATE system.config SET value = '0' WHERE name = 'enable_compacting_data_for_streaming_and_repair'")
+
+        node1_base_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(1),
+                                              metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
+        node1.repair([keyspace, table])
+        self.verify_repair_tx_rx_rows(node_idx=1,
+                                      # without compaction, all rows are sent over
+                                      expected_tx_row_nr=node1_base_metrics['tx_row_nr'] + 10,
+                                      expected_rx_row_nr=node1_base_metrics['rx_row_nr'],
+                                      list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
