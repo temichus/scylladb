@@ -2574,7 +2574,8 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
                           rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'
                           r'\(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
-                          r'Operation timed out for ks\.b_index_index - received only 0 responses from 1 CL=ONE']
+                          r'Operation timed out for ks\.b_index_index - received only 0 responses from 1 CL=ONE',
+                          rf'Error applying view update to {node2_ip}']
         self.ignore_log_patterns += exclude_errors
 
         # Perform action on second node
