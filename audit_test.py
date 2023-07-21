@@ -251,36 +251,40 @@ class TestCQLAudit(AuditTester):
         """
         session = self.prepare(create_keyspace=False, audit_settings=audit_settings)
 
-        session.execute(
-            "CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
-        self.assertLastAuditRow(session, "DDL",
-                                "CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true",
-                                match='DDL' in audit_settings['audit_categories'])
+        def execute_and_validate_audit_entry(query, category, **kwargs):
+            return self.execute_and_validate_audit_entry(session, query, category, audit_settings, **kwargs)
 
-        session.execute("USE ks")
-        self.assertLastAuditRow(session, "DML", 'USE "ks"', match='DML' in audit_settings['audit_categories'])
+        execute_and_validate_audit_entry(
+            "CREATE KEYSPACE ks WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true",
+            category="DDL",
+        )
+        execute_and_validate_audit_entry(
+            'USE "ks"',
+            category="DML",
+        )
+        execute_and_validate_audit_entry(
+            "ALTER KEYSPACE ks WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false",
+            category="DDL",
+        )
+        execute_and_validate_audit_entry(
+            "DROP KEYSPACE ks",
+            category="DDL",
+        )
 
-        session.execute(
-            "ALTER KEYSPACE ks WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false")
-        self.assertLastAuditRow(session, "DDL",
-                                "ALTER KEYSPACE ks WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false",
-                                match='DDL' in audit_settings['audit_categories'])
+        # Test that the audit entries are not added if the keyspace is not
+        # specified in the audit_keyspaces setting.
+        keyspaces = audit_settings['audit_keyspaces'].split(',') if 'audit_keyspaces' in audit_settings else []
+        assert "ks2" not in keyspaces
+        query_sequence = [
+            "CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true",
+            'USE "ks2"',
+            "ALTER KEYSPACE ks2 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false",
+            "DROP KEYSPACE ks2",
+        ]
 
-        session.execute("DROP KEYSPACE ks")
-        self.assertLastAuditRow(session, "DDL", "DROP KEYSPACE ks", match='DDL' in audit_settings['audit_categories'])
-        assert_invalid(session, "USE ks", expected=InvalidRequest)
-        self.assertLastAuditRow(session, "DML", "USE ks", match='DML' in audit_settings['audit_categories'])
-
-        count_before = self.getAuditEntriesCount(session)
-        session.execute(
-            "CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
-        session.execute("USE ks2")
-        session.execute(
-            "ALTER KEYSPACE ks2 WITH replication = { 'class' : 'NetworkTopologyStrategy', 'dc1' : 1 } AND DURABLE_WRITES = false")
-        session.execute("DROP KEYSPACE ks2")
-        assert_invalid(session, "USE ks2", expected=InvalidRequest)
-        count_after = self.getAuditEntriesCount(session)
-        assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
+        with self.assert_no_audit_entries_were_added(session):
+            for query in query_sequence:
+                session.execute(query)
 
     def verify_table(self, audit_settings=AuditTester.audit_default_settings):
         """
