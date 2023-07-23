@@ -47,6 +47,10 @@ def call(Map pipelineParams) {
             label generalProperties.targetDtestBuilder
         }
 
+        triggers {
+            cron ( env.JOB_BASE_NAME == "dtest-debug" ? scm.branches[0].name == "master" ? "H 8 * * 0" : "" : "")
+        }
+
         options {
             disableConcurrentBuilds()
             timeout(time: params.TIMEOUT_PARAM, unit: 'HOURS')
