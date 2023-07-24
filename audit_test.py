@@ -307,79 +307,89 @@ class TestCQLAudit(AuditTester):
         """
         session = self.prepare(audit_settings=audit_settings)
 
-        session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
-        self.assertLastAuditRow(session, "DDL", "CREATE TABLE test1 (k int PRIMARY KEY, v1 int)", "test1",
-                                match='DDL' in audit_settings['audit_categories'])
-        session.execute("CREATE TABLE test2 (k int, c1 int, v1 int, PRIMARY KEY (k, c1)) WITH COMPACT STORAGE")
-        self.assertLastAuditRow(session, "DDL",
-                                "CREATE TABLE test2 (k int, c1 int, v1 int, PRIMARY KEY (k, c1)) WITH COMPACT STORAGE",
-                                "test2", match='DDL' in audit_settings['audit_categories'])
+        def execute_and_validate_audit_entry(query, category, **kwargs):
+            return self.execute_and_validate_audit_entry(session, query, category, audit_settings, **kwargs)
 
-        session.execute("ALTER TABLE test1 ADD v2 int")
-        self.assertLastAuditRow(session, "DDL", "ALTER TABLE test1 ADD v2 int", "test1",
-                                match='DDL' in audit_settings['audit_categories'])
+        execute_and_validate_audit_entry(
+            "CREATE TABLE test1 (k int PRIMARY KEY, v1 int)",
+            category="DDL",
+            table="test1",
+        )
+        execute_and_validate_audit_entry(
+            "CREATE TABLE test2 (k int, c1 int, v1 int, PRIMARY KEY (k, c1)) WITH COMPACT STORAGE",
+            category="DDL",
+            table="test2",
+        )
+        execute_and_validate_audit_entry(
+            "ALTER TABLE test1 ADD v2 int",
+            category="DDL",
+            table="test1",
+        )
 
-        for i in range(0, 10):
-            session.execute("INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i))
-            self.assertLastAuditRow(session, "DML", "INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i),
-                                    "test1", match='DML' in audit_settings['audit_categories'])
-            session.execute("INSERT INTO test2 (k, c1, v1) VALUES (%d, %d, %d)" % (i, i, i))
-            self.assertLastAuditRow(session, "DML", "INSERT INTO test2 (k, c1, v1) VALUES (%d, %d, %d)" % (i, i, i),
-                                    "test2", match='DML' in audit_settings['audit_categories'])
+        for table in ["test1", "test2"]:
+            for i in range(0, 10):
+                if table == "test1":
+                    columns = "(k, v1, v2)"
+                else:
+                    columns = "(k, c1, v1)"
 
-        res = sorted(session.execute("SELECT * FROM test1"))
-        assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
-        self.assertLastAuditRow(session, "QUERY", "SELECT * FROM test1", "test1",
-                                match='QUERY' in audit_settings['audit_categories'])
+                execute_and_validate_audit_entry(
+                    f"INSERT INTO {table} {columns} VALUES ({i}, {i}, {i})",
+                    category="DML",
+                    table=f"{table}",
+                )
 
-        res = sorted(session.execute("SELECT * FROM test2"))
-        assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
-        self.assertLastAuditRow(session, "QUERY", "SELECT * FROM test2", "test2",
-                                match='QUERY' in audit_settings['audit_categories'])
+            res = execute_and_validate_audit_entry(
+                f"SELECT * FROM {table}",
+                category="QUERY",
+                table=f"{table}",
+            )
+            assert sorted(rows_to_list(res)) == [[i, i, i] for i in range(0, 10)], res
 
-        session.execute("TRUNCATE test1")
-        self.assertLastAuditRow(session, "DML", "TRUNCATE test1", "test1",
-                                match='DML' in audit_settings['audit_categories'])
-        session.execute("TRUNCATE test2")
-        self.assertLastAuditRow(session, "DML", "TRUNCATE test2", "test2",
-                                match='DML' in audit_settings['audit_categories'])
+            execute_and_validate_audit_entry(
+                f"TRUNCATE {table}",
+                category="DML",
+                table=f"{table}",
+            )
 
-        res = session.execute("SELECT * FROM test1")
-        assert rows_to_list(res) == [], res
-        self.assertLastAuditRow(session, "QUERY", "SELECT * FROM test1", "test1",
-                                match='QUERY' in audit_settings['audit_categories'])
+            res = execute_and_validate_audit_entry(
+                f"SELECT * FROM {table}",
+                category="QUERY",
+                table=f"{table}",
+            )
+            assert rows_to_list(res) == [], res
 
-        res = session.execute("SELECT * FROM test2")
-        assert rows_to_list(res) == [], res
-        self.assertLastAuditRow(session, "QUERY", "SELECT * FROM test2", "test2",
-                                match='QUERY' in audit_settings['audit_categories'])
+            execute_and_validate_audit_entry(
+                f"DROP TABLE {table}",
+                category="DDL",
+                table=f"{table}",
+            )
 
-        session.execute("DROP TABLE test1")
-        self.assertLastAuditRow(session, "DDL", "DROP TABLE test1", "test1",
-                                match='DDL' in audit_settings['audit_categories'])
-        session.execute("DROP TABLE test2")
-        self.assertLastAuditRow(session, "DDL", "DROP TABLE test2", "test2",
-                                match='DDL' in audit_settings['audit_categories'])
+            execute_and_validate_audit_entry(
+                f"SELECT * FROM {table}",
+                category="QUERY",
+                table=f"{table}",
+                expected_error=InvalidRequest,
+                expect_new_audit_entry=False,
+            )
 
-        assert_invalid(session, "SELECT * FROM test1", expected=InvalidRequest)
-        assert_invalid(session, "SELECT * FROM test2", expected=InvalidRequest)
+        # Test that the audit entries are not added if the keyspace is not
+        # specified in the audit_keyspaces setting.
+        keyspaces = audit_settings['audit_keyspaces'].split(',') if 'audit_keyspaces' in audit_settings else []
+        assert "ks2" not in keyspaces
+        query_sequence = [
+            "CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true",
+            "CREATE TABLE ks2.test1 (k int PRIMARY KEY, v1 int)",
+            "ALTER TABLE ks2.test1 ADD v2 int",
+            "INSERT INTO ks2.test1 (k, v1, v2) VALUES (1, 1, 1)",
+            "SELECT * FROM ks2.test1",
+            "TRUNCATE ks2.test1",
+            "DROP TABLE ks2.test1",
+        ]
 
-        count_before = self.getAuditEntriesCount(session)
-        session.execute(
-            "CREATE KEYSPACE ks2 WITH replication = { 'class':'SimpleStrategy', 'replication_factor':1} AND DURABLE_WRITES = true")
-        session.execute("CREATE TABLE ks2.test1 (k int PRIMARY KEY, v1 int)")
-        session.execute("ALTER TABLE ks2.test1 ADD v2 int")
-        for i in range(0, 10):
-            session.execute("INSERT INTO ks2.test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i))
-        res = sorted(session.execute("SELECT * FROM ks2.test1"))
-        assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
-        session.execute("TRUNCATE ks2.test1")
-        res = session.execute("SELECT * FROM ks2.test1")
-        assert rows_to_list(res) == [], res
-        session.execute("DROP TABLE ks2.test1")
-        assert_invalid(session, "SELECT * FROM ks2.test1", expected=InvalidRequest)
-        count_after = self.getAuditEntriesCount(session)
-        assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
+        with self.assert_no_audit_entries_were_added(session):
+            for query in query_sequence:
+                session.execute(query)
 
     def test_audit_keyspace(self):
         self.verify_keyspace(audit_settings=AuditTester.audit_default_settings)
