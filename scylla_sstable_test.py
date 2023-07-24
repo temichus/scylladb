@@ -164,22 +164,34 @@ class TestScyllaSstableDumpataAllDatatypes(CqlshPrepare, ScyllaSstable):
         pp = pprint.PrettyPrinter(indent=2)
         logger.debug(pp.pformat(data_json))
 
-        json_values = self._fetch_data_from_json(data_json)
-        self._compare_data(data, json_values)
+        ex = None
+        for add_z in (True, False):
+            try:
+                json_values = self._fetch_data_from_json(data_json, add_z=add_z)
+                self._compare_data(data, json_values)
+            except AssertionError as e:
+                ex = e
+            else:
+                break
+        else:
+            raise ex
 
-    def _fetch_data_from_json(self, data):
+    def _fetch_data_from_json(self, data, add_z):
         res = list()
         p = list()
         q = list()
         r = dict()
 
         def do_parse(v):
-            # FIXME: sstabledump converts timestamp to string, appending `Z` at the end.
+            # FIXME: sstabledump converts timestamp to string, appending `Z` at the end to be
+            # compliant to ISO 8601, indicating the UTC time.
             # scylla-sstable uses scylla's internal data_type::to_string(), which omits this.
             # This results in dateutil.parser.parse() appending '+000' to the end of the parsed date.
             # We work around this by appending 'z' ourselves here, until this issue is resolved.
-            v = v + 'Z'
+            if add_z:
+                v = v + 'Z'
             return parse(v)
+
         format_val = {'b': lambda v: int(v),
                       'c': lambda v: bytearray.fromhex(v),
                       'd': lambda v: json.loads(v) if type(v) == type(str()) else v,
