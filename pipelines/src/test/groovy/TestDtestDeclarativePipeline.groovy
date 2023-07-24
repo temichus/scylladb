@@ -54,6 +54,8 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
         binding.setVariable('WORKSPACE', '/workspace/')
         binding.setVariable('NODE_NAME', 'Node1')
         binding.setVariable('JOB_NAME', 'job1')
+        addEnvVar('JOB_BASE_NAME', 'job1')
+        helper.registerAllowedMethod('parameterizedCron', [String])
         binding.setVariable('BUILD_TAG', 'build_tag')
         binding.setVariable('NODE_INDEX', '001')
         binding.setVariable('BUILD_USER_ID', 'fruch')
