@@ -579,14 +579,25 @@ class TestCQLAudit(AuditTester):
         """
         session = self.prepare(user='cassandra', password='cassandra')
 
-        session.execute("CREATE USER user1 WITH PASSWORD 'secret'")
-        self.assertLastAuditRow(session, "DCL", "CREATE USER user1 WITH PASSWORD '***'", ks="", user="cassandra")
+        def execute_and_validate_audit_entry(query, category, **kwargs):
+            return self.execute_and_validate_audit_entry(session, query, category,
+                                                         self.audit_default_settings, **kwargs,
+                                                         user="cassandra", ks="")
 
-        session.execute("ALTER USER user1 WITH PASSWORD 'Secret^%$#@!'")
-        self.assertLastAuditRow(session, "DCL", "ALTER USER user1 WITH PASSWORD '***'", ks="", user="cassandra")
-
-        session.execute("DROP USER user1")
-        self.assertLastAuditRow(session, "DCL", "DROP USER user1", ks="", user="cassandra")
+        execute_and_validate_audit_entry(
+            "CREATE USER user1 WITH PASSWORD 'secret'",
+            category="DCL",
+            expected_operation="CREATE USER user1 WITH PASSWORD '***'",
+        )
+        execute_and_validate_audit_entry(
+            "ALTER USER user1 WITH PASSWORD 'Secret^%$#@!'",
+            category="DCL",
+            expected_operation="ALTER USER user1 WITH PASSWORD '***'",
+        )
+        execute_and_validate_audit_entry(
+            "DROP USER user1",
+            category="DCL",
+        )
 
     def test_role_password_masking(self):
         """
