@@ -604,15 +604,25 @@ class TestCQLAudit(AuditTester):
         CREATE ROLE, ALTER ROLE, DROP ROLE statements
         """
         session = self.prepare(user='cassandra', password='cassandra')
+        def execute_and_validate_audit_entry(query, category, **kwargs):
+            return self.execute_and_validate_audit_entry(session, query, category,
+                                                         self.audit_default_settings, **kwargs,
+                                                         user="cassandra", ks="")
 
-        session.execute("CREATE ROLE role1 WITH PASSWORD = 'Secret!@#$'")
-        self.assertLastAuditRow(session, "DCL", "CREATE ROLE role1 WITH PASSWORD = '***'", ks="", user="cassandra")
-
-        session.execute("ALTER ROLE role1 WITH PASSWORD = 'Secret^%$#@!'")
-        self.assertLastAuditRow(session, "DCL", "ALTER ROLE role1 WITH PASSWORD = '***'", ks="", user="cassandra")
-
-        session.execute("DROP ROLE role1")
-        self.assertLastAuditRow(session, "DCL", "DROP ROLE role1", ks="", user="cassandra")
+        execute_and_validate_audit_entry(
+            "CREATE ROLE role1 WITH PASSWORD = 'Secret!@#$'",
+            category="DCL",
+            expected_operation="CREATE ROLE role1 WITH PASSWORD = '***'",
+        )
+        execute_and_validate_audit_entry(
+            "ALTER ROLE role1 WITH PASSWORD = 'Secret^%$#@!'",
+            category="DCL",
+            expected_operation="ALTER ROLE role1 WITH PASSWORD = '***'",
+        )
+        execute_and_validate_audit_entry(
+            "DROP ROLE role1",
+            category="DCL",
+        )
 
     def test_login(self):
         """
