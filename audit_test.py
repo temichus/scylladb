@@ -139,20 +139,6 @@ class TestCQLAudit(AuditTester):
         assert row.table_name == table
         assert row.username == user
 
-    def assertLastAuditRow(self, session, category, statement, table="", ks="ks", user="anonymous", cl="ONE",
-                           error=False, match=True):
-        res_list = self.getAuditLogList(session)
-
-        assert len(res_list) > 0
-        try:
-            logger.debug("last audit row: %s", res_list[-1])
-            self.assertAuditRow(res_list[-1], category, statement, table, ks, user, cl, error)
-            if not match:
-                raise AuditRowMustNotExist(f'row: {res_list[-1]} shouldn\'t match')
-        except AssertionError:
-            if match:
-                raise
-
     def getAuditEntriesCount(self, session):
         res_list = self.getAuditLogList(session)
         logger.debug('Printing audit table content:')
