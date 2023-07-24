@@ -679,14 +679,20 @@ class TestCQLAudit(AuditTester):
             )
         """)
 
-        count_before = self.getAuditEntriesCount(session)
-        query = "INSERT INTO cf (k, c) VALUES (?, ?);"
-        pq = session.prepare(query)
-        count_after = self.getAuditEntriesCount(session)
-        assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
+        with self.assert_no_audit_entries_were_added(session):
+            query = "INSERT INTO cf (k, c) VALUES (?, ?);"
+            pq = session.prepare(query)
 
-        session.execute(pq, ['foo', 4])
-        self.assertLastAuditRow(session, "DML", "INSERT INTO cf (k, c) VALUES (?, ?);", "cf")
+        self.execute_and_validate_audit_entry(
+            session,
+
+            pq,
+            bound_values=['foo', 4],
+
+            category="DML",
+            expected_operation="INSERT INTO cf (k, c) VALUES (?, ?);",
+            table="cf",
+        )
 
     def test_permissions(self):
         """ Test user permissions """
