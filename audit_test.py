@@ -108,7 +108,7 @@ class TestCQLAudit(AuditTester):
 
         return deduplicated_entries
 
-    def getAuditLogList(self, session):
+    def get_audit_log_list(self, session):
         """_summary_
             returns a sorted list of audit log, the logs are sorted by the event times (time-uuid)
             with the node as tie breaker.
@@ -122,13 +122,13 @@ class TestCQLAudit(AuditTester):
         return res_list
 
     # This assert is added just in order to still fail the test if the order of columns is changed, this is an implied assumption
-    def assertAuditRowFields(self, row):
+    def assert_audit_row_fields(self, row):
         expected_fields = ['date', 'node', 'event_time', 'category', 'consistency',
                            'error', 'keyspace_name', 'operation', 'source', 'table_name', 'username']
         assert list(row._fields) == expected_fields
 
-    def assertAuditRow(self,    row, category, statement, table="", ks="ks", user="anonymous", cl="ONE", error=False):
-        self.assertAuditRowFields(row)
+    def assert_audit_row_eq(self, row, category, statement, table="", ks="ks", user="anonymous", cl="ONE", error=False):
+        self.assert_audit_row_fields(row)
         assert row.node == self.cluster.get_node_ip(1)
         assert row.category == category
         assert row.consistency == cl
@@ -139,8 +139,8 @@ class TestCQLAudit(AuditTester):
         assert row.table_name == table
         assert row.username == user
 
-    def getAuditEntriesCount(self, session):
-        res_list = self.getAuditLogList(session)
+    def get_audit_entries_count(self, session):
+        res_list = self.get_audit_log_list(session)
         logger.debug('Printing audit table content:')
         for row in res_list:
             logger.debug('  %s', row)
@@ -148,9 +148,9 @@ class TestCQLAudit(AuditTester):
 
     @contextmanager
     def assert_no_audit_entries_were_added(self, session):
-        count_before = self.getAuditEntriesCount(session)
+        count_before = self.get_audit_entries_count(session)
         yield
-        count_after = self.getAuditEntriesCount(session)
+        count_after = self.get_audit_entries_count(session)
         assert count_before == count_after, \
             "audit entries count changed (before: {} after: {})".format(count_before, count_after)
 
@@ -204,7 +204,7 @@ class TestCQLAudit(AuditTester):
                                   merge_duplicate_rows: bool=True):
         # Get audit entries before executing the query, to later compare with
         # audit entries after executing the query.
-        rows_before = self.getAuditLogList(session)
+        rows_before = self.get_audit_log_list(session)
         set_of_rows_before = set(rows_before)
         assert len(set_of_rows_before) == len(rows_before), \
             f"audit table contains duplicate rows: {rows_before}"
@@ -212,7 +212,7 @@ class TestCQLAudit(AuditTester):
         yield
 
         # Remember audit entries after executing the query.
-        rows_after = self.getAuditLogList(session)
+        rows_after = self.get_audit_log_list(session)
         set_of_rows_after = set(rows_after)
         assert len(set_of_rows_after) == len(rows_after), \
             f"audit table contains duplicate rows: {rows_after}"
@@ -228,8 +228,8 @@ class TestCQLAudit(AuditTester):
             f"Expected {len(expected_entries)} new audit entries, but got {len(new_rows)} new entries: {new_rows}"
 
         for row, entry in zip(new_rows, expected_entries):
-            self.assertAuditRow(row, entry.category, entry.statement,
-                                entry.table, entry.ks, entry.user, entry.cl, entry.error)
+            self.assert_audit_row_eq(row, entry.category, entry.statement,
+                                     entry.table, entry.ks, entry.user, entry.cl, entry.error)
 
     def verify_keyspace(self, audit_settings=None):
         """
