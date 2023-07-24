@@ -692,13 +692,14 @@ class TestCQLAudit(AuditTester):
         """
         Test auditing service level statements - ones that use the ADMIN audit category.
         """
+        audit_settings = {'audit': 'table', 'audit_categories': 'ADMIN'}
         session = self.prepare(user='cassandra', password='cassandra',
-                               audit_settings={'audit': 'table', 'audit_categories': 'ADMIN'})
+                               audit_settings=audit_settings)
 
         # Create role to which a service level can be attached.
         session.execute("CREATE ROLE test_role")
 
-        queries = [
+        query_sequence = [
             "CREATE SERVICE_LEVEL test_service_level WITH SHARES = 1",
 
             "ATTACH SERVICE_LEVEL test_service_level TO test_role",
@@ -715,6 +716,12 @@ class TestCQLAudit(AuditTester):
 
         # Execute previously defined service level statements.
         # Validate that the audit log contains the expected entries.
-        for query in queries:
-            session.execute(query)
-            self.assertLastAuditRow(session, "ADMIN", query, ks="", user="cassandra")
+        for query in query_sequence:
+            self.execute_and_validate_audit_entry(
+                session,
+                query,
+                category="ADMIN",
+                audit_settings=audit_settings,
+                ks="",
+                user="cassandra"
+            )
