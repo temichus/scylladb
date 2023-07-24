@@ -791,7 +791,9 @@ class TestUpdateClusterLayout(Tester):
         t = executor.submit(run)
 
         if enable_repair_based_node_ops:
-            node4.watch_log_for("completed successfully, keyspace=ks")
+            bootstrap_success_msg = 'completed successfully, keyspace=ks'
+            bootstrap_failed_msg = 'sync data for keyspace=ks, status=failed: keyspace does not exist any more'
+            node4.watch_log_for(f"{bootstrap_success_msg}|{bootstrap_failed_msg}")
 
         node4.watch_log_for("Starting listening for CQL clients")
         session = self.patient_cql_connection(node4)
