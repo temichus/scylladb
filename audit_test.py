@@ -635,40 +635,38 @@ class TestCQLAudit(AuditTester):
         """
         Test filtering audit categories
         """
-        session = self.prepare(audit_settings={'audit': 'table', 'audit_categories': 'DML',
-                                               'audit_keyspaces': 'ks'})
-        count_before = self.getAuditEntriesCount(session)
-        session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
-        count_after = self.getAuditEntriesCount(session)
-        assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
+        session = self.prepare(experimental=True, audit_settings={'audit': 'table', 'audit_categories': 'DML',
+                                                                  'audit_keyspaces': 'ks'})
+        def execute_and_validate_audit_entry(query, category, **kwargs):
+            return self.execute_and_validate_audit_entry(session, query, category,
+                                                         self.audit_default_settings, **kwargs)
 
-        session.execute("ALTER TABLE test1 ADD v2 int")
-        count_after = self.getAuditEntriesCount(session)
-        assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
+        with self.assert_no_audit_entries_were_added(session):
+            session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
+            session.execute("ALTER TABLE test1 ADD v2 int")
 
         for i in range(0, 10):
-            session.execute("INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i))
-            self.assertLastAuditRow(session, "DML", "INSERT INTO test1 (k, v1, v2) VALUES (%d, %d, %d)" % (i, i, i),
-                                    "test1")
+            execute_and_validate_audit_entry(
+                f"INSERT INTO test1 (k, v1, v2) VALUES ({i}, {i}, {i})",
+                category="DML",
+                table="test1",
+            )
 
-        count_before = self.getAuditEntriesCount(session)
-        res = sorted(session.execute("SELECT * FROM test1"))
-        assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
-        count_after = self.getAuditEntriesCount(session)
-        assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
+        with self.assert_no_audit_entries_were_added(session):
+            res = sorted(session.execute("SELECT * FROM test1"))
+            assert rows_to_list(res) == [[i, i, i] for i in range(0, 10)], res
 
-        session.execute("TRUNCATE test1")
-        self.assertLastAuditRow(session, "DML", "TRUNCATE test1", "test1")
+        execute_and_validate_audit_entry(
+            "TRUNCATE test1",
+            category="DML",
+            table="test1",
+        )
 
-        count_before = self.getAuditEntriesCount(session)
-        res = session.execute("SELECT * FROM test1")
-        assert rows_to_list(res) == [], res
-        count_after = self.getAuditEntriesCount(session)
-        assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
+        with self.assert_no_audit_entries_were_added(session):
+            res = session.execute("SELECT * FROM test1")
+            assert rows_to_list(res) == [], res
 
-        session.execute("DROP TABLE test1")
-        count_after = self.getAuditEntriesCount(session)
-        assert (count_before == count_after), "count_before is {} and count_after is {}".format(count_before, count_after)
+            session.execute("DROP TABLE test1")
 
     def test_prepare(self):
         """ Test prepare statement """
