@@ -703,17 +703,22 @@ class TestCQLAudit(AuditTester):
         session.execute("INSERT INTO test1 (k, v1) VALUES (1, 1)")
 
         test_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="test", password="test")
+        def execute_and_validate_audit_entry(query, category, **kwargs):
+            return self.execute_and_validate_audit_entry(test_session, query, category,
+                                                         session_for_audit_entry_validation=session,
+                                                         user="test", **kwargs)
 
-        test_session.execute("SELECT * FROM ks.test1")
-        self.assertLastAuditRow(session, "QUERY", "SELECT * FROM ks.test1", table="test1", user="test")
-        try:
-            test_session.execute("INSERT INTO ks.test1 (k, v1) VALUES (2, 2)")
-            assert False, "user `test` query should have failed"
-        except Unauthorized as e:
-            logger.debug(e)
-
-        self.assertLastAuditRow(session, "DML", "INSERT INTO ks.test1 (k, v1) VALUES (2, 2)", table="test1",
-                                user="test", error=True, match=True)
+        execute_and_validate_audit_entry(
+            "SELECT * FROM ks.test1",
+            category="QUERY",
+            table="test1",
+        )
+        execute_and_validate_audit_entry(
+            "INSERT INTO ks.test1 (k, v1) VALUES (2, 2)",
+            category="DML",
+            table="test1",
+            expected_error=Unauthorized,
+        )
 
     def batch_test(self):
         """
