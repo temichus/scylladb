@@ -272,15 +272,11 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
 
         command_execution_time = datetime.now()
-        intended_run_time = command_execution_time + timedelta(minutes=1)
-        backup_task = mgr_cluster.run_backup_command(location_list=[r"s3:{}".format(DESTINATION_BUCKET)],
-                                                     keyspace_list=list(keyspace_table_and_key_range.keys()),
-                                                     cron=[intended_run_time.minute,
-                                                           intended_run_time.hour,
-                                                           r"*",
-                                                           r"*",
-                                                           r"*"]
-                                                     )
+        backup_task = mgr_cluster.run_backup_command(
+            location_list=[r"s3:{}".format(DESTINATION_BUCKET)],
+            keyspace_list=list(keyspace_table_and_key_range.keys()),
+            cron=create_cron_list_from_timedelta(minutes=1),
+        )
         next_run_delta = backup_task.next_run - datetime.now(timezone.utc)
         assert next_run_delta < timedelta(seconds=60), "The next run time is as requested"
 
@@ -910,13 +906,7 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         self.insert_data_from_ranges(healthy_node=node1, keyspace_table_and_key_range={keyspace_name: {"cf1": (1, 10)}})
         location = "s3:{}".format(DESTINATION_BUCKET)
         cron_time_to_run = 1
-        command_execution_time = datetime.now()
-        cron_start_time = [command_execution_time.second,
-                           command_execution_time.minute + cron_time_to_run,
-                           command_execution_time.hour,
-                           "*",
-                           "*",
-                           "*"]
+        cron_start_time = create_cron_list_from_timedelta(minutes=cron_time_to_run)
 
         logger.info(f"Creating a backup task with following values:"
                     f"\nLocation: '{location}"
@@ -1433,3 +1423,9 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
             f'reported {file_status_dict["Missing files"]} files instead of 1'
         assert failing_backup_validate_task.status == TaskStatus.ERROR,\
             "Since there are missing files, the task was supposed to end in failure, but it did not"
+
+
+def create_cron_list_from_timedelta(minutes=0, hours=0):
+    destined_time = datetime.now() + timedelta(hours=hours, minutes=minutes)
+    cron_list = [str(destined_time.minute), str(destined_time.hour), "*", "*", "*"]
+    return cron_list
