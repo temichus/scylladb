@@ -12,6 +12,7 @@ import hashlib
 import logging
 from collections.abc import Mapping
 from ccmlib.utils.version import parse_version
+from pathlib import Path
 
 import pytest
 
@@ -343,3 +344,9 @@ def minimum_scylla_version(version, oss_version, enterprise_version):
         return v >= parse_version(enterprise_version)
     else:
         return v >= parse_version(oss_version)
+
+
+def get_manager_version(install_dir):
+    return subprocess.run([Path(install_dir) / 'sctool', 'version'],
+                          stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, text=True).stdout.split(':')[-1].strip()

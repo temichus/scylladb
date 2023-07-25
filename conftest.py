@@ -25,6 +25,7 @@ from tools.keystore import KeyStore
 from tools.log_utils import log_per_process_data, TestNameFilter
 from tools.env import GITHUB_TOKEN, DTEST_REQUIRE
 from tools.marks import get_version, is_enterprise, scylla_mode, UnmarkedLocals
+from tools.misc import get_manager_version
 from collect_test_info import ElkTestHistory
 
 logger = logging.getLogger(__name__)
@@ -599,6 +600,17 @@ def configure_es(request: pytest.FixtureRequest, dtest_config):
             k.lower(): v for k, v in os.environ.items() if k.startswith("BUILD_")
         }
         elk_reporter.session_data.update(**jenkins_build_data)
+
+
+@pytest.fixture(scope='function', autouse=True)
+def report_test_data(request: pytest.FixtureRequest, fixture_dtest_setup):
+    if elk_reporter := request.getfixturevalue("elk_reporter"):
+        test_data = {}
+
+        if request.node.get_closest_marker('scylla_manager'):
+            test_data["MANAGER_VERSION"] = get_manager_version(fixture_dtest_setup.prepare_scylla_manager())
+
+        elk_reporter.test_data.update(**test_data)
 
 
 def check_issue_closed(pattern, collect_require=False):
