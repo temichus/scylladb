@@ -1505,6 +1505,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
                           rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
                           rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::mutation_write_timeout_exception \(Operation timed out for {keyspace_name}.{index_name}_index - received only 0 responses from 1 CL=ONE.\)',
                           rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception \(Operation failed for {keyspace_name}.{index_name}_index - received 0 responses and 1 failures from 1 CL=ONE.\)',
+                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception \(abort requested\)',
                           ]
         self.ignore_log_patterns += exclude_errors
 
