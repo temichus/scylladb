@@ -112,6 +112,7 @@ mkdir -p ${HOME}/.ccm
 mkdir -p ${HOME}/.certs
 chmod 0700 ${HOME}/.certs
 mkdir -p ${HOME}/.config
+mkdir -p ${HOME}/.config/systemd/user
 mkdir -p ${HOME}/.cassandra
 mkdir -p ${HOME}/.cache/pre-commit
 mkdir -p ${HOME}/.docker
