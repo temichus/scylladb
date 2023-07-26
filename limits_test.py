@@ -27,7 +27,7 @@ LIMIT_2GB = (2 * 1024 * 1024 * 1024)
 
 MAX_KEY_SIZE = LIMIT_64_K
 MAX_BLOB_SIZE = 8388608  # theoretical limit LIMIT_2GB
-MAX_COLUMNS = LIMIT_64_K
+MAX_COLUMNS = 256 * 1024
 MAX_TUPLES = LIMIT_32K
 MAX_BATCH_SIZE = 50 * 1024
 MAX_CELLS_COLUMNS = LIMIT_32K
@@ -193,7 +193,7 @@ class TestLimits(Tester):
     def test_max_columns_and_query_parameters(self):
         cluster = self.prepare()
         cluster.set_configuration_options(values={'query_tombstone_page_limit': 9999999})
-        cluster.populate(1).start()
+        cluster.populate(1).start(jvm_args=['--memory', '4G'])
         node = cluster.nodelist()[0]
 
         session = self.patient_cql_connection(node)
@@ -202,7 +202,7 @@ class TestLimits(Tester):
 
         count = 1
         is_raft = node.grep_log("starting Raft Group Registry service")
-        limit = MAX_COLUMNS / 2 if is_raft else MAX_COLUMNS
+        limit = MAX_COLUMNS / 8 if is_raft else MAX_COLUMNS
         expect_failure = r"Command size \d+ is greater than the configured limit \d+" if is_raft else \
             r"Mutation of \d+ bytes is too large for the maximum size of \d+"
         for i in range(int(math.log(MAX_COLUMNS, 2))):
