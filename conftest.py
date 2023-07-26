@@ -4,7 +4,7 @@ import platform
 import copy
 import inspect
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pkg_resources import parse_version
 import argparse
 
@@ -433,6 +433,9 @@ def pytest_collection_modifyitems(items, config):
         else:
             elk_reporter.slices_query_fmt = '(name:"{}")  AND (outcome: passed) AND (build_tag: debug)'
 
+        end_date = datetime.utcnow().date()
+        start_date = end_date - timedelta(days=30)
+        elk_reporter.slices_query_fmt += f' AND timestamp:[{start_date.isoformat()} TO {end_date.isoformat()}]'
     if collect_require:
         print("List of test with require mark:")
 
