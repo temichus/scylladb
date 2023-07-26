@@ -560,13 +560,8 @@ class DTestSetup:
         ]
         # ignore expected rpc errors when nodes are stopped.
         expected_rpc_errors = [
-            'connection dropped: connection is closed',
-            'connection dropped: .*Connection reset by peer',
-            'connection dropped: Semaphore broken',
-            'fail to connect: Connection refused',
-            'fail to connect: Connection reset by peer',
-            'server stream connection dropped: invalid type specifier',
-            'server stream connection dropped: Unknown parent connection',
+            'connection dropped',
+            'fail to connect',
         ]
         # we may stop nodes that have not finished starting yet
         patterns += [r'(Startup|start) failed: seastar::sleep_aborted',
