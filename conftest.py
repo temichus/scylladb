@@ -5,7 +5,7 @@ import copy
 import inspect
 import re
 from datetime import datetime, timedelta
-from pkg_resources import parse_version
+from packaging.version import Version
 import argparse
 
 import pytest
@@ -577,7 +577,7 @@ def pytest_collection_finish(session: pytest.Session):
 
 def pytest_markeval_namespace():
     return dict(
-        parse_version=parse_version,
+        Version=Version,
         get_version=get_version,
     )
 

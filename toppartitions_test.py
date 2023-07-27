@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from cassandra.concurrent import execute_concurrent_with_args
-from pkg_resources import parse_version
+from packaging.version import Version
 from ccmlib.node import NodetoolError
 from ccmlib.scylla_cluster import ScyllaCluster
 from dtest_class import Tester, create_ks
@@ -112,7 +112,7 @@ class TestTopPartitions(Tester):
         """
         node, session = self.prepare_cluster_with_ks_cfs_c1c2(['keyspace1'], [['columnfamily1']])
         # no requied parameters
-        if not isinstance(self.cluster, ScyllaCluster) or parse_version(self.cluster.version()) <= parse_version("4.5"):
+        if not isinstance(self.cluster, ScyllaCluster) or Version(self.cluster.version()) <= Version("4.5"):
             # allowed since scylladb/scylla-tools-java@a8a3f6cb13367ddac06e4fe6c4fccf019f314bfb
             logger.debug("Running toppartitions with no parameters - expected to fail")
             details = self.run_toppartitions_with_wrong_parameters(node)

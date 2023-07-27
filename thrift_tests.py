@@ -4,7 +4,7 @@ import struct
 import time
 import uuid
 from threading import Thread
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from ccmlib.scylla_cluster import ScyllaCluster
 
@@ -1703,20 +1703,20 @@ class TestMutations(ThriftTester):
         if fixture_cluster.dtest_config.is_enterprise:
             expected = ['Keyspace1', 'Keyspace2', 'system', 'system_auth',
                         'system_distributed', 'system_schema', 'system_traces']
-            if parse_version(self.cluster.version()) >= parse_version('2022.1'):
+            if Version(self.cluster.version()) >= Version('2022.1'):
                 expected += ['system_distributed_everywhere']
-            if parse_version(self.cluster.version()) >= parse_version('2023.1'):
+            if Version(self.cluster.version()) >= Version('2023.1'):
                 expected += ['system_replicated_keys']
             assert sorted(ksnames) == sorted(expected)
         elif isinstance(self.cluster, ScyllaCluster) \
-                and parse_version(self.cluster.version()) >= parse_version('4.6.dev'):
+                and Version(self.cluster.version()) >= Version('4.6.dev'):
             expected = ['Keyspace2', 'Keyspace1', 'system', 'system_auth', 'system_distributed',
                         'system_distributed_everywhere', 'system_schema', 'system_traces']
             assert sorted(ksnames) == sorted(expected)
-        elif parse_version(self.cluster.version()) >= parse_version('3.0'):
+        elif Version(self.cluster.version()) >= Version('3.0'):
             # ['Keyspace2', 'Keyspace1', 'system', 'system_traces', 'system_schema', 'system_auth', 'system_distributed']
             assert len(kspaces) == 7, [x.name for x in kspaces]
-        elif parse_version(self.cluster.version()) >= parse_version('2.2'):
+        elif Version(self.cluster.version()) >= Version('2.2'):
             # Scylla does not have system_auth or system_distributed keyspaces.
             assert len(kspaces) == 5, [x.name for x in kspaces]  # ['Keyspace2', 'Keyspace1', 'system', 'system_traces']
         else:

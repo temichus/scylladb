@@ -10,7 +10,7 @@ from dtest_class import Tester, create_ks, get_ip_from_node, create_cf
 from tools.data import insert_c1c2
 from threading import Event
 from tools.assertions import assert_invalid
-from pkg_resources import parse_version
+from packaging.version import Version
 from tools.funcutils import assertDictContainsSubset
 
 
@@ -439,7 +439,7 @@ class TestVariousNotifications(Tester):
         def read_failure_query():
             assert_invalid(
                 session, SimpleStatement("select * from test where id in (1,2,3,4,5)", consistency_level=CL.ALL),
-                expected=ReadTimeout if parse_version(self.cluster.version()) < parse_version('3.0') else ReadFailure,
+                expected=ReadTimeout if Version(self.cluster.version()) < Version('3.0') else ReadFailure,
             )
 
         read_failure_query()
@@ -458,7 +458,7 @@ class TestVariousNotifications(Tester):
         def range_request_failure_query():
             assert_invalid(
                 session, SimpleStatement("select * from test", consistency_level=CL.ALL),
-                expected=ReadTimeout if parse_version(self.cluster.version()) < parse_version('3.0') else ReadFailure,
+                expected=ReadTimeout if Version(self.cluster.version()) < Version('3.0') else ReadFailure,
             )
 
         range_request_failure_query()

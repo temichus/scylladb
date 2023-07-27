@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
-from pkg_resources import parse_version
+from packaging.version import Version
 
 import requests
 import pytest
@@ -736,7 +736,7 @@ class TestUpdateClusterLayout(Tester):
         # Configuring allowed_repair_based_node_ops is required
         # since scylladb/scylla@97bb2e47ff004b32b2d72f1b1f085710a14cb4e2
         if enable_repair_based_node_ops and \
-           parse_version(self.cluster.version()) >= parse_version('4.6.dev'):
+           Version(self.cluster.version()) >= Version('4.6.dev'):
             config_options.update({'allowed_repair_based_node_ops': ','.join(ops)})
         return config_options
 

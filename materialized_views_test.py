@@ -10,7 +10,7 @@ from functools import partial
 from multiprocessing import Process, Queue, cpu_count, Lock
 
 import pytest
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from concurrent.futures import ThreadPoolExecutor
 from cassandra import ConsistencyLevel, WriteFailure, consistency_value_to_name
@@ -2345,7 +2345,7 @@ class TestMaterializedViews(CommonUtils):
         )
 
         # Rename a column with an injected byteman rule to kill the node after the first schema update
-        script_version = '4x' if parse_version(self.cluster.version()) >= parse_version('4.0') else '3x'
+        script_version = '4x' if Version(self.cluster.version()) >= Version('4.0') else '3x'
         node.byteman_submit(['./byteman/merge_schema_failure_{}.btm'.format(script_version)])
         with pytest.raises(NoHostAvailable):
             session.execute("ALTER TABLE users RENAME username TO user")

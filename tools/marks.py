@@ -1,6 +1,7 @@
-import pkg_resources
-from pkg_resources import parse_version, DistributionNotFound, VersionConflict
+import importlib.metadata
 
+from packaging.version import Version
+from packaging.requirements import Requirement
 import pytest
 from _pytest.mark import MarkDecorator, Mark
 from cassandra.connection import DRIVER_NAME, DRIVER_VERSION
@@ -19,7 +20,7 @@ def get_version(cassandra_dir, scylla_version):
     dtest_config = DTestConfig()
     dtest_config.cassandra_dir = cassandra_dir
     dtest_config.scylla_version = scylla_version
-    return parse_version(dtest_config.get_version_from_build())
+    return Version(dtest_config.get_version_from_build())
 
 
 def is_enterprise(cassandra_dir, scylla_version):
@@ -31,7 +32,7 @@ def is_enterprise(cassandra_dir, scylla_version):
 
 def enterprise_only_param(*param):
     return pytest.param(*param, marks=pytest.mark.skipif("get_version(config.getvalue('--cassandra-dir'), "
-                                                         "config.getvalue('--scylla-version')) < parse_version('2018.1')",
+                                                         "config.getvalue('--scylla-version')) < Version('2018.1')",
                                                          reason=f"'{param}' is supported only in enterprise version"))
 
 
@@ -62,11 +63,9 @@ def required_driver(*driver_requirements):
             return False
         if 'scylla' not in requirement and is_scylla_driver:
             return False
-        try:
-            pkg_resources.require(requirement)
-            return True
-        except (DistributionNotFound, VersionConflict):
-            return False
+        req = Requirement(requirement)
+        pkg_version = importlib.metadata.version(req.name)
+        return pkg_version in req.specifier
 
     outcome = check_requirement(driver_requirements[0])
     for req in driver_requirements[1:]:

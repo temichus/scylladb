@@ -5,7 +5,7 @@ import logging
 from collections import defaultdict, OrderedDict
 from typing import Tuple
 import pytest
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
@@ -597,7 +597,7 @@ class TestSnitchConfigurationUpdate(Tester):
         # check node not running
         logger.debug("Waiting for error message in log file")
 
-        if parse_version(cluster.version()) >= parse_version('2.2'):
+        if Version(cluster.version()) >= Version('2.2'):
             node1.watch_log_for("Cannot start node if snitch's rack(.*) differs from previous rack(.*)",
                                 from_mark=mark)
         else:

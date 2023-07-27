@@ -15,7 +15,7 @@ import uuid
 from cassandra.cluster import Session
 from cassandra.concurrent import execute_concurrent_with_args
 from concurrent.futures import ThreadPoolExecutor
-from pkg_resources import parse_version
+from packaging.version import Version
 from threading import Thread, Event
 from typing import List, Tuple, Dict, Any
 
@@ -598,22 +598,22 @@ class TestArchiveCommitlog(SnapshotTester):
 
         snapshot_dir = make_snapshot(node1, ks='ks', cf='cf', name='basic')
 
-        if parse_version(self.cluster.version()) >= parse_version('3.0'):
+        if Version(self.cluster.version()) >= Version('3.0'):
             system_ks_snapshot_dir = make_snapshot(node1, ks='system_schema', cf='keyspaces', name='keyspaces')
         else:
             system_ks_snapshot_dir = make_snapshot(node1, ks='system', cf='schema_keyspaces', name='keyspaces')
 
-        if parse_version(self.cluster.version()) >= parse_version('3.0'):
+        if Version(self.cluster.version()) >= Version('3.0'):
             system_col_snapshot_dir = make_snapshot(node1, ks='system_schema', cf='columns', name='columns')
         else:
             system_col_snapshot_dir = make_snapshot(node1, ks='system', cf='schema_columns', name='columns')
 
-        if parse_version(self.cluster.version()) >= parse_version('3.0'):
+        if Version(self.cluster.version()) >= Version('3.0'):
             system_ut_snapshot_dir = make_snapshot(node1, ks='system_schema', cf='types', name='usertypes')
         else:
             system_ut_snapshot_dir = make_snapshot(node1, ks='system', cf='schema_usertypes', name='usertypes')
 
-        if parse_version(self.cluster.version()) >= parse_version('3.0'):
+        if Version(self.cluster.version()) >= Version('3.0'):
             system_cfs_snapshot_dir = make_snapshot(node1, ks='system_schema', cf='tables', name='cfs')
         else:
             system_cfs_snapshot_dir = make_snapshot(node1, ks='system', cf='schema_columnfamilies', name='cfs')
@@ -660,22 +660,22 @@ class TestArchiveCommitlog(SnapshotTester):
             node1, = cluster.nodelist()
 
             # Restore schema from snapshots:
-            if parse_version(self.cluster.version()) >= parse_version('3.0'):
+            if Version(self.cluster.version()) >= Version('3.0'):
                 self.restore_snapshot(system_ks_snapshot_dir, node1, 'system_schema', 'keyspaces', 'keyspaces')
             else:
                 self.restore_snapshot(system_ks_snapshot_dir, node1, 'system', 'schema_keyspaces', 'keyspaces')
 
-            if parse_version(self.cluster.version()) >= parse_version('3.0'):
+            if Version(self.cluster.version()) >= Version('3.0'):
                 self.restore_snapshot(system_col_snapshot_dir, node1, 'system_schema', 'columns', 'columns')
             else:
                 self.restore_snapshot(system_col_snapshot_dir, node1, 'system', 'schema_columns', 'columns')
 
-            if parse_version(self.cluster.version()) >= parse_version('3.0'):
+            if Version(self.cluster.version()) >= Version('3.0'):
                 self.restore_snapshot(system_ut_snapshot_dir, node1, 'system_schema', 'types', 'usertypes')
             else:
                 self.restore_snapshot(system_ut_snapshot_dir, node1, 'system', 'schema_usertypes', 'usertypes')
 
-            if parse_version(self.cluster.version()) >= parse_version('3.0'):
+            if Version(self.cluster.version()) >= Version('3.0'):
                 self.restore_snapshot(system_cfs_snapshot_dir, node1, 'system_schema', 'tables', 'cfs')
             else:
                 self.restore_snapshot(system_cfs_snapshot_dir, node1, 'system', 'schema_columnfamilies', 'cfs')

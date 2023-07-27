@@ -14,7 +14,7 @@ from dtest_setup import DTestSetup
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping, require
 from tools.data import insert_c1c2
-from pkg_resources import parse_version
+from packaging.version import Version
 
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class TestIncRepair(Tester):
         node3.start(wait_other_notice=True)
         time.sleep(3)
 
-        if parse_version(cluster.version()) >= parse_version("2.2"):
+        if Version(cluster.version()) >= Version("2.2"):
             node3.repair()
         else:
             node3.nodetool("repair -par -inc")
@@ -86,7 +86,7 @@ class TestIncRepair(Tester):
         logger.debug("restarting and repairing node 3")
         node3.start(wait_for_binary_proto=True)
 
-        if parse_version(cluster.version()) >= parse_version("2.2"):
+        if Version(cluster.version()) >= Version("2.2"):
             node3.repair()
         else:
             node3.nodetool("repair -par -inc")
@@ -107,7 +107,7 @@ class TestIncRepair(Tester):
         logger.debug("start and repair node 2")
         node2.start(wait_for_binary_proto=True)
 
-        if parse_version(cluster.version()) >= parse_version("2.2"):
+        if Version(cluster.version()) >= Version("2.2"):
             node2.repair()
         else:
             node2.nodetool("repair -par -inc")
@@ -145,7 +145,7 @@ class TestIncRepair(Tester):
         node2.flush()
         node1.start(wait_for_binary_proto=True)
 
-        if parse_version(cluster.version()) >= parse_version("2.2"):
+        if Version(cluster.version()) >= Version("2.2"):
             node1.repair()
         else:
             node1.nodetool("repair -par -inc")
@@ -197,7 +197,7 @@ class TestIncRepair(Tester):
 
         node3.start(wait_for_binary_proto=True)
 
-        if parse_version(cluster.version()) >= parse_version("2.2"):
+        if Version(cluster.version()) >= Version("2.2"):
             node3.repair()
         else:
             node3.nodetool("repair -par -inc")
@@ -233,7 +233,7 @@ class TestIncRepair(Tester):
         logger.debug("Waiting compactions to finish")
         cluster.wait_for_compactions()
 
-        if parse_version(self.cluster.version()) >= parse_version('2.2'):
+        if Version(self.cluster.version()) >= Version('2.2'):
             logger.debug("Repairing node1")
             node1.nodetool("repair")
             logger.debug("Repairing node2")
@@ -285,7 +285,7 @@ class TestIncRepair(Tester):
         logger.debug("Flushing nodes")
         cluster.flush()
 
-        if parse_version(self.cluster.version()) >= parse_version('2.2'):
+        if Version(self.cluster.version()) >= Version('2.2'):
             logger.debug("Repairing node 1")
             node1.nodetool("repair")
             logger.debug("Repairing node 2")

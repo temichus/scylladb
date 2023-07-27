@@ -1,6 +1,6 @@
 import subprocess
 import os
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from cassandra.connection import DRIVER_NAME, DRIVER_VERSION
 
@@ -98,7 +98,7 @@ class DTestConfig:
     @property
     def is_enterprise(self):
         version = self.get_version_from_build()
-        return parse_version(version) > parse_version("2018.1") if version else False
+        return Version(version) > Version("2018.1") if version else False
 
     @property
     def driver_version(self):

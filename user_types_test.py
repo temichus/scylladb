@@ -4,7 +4,7 @@ import re
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from dtest_class import Tester, create_ks
 from tools.assertions import assert_invalid, assert_all, assert_row_count
@@ -427,7 +427,7 @@ class TestUserTypes(Tester):
               SELECT * from person_likes where name = {first:'Nero', middle: 'Claudius Caesar Augustus', last: 'Germanicus'};
             """
 
-        if parse_version(self.cluster.version()) < parse_version("3.0"):
+        if Version(self.cluster.version()) < Version("3.0"):
             assert_invalid(session, stmt, 'No secondary indexes on the restricted columns support the provided operators')
         else:
             assert_invalid(session, stmt, 'No supported secondary index found for the non primary key columns restrictions')

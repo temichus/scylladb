@@ -2,7 +2,7 @@ import logging
 
 import time
 from collections import namedtuple
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
@@ -137,17 +137,17 @@ class TestRepair(Tester):
         if cf is None:
             cf = []
         opts = []
-        version = parse_version(self.cluster.version())
+        version = Version(self.cluster.version())
         # since version 2.2, default is parallel, otherwise it's sequential
         if sequential:
-            if version >= parse_version('2.2'):
+            if version >= Version('2.2'):
                 opts += ['-seq']
         else:
-            if version < parse_version('2.2'):
+            if version < Version('2.2'):
                 opts += ['-par']
 
         # test with full repair
-        if version >= parse_version('2.2'):
+        if version >= Version('2.2'):
             opts += ['-full']
         if ks:
             opts += [ks]

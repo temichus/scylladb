@@ -1,8 +1,8 @@
 import logging
 import pytest
 import re
-from pkg_resources import parse_version
 
+from packaging.version import Version
 from cassandra.concurrent import execute_concurrent_with_args
 
 from dtest_class import Tester, create_ks
@@ -100,7 +100,7 @@ class TestConfiguration(Tester):
         # Now extract the param list
         params = ''
 
-        if parse_version(self.cluster.version()) < parse_version('3.0'):
+        if Version(self.cluster.version()) < Version('3.0'):
             if 'sstable_compression' in result:
                 params = result
         else:
@@ -110,8 +110,8 @@ class TestConfiguration(Tester):
         assert params is not '', "Looking for the string 'sstable_compression', but could not find it in {str}".format(
             str=result)
 
-        chunk_string = "chunk_length_kb" if parse_version(
-            self.cluster.version()) < parse_version('3.0') else "chunk_length_in_kb"
+        chunk_string = "chunk_length_kb" if Version(
+            self.cluster.version()) < Version('3.0') else "chunk_length_in_kb"
         chunk_length = int(re.search(r"{chunk}.*?:.*?'(\d*?)'".format(chunk=chunk_string), result).groups()[0])
 
         assert chunk_length == value, "Expected chunk_length: %s.  We got: %s" % (value, chunk_length)

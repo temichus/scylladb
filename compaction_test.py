@@ -9,7 +9,7 @@ from typing import Dict
 
 import pytest
 from cassandra import ConsistencyLevel
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from ccmlib.node import NodetoolError
 from dtest_class import Tester, create_ks, is_autocompaction_enabled, retry_till_success
@@ -1005,7 +1005,7 @@ class TestCompaction(Tester):
         return node
 
     def skip_if_no_major_compaction(self):
-        if parse_version(self.cluster.version()) < parse_version('2.2') and self.strategy == 'LeveledCompactionStrategy':
+        if Version(self.cluster.version()) < Version('2.2') and self.strategy == 'LeveledCompactionStrategy':
             pytest.skip('major compaction not implemented for LCS in this version of Cassandra')
 
     def last_compaction_timestamp(self, session, cf_name, since_timestamp=None):

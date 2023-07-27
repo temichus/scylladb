@@ -4,7 +4,7 @@ import random
 import ctypes
 import logging
 from collections import Counter
-from pkg_resources import parse_version
+from packaging.version import Version
 
 import pytest
 from cassandra import ConsistencyLevel as CL
@@ -2592,10 +2592,10 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
         assert_invalid(
             self.session,
             SimpleStatement("select * from paging_test", fetch_size=1000, consistency_level=CL.ALL),
-            expected=ReadTimeout if parse_version(self.cluster.version()) < parse_version('2.2') else ReadFailure
+            expected=ReadTimeout if Version(self.cluster.version()) < Version('2.2') else ReadFailure
         )
 
-        if parse_version(self.cluster.version()) < parse_version("3.0"):
+        if Version(self.cluster.version()) < Version("3.0"):
             failure_msg = "Scanned over.* tombstones in test_paging_size.paging_test.* query aborted"
         else:
             failure_msg = "Scanned over.* tombstones during query.* query aborted"
