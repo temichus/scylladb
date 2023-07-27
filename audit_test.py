@@ -628,8 +628,21 @@ class TestCQLAudit(AuditTester):
         """
         USER LOGIN
         """
-        session = self.prepare(user='cassandra', password='cassandra', create_keyspace=False)
-        self.assertLastAuditRow(session, "AUTH", "LOGIN", ks="", user="cassandra", cl="")
+        session = self.prepare(user="cassandra", password="cassandra", create_keyspace=False)
+        session.execute("CREATE USER test WITH PASSWORD 'test'")
+
+        expected_audit_entries = [AuditEntry(
+            category="AUTH",
+            statement="LOGIN",
+            user="test",
+            table="",
+            ks="",
+            cl="",
+            error=False
+        )]
+
+        with self.assert_entries_were_added(session, expected_audit_entries):
+            self.prepare(user='test', password='test', create_keyspace=False)
 
     def test_categories(self):
         """
