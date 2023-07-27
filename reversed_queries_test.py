@@ -12,11 +12,14 @@ from cassandra import ReadFailure
 from datahelp import create_rows
 from dtest_class import Tester, create_ks
 from paging_test import PageFetcher, BasePagingTester, PageAssertionMixin
+from tools.marks import unmark
 
 import upgrade_test
 from upgrade_test import UpgradeTester
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 
 class ConcurrentExecutor(object):
@@ -487,6 +490,8 @@ class TestReversedQueriesOnTableWithReversedOrder(Tester):
 @pytest.mark.dtest_full
 @pytest.mark.single_node
 class TestReversedQueriesWithOverlappingRangeTombstones(Tester, ConcurrentExecutor):
+
+    @unmark.next_gating
     def test_reversed_query_with_overlapping_range_tombstones(self):
         TOMBSTONE_COUNT = 100 * 1000
 
