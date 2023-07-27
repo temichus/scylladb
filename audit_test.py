@@ -83,6 +83,26 @@ class TestCQLAudit(AuditTester):
     """
     AUDIT_LOG_QUERY = "SELECT * FROM audit.audit_log"
 
+    def deduplicate_audit_entries(self, entries):
+        """
+        Returns a list of audit entries with duplicate entries removed.
+        """
+        unique = set()
+        deduplicated_entries = []
+
+        for entry in entries:
+            fields_subset = (entry.node, entry.category, entry.consistency, entry.error,
+                             entry.keyspace_name, entry.operation, entry.source,
+                             entry.table_name, entry.username)
+
+            if fields_subset in unique:
+                continue
+
+            unique.add(fields_subset)
+            deduplicated_entries.append(entry)
+
+        return deduplicated_entries
+
     def getAuditLogList(self, session):
         """_summary_
             returns a sorted list of audit log, the logs are sorted by the event times (time-uuid)
@@ -189,7 +209,8 @@ class TestCQLAudit(AuditTester):
         return res
 
     @contextmanager
-    def assert_entries_were_added(self, session: Session, expected_entries: List[AuditEntry]):
+    def assert_entries_were_added(self, session: Session, expected_entries: List[AuditEntry],
+                                  merge_duplicate_rows: bool=True):
         # Get audit entries before executing the query, to later compare with
         # audit entries after executing the query.
         rows_before = self.getAuditLogList(session)
@@ -208,6 +229,9 @@ class TestCQLAudit(AuditTester):
         new_rows = rows_after[len(rows_before):]
         assert set(new_rows) == set_of_rows_after - set_of_rows_before, \
             f"new rows are not the last rows in the audit table: {rows_after}"
+
+        if merge_duplicate_rows:
+            new_rows = self.deduplicate_audit_entries(new_rows)
 
         assert len(new_rows) == len(expected_entries), \
             f"Expected {len(expected_entries)} new audit entries, but got {len(new_rows)} new entries: {new_rows}"
