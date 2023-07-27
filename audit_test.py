@@ -733,7 +733,7 @@ class TestCQLAudit(AuditTester):
             expected_error=Unauthorized,
         )
 
-    def batch_test(self):
+    def test_batch(self):
         """
         BATCH statement
         """
@@ -747,27 +747,31 @@ class TestCQLAudit(AuditTester):
             )
         """)
 
-        query = SimpleStatement("""
-            BEGIN BATCH
-                INSERT INTO test8 (userid, password, name) VALUES ('user2', 'ch@ngem3b', 'second user');
-                UPDATE test8 SET password = 'ps22dhds' WHERE userid = 'user3';
-                INSERT INTO test8 (userid, password) VALUES ('user4', 'ch@ngem3c');
-                DELETE name FROM test8 WHERE userid = 'user1';
-            APPLY BATCH;
-        """, consistency_level=ConsistencyLevel.QUORUM)
-        session.execute(query)
-        res_list = self.getAuditLogList(session)
+        batch_query = SimpleStatement("""
+                BEGIN BATCH
+                    INSERT INTO test8 (userid, password, name) VALUES ('user1', 'ch@ngem3b', 'second user');
+                    UPDATE test8 SET password = 'ps22dhds' WHERE userid = 'user3';
+                    INSERT INTO test8 (userid, password) VALUES ('user4', 'ch@ngem3c');
+                    DELETE name FROM test8 WHERE userid = 'user1';
+                APPLY BATCH;
+            """,
+                                      consistency_level=ConsistencyLevel.QUORUM)
 
-        assert len(res_list) > 3
 
-        self.assertAuditRow(res_list[-4], "DML",
-                            "INSERT INTO test8 (userid, password, name) VALUES (user2, ch@ngem3b, second user)",
-                            "test8", cl="QUORUM")
-        self.assertAuditRow(res_list[-3], "DML", "UPDATE test8 SET password = ps22dhds WHERE userid = user3", "test8",
-                            cl="QUORUM")
-        self.assertAuditRow(res_list[-2], "DML", "INSERT INTO test8 (userid, password) VALUES (user4, ch@ngem3c)",
-                            "test8", cl="QUORUM")
-        self.assertAuditRow(res_list[-1], "DML", "DELETE name FROM test8 WHERE userid = user1", "test8", cl="QUORUM")
+        expected_audit_operations = [
+            "INSERT INTO test8 (userid, password, name) VALUES (user1, ch@ngem3b, second user)",
+            "UPDATE test8 SET password = ps22dhds WHERE userid = user3",
+            "INSERT INTO test8 (userid, password) VALUES (user4, ch@ngem3c)",
+            "DELETE name FROM test8 WHERE userid = user1",
+        ]
+        expected_entries = list(map(
+            lambda query:
+            AuditEntry("DML", query, "test8", "ks", "anonymous", "QUORUM", False),
+            expected_audit_operations
+        ))
+
+        with self.assert_entries_were_added(session, expected_entries, merge_duplicate_rows=False):
+            session.execute(batch_query)
 
     def test_service_level_statements(self):
         """
