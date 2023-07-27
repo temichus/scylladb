@@ -80,6 +80,7 @@ class TestCompaction(Tester):
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
+            node1.info(jsoninfo)
 
         numfound = jsoninfo.count("marked_deleted")
 
@@ -119,6 +120,7 @@ class TestCompaction(Tester):
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
+            node1.info(jsoninfo)
 
         numfound = jsoninfo.count("marked_deleted")
 
@@ -145,6 +147,7 @@ class TestCompaction(Tester):
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
+            node1.info(jsoninfo)
 
         numfound = jsoninfo.count("marked_deleted")
 
@@ -183,7 +186,7 @@ class TestCompaction(Tester):
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
-
+            node.info(jsoninfo)
         numfound = jsoninfo.count("marked_deleted")
 
         logger.debug(f'Number of tombstones found on node {node.name}: {numfound}')
@@ -474,7 +477,7 @@ class TestCompaction(Tester):
                     node1.run_sstable2json(out_file=f, keyspace='ks', column_families=['cf'])
                 with open(jname, 'r') as g:
                     jsoninfo = g.read()
-                    logger.debug(f"{jsoninfo}")
+                    node1.info(jsoninfo)
                 pytest.fail(msg)
 
         except OSError:

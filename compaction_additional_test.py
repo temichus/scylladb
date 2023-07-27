@@ -138,6 +138,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         with open(sstables_json_file, 'r') as sstable:
             jsoninfo = sstable.read().splitlines(keepends=False)
+            node.info(jsoninfo)
 
         sstables_json_file.unlink()
 
@@ -245,6 +246,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
+            node1.info(jsoninfo)
 
         numfound = jsoninfo.count("marked_deleted")
         logger.debug("{} keys are now marked_deleted (0 {} expected < {})".format(
@@ -282,6 +284,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
+            node1.info(jsoninfo)
 
         numfound = jsoninfo.count("marked_deleted")
         logger.debug(f"{numfound} keys are now marked_deleted (Excpecting 0)")
@@ -1349,6 +1352,7 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
 
         with open(jname, 'r') as g:
             jsoninfo = g.read()
+            node1.info(jsoninfo)
 
         numfound = jsoninfo.count("partition")
         assert numfound == 1, f"Error: expected 1 partition but found {numfound}:\n{jsoninfo}"
@@ -2244,6 +2248,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         with open(tmp_file) as fp:
             json_data = json.load(fp)
+            node.info(json_data)
 
         partition_found = False
         cluster_keys_exist = False
