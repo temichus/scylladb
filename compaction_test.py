@@ -40,7 +40,8 @@ class TestCompaction(Tester):
     strategy = None
     PROPAGATION_DELAY_IN_SECONDS = 5
     KEYSPACE_NAME = 'ks'
-    FULL_TABLE_NAME = f"{KEYSPACE_NAME}.cf"
+    COLUMN_FAMILY_NAME = 'cf'
+    FULL_TABLE_NAME = f"{KEYSPACE_NAME}.{COLUMN_FAMILY_NAME}"
 
     @pytest.fixture(scope='function', autouse=True)
     def fixture_compaction_strategy(self, strategy):
@@ -179,18 +180,11 @@ class TestCompaction(Tester):
         node.flush()
         node.compact()
 
-        json_path = tempfile.mkstemp(suffix='.json')
-        jname = json_path[1]
-        with open(jname, 'w') as f:
-            node.run_sstable2json(f, keyspace=self.KEYSPACE_NAME)
-
-        with open(jname, 'r') as g:
-            jsoninfo = g.read()
-            node.info(jsoninfo)
-        numfound = jsoninfo.count("marked_deleted")
-
+        partitions = node.dump_sstables(keyspace=self.KEYSPACE_NAME,
+                                        column_family=self.COLUMN_FAMILY_NAME)
+        numfound = sum('tombstone' in partition for partition in partitions)
         logger.debug(f'Number of tombstones found on node {node.name}: {numfound}')
-        return numfound, jsoninfo
+        return numfound, partitions
 
     def _test_compaction_delete_tombstone_gc(self, tombstone_gc_mode='repair', node_num: int = 2,
                                              r_factor: int = None, delete_keys: bool = True, partition_num: int = 100):
@@ -473,13 +467,8 @@ class TestCompaction(Tester):
             if found:
                 msg = f"Expected no SSTables in {path}, but found: {found}"
                 logger.error(msg)
-                json_path = tempfile.mkstemp(suffix='.json')
-                jname = json_path[1]
-                with open(jname, 'w') as f:
-                    node1.run_sstable2json(out_file=f, keyspace='ks', column_families=['cf'])
-                with open(jname, 'r') as g:
-                    jsoninfo = g.read()
-                    node1.info(jsoninfo)
+                jsoninfo = node1.dump_sstables('ks', 'cf')
+                logger.debug("%s", jsoninfo)
                 pytest.fail(msg)
 
         except OSError:
