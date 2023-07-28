@@ -327,7 +327,6 @@ class TestCompaction(Tester):
             self.verify_deleted(session, node2, 10)
 
     @pytest.mark.next_gating
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_delete_tombstone_gc_node_down(self):
         """
         Test compaction drop tombstones correctly in 'repair' tombstone_gc_mode mode
@@ -432,7 +431,6 @@ class TestCompaction(Tester):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_sstable_deletion(self):
         """
         Test that sstables are deleted properly when able after compaction.
