@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestScyllaHelpCommand(Tester):
 
     def test_scylla_help_does_not_contain_duplicate_args(self):
