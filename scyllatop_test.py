@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestScyllaTop(Tester):
 
     def get_cli(self):
@@ -111,7 +112,6 @@ class TestScyllaTop(Tester):
         assert len(out) > 0, 'Output should not be empty'
         os.remove(logfile)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_default_start(self):
         """
