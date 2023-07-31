@@ -38,6 +38,7 @@ def normalize_size(size, units):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 @pytest.mark.single_node
 class TestNodetoolListSnapshots(Tester):
     """Validate nodetool listshapshot command
@@ -281,7 +282,6 @@ class TestNodetoolListSnapshots(Tester):
         # assert that all snapshot size and names are valid
         assert self.compare_filesize_and_output(node, results), "Not all snapshot size and names are valid"
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_snapshot_for_several_kses(self):
         """
