@@ -16,9 +16,11 @@ from tools.data import rows_to_list
 from tools.datahelp import create_rows, flatten_into_set, parse_data_into_dicts
 from tools.paging import PageFetcher, PageAssertionMixin, run_scenarios
 from tools.assertions import assert_invalid
-
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 
 class BasePagingTester(Tester):
@@ -79,7 +81,6 @@ class TestPagingSize(BasePagingTester, PageAssertionMixin):
         assert not pf.has_more_pages
         assert len(expected_data) == len(pf.all_data())
 
-    @pytest.mark.next_gating
     def test_with_more_results_than_page_size(self):
         session = self.prepare()
         create_ks(session, 'test_paging_size', 2)
@@ -350,7 +351,6 @@ class TestPagingWithModifiers(BasePagingTester, PageAssertionMixin):
             (30, FETCH_SIZE_UNSET, "WHERE id in (1,2)", 1, [10]),        # data < limit
         ])
 
-    @pytest.mark.next_gating
     def test_with_allow_filtering(self):
         session = self.prepare()
         create_ks(session, 'test_paging_size', 2)
@@ -430,7 +430,6 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
 
         self.assertEqualIgnoreOrder(pf.all_data(), expected_data)
 
-    @pytest.mark.next_gating
     def test_paging_across_multi_wide_rows(self):
         session = self.prepare()
         create_ks(session, 'test_paging_size', 2)
@@ -508,6 +507,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
         assert_invalid(session, "select * from paging_test where col_2 IN (1, 2) and col_1=1 order by col_3 desc;",
                        expected=InvalidRequest)
 
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/14514
     def test_group_by_paging(self):
         """
         @jira_ticket CASSANDRA-10707
@@ -966,6 +966,7 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                            {u'a': 4, u'b': 1, u'd': 5, u'system.count(b)': 2, u'system.max(d)': 5},
                            {u'a': 4, u'b': 2, u'd': 6, u'system.count(b)': 2, u'system.max(d)': 6}]
 
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/14514
     def test_group_by_with_static_columns_paging(self):
         """
         @jira_ticket CASSANDRA-10707
@@ -2036,7 +2037,6 @@ class TestPagingDatasetChanges(BasePagingTester, PageAssertionMixin):
         assert pf.pagecount() == 3
         assert pf.num_results_all() == [300, 300, 200]
 
-    @pytest.mark.next_gating
     def test_cell_ttl_expiry_during_paging(self):
         session = self.prepare()
         create_ks(session, 'test_paging_size', 2)
@@ -2606,7 +2606,6 @@ class TestPagingWithDeletions(BasePagingTester, PageAssertionMixin):
 
         assert failure, "Cannot find tombstone failure threshold error in log"
 
-    @pytest.mark.next_gating
     def test_deletion_with_distinct_paging(self):
         """
         Test that deletion does not affect paging for distinct queries.
@@ -2783,7 +2782,6 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
 
         self.create_and_verify_mybool_results(session, 'id', allow_filtering=True)
 
-    @pytest.mark.next_gating
     def test_group_ck_column_index_filter(self):
         session = self.prepare()
         self.create_table(session)
