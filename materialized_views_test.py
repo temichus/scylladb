@@ -47,9 +47,11 @@ MIGRATION_WAIT = 5
 
 
 class CommonUtils(Tester):
-    def setup(self):
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_setup_timeouts(self, fixture_dtest_setup):
         if not 'debug_mode' in self.__dict__.keys():
-            self.debug_mode = isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug"
+            self.debug_mode = isinstance(fixture_dtest_setup.cluster,
+                                         ScyllaCluster) and fixture_dtest_setup.cluster.scylla_mode == "debug"
             self.session_timeout = 120
             if self.debug_mode:
                 self.session_timeout *= 3
@@ -90,7 +92,6 @@ class CommonUtils(Tester):
 
     def prepare(self, user_table: bool = False, rf: str = 1, options: dict = None, nodes: int = 3,
                 fetch_size: int = None, jvm_args: list = None, **kwargs):
-        self.setup()
         cluster = self.cluster
         populate = nodes if isinstance(nodes, list) else [nodes, 0]
         cluster.populate(populate)
@@ -3072,7 +3073,6 @@ class TestMaterializedViews(CommonUtils):
         """ this function creates a materialized view for viewbildstatus nodetool command tests
             Returns a list of [TableManager, MaterializedViewManager] objects
         """
-        self.setup()
         if not num_of_rows:
             num_of_rows = 10000 if self.debug_mode else 100000
         session = self.prepare(rf=3, nodes=3, fetch_size=num_of_rows * 2)
