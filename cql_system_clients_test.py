@@ -144,6 +144,7 @@ class CQLSession:
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestSystemClients(Tester):
     _test_users = [
         {'user': 'user1', 'password': 'password1'},
