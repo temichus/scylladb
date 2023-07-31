@@ -7279,6 +7279,7 @@ class TestsCQLAdditional(Tester):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 @pytest.mark.single_node
 class TestsMultiColumnRestrictionSimple(Tester):
 
@@ -7294,13 +7295,13 @@ class TestsMultiColumnRestrictionSimple(Tester):
                  [4, 4]
                  ]
 
-    EXPECTED_DATA = [[0, 0, 'text1', '1970-05-23T21:21:14.987000', True, '045asciitext',
+    EXPECTED_DATA = [[0, 0, 'text1', '1970-05-23T21:21:14.987Z', True, '045asciitext',
                       'de5cba0d-41a2-4f39-8834-35130d8b5d86', b'c'*10],
-                     [1, 0, 'text2', '1972-01-10T06:37:58.378000', False, 'abcdefj',
+                     [1, 0, 'text2', '1972-01-10T06:37:58.378Z', False, 'abcdefj',
                       'fa80080c-a4c5-46d6-afe4-5e184fec35ae', b'b'*10],
-                     [2, 2, 'text3', '1982-08-21T16:03:01.719000', True, '354dsfsd',
+                     [2, 2, 'text3', '1982-08-21T16:03:01.719Z', True, '354dsfsd',
                       'de5cba0d-41a2-4f39-8834-35130d8b5d86', b'b'*10],
-                     [3, 3, 'text4', '1982-08-21T16:03:01.719000', False, '897dfjka9',
+                     [3, 3, 'text4', '1982-08-21T16:03:01.719Z', False, '897dfjka9',
                       'fa80080c-a4c5-46d6-afe4-5e184fec35ae', b'a'*10],
                      [4, 4, None, None, None, None, None, None]
                      ]

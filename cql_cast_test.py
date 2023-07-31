@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 @pytest.mark.single_node
 class TestCQLCast(CqlshPrepare):
     """ Class provides interface for CAST scalar function """
@@ -585,7 +586,7 @@ class TestData(object):
                        {'cast': {'date': '2017-12-27', 'text': '2017-12-27T10:57:42.000Z', 'varchar': '2017-12-27T10:57:42.000Z'},
                         }],
                       ["\'2017-12-27 11:57:42.500+0100\'",  # with milliseconds, scylla is returning with 6 digit vs. cassandra with 3 digits
-                       {'cast': {'date': '2017-12-27', 'text': '2017-12-27T10:57:42.500000', 'varchar': '2017-12-27T10:57:42.500000'},
+                       {'cast': {'date': '2017-12-27', 'text': '2017-12-27T10:57:42.500Z', 'varchar': '2017-12-27T10:57:42.500Z'},
                         }],
                       ["\'2018-02-01 01:00:42+0000\'",
                        {'cast': {'date': '2018-02-01', 'text': '2018-02-01T01:00:42.000Z', 'varchar': '2018-02-01T01:00:42.000Z'}}],
