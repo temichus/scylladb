@@ -282,7 +282,7 @@ class TestUpdateClusterLayout(Tester):
 
         logger.debug("Starting node2")
         node2.start(no_wait=True)
-        node2.watch_log_for("BOOTSTRAP")
+        node2.watch_log_for(["BOOTSTRAP", "Gossip settled|No gossip backlog"])
         mark = node2.mark_log()
 
         # Select a random test case that determines when to start node3
