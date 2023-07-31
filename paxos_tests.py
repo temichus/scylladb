@@ -65,6 +65,7 @@ class LoadThread(Thread):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestPaxos(Tester):
 
     def prepare(self, create_keyspace=True, use_cache=False, nodes=1, rf=1):
