@@ -168,6 +168,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
+    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_delete_with_smp_change(self):
         """
         Test that data is not resurected when shared sstables
