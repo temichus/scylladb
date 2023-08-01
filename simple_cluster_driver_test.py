@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestSimpleCluster(Tester):
 
     __scylla_args__ = []
