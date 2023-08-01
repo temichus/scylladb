@@ -33,11 +33,13 @@ from ccmlib.scylla_cluster import ScyllaCluster
 from ccmlib.node import NodetoolError
 from tools.stress import format_cs_output, assert_cs_success
 from tools.files import get_node_cf_dir, remove_files_in_folder
-
+from tools.marks import unmark
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 # CASSANDRA-10978. Migration wait (in seconds) to use in bootstrapping tests. Needed to handle
 # pathological case of flushing schema keyspace for multiple data directories. See CASSANDRA-6696
@@ -204,7 +206,6 @@ class TestMaterializedViews(CommonUtils):
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=4, node_action='decommission', exclude_errors=[
                                                        'mutation_write_timeout_exception'])
 
-    @pytest.mark.next_gating
     def test_remove_node_during_mv_insert_3_nodes(self):
         """ Test removing node during MV inserts
             Test starts with a starting size 3 and removes one node during inserts into base table that cause to update materialized view as well
@@ -214,6 +215,7 @@ class TestMaterializedViews(CommonUtils):
         self._run_node_failure_during_mv_stress_insert(rf=3, nodes=3, node_action='remove', exclude_errors=[
                                                        'mutation_write_timeout_exception'])
 
+    @unmark.next_gating  # stress failing with hints overload: https://github.com/scylladb/scylla-dtest/issues/3372
     def test_double_node_failure_during_mv_insert_4_nodes(self):
         """ Test stopping 2 nodes during MV inserts
             Test starts with a starting size 4 and stops 2 nodes during inserts into base table that cause to update materialized view as well
@@ -1011,8 +1013,6 @@ class TestMaterializedViews(CommonUtils):
                                                          mv_name_pref=mv_name_pref, mvs_count=mvs_count)
             assert not failed, f"Unexpectedly found not updated rows in views: {failed}"
 
-    @pytest.mark.require('scylladb/scylla#12700')
-    @pytest.mark.dtest_heavy
     def test_mv_alter_with_synchronous_updates(self):
         """
         Commit: https://github.com/scylladb/scylladb/commit/cb8a67dc98b60919ac9d5bbb6618e17f7d1602c7
@@ -1414,7 +1414,6 @@ class TestMaterializedViews(CommonUtils):
                                               session, query.format(mv.mv_name),
                                               consistency_level=ConsistencyLevel.ALL, session_timeout=self.session_timeout)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_create(self):
         """Test the materialized view creation"""
@@ -3282,7 +3281,6 @@ class TestMaterializedViews(CommonUtils):
                 cl=ConsistencyLevel.ONE
             )
 
-    @pytest.mark.next_gating
     def test_base_replica_repair(self):
         self._base_replica_repair_test()
 
@@ -4532,7 +4530,6 @@ class TestInterruptBuildProcess(CommonUtils):
         """Test that an interrupted MV build process is resumed, with resharding 1 -> cpu_count() // 2"""
         self._do_resharding_test(self._low_shards(), self._half_shards())
 
-    @pytest.mark.next_gating
     def test_interrupt_build_process_with_resharding_half_to_max_test(self):
         """Test that an interrupted MV build process is resumed, with resharding cpu_count() // 2 -> cpu_count()"""
         # For some reason, Scylla's hwloc only sees cpu_count() - 1 cpus
