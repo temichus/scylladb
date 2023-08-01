@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestDeleteInsert(Tester):
     """
     Examines scenarios around deleting data and adding data back with the same key
