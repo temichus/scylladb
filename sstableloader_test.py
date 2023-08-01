@@ -17,9 +17,10 @@ from tools.misc import ImmutableMapping, safe_mkdtemp
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
-@pytest.mark.next_gating
 @pytest.mark.single_node
 @pytest.mark.parametrize("version", ['2_1_x', '2_2_x', '3_0_x', '3_0_mc', '3_0_md'])
 @pytest.mark.parametrize("prepared", ['-nx', ''])
@@ -359,7 +360,6 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2])
         assert_all(session, f'SELECT key, c1, c3 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
-    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_ignore_missing_one_column_by_drop_table_from_backup(self):
         """
@@ -403,7 +403,6 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2])
         assert_all(session, f'SELECT key, c1, c3 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
-    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_ignore_missing_one_column_by_drop_column_from_backup(self):
         """
@@ -445,7 +444,6 @@ class TestAdditionalTestSSTableLoader(Tester):
         data = self.remove_column_from_data(data=data, element_to_remove_index=[2])
         assert_all(session, f'SELECT key, c1, c3 FROM {ks}.{cf}', expected=data, ignore_order=True)
 
-    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_ignore_missing_two_column_by_drop_column_from_backup(self):
         """
