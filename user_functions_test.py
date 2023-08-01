@@ -11,6 +11,7 @@ from dtest_setup_overrides import DTestSetupOverrides
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestUserFunctions(Tester):
 
     @pytest.fixture(scope="function", autouse=True)
