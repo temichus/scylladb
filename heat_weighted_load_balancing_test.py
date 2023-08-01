@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestHeatWeightedLB(Tester):
     METRICS = ['scylla_storage_proxy_coordinator_reads_local_node',
                'scylla_storage_proxy_replica_reads',
