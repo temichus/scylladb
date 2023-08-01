@@ -28,6 +28,8 @@ from tools.cluster import new_node
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 class CqlshVersionMixing(Tester):
     @cached_property
