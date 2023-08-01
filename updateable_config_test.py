@@ -22,6 +22,8 @@ from tools.data import insert_c1c2
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
@@ -56,7 +58,6 @@ class TestUpdateableConfig(Tester):
         assert response.text == verify_response, f'response: {response.text}, expected: {verify_response}'
 
     @pytest.mark.dtest_debug
-    @pytest.mark.next_gating
     def test_compaction_enforce_min_threshold(self):
         self.cluster.populate(1).start(wait_other_notice=True, wait_for_binary_proto=True)
         node1 = self.cluster.nodelist()[0]
