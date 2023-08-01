@@ -13,6 +13,7 @@ from ccmlib.scylla_cluster import ScyllaCluster
 from ccmlib.node import NodeError
 
 from dtest_class import Tester, wait_for, create_ks, get_ip_from_node
+from tools.marks import unmark
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, delete_c1c2
 from tools.metrics import get_node_metrics
 from tools.status import wait_for_nodes_status
@@ -21,6 +22,7 @@ from tools.status import wait_for_nodes_status
 logger = logging.getLogger(__file__)
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 class TestHintedHandoff(Tester):
 
@@ -161,7 +163,6 @@ class TestHintedHandoff(Tester):
         assert self.__check_hints_dir_present(node_from=node1, node_to=node3, must_be_present=False) and \
             self.__check_hints_dir_present(node_from=node2, node_to=node3, must_be_present=False)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_hintedhandoff_basic_check(self, fixture_dtest_setup):
         """
@@ -475,6 +476,7 @@ class TestHintedHandoff(Tester):
         assert int(response.text) == expected_value, \
             f"Expected 'max_hinted_handoff_concurrency' value is {expected_value}, got {response.text}"
 
+    @unmark.next_gating
     @pytest.mark.parametrize(argnames=("max_hinted_handoff_concurrency", "jvm_args"),
                              argvalues=[(0, None), (64, None), (128, ['--max-hinted-handoff-concurrency', '128'])])
     def test_support_max_hh_concurrency_param(self, max_hinted_handoff_concurrency: int, jvm_args: list):
