@@ -7,6 +7,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.next_gating
 @pytest.mark.dtest_full
 class TestGlobalRowKeyCache(Tester):
 
