@@ -31,8 +31,11 @@ from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
 from tools.stress import format_cs_output, assert_cs_success
 import tools.commitlog as commitlog
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 
 class SnapshotOperations:
@@ -164,7 +167,6 @@ class TestSnapshot(SnapshotTester):
     Test snapshot operations.
     """
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     # disable "uuid_sstable_identifier_enabled", as sstableloader is not
     # able to parse the sstable component's file name if the sstable uses
@@ -176,7 +178,6 @@ class TestSnapshot(SnapshotTester):
         """
         self.basic_snapshot_and_restore(use_sstableloader=True, tables_number=1, cf_param_name='')
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_basic_snapshot_and_restore_with_refresh(self):
         """
@@ -184,7 +185,6 @@ class TestSnapshot(SnapshotTester):
         """
         self.basic_snapshot_and_restore(use_sstableloader=False, tables_number=1, cf_param_name='')
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_basic_mulitple_tables_snapshot_and_restore_with_refresh(self):
         """
@@ -192,7 +192,6 @@ class TestSnapshot(SnapshotTester):
         """
         self.basic_snapshot_and_restore(use_sstableloader=False, tables_number=5, cf_param_name='-cf')
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     # disable "uuid_sstable_identifier_enabled", as sstableloader is not
     # able to parse the sstable component's file name if the sstable uses
@@ -204,7 +203,6 @@ class TestSnapshot(SnapshotTester):
         """
         self.basic_snapshot_and_restore(use_sstableloader=True, tables_number=5, cf_param_name='-cf')
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_basic_mulitple_tables_snapshot_using_column_family(self):
         """
@@ -212,7 +210,6 @@ class TestSnapshot(SnapshotTester):
         """
         self.basic_snapshot_and_restore(use_sstableloader=False, tables_number=5, cf_param_name='--column-family')
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_basic_mulitple_tables_snapshot_using_table(self):
         """
@@ -1040,17 +1037,21 @@ class TestSchemaFileInSnapshot(SnapshotTester):
     def test_restoring_by_schema_file_with_refresh(self):
         self.create_restore_data_with_snapshot(use_sstableloader=False)
 
+    @unmark.next_gating  # not stable until: https://github.com/scylladb/scylla-dtest/issues/3350
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restoring_by_schema_with_mv_use_sstableloader(self):
         self.create_restore_data_with_snapshot_with_mv(use_sstableloader=True, multiple_tables=False)
 
+    @unmark.next_gating  # not stable until: https://github.com/scylladb/scylla-dtest/issues/3350
     def test_restoring_by_schema_with_mv_use_refresh(self):
         self.create_restore_data_with_snapshot_with_mv(use_sstableloader=False, multiple_tables=False)
 
+    @unmark.next_gating  # not stable until: https://github.com/scylladb/scylla-dtest/issues/3350
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_restoring_by_schema_with_mv_use_sstableloader_multiple_tables(self):
         self.create_restore_data_with_snapshot_with_mv(use_sstableloader=True, multiple_tables=True)
 
+    @unmark.next_gating  # not stable until: https://github.com/scylladb/scylla-dtest/issues/3350
     def test_restoring_by_schema_with_mv_use_refresh_multiple_tables(self):
         self.create_restore_data_with_snapshot_with_mv(use_sstableloader=False, multiple_tables=True)
 
