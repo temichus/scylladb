@@ -46,6 +46,8 @@ MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 class TestCQL(Tester):
@@ -2752,7 +2754,6 @@ class TestCQL(Tester):
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 = 1 AND author='foo'")
             assert_invalid(session, "SELECT content FROM blogs WHERE time1 = 1 AND time2 > 0 AND author='foo'")
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_limit_bugs(self):
@@ -3241,7 +3242,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT * FROM test WHERE k = true")
         assert rows_to_list(res) == [[True, False]], list(res)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_multiordering(self):
@@ -3377,7 +3377,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT v1, v2 FROM test WHERE k IN (0, 1, 2)")
         assert rows_to_list(res) == [], list(res)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_allow_filtering(self):
@@ -3451,7 +3450,6 @@ class TestCQL(Tester):
             self._assert_invalid_filtering(session=session, query=q)
             self._assert_valid_query(session=session, query=q + " ALLOW FILTERING")
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_range_with_deletes(self):
@@ -4661,7 +4659,6 @@ class TestCQL(Tester):
         assert_all(session, "SELECT * FROM test", [[0, 1, None, 1], [0, 2, None, 2]])
 
     @pytest.mark.single_node
-    @pytest.mark.next_gating
     def test_static_columns_cas(self):
         session = self.prepare()
 
@@ -6773,7 +6770,6 @@ class TestsCQLAdditional(Tester):
             assert str(err) == "Indexes are not supported yet"
             assert getattr(err, "code") == 0000
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_lightweight_transaction(self):
@@ -6863,7 +6859,6 @@ class TestsCQLAdditional(Tester):
             assert str(err) == "Not implemented: LIST"
             assert getattr(err, "code") == 0000
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_limit_date_value_out_of_range(self):
@@ -6988,7 +6983,6 @@ class TestsCQLAdditional(Tester):
         num_rows = int(re.search(regex, out).group(1))
         assert num_rows == 10
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_select_all_data_and_filter_explicitly(self):
