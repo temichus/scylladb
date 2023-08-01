@@ -12,6 +12,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 KEYSPACE = "lwt_load_ks"
 
 # TODO:
