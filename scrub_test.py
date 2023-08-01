@@ -167,6 +167,7 @@ class TestHelper(Tester):
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestScrubIndexes(TestHelper):
     """
     Test that we scrub indexes as well as their parent tables
@@ -328,6 +329,7 @@ class TestScrubIndexes(TestHelper):
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestScrub(TestHelper):
     """
     Generic tests for scrubbing
