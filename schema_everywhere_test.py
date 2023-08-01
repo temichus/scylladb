@@ -11,6 +11,7 @@ from dtest_class import Tester
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestSchemaReplicationEverywhereStrategy(Tester):
 
     SYSTEM_DISTRIBUTED_EVERYWHERE = "system_distributed_everywhere"
