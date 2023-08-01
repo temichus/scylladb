@@ -6,6 +6,9 @@ from dtest_class import Tester, create_ks
 from tools.assertions import assert_invalid
 
 
+pytestmark = pytest.mark.next_gating
+
+
 @pytest.mark.dtest_full
 class TestUDTEncoding(Tester):
 
