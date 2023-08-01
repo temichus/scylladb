@@ -8,6 +8,7 @@ from ccmlib.node import Node
 from dtest_class import Tester
 
 LOGGER = logging.getLogger(__name__)
+pytestmark = pytest.mark.next_gating
 
 
 def print_cqlsh(node: Node, cmds: str):
