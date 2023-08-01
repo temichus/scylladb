@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestPersistence(Tester):
     """
     Insert data into clusters, then restart them and verify if data persisted.
@@ -44,7 +45,6 @@ class TestPersistence(Tester):
                      "-schema", "replication(factor=1)", "-col", "n=fixed(1)",
                      "size=fixed(%s)" % size, "-rate", "threads=1"])
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_persist_simple(self):
         """
