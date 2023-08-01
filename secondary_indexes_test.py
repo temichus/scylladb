@@ -20,12 +20,15 @@ from tools.data import get_entity_id, get_truncated_time_from_system_local, get_
 from tools.tables_view_manager import wait_for_view_build_start, view_built_status_query, index_is_built, \
     get_index_view_name
 from tools.misc import generate_random_text, remove_node
+from tools.marks import unmark
 
 from cassandra import ConsistencyLevel, InvalidRequest, WriteFailure, ConfigurationException
 from cassandra.concurrent import (execute_concurrent, execute_concurrent_with_args)
 from cassandra.query import BatchStatement, SimpleStatement
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 LONG_TEXT_LENGTH = 8193
 OVERSIZE_LENGTH = 66536
@@ -245,6 +248,7 @@ class SecondaryIndexesHelpers:
 class TestStaticSecondaryIndexes(Tester, SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
 
+    @unmark.next_gating  # this is failing as xfailed
     def test_query_data_with_index(self):
         """
         Create the index on the populated table and read the data that was inserted before index
@@ -1447,7 +1451,6 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
                          consistency_level=ConsistencyLevel.ALL)
 
-    # @pytest.mark.next_gating - https://github.com/scylladb/scylla/issues/4724
     # @pytest.mark.dtest_debug - https://github.com/scylladb/scylla/issues/4384
     # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
     @pytest.mark.scylla_mode('!debug')
@@ -2520,7 +2523,6 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
         assert_row_count(session, table_name=get_index_view_name(index_name), expected=num_rows - delete_num,
                          consistency_level=ConsistencyLevel.ALL)
 
-    @pytest.mark.next_gating
     # @pytest.mark.dtest_debug - https://github.com/scylladb/scylla/issues/4384
     def test_stop_node_during_local_index_build(self):
         """
