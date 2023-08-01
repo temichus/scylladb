@@ -286,6 +286,21 @@ class TestCQLAudit(AuditTester):
             for query in query_sequence:
                 session.execute(query)
 
+    @pytest.mark.require('scylladb/scylla-enterprise#3236')
+    def test_using_non_existent_keyspace(self):
+        """
+        Test tha using a non-existent keyspace generates an audit entry with an
+        error field set to True.
+        """
+        session = self.prepare()
+
+        self.execute_and_validate_audit_entry(
+            session,
+            'USE "non_existing_ks"',
+            category="DML",
+            expected_error=InvalidRequest,
+        )
+
     def verify_table(self, audit_settings=AuditTester.audit_default_settings):
         """
         CREATE TABLE, ALTER TABLE, TRUNCATE TABLE, DROP TABLE statements
