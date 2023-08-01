@@ -24,13 +24,13 @@ from tools.rest_clients import StorageServiceClient
 from tools.stress import fill_data_by_cs
 from tools.cluster import parallel_nodetool, run_rest_api
 from tools.data import rows_to_list
-from tools.misc import require
 
 logger = logging.getLogger(__file__)
 
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 @pytest.mark.parametrize('strategy', [
     'LeveledCompactionStrategy',
     'SizeTieredCompactionStrategy',
@@ -310,7 +310,6 @@ class TestCompaction(Tester):
             self.verify_deleted(session, node1, 10)
             self.verify_deleted(session, node2, 10)
 
-    @pytest.mark.next_gating
     def test_delete_tombstone_gc_node_down(self):
         """
         Test compaction drop tombstones correctly in 'repair' tombstone_gc_mode mode
@@ -413,7 +412,6 @@ class TestCompaction(Tester):
 
         assert final_value <= initial_value
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_sstable_deletion(self):
         """
