@@ -7,6 +7,7 @@ from dtest_class import Tester, create_ks, create_cf
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestRangeGhosts(Tester):
 
     def test_ghosts(self):
