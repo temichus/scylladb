@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestDistributedAggregations(Tester):
     CS_KEYSPACE = "ks"
     CS_TABLE = "counter_cf"
