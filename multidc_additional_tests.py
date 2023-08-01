@@ -7,6 +7,7 @@ from tools.assertions import assert_one, assert_none
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestMultiDCAdditionalTests(Tester):
 
     def test_query_dc_with_rf_0_does_not_crash_db(self):
