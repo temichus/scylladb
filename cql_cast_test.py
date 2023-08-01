@@ -5,6 +5,7 @@ import logging
 
 from tools.misc import require
 from cqlsh_tests.cqlsh_copy_tests import CqlshPrepare
+from tools.marks import unmark
 
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 @pytest.mark.dtest_full
 @pytest.mark.next_gating
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestCQLCast(CqlshPrepare):
     """ Class provides interface for CAST scalar function """
 
@@ -70,7 +72,6 @@ class TestCQLCast(CqlshPrepare):
         test_from = ['decimal']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_cast_date(self):
         """Function performs positive tests CAST scalar function for date type"""
@@ -82,6 +83,7 @@ class TestCQLCast(CqlshPrepare):
         test_from = ['time']
         self._test_run(test_from, TestData.POSITIVE_VALUES)
 
+    @unmark.next_gating
     def test_cast_timestamp(self):
         """Function performs positive tests CAST scalar function for timestamp type"""
         test_from = ['timestamp']
