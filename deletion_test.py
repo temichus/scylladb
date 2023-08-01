@@ -12,6 +12,8 @@ from tools.cluster import new_node
 
 logger = logging.getLogger(__file__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 class TestRangeDeletion(Tester):
@@ -390,7 +392,6 @@ class TestRangeDeletion(Tester):
         assert_invalid(session=session, query=query, matching='preceding column \"ck1\" is restricted by a non-EQ '
                                                               'relation')
 
-    @pytest.mark.next_gating
     def test_delete_by_1ck_range_in(self):
         """
         Delete range of data using "in" condition on CK column
@@ -449,7 +450,6 @@ class TestRangeDeletion(Tester):
         assert_all(session=session, query=select_query, expected=data[lower_index:], cl=ConsistencyLevel.ALL,
                    ignore_order=True)
 
-    @pytest.mark.next_gating
     def test_delete_by_1ck_range_less_more(self):
         """
         Delete range of data using "<" and ">=" conditions on CK column
