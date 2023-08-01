@@ -16,6 +16,7 @@ from ccmlib.cluster import Cluster
 from ccmlib.node import Node
 from tools.misc import generate_ssl_stores
 from dtest_class import Tester, create_ks, get_ip_from_node
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
 # Those are ideal values according to c* specifications
@@ -276,7 +277,6 @@ class TestLimits(Tester):
         assert len(list(res)) == rows
         session.execute("""DROP TABLE STUFF""")
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_max_batch_size(self):
         cluster = self.prepare()
