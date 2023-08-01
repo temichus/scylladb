@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestCQL(Tester):
 
     def prepare(self, options={}):
