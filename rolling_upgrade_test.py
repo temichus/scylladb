@@ -8,14 +8,18 @@ import pytest
 from ccmlib.scylla_node import ScyllaNode
 
 from tools.stress import format_cs_output, assert_cs_success
+from tools.marks import unmark
 from upgrade_test import UpgradeTester, upgrade_matrix_from_last_release_version
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 
 class RollingUpgradeBase(UpgradeTester):
     __test__ = False
 
+    @unmark.next_gating  # https://github.com/scylladb/scylla-enterprise/issues/3233
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
     @pytest.mark.scylla_mode('!debug')
