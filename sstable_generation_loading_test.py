@@ -11,8 +11,10 @@ import pytest
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.misc import ImmutableMapping
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
+pytestmark = pytest.mark.next_gating
 
 
 @pytest.mark.dtest_full
@@ -315,15 +317,14 @@ class TestSSTableGenerationAndLoading(Tester):
             logger.info("Reading data back one more time")
             read_and_validate_data(session)
 
+    @unmark.next_gating
     @pytest.mark.parametrize("pre_compression,post_compression",
                              [(None, None), (None, 'Snappy'), (None, 'Deflate'), ('Snappy', None), ('Snappy', 'Snappy'),
                               ('Snappy', 'Deflate'), ('Deflate', None), ('Deflate', 'Snappy'), ('Deflate', 'Deflate')])
-    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_sstableloader_compression(self, pre_compression, post_compression):
         self.load_sstable_with_configuration(pre_compression=pre_compression, post_compression=post_compression)
 
-    @pytest.mark.next_gating
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_sstableloader_case_sensitive_with_quotas(self):
         """
