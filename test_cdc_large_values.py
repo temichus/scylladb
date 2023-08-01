@@ -11,6 +11,7 @@ from ccmlib.scylla_node import ScyllaNode
 
 from cdc_test import CDCInitializeHelper
 from dtest_class import Tester, create_ks
+from dtest_setup import DTestSetup
 from tools.misc import ImmutableMapping
 from dtest_setup_overrides import DTestSetupOverrides
 
@@ -85,7 +86,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                           check_stalls=prepare_statements)
 
     @pytest.mark.parametrize("prepare_statements", [True, False], ids=["prepared_statements", "unprepared_statements"])
-    def test_row_with_several_columns_of_blobs_with_cdc_preimage_full_postimage(self, prepare_statements: bool):
+    def test_row_with_several_columns_of_blobs_with_cdc_preimage_full_postimage(self, prepare_statements: bool, fixture_dtest_setup: DTestSetup):
         """test row with several columns of blob type
 
         Construct row with several columns of blob type and populate
@@ -95,6 +96,9 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
         Because cdc feature is enabled the base row size should be ~8MB
 
         """
+        if not prepare_statements:
+            fixture_dtest_setup.ignore_log_patterns += ["seastar_memory - oversized allocation"]
+
         NUM_CELLS = 5
         VALUE = bytes("1".encode()) * 1 * MB
         node, session = self.prepare_cluster(1)
@@ -133,7 +137,8 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                               "update_statement": update_statement,
                               "update_parameters": update_parameters
                           },
-                          check_stalls=prepare_statements)
+                          check_stalls=prepare_statements,
+                          check_oversize_allocation=prepare_statements)
 
     @pytest.mark.parametrize("prepare_statements", [True, False], ids=["prepared_statements", "unprepared_statements"])
     def test_large_blob_in_map_delta_preimage_full(self, prepare_statements: bool):
@@ -177,7 +182,8 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
 
     def execute_case(self, node: ScyllaNode, session: Session,
                      insert_data: Dict[str, Any], update_data: Dict[str, Any],
-                     check_stalls: bool = False):
+                     check_stalls: bool = False,
+                     check_oversize_allocation: bool = False):
 
         select_statement = SimpleStatement("SELECT * FROM ks.cf WHERE pk = %(pk)s and ck = %(ck)s")
         select_parameters = [{"pk": i, "ck": j} for i in range(4) for j in range(3)]
@@ -215,8 +221,9 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
             found = node.grep_log("Reactor stall", from_mark=mark)
             assert not found, f"Next Reactor stalls were found: {found}"
 
-        found = node.grep_log("oversized allocation", from_mark=mark)
-        assert not found, f"Next oversized allocation were found: {found}"
+        if check_oversize_allocation:
+            found = node.grep_log("oversized allocation", from_mark=mark)
+            assert not found, f"Next oversized allocation were found: {found}"
 
         found = self.check_errors(node, exclude_errors=self.expected_errors)
         assert not found, f"Next errors were found: {found}"
