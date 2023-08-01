@@ -22,9 +22,11 @@ from dsr.scylla_cluster.actions import DecommissionRemoveNode, StopNode, StartNo
     RebootNode, RepairNode, FlushNode, CompactNode, RebuildNode, DrainNode, DecommissionNode, ReplaceNode
 from dtest_class import Tester
 from dtest_setup import DTestSetup
+from tools.marks import unmark
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestRandomPaxos(Tester):
 
     @pytest.fixture(autouse=True)
@@ -82,6 +84,8 @@ class TestRandomPaxos(Tester):
         test_info.randomize()
         test_info.execute(tester=self)
 
+    # Reason for unmark: this test ran more than 40 minutes on several occasions
+    @unmark.next_gating
     def test_topology_grow(self, request: pytest.FixtureRequest):
         """
         Test on add nodes to the cluster, covers following cases:
