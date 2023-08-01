@@ -14,6 +14,8 @@ from tools.misc import ImmutableMapping
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
