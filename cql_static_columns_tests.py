@@ -7,6 +7,7 @@ from tools.testers import CQLTester, ConnectionArgs, ClusterSetupArgs
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestStaticColumnQueries(CQLTester):
     CONNECTION_ARGS = ConnectionArgs()
     CLUSTER_SETUP_ARGS = ClusterSetupArgs()
