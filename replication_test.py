@@ -17,6 +17,8 @@ from tools.data import rows_to_list
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 TRACE_DETERMINE_REPLICAS = re.compile('Determining replicas for mutation')
 TRACE_SEND_MESSAGE = re.compile('Sending message to /([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)')
 TRACE_RESPOND_MESSAGE = re.compile('Message received from /([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)')
