@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestLwtDestructiveDDL(Tester):
     """
     Destructive DDL in presence of LWT: execute destructive DDL
