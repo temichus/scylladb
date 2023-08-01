@@ -294,7 +294,7 @@ class TestSnitchConfigurationUpdate(Tester):
             logger.debug(out)
             ips_found = re.findall(r'(\d+\.\d+\.\d+\.\d+)', out)
 
-            assert len(ips_found) == expected_count,\
+            assert len(ips_found) == expected_count, \
                 f"wrong number of endpoints found ({len(ips_found)}), should be: {expected_count}"
 
     def wait_for_nodes_on_racks(self, nodes, expected_racks):

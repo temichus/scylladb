@@ -69,7 +69,7 @@ class BaseHelpers(Tester):
         statement = SimpleStatement(query, consistency_level=consistency_level)
         s = self.patient_cql_connection(node, keyspace)
         result = list(s.execute(statement))
-        assert result[0].count == expected_number_of_rows,\
+        assert result[0].count == expected_number_of_rows, \
             f"Expected {expected_number_of_rows} rows in {keyspace}.{table} on {node.name}. " \
             f"Got {result[0].count}"
 

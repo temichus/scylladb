@@ -189,7 +189,7 @@ class TestPerPartitionRateLimiter(Tester):
         ), f"writes limited metric shows wrong number: {rejected_queries_metric} != {rejected_queries_actual}"
 
         # validate the rate (due limited precision and use of non-shard aware driver verify in (0.9x, 2x) range
-        assert 0.9 * max_writes_per_second < queries_passed / duration < 2 * max_writes_per_second,\
+        assert 0.9 * max_writes_per_second < queries_passed / duration < 2 * max_writes_per_second, \
             "Actual rate is different specified write rate limit"
 
         # verification for read rate limit
@@ -225,7 +225,7 @@ class TestPerPartitionRateLimiter(Tester):
         assert rejected_by_replica, "Missing value for total_read_rate_limited metric"
 
         # validate the rate
-        assert 0.9 * max_reads_per_second < queries_passed / duration < 2 * max_reads_per_second,\
+        assert 0.9 * max_reads_per_second < queries_passed / duration < 2 * max_reads_per_second, \
             "Actual rate is different specified read rate limit"
 
         # Commented out until https://github.com/scylladb/scylladb/issues/11651 is fixed

@@ -171,6 +171,6 @@ class TestScyllaManagerClusterMgmt(Tester, ScyllaManagerMixin):
         address = self.cluster._scylla_manager._get_api_address()
         url = f"http://{address}/storage_service/repair_status?id=1"
         repair_get_request = requests.get(url=url)
-        assert repair_get_request.status_code == expected_status_of_nonexistent_task,\
+        assert repair_get_request.status_code == expected_status_of_nonexistent_task, \
             f"Wrong status of repair get REST API command: {repair_get_request.status_code}" \
             f" instead of {expected_status_of_nonexistent_task}"

@@ -1319,7 +1319,7 @@ class TestAuthRoles(Tester):
         error_message = list(response.value.errors.values())[0].args[0]
         error_object = list(response.value.errors.values())[0]
         pattern = r'Failed to authenticate to %s:.* code=0100 \[Bad credentials\] message="%s"' % (host, message)
-        assert isinstance(error_object, AuthenticationFailed),\
+        assert isinstance(error_object, AuthenticationFailed), \
             "Expected AuthenticationFailed, got %s" % type(error_object)
         assert re.search(pattern, str(error_message)), "Expected: %s" % pattern
 

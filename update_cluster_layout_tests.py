@@ -1885,9 +1885,9 @@ class TestUpdateClusterLayout(Tester):
         query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
                                 consistency_level=ConsistencyLevel.ALL)
         res = list(sessions[0].execute(query))
-        assert res == list(sessions[1].execute(query)),\
+        assert res == list(sessions[1].execute(query)), \
             "different counter values in node0 and node1"
-        assert res == list(sessions[2].execute(query)),\
+        assert res == list(sessions[2].execute(query)), \
             "different counter values in node0 and node2"
 
         for c in range(0, nb_counter):

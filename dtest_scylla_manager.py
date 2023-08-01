@@ -1366,7 +1366,7 @@ class BackupValidateTask(ManagerTask):
         """
         if wait_for_task_ending:
             self.wait_and_get_final_status(step=5)
-        assert self.status in [TaskStatus.DONE, TaskStatus.ERROR],\
+        assert self.status in [TaskStatus.DONE, TaskStatus.ERROR], \
             f"Can't get file summary since the task is in {self.status} status"
         progress_string = self.full_progress_string()
         file_status_dict = dict()

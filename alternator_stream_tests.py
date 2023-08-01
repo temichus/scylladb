@@ -226,7 +226,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
             closed_shards = [shard for shard in streams_table.shards if not streams_table.is_shard_open(shard)]
             for shard in closed_shards:
                 assert int(shard['SequenceNumberRange']['EndingSequenceNumber']) > int(shard['SequenceNumberRange'][
-                    'StartingSequenceNumber']),\
+                    'StartingSequenceNumber']), \
                     "EndingSequenceNumber is not greater than StartingSequenceNumber"
 
         decommission_thread.join()

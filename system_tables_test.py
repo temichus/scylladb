@@ -662,7 +662,7 @@ class TestSnapshotsTable(SystemTableBase):
             snapshot_tables = sorted([f"{row.keyspace_name}.{row.table_name}" for row in table_content])
 
             logger.info("Verifying the content of the table %s.%s...", self.KEYSPACE_NAME, self.TABLE_NAME)
-            assert snapshot_tables == tables,\
+            assert snapshot_tables == tables, \
                 f"Expected to get snapshot data for tables: {tables}, but {self.KEYSPACE_NAME}.{self.TABLE_NAME} " \
                 f"contains data for {snapshot_tables}!"
             for row in table_content:
@@ -770,15 +770,15 @@ class TestRuntimeInfoTable(SystemTableBase):
                     # hence the total size of memory reported by Scylla would be smaller
                     # than the specified total memory size.
                     min_size = node.memory() - node.smp() * memory_alignment
-                    assert min_size < total_memory <= node.memory(),\
+                    assert min_size < total_memory <= node.memory(), \
                         f"Unexpected memory value: {row.value}"
             else:
-                assert self.is_number(value=row.value),\
+                assert self.is_number(value=row.value), \
                     f"The type of value='{row.value}' for item='{row.item}' is not number (integer or float)!"
 
         for group, item_list in expected_content.items():
             assert table_content_dict.get(group), f"Records for group='{group}' were not found in the table!"
-            assert sorted(item_list) == sorted(table_content_dict.get(group)),\
+            assert sorted(item_list) == sorted(table_content_dict.get(group)), \
                 f"Unexpected list of items for group='{group}'!"
 
     @pytest.mark.parametrize("item,default_state,changed_state,changing_command,reverting_command",

@@ -62,7 +62,7 @@ class TestScyllaManagerSuspension(Tester, ScyllaManagerMixin):
             intended_run_time_cron = create_cron_list_from_timedelta(minutes=2, hours=8)
             mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, cron=intended_run_time_cron)
         except ScyllaManagerError as err:
-            assert "suspended" in err.args[0].lower() and "scheduling tasks is not allowed" in err.args[0].lower(),\
+            assert "suspended" in err.args[0].lower() and "scheduling tasks is not allowed" in err.args[0].lower(), \
                 f"Scheduling a task in the future while the manager is suspended failed, as expected, but not with " \
                 f"proper error message: {err.args[0]}"
         else:

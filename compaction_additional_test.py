@@ -1232,7 +1232,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         node1.flush()
         # major compaction should compact deleted pk regardless of time window
         node1.nodetool("compact ks tb")
-        assert len(get_list_of_sstables(node1, 'ks', 'tb')) == 1,\
+        assert len(get_list_of_sstables(node1, 'ks', 'tb')) == 1, \
             "after deletion, major compaction should have compacted sstables regardless of time window"
 
 

@@ -343,7 +343,7 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         try:
             mgr_cluster.run_backup_command(location_list=["s3:{}".format(FALSE_BUCKET)])
         except ScyllaManagerError as err:
-            assert "specified bucket does not exist" in err.args[0] or "location is not accessible" in err.args[0],\
+            assert "specified bucket does not exist" in err.args[0] or "location is not accessible" in err.args[0], \
                 "Unexpected error: {}".format(err.args[0])
             # Backwards compatibility
             # TODO: Remove when branching 3.1
@@ -1372,10 +1372,10 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
                                                                    snapshot_tag=backup_task.get_snapshot_tag())
 
         basic_error_message = "The output of the agent's 'download-files --dry-run' command "
-        assert not backed_up_table_set.difference(output_table_set),\
+        assert not backed_up_table_set.difference(output_table_set), \
             f'{basic_error_message} did not include the following table/s: ' \
             f'{backed_up_table_set.difference(output_table_set)}'
-        assert not output_table_set.difference(backed_up_table_set),\
+        assert not output_table_set.difference(backed_up_table_set), \
             f'{basic_error_message} did not include the following table/s: ' \
             f'{output_table_set.difference(backed_up_table_set)}'
 
@@ -1410,7 +1410,7 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         assert file_status_dict["Missing files"] == 0, \
             f'The backup validate task reported on an incorrect number of missing files: ' \
             f'it reported on {file_status_dict["Missing files"]} files instead of 0'
-        assert successful_backup_validate_task.status == TaskStatus.DONE,\
+        assert successful_backup_validate_task.status == TaskStatus.DONE, \
             "Since there are no missing files, the task was supposed to end in success, but it did not"
 
         self._delete_file_from_bucket(mgr_cluster.id)
@@ -1421,7 +1421,7 @@ class TestScyllaMgmtBackup(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         assert file_status_dict["Missing files"] == 1, \
             f'The validate task did not report on the correct number of missing files: ' \
             f'reported {file_status_dict["Missing files"]} files instead of 1'
-        assert failing_backup_validate_task.status == TaskStatus.ERROR,\
+        assert failing_backup_validate_task.status == TaskStatus.ERROR, \
             "Since there are missing files, the task was supposed to end in failure, but it did not"
 
 

@@ -56,7 +56,7 @@ class TestManagerHealthCheck(Tester, ScyllaManagerMixin):
         cluster_status = mgr_cluster.get_hosts_health()
         downed_node_data: HostHealth = cluster_status[node3.address()]
         regular_node_data: HostHealth = cluster_status[node1.address()]
-        assert downed_node_data.cql == downed_node_data.rest == Status(),\
+        assert downed_node_data.cql == downed_node_data.rest == Status(), \
             "The manager pinged a node while it was DN, while it should skip any DN nodes"
         assert regular_node_data.cql.status == CqlStatus.UP and regular_node_data.rest.status == HostRestStatus.UP, \
             "The status of an UN node is not UP"
