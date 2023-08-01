@@ -25,6 +25,8 @@ from tools.stress import format_cs_output
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 class PrepareClusterHelper(Tester):
     @pytest.fixture(autouse=True)
