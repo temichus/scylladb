@@ -3,6 +3,8 @@ import pytest
 from dtest_class import Tester
 from tools.data import rows_to_list
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
