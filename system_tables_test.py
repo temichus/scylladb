@@ -12,10 +12,13 @@ from cassandra.cluster import Session
 from cassandra import WriteFailure, InvalidRequest
 from dtest_class import Tester, create_ks
 from tools.data import create_c1c2_table, insert_c1c2
+from tools.marks import unmark
 
 # pylint: disable=too-many-lines
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 
 class SystemTableBase(Tester):
@@ -894,6 +897,7 @@ class TestRuntimeInfoTable(SystemTableBase):
         assert metrics_after_request["requests_total"] == \
             metrics_after_request["hits"] + metrics_after_request["misses"]
 
+    @unmark.next_gating
     @pytest.mark.xfail(reason="https://github.com/scylladb/scylla/issues/10340")
     @pytest.mark.single_node
     def test_memtable_metrics(self):
@@ -1100,8 +1104,9 @@ class TestConfigTable(SystemTableBase):
                                "no such option"),
                               pytest.param("set value = 'true' where name='failure_detector_timeout_in_ms'",
                                            "Operation failed for system.config",
-                                           marks=pytest.mark.xfail(
-                                               reason="https://github.com/scylladb/scylla/issues/10394"))],
+                                           marks=[pytest.mark.xfail(
+                                               reason="https://github.com/scylladb/scylla/issues/10394"),
+                                               unmark.next_gating])],
                              ids=["no_value_provided", "source_not_updatable", "type_not_updatable",
                                   "parameter_not_live_updatable", "wrong_parameter_name", "wrong_value_type"])
     @pytest.mark.single_node
