@@ -38,7 +38,7 @@ columnspec:
     population: uniform(1..10M)
 
   - name: key2
-    cluster: uniform(3000..3000)
+    cluster: fixed(3000)
 
   - name: c0
     size: fixed(1024)
