@@ -24,6 +24,8 @@ from tools.misc import ImmutableMapping
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 class TestCounters(Tester):
@@ -213,7 +215,6 @@ class TestCounters(Tester):
             assert counter_one_actual == counter_dict[counter_id]['counter_one']
             assert counter_two_actual == counter_dict[counter_id]['counter_two']
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_multi_counter_update(self):
         """
@@ -835,7 +836,6 @@ class TestCountersOnMultipleNodes(Tester):
         self.node2.decommission()
         self.node2.stop()
 
-    @pytest.mark.next_gating
     def test_counter_consistency_node_repair(self):
         """
         Cluster: 3 nodes, keyspace RF=3
