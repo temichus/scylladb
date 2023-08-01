@@ -33,6 +33,7 @@ clients = (
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 @pytest.mark.parametrize('strategy',
                          ['SizeTieredCompactionStrategy',
                           'TimeWindowCompactionStrategy',
@@ -488,7 +489,6 @@ class TestWideRows(Tester):
         self.cluster.compact()
         return row_number
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_wide_rows(self):
