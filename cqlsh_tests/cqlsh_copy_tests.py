@@ -18,6 +18,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.util import SortedSet
 from ccmlib.common import is_win
 from tools.assertions import assert_all, assert_row_count, assert_row_count_in_select_less
+from tools.marks import unmark
 from ccmlib.scylla_cluster import ScyllaCluster
 
 from .cqlsh_tools import (DummyColorMap, assert_csvs_items_equal, csv_rows,
@@ -256,6 +257,7 @@ class CqlshPrepare(Tester):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestCqlshCopy(CqlshPrepare):
     """
     Tests the COPY TO and COPY FROM features in cqlsh.
@@ -1041,7 +1043,6 @@ class TestCqlshCopy(CqlshPrepare):
 
         self.assertCsvResultEqual(self.tempfile.name, results)
 
-    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_all_datatypes_round_trip(self):
         """
@@ -1504,6 +1505,7 @@ class TestCqlshCopy(CqlshPrepare):
     @pytest.mark.single_node
     # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
     @pytest.mark.scylla_mode('!debug')
+    @unmark.next_gating  # unmark cause of: https://github.com/scylladb/scylla-cqlsh/issues/37
     def test_copy_to_with_child_process_crashing(self):
         """
         Test exporting rows with failure injection by setting the environment variable CQLSH_COPY_TEST_FAILURES,
