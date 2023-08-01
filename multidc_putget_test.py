@@ -3,11 +3,12 @@ import pytest
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import putget
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 class TestMultiDCPutGet(Tester):
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_putget_2dc_rf1(self):
         """ Simple put-get test for 2 DC with one node each (RF=1) [catches #3539] """
