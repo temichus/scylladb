@@ -39,6 +39,7 @@ def listify(item):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestUserTypes(Tester):
 
     def assertUnauthorized(self, session, query, message):
@@ -219,7 +220,6 @@ class TestUserTypes(Tester):
         rows = list(session.execute(stmt))
         assert 0 == len(rows)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_nested_user_types(self):
         """Tests user types within user types"""
