@@ -14,6 +14,8 @@ from tools.metrics import get_node_metrics
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 class TestLwt(Tester):
