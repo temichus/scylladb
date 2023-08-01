@@ -6,6 +6,8 @@ from tools.paging import PageFetcher
 from tools.assertions import assert_invalid, assert_one, assert_all, assert_none
 from cassandra.query import SimpleStatement
 
+pytestmark = pytest.mark.next_gating
+
 
 class BaseOperationsHelper:  # pylint: disable=no-member
     special_values = "!@#$%^&*()-_<>?.,/\\ "
@@ -281,7 +283,6 @@ class BaseOperationsHelper:  # pylint: disable=no-member
 @pytest.mark.single_node
 class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 
-    @pytest.mark.next_gating
     def test_pk_filtering_of_text_type_with_percent_sign(self):
         """Test filtering with LIKE operator by partition key.
 
@@ -1362,7 +1363,6 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_none(session=session, query="SELECT * FROM test WHERE test LIKE 'test_string_' ALLOW FILTERING")
         assert_none(session=session, query="SELECT * FROM test WHERE test LIKE 'test_1string' ALLOW FILTERING")
 
-    @pytest.mark.next_gating
     def test_invalid_queries_with_like_operator(self):
         """Test invalid queries with LIKE operator.
 
@@ -1376,7 +1376,6 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
         assert_invalid(session=session, query="SELECT * FROM test WHERE ck LIKE currentDate() ALLOW FILTERING")
         assert_invalid(session=session, query="SELECT * FROM test WHERE ck LIKE currentTime() ALLOW FILTERING")
 
-    @pytest.mark.next_gating
     def test_multiple_like_operator_on_same_column(self):
         """Test query with like operator on same column.
 
@@ -2113,7 +2112,6 @@ class TestLikeOperatorForBaseTable(Tester, BaseOperationsHelper):
 @pytest.mark.single_node
 class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
 
-    @pytest.mark.next_gating
     def test_filtering_mv_new_primary(self):
         session = self.prepare_cluster_with_materialized_views()
         expected_result = [[f"ytrewq{i}", f"qwerty{i}", ] for i in range(5)]
@@ -2183,7 +2181,6 @@ class TestLikeOperatorForMV(Tester, BaseOperationsHelper):
 @pytest.mark.single_node
 class TestIndexFilteringWithLike(Tester, BaseOperationsHelper):
 
-    @pytest.mark.next_gating
     def test_filter_index(self):
         session = self.prepare_cluster_with_global_index()
         expected_all = [[f"qwerty{i}", f"ytrewq{i}", ] for i in range(5)]
