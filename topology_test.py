@@ -6,6 +6,7 @@ import time
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2, query_c1c2
 from tools.assertions import assert_almost_equal
+from tools.marks import unmark
 
 from ccmlib.node import NodetoolError
 from ccmlib.scylla_node import ScyllaNode
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestTopology(Tester):
     REMOVENODE_REJECT_MSG = r"Rejected removenode operation.*the node being removed is alive, maybe you should use decommission instead"
     REMOVENODE_HOSTID_NOT_IN_CLUSTER = "Host ID not found in the cluster"
@@ -77,6 +79,7 @@ class TestTopology(Tester):
         time.sleep(10)
 
     @pytest.mark.no_vnodes
+    @unmark.next_gating
     def test_movement(self):
         cluster = self.cluster
 
@@ -150,6 +153,7 @@ class TestTopology(Tester):
 
     @pytest.mark.no_vnodes
     @pytest.mark.single_node
+    @unmark.next_gating
     def test_move_single_node(self):
         """ Test moving a node in a single-node cluster (#4200) """
         cluster = self.cluster
@@ -217,7 +221,6 @@ class TestTopology(Tester):
             time.sleep(1)
         assert not node3.is_running()
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_crash_during_decommission(self):
         """
@@ -263,6 +266,7 @@ class TestTopology(Tester):
         logger.debug(out)
         return out
 
+    @unmark.next_gating
     def test_remove_node_alive(self):
         self.prepare_cluster()
         remove_node = self.cluster.nodelist()[-1]
