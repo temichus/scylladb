@@ -1704,7 +1704,7 @@ class TestMutations(ThriftTester):
             expected = ['Keyspace1', 'Keyspace2', 'system', 'system_auth',
                         'system_distributed', 'system_schema', 'system_traces']
             if parse_version(self.cluster.version()) >= parse_version('2022.1'):
-                expected += ['audit', 'system_distributed_everywhere']
+                expected += ['system_distributed_everywhere']
             if parse_version(self.cluster.version()) >= parse_version('2023.1'):
                 expected += ['system_replicated_keys']
             assert sorted(ksnames) == sorted(expected)
