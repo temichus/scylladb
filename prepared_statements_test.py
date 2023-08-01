@@ -5,6 +5,7 @@ import pytest
 from dtest_class import Tester
 
 KEYSPACE = "foo"
+pytestmark = pytest.mark.next_gating
 
 
 @pytest.mark.dtest_full
