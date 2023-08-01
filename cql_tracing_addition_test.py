@@ -207,6 +207,7 @@ class TracingReadAccessHelper:  # pylint: disable=no-member
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestTracingReadAccess(Tester, TracingReadAccessHelper):
     keyspace = "ks"
     table = "cf"
