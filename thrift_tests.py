@@ -27,6 +27,8 @@ from tools.thrift import get_thrift_client
 logger = logging.getLogger(__file__)
 pid_fname = "system_test.pid"
 
+pytestmark = pytest.mark.next_gating
+
 
 def pid():
     return int(open(pid_fname).read())
@@ -2700,7 +2702,6 @@ class TestCompactStorageThriftAccesses(ThriftTester):
     Test thrift access to compact storage column families.
     """
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_get(self, fixture_thrift_client):
         node1, = self.cluster.nodelist()
