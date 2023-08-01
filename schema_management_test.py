@@ -18,6 +18,7 @@ from dtest_class import Tester, create_ks, create_cf
 from ccmlib.scylla_cluster import ScyllaCluster
 
 logger = logging.getLogger(__name__)
+pytestmark = pytest.mark.next_gating
 
 
 @pytest.mark.dtest_full
@@ -354,7 +355,6 @@ class TestSchemaManagement(Tester):
         rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ALL))
         assert rows_to_list(rows) == [], f"Expected an empty result set, got {rows}"
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_writes_schema_recreated_while_node_down(self):
         self.cluster.set_configuration_options(values={'ring_delay_ms': 5000})
