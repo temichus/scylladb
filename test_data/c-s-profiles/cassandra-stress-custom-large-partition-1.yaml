@@ -35,7 +35,7 @@ table_definition: |
 columnspec:
   - name: key
     size: fixed(10)
-    population: uniform(1..10M)
+    population: seq(1..${nr_partitions})
 
   - name: key2
     cluster: fixed(3000)

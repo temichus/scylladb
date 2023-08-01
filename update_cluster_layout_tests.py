@@ -5,9 +5,12 @@ import collections
 import random
 import traceback
 import re
+import string
+import tempfile
 
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 
 from packaging.version import Version
 
@@ -41,6 +44,16 @@ def generate_test_name(val):
     if isinstance(val, bool):
         return ""
     return val.replace(" ", "_")
+
+
+@contextmanager
+def template_file(src_file, /, **kwds):
+    with open(src_file, encoding='utf-8') as f:
+        template = string.Template(f.read())
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as output_file:
+        output_file.write(template.substitute(kwds))
+        output_file.flush()
+        yield output_file.name
 
 
 @pytest.mark.next_gating
@@ -1782,11 +1795,11 @@ class TestUpdateClusterLayout(Tester):
 
         logger.debug("Node 1 started")
         c_s_profile = os.path.join("test_data", "c-s-profiles", "cassandra-stress-custom-large-partition-1.yaml")
-        c_s_profile = os.path.abspath(c_s_profile)
-        logger.debug("Inject data with cassandra-stress starts")
-        logger.debug(c_s_profile)
-        node1.stress(['user', 'n=%s' % nr_partitions, 'cl=ONE', 'profile=%s' % c_s_profile, 'ops(insert=1)',
-                      '-rate threads=1'])
+        with template_file(c_s_profile, nr_partitions=nr_partitions) as profile:
+            logger.debug("Inject data with cassandra-stress starts")
+            logger.debug(profile)
+            node1.stress(['user', f'n={nr_partitions}', 'cl=ONE', f'profile={profile}', 'ops(insert=1)',
+                          '-rate threads=1'])
         logger.debug("Inject data with cassandra-stress completes")
 
         node2 = new_node(cluster)
