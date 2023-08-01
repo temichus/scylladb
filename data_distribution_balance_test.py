@@ -17,6 +17,7 @@ PP = pprint.PrettyPrinter(indent=2)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestDataDistribution(Tester):
     def prepare(self, nodes_num):
         self.cluster.populate(nodes=nodes_num)
