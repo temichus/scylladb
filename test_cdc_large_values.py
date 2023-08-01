@@ -14,9 +14,12 @@ from dtest_class import Tester, create_ks
 from dtest_setup import DTestSetup
 from tools.misc import ImmutableMapping
 from dtest_setup_overrides import DTestSetupOverrides
+from tools.marks import unmark
 
 MB = 1024 * 1024
 LOGGER = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 
 @pytest.mark.dtest_full
@@ -86,6 +89,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
                           check_stalls=prepare_statements)
 
     @pytest.mark.parametrize("prepare_statements", [True, False], ids=["prepared_statements", "unprepared_statements"])
+    @unmark.next_gating  # https://github.com/scylladb/scylla-dtest/issues/3354
     def test_row_with_several_columns_of_blobs_with_cdc_preimage_full_postimage(self, prepare_statements: bool, fixture_dtest_setup: DTestSetup):
         """test row with several columns of blob type
 
