@@ -83,6 +83,7 @@ def is_per_partition_limit_reached_error(err):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestPerPartitionRateLimiting(Tester):
     warmup_seconds = 5.0
     measure_seconds = 25.0
