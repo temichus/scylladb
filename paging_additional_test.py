@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
     """
     Basic aggregation tests using paging
@@ -85,7 +86,6 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
         assert rows_count == [1], f"Expected 1 row, but got {rows_count}"
         assert all_data == [{u'count': 1234}], f"Expected \"{u'count': 1234}\", but got {all_data}"
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_paged_count_with_clustering_key(self):
         self._test_paged_count_with_clustering_key('asc')
@@ -95,6 +95,7 @@ class TestAggregatePaging(BasePagingTester, PageAssertionMixin):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestPagingSavedQueryStateBase(BasePagingTester):
     LOOKUPS = 'querier_cache_lookups'
     MISSES = 'querier_cache_misses'
@@ -151,6 +152,7 @@ class TestPagingSavedQueryStateBase(BasePagingTester):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
     """
     Tests for queries attempting to fetch large pages
@@ -195,7 +197,6 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
                  {}),
                 verifier=verify_misses)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_large_page_range_queries(self):
         self.prepare_schema()
@@ -210,7 +211,6 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
         self.fill_data(data=data, data_size=64 * 1024, keys=['pk', 'ck'], vals=['v'])
         self.validate_data(query="select * from %s" % self.CF_NAME, fetch_size=1000, row_cnt=1000)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_large_page_range_queries_static_columns(self):
         self.prepare_schema()
@@ -256,6 +256,7 @@ class TestLargePaging(TestPagingSavedQueryStateBase, PageAssertionMixin):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
     """
     Tests concerned with querier-reuse during paging.
@@ -334,7 +335,6 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
         assert requested_pages == 2, f"Expected 2 pages, got {requested_pages}"
         self.assert_nodes_metrics(({'lookups': requested_pages - 1}, {}))
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_two_partitions(self):
         """
@@ -423,6 +423,7 @@ class TestPagingSavedQueryStateSingularRanges(TestPagingSavedQueryStateBase):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestPagingQueryAlternativeConsistencyLevel(BasePagingTester):
 
     def test_consistency_level_quorum(self):
