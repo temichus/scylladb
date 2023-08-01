@@ -25,6 +25,8 @@ TESTED_STRATEGIES = ['LeveledCompactionStrategy', 'SizeTieredCompactionStrategy'
 ENTERPRISE_TESTED_STRATEGIES = ['IncrementalCompactionStrategy']
 MURMUR3 = 15
 
+pytestmark = pytest.mark.next_gating
+
 
 class ReshardingBase(Tester):
     DEFAULT_MURMUR3_PARTITIONER = 12
@@ -190,24 +192,6 @@ class ReshardingBase(Tester):
 
         # Verify data files number after resharding and compaction
         self._verify_number_of_data_files(data_files_num_before=data_files_num_before, reshard_to=reshard_to)
-
-
-@pytest.mark.dtest_full
-@pytest.mark.next_gating
-@pytest.mark.single_node
-@pytest.mark.parametrize("node_count,compaction_strategy,murmur3", [
-    (node_count, strategy, MURMUR3)
-    for node_count in [1]
-    for strategy in ['TimeWindowCompactionStrategy']
-])
-class TestReshardingSingleNodeGating(ReshardingBase):
-    # Copied from resharding_by_murmur3_smp_test to run in reduced configurations for next-gating
-    def test_resharding_by_murmur3_gating(self, node_count, compaction_strategy, murmur3):
-        """
-        Cluster with 10M objects. Both SMP and MURMUR3 parameter are changed
-        and restarting the cluster
-        """
-        self._resharding_basic(self.SMP_FOR_INCREASE, rows=1000, murmur3=self.MURMUR3_PARTITIONER_FOR_INCREASE)
 
 
 @pytest.mark.dtest_full
