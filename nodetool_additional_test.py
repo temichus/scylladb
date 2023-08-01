@@ -30,6 +30,7 @@ from tools.assertions import PytestRegex
 from tools.misc import ImmutableMapping, retry_till_success
 from tools.files import copy_files_to, get_node_cf_dir
 from tools.status import nodetool_gossipinfo, nodetool_status
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def randbytes(n):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestNodetool(Tester):
 
     @pytest.fixture(scope='function', autouse=True)
@@ -1245,6 +1247,7 @@ class TestNodetool(Tester):
 
     # TODO: This test should be removed when issue #7811 will be fixed
     @pytest.mark.parametrize("strategy", ['TimeWindowCompactionStrategy', 'SizeTieredCompactionStrategy'])
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/14710
     def test_resetlocalschema_api_issue_7811(self, strategy):
         self.ignore_log_patterns += ['find a column family with UUID']
         cluster = self.cluster
@@ -2252,6 +2255,7 @@ class TestNodetool(Tester):
             pass
 
     @pytest.mark.single_node
+    @unmark.next_gating
     def test_scrub_with_one_node_expect_data_loss(self):
         self._scrub_with_one_node_expect_data_loss()
 
@@ -2379,6 +2383,7 @@ class TestNodetool(Tester):
         self._scrub_sstable_with_invalid_fragment(mode="SEGREGATE", scrub_keyspace=True)
 
     @pytest.mark.single_node
+    @unmark.next_gating
     def test_validate_with_one_node_expect_data_loss(self):
         self._scrub_with_one_node_expect_data_loss(mode="VALIDATE")
 
@@ -2549,6 +2554,7 @@ def set_node_probability(node, value: float):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.dtest_gating
 class TestGetTraceProbability(Tester):
     """
     Check gettraceprobablility command returned value after settraceprobablility operations:
