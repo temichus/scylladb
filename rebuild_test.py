@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestRebuild(Tester):
     @pytest.fixture(scope='function', autouse=True)
     def fixture_dtest_setup_overrides(self, dtest_config):
@@ -41,7 +42,6 @@ class TestRebuild(Tester):
     def add_node(self, i, dc='dc1'):
         return self.cluster.new_node(i, debug=True, data_center=dc)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_simple_rebuild(self):
         """
