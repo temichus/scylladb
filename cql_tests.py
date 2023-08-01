@@ -29,6 +29,8 @@ from tools.cluster import new_node
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 class CQLTester(Tester):
@@ -193,7 +195,6 @@ class TestStorageProxyCQL(CQLTester):
         session.execute("DROP USER user1")
 
     @pytest.mark.dtest_smoke
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_statements(self):
         """
@@ -817,7 +818,6 @@ class TestTruncate(CQLTester):
 
         assert len(truncated_time_per_node) <= len(sec_truncated_time_per_node)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_truncate_after_restart(self):
         session = self.prepare(nodes=1, create_keyspace=False)
