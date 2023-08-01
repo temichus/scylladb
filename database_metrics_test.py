@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
+@pytest.mark.next_gating
 class TestDatabaseMetrics(Tester):
     """
         Collection of tests related to database metrics stored on Prometheus.
