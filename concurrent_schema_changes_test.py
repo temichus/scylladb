@@ -12,6 +12,7 @@ from cassandra.concurrent import execute_concurrent
 from dtest_class import Tester, create_ks
 from tools.assertions import assert_row_count_in_select
 from tools.cluster import new_node
+from tools.marks import unmark
 
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ def wait(delay=2):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestConcurrentSchemaChanges(Tester):
 
     @pytest.fixture(scope='function', autouse=True)
@@ -331,6 +333,8 @@ class TestConcurrentSchemaChanges(Tester):
 
         assert 0 == len(errors), "\n".join(errors)
 
+    # Reason to exclude from next_gating: the test has failed runs in enterprise daily job
+    @unmark.next_gating
     def test_create_lots_of_schema_churn(self):
         """
         create tables, indexes, alters across multiple threads concurrently
@@ -348,6 +352,8 @@ class TestConcurrentSchemaChanges(Tester):
         wait(60)
         self._verify_lots_of_schema_actions(session)
 
+    # Reason to exclude from next_gating: the test has failed runs in enterprise daily jobs
+    @unmark.next_gating  # https://github.com/scylladb/scylla-enterprise/issues/3231
     def test_create_lots_of_schema_churn_with_node_down(self):
         """
         create tables, indexes, alters across multiple threads concurrently with a node down
@@ -386,7 +392,6 @@ class TestConcurrentSchemaChanges(Tester):
 
         self.make_schema_changes(session, namespace='ns1')
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_changes_to_different_nodes(self):
         logger.debug("changes_to_different_nodes_test()")
@@ -460,7 +465,6 @@ class TestConcurrentSchemaChanges(Tester):
         node3.start(wait_other_notice=True, wait_for_binary_proto=True)
         self.validate_schema_consistent(node1)
 
-    @pytest.mark.next_gating
     def test_decommission_node(self):
         logger.debug("decommission_node_test()")
         cluster = self.cluster
@@ -489,7 +493,6 @@ class TestConcurrentSchemaChanges(Tester):
 
         self.validate_schema_consistent(node1)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_snapshot(self):
         logger.debug("snapshot_test()")
@@ -538,7 +541,6 @@ class TestConcurrentSchemaChanges(Tester):
         wait(2)
         self.validate_schema_consistent(node1)
 
-    @pytest.mark.next_gating
     @pytest.mark.single_node
     def test_load(self):
         """
