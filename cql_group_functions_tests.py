@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestGroupFunctions(Tester):
     types_to_skip = ['ascii', 'blob', 'inet', 'list', 'map', 'set', 'time', 'tuple', 'udt']
 
