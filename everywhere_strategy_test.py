@@ -7,6 +7,8 @@ from dtest_class import Tester
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 class TestEverywhereConsistency(Tester):
