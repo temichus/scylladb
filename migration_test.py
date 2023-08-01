@@ -28,6 +28,7 @@ from tools.stress import create_stress_compatible_table
 from dtest_setup_overrides import DTestSetupOverrides
 
 logger = logging.getLogger(__name__)
+pytestmark = pytest.mark.next_gating
 
 
 class BaseHelpers(Tester):
@@ -406,7 +407,6 @@ class MigrationTestBase(BaseHelpers):
 
     # Test that scylla's issue 1212 is fixed, look: https://github.com/scylladb/scylla/issues/1212
     # Refresh procedure should ask row cache to evict some rows covered by new sstables.
-    @pytest.mark.next_gating
     def test_migrate_sstable_to_check_consistency(self):
         node1 = self.start_cluster_and_get_node1()
 
@@ -821,7 +821,6 @@ class TestMigration(MigrationTestBase):
             if message:
                 assert message in str(error), error
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_migrate_sstable_with_counter(self):
         super(TestMigration, self).test_migrate_sstable_with_counter()
