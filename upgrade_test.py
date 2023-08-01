@@ -393,6 +393,7 @@ class TestUpgradeWithExperimentalRaft(BaseTests):
     def test_one_node_upgrade(self, dtest_config):
         pass
 
+    @pytest.mark.next_gating
     def test_upgrade_cluster_with_node_different_versions(self, dtest_config: DTestConfig):
         """
         Test scenario:
