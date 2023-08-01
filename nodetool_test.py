@@ -9,6 +9,7 @@ from ccmlib.node import NodetoolError
 from dtest_class import Tester
 from tools.stress import format_cs_output, assert_cs_success
 from tools.rackdc import update_properties
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ class TestNodetool(Tester):
         assert_cs_success(cs_result)
 
     @pytest.mark.parametrize('method', ['decommission', 'kill'])
+    @unmark.next_gating  # https://github.com/scylladb/scylla-dtest/issues/3372
     def test_seed(self, method):
         """
         Test if cassandra-stress works well when seed node is  "decommission" or "killed".
