@@ -21,6 +21,8 @@ from tools.metrics import get_node_metrics
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 class TestHelper(Tester):
     sessions = None
@@ -692,7 +694,6 @@ class TestAccuracy(TestHelper):
         self._run_test_function_in_parallel(
             TestAccuracy.Validation.validate_users, self.nodes, self.rf_value.values(), combinations)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_simple_strategy_counters(self):
         """
@@ -932,7 +933,6 @@ class TestConsistency(TestHelper):
         assert_none(
             session, "SELECT * FROM t WHERE id = 0 LIMIT 1", cl=ConsistencyLevel.QUORUM)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_readrepair(self):
         cluster = self.cluster
@@ -1016,7 +1016,6 @@ class TestConsistency(TestHelper):
                 'TRUNCATE cf', consistency_level=ConsistencyLevel.QUORUM)
             session.execute(truncate_statement)
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug  # https://github.com/scylladb/scylla/issues/4384
     def test_quorum_available_during_failure(self):
         cl_value = ConsistencyLevel.QUORUM
