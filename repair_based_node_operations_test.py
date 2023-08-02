@@ -14,6 +14,8 @@ from tools.data import insert_c1c2
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @dataclass
 class RBNOperation:
