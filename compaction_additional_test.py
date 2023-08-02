@@ -240,16 +240,10 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         # verify that only some deletion markers will be kept since we reshard the files
         # and gc_period passed so some tombstones have been removed by compaction
-        json_path = tempfile.mkstemp(suffix='.json')
-        jname = json_path[1]
-        with open(jname, 'w') as f:
-            node1.run_sstable2json(f, keyspace='ks')
+        jsoninfo = node1.dump_sstables('ks', 'cf')
+        node1.info(jsoninfo)
 
-        with open(jname, 'r') as g:
-            jsoninfo = g.read()
-            node1.info(jsoninfo)
-
-        numfound = jsoninfo.count("marked_deleted")
+        numfound = sum('tombstone' in partition for partition in jsoninfo)
         logger.debug("{} keys are now marked_deleted (0 {} expected < {})".format(
             numfound, "<" if num_compactions < 2 else "<=", keys))
         assert numfound < keys, f"Number of found tombstones {numfound} greater than number of keys {keys}"
@@ -278,16 +272,10 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         node1.wait_for_compactions()
 
         # validate that all deletion markers have been removed
-        json_path = tempfile.mkstemp(suffix='.json')
-        jname = json_path[1]
-        with open(jname, 'w') as f:
-            node1.run_sstable2json(f, keyspace='ks')
+        jsoninfo = node1.dump_sstables('ks', 'cf')
+        node1.info(jsoninfo)
 
-        with open(jname, 'r') as g:
-            jsoninfo = g.read()
-            node1.info(jsoninfo)
-
-        numfound = jsoninfo.count("marked_deleted")
+        numfound = sum('tombstone' in partition for partition in jsoninfo)
         logger.debug(f"{numfound} keys are now marked_deleted (Excpecting 0)")
         assert numfound == 0, "Not all tombstones were removed during compactions"
 
