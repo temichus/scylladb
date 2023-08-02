@@ -1563,7 +1563,13 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         # run decommossion for node1
         node1.decommission()
-        # After streaming the left node should also have at max one
+
+        # trigger and wait for offstrategy compaction
+        run_rest_api(
+            node2, f"/storage_service/keyspace_offstrategy_compaction/{self.keyspace_name}?cf={self.table_name}")
+
+        # After streaming and offstrategy compaction
+        # the left node should also have at max one
         # window per sstable.
         self._check_sstable_timestamps(node2)
 
@@ -1581,6 +1587,10 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         node2.start(wait_for_binary_proto=True)
         node2.repair(['-seq', self.keyspace_name])
         node2.flush()
+
+        # trigger and wait for offstrategy compaction
+        run_rest_api(
+            node2, f"/storage_service/keyspace_offstrategy_compaction/{self.keyspace_name}?cf={self.table_name}")
 
         self._check_sstable_timestamps(node1)
         self._check_sstable_timestamps(node2)
