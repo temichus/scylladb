@@ -621,12 +621,7 @@ class TestTTL(Tester):
 
 def print_sstable(node, keyspace, table):
     node.flush()
-    json_path = tempfile.mkstemp(suffix='.json')
-    json_name = json_path[1]
-    with open(json_name, 'w') as f:
-        node.run_sstable2json(f, keyspace=keyspace, column_families=[table])
-    with open(json_name, 'r') as f:
-        sstable_dump = f.read()
+    sstable_dump = node.dump_sstables(keyspace, table)
     node_name = getattr(node, 'name') or str(node)
     logger.debug('[{}] SStable dump of {}.{}: {}'.format(node_name, keyspace, table, sstable_dump))
 
