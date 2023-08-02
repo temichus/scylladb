@@ -17,6 +17,8 @@ from tools.files import get_list_of_sstables
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.next_gating
+
 
 @pytest.mark.dtest_full
 class TestRepair(Tester):
