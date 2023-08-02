@@ -67,7 +67,7 @@ def call(Map pipelineParams) {
                         baseRelocJob = params.RELOC_JOB_NAME ?: "next"
                         buildMode = params.BUILD_MODE
                         excludeTests = params.EXCLUDE_DTESTS ?: ""
-                        includeDtests = params.INCLUDE_DTESTS ?: "-m next_gating"
+                        includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and next_gating'"
 
                         splitMaxNodesForHeavyAndLong = "10"
                         def upstream = currentBuild.rawBuild.getCause(hudson.model.Cause$UpstreamCause)
