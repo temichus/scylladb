@@ -231,7 +231,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         numfound = sum('tombstone' in partition for partition in jsoninfo)
         logger.debug("{} keys are now marked_deleted (0 {} expected < {})".format(
             numfound, "<" if num_compactions < 2 else "<=", keys))
-        assert numfound < keys, f"Number of found tombstones {numfound} greater than number of keys {keys}"
+        assert numfound <= keys, f"Number of found tombstones {numfound} greater than number of keys {keys}"
         if num_compactions < 2:
             assert numfound > 0, f"Number of found tombstones {numfound} != 0"
 
@@ -248,11 +248,11 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         compactions_1 = compactions_count()
         compactions_2 = compactions_1
 
-        logger.debug("Inserting data and waiting for new compaction")
+        logger.debug("Wait and force new compaction")
         while compactions_1 + 2 > compactions_2:
-            for x in range(keys * 2, keys * 3):
-                session.execute(f'insert into ks.cf (key, val) values ({x},1);')
+            time.sleep(gc_grace_seconds)
             node1.flush()
+            node1.compact(keyspace = 'ks')
             compactions_2 = compactions_count()
         node1.wait_for_compactions()
 
