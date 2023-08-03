@@ -2644,8 +2644,11 @@ class TestUpdateClusterLayout(Tester):
         cluster: ScyllaCluster = self.cluster
         debug_mode = cluster.scylla_mode == "debug"
         nodeops_watchdog_timeout_seconds = 30 if debug_mode else 10
-        cluster.set_configuration_options(
-            values={"consistent_cluster_management": True, "nodeops_watchdog_timeout_seconds": nodeops_watchdog_timeout_seconds})
+        cluster.set_configuration_options(values={
+            "consistent_cluster_management": True,
+            "nodeops_watchdog_timeout_seconds": nodeops_watchdog_timeout_seconds,
+            "nodeops_heartbeat_interval_seconds": 1
+        })
         cluster.populate(3)
         logger.debug("starting cluster")
         cluster.start(wait_other_notice=True)
