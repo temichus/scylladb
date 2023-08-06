@@ -161,7 +161,7 @@ class ReshardingBase(Tester):
             rows = 1000
         op_cnt = rows
         stress_cmd = ['write', 'n={}'.format(op_cnt), 'no-warmup',
-                      '-schema', 'replication(factor={})'.format(self.rf), 'compaction(strategy={})'.format(self.compaction_strategy)]
+                      '-schema', 'replication(factor={})'.format(self.rf), 'compaction(strategy={},enabled=false)'.format(self.compaction_strategy)]
         self._run_stress(op_cnt, stress_cmd)
 
         self._verify_row_number('standard1', op_cnt)
