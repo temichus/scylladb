@@ -504,7 +504,7 @@ class TestSchemaMetadata(Tester):
 
         if Version(cluster.version()) >= Version('3.0'):
             cluster.set_configuration_options({'enable_user_defined_functions': 'true',
-                                               'experimental': 'true',
+                                               'experimental_features': ['udf'],
                                                'enable_scripted_user_defined_functions': 'true'})
         elif Version(cluster.version()) >= Version('2.2'):
             cluster.set_configuration_options({'enable_user_defined_functions': 'true'})
