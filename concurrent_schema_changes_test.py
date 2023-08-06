@@ -199,7 +199,7 @@ class TestConcurrentSchemaChanges(Tester):
         self.validate_schema_consistent(node2)
         self.validate_schema_consistent(node3)
 
-    def test_create_lots_of_indexes_concurrently(self):
+    def test_create_lots_of_indexes_concurrently(self, fixture_dtest_setup):
         """
         create indexes across multiple threads concurrently
         """
@@ -216,6 +216,11 @@ class TestConcurrentSchemaChanges(Tester):
             for ins in range(1000):
                 session.execute("insert into base_{0} (id, c1, c2) values (uuid(), {1}, {2})".format(n, ins, ins))
         wait(5)
+
+        fixture_dtest_setup.ignore_log_patterns += [
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception',
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Failed to apply mutation from .*: data_dictionary::no_such_column_family',
+        ]
 
         logger.debug("creating indexes")
         cmds = []
