@@ -386,14 +386,17 @@ class TestLwt(Tester):
 
         create_ks(session=session1, name="lwt", rf=3)
 
-        logger.info("Create table with paxos_grace_seconds is 10 sec.")
-        create_cf(session=session1, name='ttl_10_sec', key_type='int', columns={'v1': 'int'},
-                  paxos_grace_seconds=10)
+        paxos_grace_seconds = self.cql_timeout(10)
+        table_name = f'ttl_{paxos_grace_seconds}_sec'
+
+        logger.info(f"Create table with paxos_grace_seconds is {paxos_grace_seconds} sec.")
+        create_cf(session=session1, name=table_name, key_type='int', columns={'v1': 'int'},
+                  paxos_grace_seconds=paxos_grace_seconds)
 
         logger.info("Create table with default paxos_grace_seconds.")
         create_cf(session=session1, name='default_ttl', key_type='int', columns={'v1': 'int'})
 
-        for table in ['default_ttl', 'ttl_10_sec']:
+        for table in ['default_ttl', table_name]:
             self.execute_insert_data_query(session=session1, table=table,
                                            cql=f"INSERT INTO {table} (key, v1) VALUES (?, ?) IF NOT EXISTS",
                                            start=0, end=10)
@@ -406,8 +409,8 @@ class TestLwt(Tester):
             assert_row_count(session=session, table_name='system.paxos', expected=20,
                              consistency_level=ConsistencyLevel.LOCAL_ONE)
 
-        logger.info("Wait for paxos rows for table 'ttl_10_sec' will be expired")
-        sleep(11)
+        logger.info(f"Wait for paxos rows for table '{table_name}' will be expired")
+        sleep(paxos_grace_seconds + 1)
 
         for session in [session1, session2, session3]:
             assert_row_count(session=session, table_name='system.paxos', expected=10,
@@ -416,7 +419,7 @@ class TestLwt(Tester):
                        expected=default_ttl_paxos_rows, ignore_order=True,
                        cl=ConsistencyLevel.LOCAL_ONE)
 
-        for table in ['default_ttl', 'ttl_10_sec']:
+        for table in ['default_ttl', table_name]:
             assert_row_count(session=session1, table_name=table, expected=10,
                              consistency_level=ConsistencyLevel.QUORUM)
 
@@ -513,9 +516,10 @@ class TestLwt(Tester):
         create_ks(session=session1, name="lwt", rf=3)
 
         logger.info("Create table with paxos_grace_seconds is 10 sec.")
-        table_name = 'ttl_10_sec'
+        paxos_grace_seconds = self.cql_timeout(10)
+        table_name = f'ttl_{paxos_grace_seconds}_sec'
         create_cf(session=session1, name=table_name, key_type='int', columns={'v1': 'int'},
-                  paxos_grace_seconds=10)
+                  paxos_grace_seconds=paxos_grace_seconds)
 
         self.execute_insert_data_query(session=session1, table=table_name,
                                        cql=f"INSERT INTO {table_name} (key, v1) VALUES (?, ?) IF NOT EXISTS",
@@ -531,7 +535,7 @@ class TestLwt(Tester):
         session2.shutdown()
 
         logger.info("Wait for paxos rows for table '%s' will be expired", table_name)
-        sleep(10)
+        sleep(paxos_grace_seconds)
 
         for session in [session1, session3]:
             assert_row_count(session=session, table_name='system.paxos', expected=0,
