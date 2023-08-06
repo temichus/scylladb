@@ -737,7 +737,6 @@ class TestDistributedTTL(Tester):
     # Removed temporarily from gating de to #13137 / #13276
     # @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     @pytest.mark.parametrize("enable_parallized_aggregation", ['true', 'false'], ids=["parallel_aggregates_enabled", "parallel_aggregates_disabled"])
     def test_ttl_is_respected_on_repair(self, enable_parallized_aggregation):
         """ Test that ttl is respected on repair """
