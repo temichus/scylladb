@@ -949,6 +949,10 @@ class TestMaterializedViews(CommonUtils):
 
     def create_few_mv(self, mvs_count, session, keyspace_name, table_name, synchronous_updates, rows,
                       mv_name_prefix="mv_cf_view", wait_for_mv_built=True):
+        self.fixture_dtest_setup.ignore_log_patterns += [
+            r'view - Error applying view update to .*: exceptions::mutation_write_failure_exception'
+        ]
+
         for i in range(mvs_count):
             query = f"CREATE MATERIALIZED VIEW {mv_name_prefix}_{i} AS SELECT * FROM {table_name} " \
                     f"WHERE c1 IS NOT NULL and key IS NOT NULL PRIMARY KEY (c1, key) " \
