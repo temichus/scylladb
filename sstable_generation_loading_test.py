@@ -197,7 +197,7 @@ class TestSSTableGenerationAndLoading(Tester):
         for line in buf:
             for ignore_pattern in ignore_patterns:
                 if re.search(ignore_pattern, line):
-                    logger.debug(f"Ignoring sstableloader warning: {line.strip()}")
+                    logger.debug("Ignoring sstableloader warning: %s", line.strip())
                     break
                 # not matched, so it is an error
                 return True
