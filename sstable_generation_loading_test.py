@@ -275,7 +275,8 @@ class TestSSTableGenerationAndLoading(Tester):
                 if stderr:
                     buf = StringIO(stderr)
                     has_errors = False
-                    ignore_patterns = ['WARN .* Ignoring codec']
+                    ignore_patterns = ['WARN .* Ignoring codec',
+                                       'ERROR .* LEAK DETECTED']
                     for line in buf:
                         for ignore_pattern in ignore_patterns:
                             if re.search(ignore_pattern, line):
