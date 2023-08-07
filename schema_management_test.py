@@ -15,6 +15,7 @@ from cassandra.query import dict_factory, SimpleStatement
 from tools.assertions import assert_all,  assert_invalid
 from tools.data import rows_to_list, create_c1c2_table, insert_c1c2, query_c1c2
 from dtest_class import Tester, create_ks, create_cf
+from ccmlib.scylla_cluster import ScyllaCluster
 
 logger = logging.getLogger(__name__)
 
@@ -505,10 +506,15 @@ class TestLargePartitionAlterSchema(Tester):
         data = self.populate(session=session, data=[], ck_start=0, ck_end=10)
 
         threads = []
+        timeout = 300
+        ck_end = 1500
+        if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug":
+            timeout = 900
+            ck_end = 150
         with ThreadPoolExecutor(max_workers=5) as executor:
             # Insert new rows in background
-            threads.append(executor.submit(self.populate, session=session, data=data, ck_start=10, ck_end=1500))
-            threads.append(executor.submit(self.read, session=session, ck_max=1500))
+            threads.append(executor.submit(self.populate, session=session, data=data, ck_start=10, ck_end=ck_end))
+            threads.append(executor.submit(self.read, session=session, ck_max=ck_end))
             # Wait for running load
             time.sleep(10)
             self.drop_column(session=session, column_name='val1')
@@ -518,7 +524,7 @@ class TestLargePartitionAlterSchema(Tester):
             self.cluster.nodelist()[0].flush()
 
             result = []
-            for future in futures.as_completed(threads, timeout=300):
+            for future in futures.as_completed(threads, timeout=timeout):
                 try:
                     result.append(future.result())
                 except Exception as exc:
