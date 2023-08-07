@@ -6,9 +6,11 @@ import os
 import random
 import re
 import shutil
+import string
 import tempfile
 import time
 import json
+import uuid
 import multiprocessing
 from pprint import pformat
 from collections import namedtuple
@@ -1244,18 +1246,47 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
         self.strategy = request.param
 
     @classmethod
-    def _make_n_sstable_identifiers(cls, n):
+    def _make_uuid_sstable_identifier(cls):
+        # generate an id like: "3fw2_0tj4_46w3k2cpidnirvjy7k"
+        alphabet = string.digits + string.ascii_lowercase
+        alphabet_len = len(alphabet)
+        decimicro_ratio = 10_000_000
+
+        def encode(n):
+            output = ''
+            while n:
+                n, index = divmod(n, alphabet_len)
+                output += alphabet[index]
+            return output[::-1]
+
+        timeuuid = uuid.uuid1()
+        seconds, decimicro = divmod(timeuuid.time, decimicro_ratio)
+        delta = datetime.timedelta(seconds=seconds)
+        encoded_days = encode(delta.days)
+        encoded_seconds = encode(delta.seconds)
+        encoded_decimicro = encode(decimicro)
+        lsb = int.from_bytes(timeuuid.bytes[8:])
+        encoded_lsb = encode(lsb)
+        return (f'{encoded_days:0>4}_'
+                f'{encoded_seconds:0>4}_'
+                f'{encoded_decimicro:0>5}'
+                f'{encoded_lsb:0>13}')
+
+    @classmethod
+    def _make_n_sstable_identifiers(cls, n, use_uuid):
         identifiers = []
         for _ in range(n):
             id = None
-            while True:
-                id = random.randint(10000, 100000)
-                if id not in identifiers:
-                    break
+            if use_uuid:
+                id = cls._make_uuid_sstable_identifier()
+            else:
+                while True:
+                    id = random.randint(10000, 100000)
+                    if id not in identifiers:
+                        break
             identifiers.append(id)
         return identifiers
 
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_is_started_on_boot(self):
         [node1], session = self.prepare(1)
         create_ks(session, 'ks', 1)
@@ -1282,7 +1313,12 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
         gmap = dict()
         generations = set([self._get_sstable_generation(f) for f in sstablefiles])
         for gen in generations:
-            mapped = self._make_n_sstable_identifiers(4)
+            try:
+                _ = int(gen)
+                use_uuid = False
+            except ValueError:
+                use_uuid = True
+            mapped = self._make_n_sstable_identifiers(4, use_uuid)
             gmap[gen] = mapped
             logger.debug(f"Will copy SSTable with generation {gen} to generations {mapped}")
 
