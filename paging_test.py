@@ -992,6 +992,10 @@ class TestPagingData(BasePagingTester, PageAssertionMixin):
                            {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
                            {u'a': 4, u'b': None, u's': 3, u'system.count(b)': 0, u'system.count(s)': 1}]
 
+            res = session.execute(
+                "SELECT a, b, s, count(b), count(s) FROM test WHERE a = 999 GROUP BY a, b ALLOW FILTERING")[:]
+            assert res == []
+
             res = session.execute("SELECT a, b, s, count(b), count(s) FROM test GROUP BY a, b")[:]
             assert res == [{u'a': 1, u'b': None, u's': 1, u'system.count(b)': 0, u'system.count(s)': 1},
                            {u'a': 2, u'b': None, u's': 2, u'system.count(b)': 0, u'system.count(s)': 1},
