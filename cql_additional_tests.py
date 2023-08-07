@@ -4234,39 +4234,51 @@ class TestCQL(Tester):
         session = self.prepare()
         session.execute('CREATE TABLE users (id int PRIMARY KEY, name text)')
 
-        for id in range(0, 5):
-            session.execute("INSERT INTO users (id, name) VALUES (%d, 'name%d') USING TTL 10 AND TIMESTAMP 0" % (id, id))
+        ttl = 100
+        num_keys = 5
 
-        # test aliasing count(*)
+        logger.debug(f"Inserting {num_keys} using ttl={ttl}")
+        pre_insert = int(time.time())
+        for id in range(0, num_keys):
+            session.execute(f"INSERT INTO users (id, name) VALUES ({id}, 'name{id}') USING TTL {ttl} AND TIMESTAMP 0")
+        post_insert = int(time.time())
+
+        logger.debug("Test aliasing count(*)")
         res = list(session.execute('SELECT count(*) AS user_count FROM users'))
         assert 'user_count' == res[0]._fields[0]
-        assert 5 == res[0].user_count
+        assert num_keys == res[0].user_count
 
-        # test aliasing regular value
+        logger.debug("Test aliasing of regular value")
         res = list(session.execute('SELECT name AS user_name FROM users WHERE id = 0'))
         assert 'user_name' == res[0]._fields[0]
         assert 'name0' == res[0].user_name
 
-        # test aliasing writetime
+        logger.debug("Test aliasing writetime")
         res = list(session.execute('SELECT writeTime(name) AS name_writetime FROM users WHERE id = 0'))
         assert 'name_writetime' == res[0]._fields[0]
         assert 0 == res[0].name_writetime
 
-        # test aliasing ttl
+        logger.debug("Test aliasing ttl")
+        pre_select = int(time.time())
         res = list(session.execute('SELECT ttl(name) AS name_ttl FROM users WHERE id = 0'))
+        post_select = int(time.time())
         assert 'name_ttl' == res[0]._fields[0]
-        assert res[0].name_ttl in (9, 10)
+        name_ttl = res[0].name_ttl
+        allowed_min = ttl - (post_select - pre_insert + 1)
+        allowed_max = ttl - (pre_select - post_insert - 1)
+        logger.debug(f"Verifying name_ttl={name_ttl} is in range=[{allowed_min}, {allowed_max}]")
+        assert allowed_min <= name_ttl <= allowed_max
 
-        # test aliasing a regular function
+        logger.debug("Test aliasing a regular function")
         res = list(session.execute('SELECT intAsBlob(id) AS id_blob FROM users WHERE id = 0'))
         assert 'id_blob' == res[0]._fields[0]
         assert b'\x00\x00\x00\x00' == res[0].id_blob
 
-        # test that select throws a meaningful exception for aliases in where clause
+        logger.debug("Test that select throws a meaningful exception for aliases in where clause")
         assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE user_id = 0',
                        matching="Aliases aren't allowed in the WHERE clause")
 
-        # test that select throws a meaningful exception for aliases in order by clause
+        logger.debug("Test that select throws a meaningful exception for aliases in order by clause")
         assert_invalid(session, 'SELECT id AS user_id, name AS user_name FROM users WHERE id IN (0) ORDER BY user_name',
                        matching="Aliases are not allowed in order by clause")
 
