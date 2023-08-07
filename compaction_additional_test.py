@@ -1243,6 +1243,18 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
     def fixture_set_cs(self, request):
         self.strategy = request.param
 
+    @classmethod
+    def _make_n_sstable_identifiers(cls, n):
+        identifiers = []
+        for _ in range(n):
+            id = None
+            while True:
+                id = random.randint(10000, 100000)
+                if id not in identifiers:
+                    break
+            identifiers.append(id)
+        return identifiers
+
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_is_started_on_boot(self):
         [node1], session = self.prepare(1)
@@ -1268,17 +1280,9 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
         # prepare a mapping between each sstable generation
         # to new, unique generations it will be copied to
         gmap = dict()
-        rmap = dict()
         generations = set([self._get_sstable_generation(f) for f in sstablefiles])
         for gen in generations:
-            mapped = []
-            for i in range(1, 5):
-                while True:
-                    n = random.randint(10000, 100000)
-                    if n not in rmap:
-                        rmap[n] = gen
-                        mapped.append(n)
-                        break
+            mapped = self._make_n_sstable_identifiers(4)
             gmap[gen] = mapped
             logger.debug(f"Will copy SSTable with generation {gen} to generations {mapped}")
 
