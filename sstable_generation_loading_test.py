@@ -189,6 +189,20 @@ class TestSSTableGenerationAndLoading(Tester):
             new_rows = list(session.execute("SELECT * FROM %s" % (stress_table,)))
         assert original_rows == new_rows
 
+    @staticmethod
+    def _has_errors_in_stderr(stderr):
+        buf = StringIO(stderr)
+        ignore_patterns = ['WARN .* Ignoring codec',
+                           'ERROR .* LEAK DETECTED']
+        for line in buf:
+            for ignore_pattern in ignore_patterns:
+                if re.search(ignore_pattern, line):
+                    logger.debug(f"Ignoring sstableloader warning: {line.strip()}")
+                    break
+                # not matched, so it is an error
+                return True
+        return False
+
     def load_sstable_with_configuration(self, pre_compression=None, post_compression=None, table_details=None):
         """
         tests that the sstableloader works by using it to load data.
@@ -273,18 +287,7 @@ class TestSSTableGenerationAndLoading(Tester):
                 stderr = stderr.decode()
                 stdout = stdout.decode()
                 if stderr:
-                    buf = StringIO(stderr)
-                    has_errors = False
-                    ignore_patterns = ['WARN .* Ignoring codec',
-                                       'ERROR .* LEAK DETECTED']
-                    for line in buf:
-                        for ignore_pattern in ignore_patterns:
-                            if re.search(ignore_pattern, line):
-                                logger.debug(f"Ignoring sstableloader warning: {line.strip()}")
-                                break
-                        else:
-                            has_errors = True
-
+                    has_errors = self._has_errors_in_stderr(stderr)
                     assert not has_errors, f"The stderr of sstableloader has errors: {stderr}"
                 assert 'Error' not in stdout, f'The stdout contains error message: {stdout}'
                 assert 'exception' not in stdout, f'The stdout contains exception message: {stdout}'
