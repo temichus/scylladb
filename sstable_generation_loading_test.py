@@ -275,11 +275,15 @@ class TestSSTableGenerationAndLoading(Tester):
                 if stderr:
                     buf = StringIO(stderr)
                     has_errors = False
+                    ignore_patterns = ['WARN .* Ignoring codec']
                     for line in buf:
-                        if re.search('WARN .* Ignoring codec', line):
-                            logger.debug(f"Ignoring sstableloader warning: {line.strip()}")
+                        for ignore_pattern in ignore_patterns:
+                            if re.search(ignore_pattern, line):
+                                logger.debug(f"Ignoring sstableloader warning: {line.strip()}")
+                                break
                         else:
                             has_errors = True
+
                     assert not has_errors, f"The stderr of sstableloader has errors: {stderr}"
                 assert 'Error' not in stdout, f'The stdout contains error message: {stdout}'
                 assert 'exception' not in stdout, f'The stdout contains exception message: {stdout}'
