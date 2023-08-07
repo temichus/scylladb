@@ -146,7 +146,7 @@ class TestCQLAudit(AuditTester):
         """
         CREATE TABLE, ALTER TABLE, TRUNCATE TABLE, DROP TABLE statements
         """
-        session = self.prepare(experimental=True, audit_settings=audit_settings)
+        session = self.prepare(audit_settings=audit_settings)
 
         session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
         self.assertLastAuditRow(session, "DDL", "CREATE TABLE test1 (k int PRIMARY KEY, v1 int)", "test1",
@@ -436,8 +436,8 @@ class TestCQLAudit(AuditTester):
         """
         Test filtering audit categories
         """
-        session = self.prepare(experimental=True, audit_settings={'audit': 'table', 'audit_categories': 'DML',
-                                                                  'audit_keyspaces': 'ks'})
+        session = self.prepare(audit_settings={'audit': 'table', 'audit_categories': 'DML',
+                                               'audit_keyspaces': 'ks'})
         count_before = self.getAuditEntriesCount(session)
         session.execute("CREATE TABLE test1 (k int PRIMARY KEY, v1 int)")
         count_after = self.getAuditEntriesCount(session)
