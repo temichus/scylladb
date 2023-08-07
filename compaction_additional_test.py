@@ -1350,10 +1350,10 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
         sstable_split_parts = os.path.basename(file).split('-')
         if (len(sstable_split_parts) == 5):
             # <= ka format
-            return int(sstable_split_parts[-2])
+            return sstable_split_parts[-2]
         elif (len(sstable_split_parts) == 4):
             # >= la format
-            return int(sstable_split_parts[1])
+            return sstable_split_parts[1]
         else:
             raise RuntimeError("Unexpected format of file name: '%s'" % file)
 
