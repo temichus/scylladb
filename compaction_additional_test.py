@@ -1325,7 +1325,6 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
     # sstabledump under the hood, but sstabledump is not able to parse the sstable
     # component's file name if the sstable uses uuid-based identifier instead of
     # the integer-based generation.
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_removes_ttld_data_after_gc_period(self):
         """
         Test that compaction removes TTLd data after gc_period
@@ -1354,16 +1353,10 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
         node1.flush()
         node1.compact()
 
-        json_path = tempfile.mkstemp(suffix='.json')
-        jname = json_path[1]
-        with open(jname, 'w') as f:
-            node1.run_sstable2json(f, keyspace='ks')
+        jsoninfo = node1.dump_sstables('ks', 'cf')
+        node1.info(jsoninfo)
 
-        with open(jname, 'r') as g:
-            jsoninfo = g.read()
-            node1.info(jsoninfo)
-
-        numfound = jsoninfo.count("partition")
+        numfound = len(jsoninfo)
         assert numfound == 1, f"Error: expected 1 partition but found {numfound}:\n{jsoninfo}"
 
     def _get_sstable_generation(self, file):
