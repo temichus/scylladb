@@ -42,7 +42,7 @@ from tools.cluster import new_node, run_rest_api
 from tools.data import insert_c1c2, delete_c1c2, run_in_parallel, create_c1c2_table, simulate_write_process_in_minutes
 from tools.files import copy_files_to, get_node_cf_dir, get_sstables_files, get_list_of_sstables, \
     check_file_lists_are_equal
-from tools.marks import enterprise_only_param
+from tools.marks import enterprise_only_param, unmark
 from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
 from tools.scylla_defines import CompactionStrategy
@@ -50,6 +50,8 @@ from tools.stress import fill_data_by_cs
 
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pytest.mark.next_gating
 
 
 def generate_ids(val):
@@ -150,7 +152,6 @@ class TestCompactionAdditional(CompactionAdditionalTester):
 
         assert tombstones_found, "Tombstones were not found"
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     @pytest.mark.single_node
     def test_compaction_delete_with_smp_change(self):
@@ -350,7 +351,6 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         assert actual_rows_after_flush == expected_row_after_flush, \
             f"Expected {expected_row_after_flush} rows after flush, but actually got {actual_rows_after_flush}"
 
-    @pytest.mark.next_gating
     @pytest.mark.single_node
     @pytest.mark.parametrize("timestamp_resolution", ["MILLISECONDS"])
     def test_compact_data_by_time_window(self, timestamp_resolution):
@@ -730,6 +730,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         shutil.rmtree(os.path.join(node1.get_path(), 'data', 'keyspace1'))
 
     @pytest.mark.single_node
+    @unmark.next_gating  # https://github.com/scylladb/scylla-enterprise/issues/3385
     @pytest.mark.parametrize("strategy1,strategy2", get_strategies_upgrade_options(), ids=generate_ids)
     def test_reshard_after_compaction_strategy_and_smp_change(self, strategy1, strategy2):
         """
@@ -1023,6 +1024,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
                 f"(table '{tables[i]}'): {double_compacted_sstables}"
 
     @pytest.mark.single_node
+    @unmark.next_gating
     def test_double_compaction_by_cleanup_and_major_compactions(self):
         """
         Cover the issue https://github.com/scylladb/scylla/issues/8155
@@ -1319,7 +1321,6 @@ class TestCompactionAdditionalStrategy(CompactionAdditionalTester):
         assert before_start_sstables != after_start_sstables, \
             f"No compaction detected after restarting {node1.name}. SSTables in ks/cf: {after_start_sstables}"
 
-    @pytest.mark.next_gating
     @pytest.mark.dtest_debug
     def test_compaction_removes_ttld_data_after_gc_period(self):
         """
