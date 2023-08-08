@@ -2057,7 +2057,6 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
             f"Some rows were resurrected {len(current_rows)}"
 
     @pytest.mark.single_node
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_compaction_remove_deleted_rows_in_previous_time_window(self):
         """
         Verify major compaction processes delete mutations for the same rows in different
@@ -2253,21 +2252,16 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         """
 
-        tmp_file = tempfile.mktemp()
-        with open(tmp_file, "w") as fp:
-            node.run_sstable2json(fp, keyspace=self.keyspace_name, column_families=[
-                                  self.table_name], datafiles=[sstable_data_file])
-
-        with open(tmp_file) as fp:
-            json_data = json.load(fp)
-            node.info(json_data)
+        json_data = node.dump_sstables(self.keyspace_name, self.table_name, [sstable_data_file])
+        node.info(json_data)
 
         partition_found = False
         cluster_keys_exist = False
         for partition in json_data:
-            if int(partition["partition"]["key"][0]) == partition_key:
+            if int(partition["key"]["value"]) == partition_key:
                 partition_found = True
-                cluster_key_values = set([row["clustering"][0] for row in partition["rows"]])
+                rows = partition["clustering_elements"]
+                cluster_key_values = set([int(row["key"]["value"]) for row in rows if row["type"] == "clustering-row"])
                 if set(cluster_keys).issubset(cluster_key_values):
                     cluster_keys_exist = True
         if not partition_found:
