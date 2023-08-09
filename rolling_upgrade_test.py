@@ -20,7 +20,6 @@ class RollingUpgradeBase(UpgradeTester):
     __test__ = False
 
     @unmark.next_gating  # https://github.com/scylladb/scylla-enterprise/issues/3233
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     # Test had history of timing out in debug, see: https://github.com/scylladb/scylla-dtest/issues/3275
     @pytest.mark.scylla_mode('!debug')
     def test_rolling_upgrade(self, dtest_config):
@@ -192,14 +191,11 @@ class RollingUpgradeBase(UpgradeTester):
             self.wait_for_sstables_upgrade(supported_sstable_version)
 
             # Verify sstabledump
-            logger.debug('Starting sstabledump to verify correctness of sstables')
-            json_path = tempfile.mktemp(suffix='.schema.json')
-            with open(json_path, 'w') as fdw:
-                data_json = self.cluster.nodelist()[0].run_sstable2json(out_file=fdw, keyspace='ks')
-            with open(json_path, 'r') as fdr:
-                data = fdr.read()
-
-            assert data, "Failed to create sstable dump"
+            logger.debug('Starting "scylla sstable dump-data" to verify correctness of sstables')
+            node = self.cluster.nodelist()[0]
+            # the default ks and cf used by UpgradeTester.prepare_schema()
+            jsoninfo = node.dump_sstables('ks', 'cf')
+            assert jsoninfo, "Failed to create sstable dump"
 
 
 @pytest.mark.dtest_full
