@@ -95,6 +95,7 @@ class NotificationWaiter(object):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestPushedNotifications(Tester):
     """
     Tests for pushed native protocol notification from Cassandra.
@@ -390,6 +391,7 @@ class TestPushedNotifications(Tester):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestVariousNotifications(Tester):
     """
     Tests for various notifications/messages from Cassandra.
