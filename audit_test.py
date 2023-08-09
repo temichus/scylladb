@@ -26,6 +26,7 @@ class AuditTester(Tester):
     audit_default_settings = {'audit': 'table',
                               'audit_categories': 'ADMIN,AUTH,QUERY,DML,DDL,DCL',
                               'audit_keyspaces': 'ks'}
+
     def prepare(self, ordered=False, create_keyspace=True, use_cache=False,
                 nodes=1, rf=1, protocol_version=None, user=None, password=None,
                 audit_settings=audit_default_settings, reload_config=False, **kwargs):
@@ -201,7 +202,7 @@ class TestCQLAudit(AuditTester):
 
     @contextmanager
     def assert_entries_were_added(self, session: Session, expected_entries: List[AuditEntry],
-                                  merge_duplicate_rows: bool=True):
+                                  merge_duplicate_rows: bool = True):
         # Get audit entries before executing the query, to later compare with
         # audit entries after executing the query.
         rows_before = self.get_audit_log_list(session)
@@ -590,6 +591,7 @@ class TestCQLAudit(AuditTester):
         CREATE ROLE, ALTER ROLE, DROP ROLE statements
         """
         session = self.prepare(user='cassandra', password='cassandra')
+
         def execute_and_validate_audit_entry(query, category, **kwargs):
             return self.execute_and_validate_audit_entry(session, query, category,
                                                          self.audit_default_settings, **kwargs,
@@ -636,6 +638,7 @@ class TestCQLAudit(AuditTester):
         """
         session = self.prepare(experimental=True, audit_settings={'audit': 'table', 'audit_categories': 'DML',
                                                                   'audit_keyspaces': 'ks'})
+
         def execute_and_validate_audit_entry(query, category, **kwargs):
             return self.execute_and_validate_audit_entry(session, query, category,
                                                          self.audit_default_settings, **kwargs)
@@ -702,6 +705,7 @@ class TestCQLAudit(AuditTester):
         session.execute("INSERT INTO test1 (k, v1) VALUES (1, 1)")
 
         test_session = self.patient_cql_connection(self.cluster.nodelist()[0], user="test", password="test")
+
         def execute_and_validate_audit_entry(query, category, **kwargs):
             return self.execute_and_validate_audit_entry(test_session, query, category,
                                                          session_for_audit_entry_validation=session,
@@ -742,7 +746,6 @@ class TestCQLAudit(AuditTester):
                 APPLY BATCH;
             """,
                                       consistency_level=ConsistencyLevel.QUORUM)
-
 
         expected_audit_operations = [
             "INSERT INTO test8 (userid, password, name) VALUES (user1, ch@ngem3b, second user)",
