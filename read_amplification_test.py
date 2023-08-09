@@ -17,6 +17,7 @@ from ccmlib.scylla_node import ScyllaNode
 from tools.retrying import retry_with_func_attempts
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2
+from tools.marks import unmark
 from tools.metrics import get_node_metrics
 from tools.paging import PageFetcher
 
@@ -27,6 +28,7 @@ KBYTE = 1024
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestReadAmplification(Tester):
 
     @staticmethod
@@ -41,12 +43,14 @@ class TestReadAmplification(Tester):
         logger.debug(metrics)
         return metrics
 
+    @unmark.next_gating  # tests are too heavy, and verifying wrong metrics for RBNO - https://github.com/scylladb/scylla-dtest/issues/3573
     def test_no_read_amplification_on_repair(self):
         """
         Check total bytes read during streaming on repair corresponds to data size
         """
         self.no_read_amplification_on_repair(with_mv=False)
 
+    @unmark.next_gating  # tests are too heavy, and verifying wrong metrics for RBNO - https://github.com/scylladb/scylla-dtest/issues/3573
     def test_no_read_amplification_on_repair_with_mv(self):
         """
         Check total bytes read during streaming on repair corresponds to data size
@@ -236,6 +240,7 @@ class TestReadAmplification(Tester):
 
 
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestMultiShardReader(Tester):
     """
     This class holds the test that covers the issue that cause to read amplification
