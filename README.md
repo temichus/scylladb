@@ -120,9 +120,9 @@ cd local_dtest
 git clone git@github.com:scylladb/scylla-ccm.git
 git clone git@github.com:scylladb/scylla-dtest.git # or from your fork
 cd scylla-dtest
-## install  3.9.10 via pyenv same as used in docker installation
-## ❯ docker run -it `cat ./scripts/image` python --version
-##      Python 3.9.10
+## install python via pyenv same as used in docker installation
+# get the current supported python version from docker image (at the time of the writing it was 3.11.4)
+export PYTHON_VERSION=docker run -it `cat ./scripts/image` python --version |  cut -d' ' -f2
 curl https://pyenv.run | bash
 # go to: https://github.com/pyenv/pyenv/wiki/Common-build-problems#prerequisites
 # and follow the instructions for your distribution, to install the prerequisites
@@ -132,11 +132,11 @@ export PYENV_ROOT="$HOME/.pyenv"
 command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
 # compiling python from source
-pyenv install 3.9.10
+pyenv install $PYTHON_VERSION
 # create a virtualenv for Dtest
-pyenv virtualenv 3.9.10 dtest-3.9.10
+pyenv virtualenv $PYTHON_VERSION dtest-$PYTHON_VERSION
 # cd to projecct tocectory and run
-pyenv local dtest-3.9.10
+pyenv local dtest-$PYTHON_VERSION
 # Some external tools (e.g. jedi) might require you to activate the virtualenv and conda environments.
 # If eval "$(pyenv virtualenv-init -)" is configured in your shell, pyenv-virtualenv will automatically
 # activate/deactivate virtualenvs on entering/leaving directories which contain a .python-version
@@ -148,7 +148,7 @@ pip install ../scylla-ccm/.
 pytest --scylla-version='unstable/master:latest'  <file>::<class>::<test>
 ```
 
-* To get rid of the virtual environment run `pyenv virtualenv-delete dtest-3.9.10`
+* To get rid of the virtual environment run `pyenv virtualenv-delete dtest-$PYTHON_VERSION`
 * To deactivate the virtual environment `cd` to another folder
 * To start using the virtual environment again just `cd` to repo folder
 * To remove automatic virtual environment enabling on `cd` just delete file `.python-version` in repo directory
