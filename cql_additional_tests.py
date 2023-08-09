@@ -41,6 +41,7 @@ from tools.metrics import get_node_metrics
 from tools.misc import require
 from tools.metrics import get_node_metrics
 from tools.stress import format_cs_output
+from tools.marks import unmark
 
 MSG_ALLOW_FILTERING = "ALLOW FILTERING"
 
@@ -7064,6 +7065,7 @@ class TestsCQLAdditional(Tester):
         # expect the same data
         assert r_explicitly == r_implicitly
 
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/14806
     def test_create_100tables(self):
         """
         The scenario referenced https://github.com/scylladb/scylla/issues/2923

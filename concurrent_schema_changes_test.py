@@ -249,6 +249,7 @@ class TestConcurrentSchemaChanges(Tester):
                 assert_row_count_in_select(session, f"select * from base_{n} where c1 = {ins}", 1)
                 assert_row_count_in_select(session, f"select * from base_{n} where c2 = {ins}", 1)
 
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/14934
     def test_create_lots_of_mv_concurrently(self):
         """
         create materialized views across multiple threads concurrently
