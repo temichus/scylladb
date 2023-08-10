@@ -464,6 +464,8 @@ class TestSystemClients(Tester):
                 session_store=session_store,
                 ssl_opts=ssl_opts) as session_container:
             session = session_container._session
+            self.wait_anonymous_connections_purged(session)
+
             query = 'select * from system.clients'
             current_rows = session.execute(query).current_rows
             logger.debug(f"system.clients: {current_rows}")
