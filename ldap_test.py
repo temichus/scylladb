@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 @pytest.mark.next_gating
+@pytest.mark.single_node
 class TestLdap(Tester):
-    _multiprocess_can_split_ = False
     LDAP_USER = 'scylla-qa'
     LDAP_PASSWORD = 'cassandra'
     use_saslauth = False
@@ -44,6 +44,11 @@ class TestLdap(Tester):
                 logger.debug(f"{line.strip()}")
             for line in stderr.splitlines():
                 logger.debug(f"{line.strip()}")
+
+        # stop the cluster before killing the ldap container
+        # to avoid errors like "ldap_role_manager - error in reconnect: std::system_error",
+        # on the nodes
+        self.cluster.stop(gently=True)
         # Next line requires self.test_path directory to be empty.
         shutil.rmtree(self.saslauthd_dir, ignore_errors=True)
         self.test_ldap_docker.remove_container(force=True)
