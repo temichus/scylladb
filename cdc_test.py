@@ -224,10 +224,12 @@ class TestCdc(Tester, CDCInitializeHelper):
 
         logger.debug('Test finished')
 
+    @pytest.mark.no_boot_speedups
     def test_simple_cdc(self, request, cluster_config):
         self.simple_cdc_template(request=request, cluster_size=cluster_config.size,
                                  replication=cluster_config.replication, with_preimage=False)
 
+    @pytest.mark.no_boot_speedups
     @pytest.mark.next_gating
     def test_simple_cdc_with_preimage(self, request, cluster_config):
         self.simple_cdc_template(request=request, cluster_size=cluster_config.size,
@@ -355,6 +357,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.cluster_reduction_with_cdc_template(request=request, cluster_size=cluster_config.size,
                                                  replication=cluster_config.replication, with_preimage=True)
 
+    @pytest.mark.no_boot_speedups
     def test_check_and_repair_after_cluster_reduction(self):
         # After a decommission, streams no longer match the new token ring structure.
         # In such a case `nodetool checkAndRepairCdcStreams` should trigger regeneration.
@@ -468,6 +471,7 @@ class TestCdc(Tester, CDCInitializeHelper):
                                     cluster_size=cluster_config.size, replication=cluster_config.replication, with_preimage=True)
 
     @pytest.mark.next_gating
+    @pytest.mark.no_boot_speedups
     def test_add_field_with_cdc(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf ADD c int",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication)
@@ -483,12 +487,14 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.schema_change_template(request, "ALTER TABLE ks.cf DROP c",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication, additional_fields=["c int"])
 
+    @pytest.mark.no_boot_speedups
     def test_remove_field_with_cdc_and_preimage(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf DROP c",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication,
                                     additional_fields=["c int"], with_preimage=True)
 
     # Regression test for Scylla issue #7127
+    @pytest.mark.no_boot_speedups
     def test_check_and_repair_cdc_streams_liveness(self, fixture_dtest_setup: DTestSetup):
         # During the test, error "Could not find CDC generation" appears as part of the test logic.
         # The teardown fails because it expects a cluster doesn't contain errors if the test is passed.
@@ -944,6 +950,7 @@ class TestCdcWithCompactStorage(Tester, CDCInitializeHelper):
     @pytest.mark.parametrize("test_config",
                              generate_test_params(),
                              ids=generate_test_id)
+    @pytest.mark.no_boot_speedups
     def test_artificial_column_with_type_empty_is_missing(self, test_config):
         self.check_cdc_log_rows_with_compact_storage(preimage=test_config["preimage"],
                                                      postimage=test_config["postimage"],
