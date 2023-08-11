@@ -7,6 +7,7 @@ from datetime import datetime
 import time
 import tempfile
 import os
+from typing import Any, Dict, Generator, Optional
 from subprocess import getoutput, getstatusoutput
 from concurrent.futures import ThreadPoolExecutor
 import logging
@@ -678,11 +679,39 @@ class RepairAdditionalBase(Tester):
             assert result[0].c1 == 'v21', result[0].c1
             assert result[0].c2 == 'v22', result[0].c2
 
-    def read_sstable(self, node):
-        tmp = tempfile.TemporaryFile()
-        node.run_sstable2json(tmp)
-        tmp.seek(0)
-        return tmp.read().decode('utf-8')
+    @classmethod
+    def _cells_with_name(cls, node, ks: str, cf: str, column_name: str) -> Generator[Dict[str, Any], None, None]:
+        # dump_sstable() returns a list like:
+        #
+        # [{'key': {'token': '-6847573755651342660',
+        #   'raw': '00036b6579',
+        #   'value': 'key'},
+        #  'clustering_elements': [{'type': 'clustering-row',
+        #    'key': {'raw': '', 'value': ''},
+        #    'marker': {'timestamp': 1691723022125706},
+        #    'columns': {'c1': {'is_live': True,
+        #      'type': 'regular',
+        #      'timestamp': 1691723027979972,
+        #      'ttl': '1234s',
+        #      'expiry': '2023-08-11 03:24:21z',
+        #      'value': 'new'},
+        #     'c2': {'is_live': True,
+        #      'type': 'regular',
+        #      'timestamp': 1691723022125706,
+        #      'value': 'hi'}}}]}]
+        partitions = node.dump_sstables(ks, cf)
+        for partition in partitions:
+            for clustering_element in partition.get('clustering_elements', []):
+                cell = clustering_element['columns'].get(column_name)
+                if cell is not None:
+                    yield cell
+
+    @classmethod
+    def _first_cell_with_name(cls, node, ks: str, cf: str, column_name: str) -> Optional[Dict[str, Any]]:
+        try:
+            return next(cls._cells_with_name(node, ks, cf, column_name))
+        except StopIteration:
+            return None
 
     def _repair_ttl_update_test(self):
         """
@@ -724,17 +753,18 @@ class RepairAdditionalBase(Tester):
             assert result[0].c1 == 'new', result[0].c1
             assert result[0].c2 == 'hi', result[0].c2
         node1.flush()
-        sstable = self.read_sstable(node1)
+        c1_cell_ttl = self._first_cell_with_name(node1, 'ks', 'cf', 'c1')
         # The "c1" cell should have an expiration time and will look something
-        # like this:   ["c1","6e6577",1452615051661760,"e",1234,1452616285],
-        # We need to verify the number "1234" is the same as we set, and save
-        # the entire line to verify it is identical on the repaired machine.
-        save_line = None
-        for line in sstable.split('\n'):
-            if '"name" : "c1",' in line:
-                assert '"ttl" : 1234,' in line, "TTL set to 1234"
-                save_line = line
-        assert save_line is not None, "TTL set in sstable"
+        # like this:
+        # {'is_live': True,
+        #  'type': 'regular',
+        #  'timestamp': 1691723027979972,
+        #  'ttl': '1234s',
+        #  'expiry': '2023-08-11 03:24:21z',
+        #  'value': 'new'}
+        # We need to verify the number "1234" is the same as we set
+        assert c1_cell_ttl is not None, "TTL set in sstable"
+        assert c1_cell_ttl.get('ttl') == '1234s', 'TTL set to 1234'
 
         # Confirm (by bringing only node 2 up) that node2 still has old data
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
@@ -746,10 +776,9 @@ class RepairAdditionalBase(Tester):
             assert result[0].key == 'key', result[0].key
             assert result[0].c1 == 'hello', result[0].c1
             assert result[0].c2 == 'hi', result[0].c2
-        sstable = self.read_sstable(node2)
-        for line in sstable.split('\n'):
-            if '["c1",' in line:
-                assert '"e",' not in line, "TTL should not be set"
+        c1_cell = self._first_cell_with_name(node2, 'ks', 'cf', 'c1')
+        if c1_cell is not None:
+            assert 'expiry' not in c1_cell, "TTL should not be set"
 
         # sstable2json has a bug (see CASSANDRA-8616) where it writes commit
         # log files. Since Scylla can't read those (they are in Cassandra
@@ -774,15 +803,15 @@ class RepairAdditionalBase(Tester):
             assert result[0].c1 == 'new', result[0].c1
             assert result[0].c2 == 'hi', result[0].c2
         node2.flush()
-        sstable = self.read_sstable(node2)
         # Confirm that one of the sstables contains the expected value and
         # expiration time (because we didn't do compaction, we'll see both
         # the old and new values in different sstables)
-        for line in sstable.split('\n'):
-            if '"name" : "c1",' in line:
-                if save_line == line:
-                    save_line = None
-        assert save_line is None, "expected c1 value and timeout in sstable"
+        c1_ttl_cell_found = False
+        for c1_cell in self._cells_with_name(node2, 'ks', 'cf', 'c1'):
+            if c1_cell == c1_cell_ttl:
+                c1_ttl_cell_found = True
+                break
+        assert c1_ttl_cell_found, "expected c1 value and timeout in sstable"
 
     def assert_repair_option_pr_rows(self, session, min_count, max_count, consistency_level=ConsistencyLevel.ONE):
         select_query = SimpleStatement("SELECT * FROM cf", consistency_level=consistency_level)
@@ -2774,11 +2803,6 @@ class TestRepairAdditional(RepairAdditionalBase):
 
     @pytest.mark.next_gating
     @pytest.mark.dtest_debug
-    # disable "uuid_sstable_identifier_enabled", as node.run_sstable2json() uses
-    # sstabledump under the hood, but sstabledump is not able to parse the sstable
-    # component's file name if the sstable uses uuid-based identifier instead of
-    # the integer-based generation.
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_repair_ttl_update(self):
         return self._repair_ttl_update_test()
 
