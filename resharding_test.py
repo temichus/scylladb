@@ -231,18 +231,10 @@ class TestReshardingTombstonesSingleNode(Tester):
         return rows[0][0]
 
     @staticmethod
-    def get_number_of_marked_to_delete(node, keyspace):
-        json_path = tempfile.mkstemp(suffix='.json')
-        jname = json_path[1]
-        with open(jname, 'w') as f:
-            node.run_sstable2json(f, keyspace=keyspace)
+    def get_number_of_marked_to_delete(node, keyspace, table):
+        jsoninfo = node.dump_sstables(keyspace, table)
+        return sum('tombstone' in partition for partition in jsoninfo)
 
-        with open(jname, 'r') as g:
-            jsoninfo = g.read()
-
-        return jsoninfo.count("marked_deleted")
-
-    @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     def test_disable_tombstone_removal_during_reshard(self, node_count, compaction_strategy, murmur3):
         """
         Test that data is not resurected when shared sstables
@@ -295,7 +287,7 @@ class TestReshardingTombstonesSingleNode(Tester):
 
         # verify that only some deletion markers will be kept
         # and gc_period passed so some tombstones have been removed by compaction
-        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace)
+        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace, self.table)
 
         logging.debug("{} keys are now marked_deleted (0 {} expected < {})".format(
             numfound, "<" if num_compactions < 2 else "<=", self.keys))
@@ -310,7 +302,7 @@ class TestReshardingTombstonesSingleNode(Tester):
         session: Session = self.patient_cql_connection(node1, self.keyspace)
 
         # validate that not all deletion markers have been removed after resharding
-        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace)
+        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace, self.table)
         logging.debug("{} keys are now marked_deleted (0 < expected < {})".format(numfound, self.keys))
         assert numfound != 0, "All tombstones were removed during resharding"
 
@@ -321,7 +313,7 @@ class TestReshardingTombstonesSingleNode(Tester):
         logging.debug("Run compaction and validate that no tombstones are left")
         node1.compact()
         node1.wait_for_compactions()
-        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace)
+        numfound = self.get_number_of_marked_to_delete(node1, self.keyspace, self.table)
         logging.debug("{} keys are now marked_deleted (Excpecting 0)".format(numfound))
         assert numfound == 0, "All tombstones were not removed during resharding"
 
