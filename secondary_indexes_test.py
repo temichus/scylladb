@@ -42,6 +42,15 @@ class SecondaryIndexesHelpers(Tester):
     patient_cql_connection: Callable
     patient_cql_cluster_session: Callable
 
+    @pytest.fixture(scope='function', autouse=True)
+    def fixture_setup_timeouts(self, fixture_dtest_setup):
+        if not 'debug_mode' in self.__dict__.keys():
+            self.debug_mode = isinstance(fixture_dtest_setup.cluster,
+                                         ScyllaCluster) and fixture_dtest_setup.cluster.scylla_mode == "debug"
+            self.session_timeout = 120
+            if self.debug_mode:
+                self.session_timeout *= 3
+
     @pytest.fixture(autouse=True)
     def random_compaction_strategy(self, dtest_config):
         if not SecondaryIndexesHelpers.compaction_strategy:
@@ -110,6 +119,10 @@ class SecondaryIndexesHelpers(Tester):
             columns = {"password": "varchar", "gender": "varchar", "session_token": "varchar", "state": "varchar",
                        "birth_year": "bigint"}
             create_cf(session, 'users', columns=columns, compaction={'class': self.compaction_strategy})
+
+        self.fixture_dtest_setup.ignore_log_patterns += [
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception',
+        ]
 
         return session
 
