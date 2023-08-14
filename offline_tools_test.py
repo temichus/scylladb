@@ -109,9 +109,9 @@ class TestOfflineTools(Tester):
         cluster.stop()
 
         logger.debug("run sstablelevelreset on table with sstables in multiple levels")
-        initial_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
+        initial_levels = self.get_levels(node1.dump_sstable_stats("keyspace1", "standard1"))
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
-        final_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
+        final_levels = self.get_levels(node1.dump_sstable_stats("keyspace1", "standard1"))
         self.verify_nodetool_stderr(error)
         assert rc == 0, f"Invalid exit code: {str(rc)}"
 
@@ -126,14 +126,13 @@ class TestOfflineTools(Tester):
 
     def get_levels(self, data):
         levels = []
-        for sstable in data:
-            (metadata, error, rc) = sstable
+        for _, sstable in data.items():
             try:
-                level = int(re.findall("SSTable Level: [0-9]", metadata)[0][-1])
+                level = sstable['stats']['sstable_level']
                 levels.append(level)
-            except (IndexError, ValueError):
+            except (KeyError, ValueError):
                 pytest.fail(
-                    f'\nsstablemetadata failed with the following:\n\nstderr:\n{error}\nstdout:\n{metadata}\nreturn code: {rc}')
+                    f'\nscylla sstable dump-statistics failed to dump sstable_level:\n{sstable}')
         return levels
 
     def wait_for_compactions(self, node):
@@ -200,9 +199,9 @@ class TestOfflineTools(Tester):
         cluster.stop()
 
         # Let's reset all sstables to L0
-        initial_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
+        initial_levels = self.get_levels(node1.dump_sstable_stats("keyspace1", "standard1"))
         (output, error, rc) = node1.run_sstablelevelreset("keyspace1", "standard1", output=True)
-        final_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
+        final_levels = self.get_levels(node1.dump_sstable_stats("keyspace1", "standard1"))
 
         # let's make sure there was at least 3 levels (L0, L1 and L2)
         assert max(initial_levels) > 1, "Required levels are not reached"
@@ -210,9 +209,9 @@ class TestOfflineTools(Tester):
         assert max(final_levels) == 0, "Level was not reseted to level 0"
 
         # time to relevel sstables
-        initial_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
+        initial_levels = self.get_levels(node1.dump_sstable_stats("keyspace1", "standard1"))
         (output, error, rc) = node1.run_sstableofflinerelevel("keyspace1", "standard1", output=True)
-        final_levels = self.get_levels(node1.run_sstablemetadata(keyspace="keyspace1", column_families=["standard1"]))
+        final_levels = self.get_levels(node1.dump_sstable_stats("keyspace1", "standard1"))
 
         logger.debug(initial_levels)
         logger.debug(final_levels)
