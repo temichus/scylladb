@@ -873,9 +873,9 @@ class BaseAlternatorStream(BaseAlternator, CDCInitializeHelper):
     def prefill_dynamodb_table(self, node: ScyllaNode, table_name: str = TABLE_NAME, num_of_items: int = NUM_OF_ITEMS,
                                wait_for_active_stream=True, **kwargs):
         stream_arn_details = None
-        table = super().prefill_dynamodb_table(node=node, table_name=table_name, num_of_items=num_of_items, **kwargs)
         if wait_for_active_stream:
-            stream_arn_details = self.wait_for_active_stream(node=node, table_name=table.name)
+            stream_arn_details = self.wait_for_active_stream(node=node, table_name=table_name)
+        super().prefill_dynamodb_table(node=node, table_name=table_name, num_of_items=num_of_items, **kwargs)
         return stream_arn_details
 
     @staticmethod
