@@ -927,7 +927,7 @@ class TestMaterializedViews(CommonUtils):
 
         exclude_errors = ['migration_task - Can''t send migration request',
                           'mutation_write_timeout_exception',
-                          '(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to',
+                          r'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to',
                           'view - Failed to update materialized view bookkeeping.*seastar::no_sharded_instance_exception.*continuing anyway']
         self.check_errors_all_nodes(exclude_errors=exclude_errors, regex=True)
 

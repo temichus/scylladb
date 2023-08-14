@@ -1592,7 +1592,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
             'Index %s is not built' % index_name
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          f'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception (Operation '
+                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception (Operation '
                           rf'failed for {keyspace_name}\.{index_name}_index - received 0 responses and 1 failures from '
                           f'1 CL=ONE)',
                           ]
