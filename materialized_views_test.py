@@ -553,7 +553,7 @@ class TestMaterializedViews(CommonUtils):
             self._add_new_node(data_center=data_center)
 
     @pytest.mark.dtest_heavy
-    def test_hundred_mv_concurrent(self):
+    def test_many_mv_concurrent(self):
         """
         Performance and functional test.
         - Create 100 materialized views on the same base table.
@@ -563,7 +563,9 @@ class TestMaterializedViews(CommonUtils):
         - Validate the records count in the base table and all MVs
         - If previous validation passed - validated the data in the MVs is as in the base table
         """
-        self._parallel_updates_inserts(records=2000, nodes=3, rf=3, mvs_amount=100)
+        mvs_amount = 25 if self.debug_mode else 100
+        records = 500 if self.debug_mode else 5000
+        self._parallel_updates_inserts(records=records, nodes=3, rf=3, mvs_amount=mvs_amount)
 
     @pytest.mark.timeout(4500)
     def test_small_concurrent(self):
