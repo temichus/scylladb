@@ -552,7 +552,6 @@ class TestMaterializedViews(CommonUtils):
             logger.debug('Bootstrapping {0} node in {1}'.format(i + 1, data_center))
             self._add_new_node(data_center=data_center)
 
-    @pytest.mark.dtest_heavy
     def test_many_mv_concurrent(self):
         """
         Performance and functional test.
