@@ -97,8 +97,8 @@ class UpgradeTester(Tester):
         self.current_upgrade_path.pop(0)
         logger.debug(f"current_upgrade_path after pop: {self.current_upgrade_path}")
 
-    def init_cluster(self, nodes: int) -> Session:
-        self.cluster.populate(nodes).start(wait_for_binary_proto=True)
+    def init_cluster(self, nodes: int, jvm_args=None) -> Session:
+        self.cluster.populate(nodes).start(wait_for_binary_proto=True, jvm_args=jvm_args)
         session = self.patient_cql_connection(self.cluster.nodelist()[0])
         return session
 

@@ -26,7 +26,8 @@ class RollingUpgradeBase(UpgradeTester):
     def test_rolling_upgrade(self, dtest_config):
         self.clone_upgrade_path(dtest_config)
 
-        session = self.init_cluster(nodes=3)
+        memory = 2048
+        session = self.init_cluster(nodes=3, jvm_args=['--memory', '{}M'.format(memory)])
         self.prepare_schema(session)
         row_end_index = 100
         self.validate_data(session=session, row_start_index=1, row_end_index=row_end_index)
