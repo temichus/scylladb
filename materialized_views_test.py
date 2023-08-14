@@ -606,13 +606,14 @@ class TestMaterializedViews(CommonUtils):
         _assert_rows_count(records)
 
         new_data = [-2, -5, -12, -45, -63, -78, -36, -85, -98, -100]
+        num_updates = records // 4
         proc_functions = [
             {'func': tm.prefill_table, 'args': (records,),
              'kwargs': {'data': {'int': new_data}, 'start_id_from': records + 1}},
             {'func': tm.multiple_int_updates_by_id, 'args': ([200, 300],),
-             'kwargs': {'filter_values': start_data + new_data, 'updates': 1000, 'same_id': False}},
+             'kwargs': {'filter_values': start_data + new_data, 'updates': num_updates // 2, 'same_id': False}},
             {'func': tm.multiple_int_updates_by_id, 'args': ([300, 400],),
-             'kwargs': {'filter_values': start_data, 'updates': 1000}},
+             'kwargs': {'filter_values': start_data, 'updates': num_updates // 2}},
             {'func': tm.select_all_mvs, 'kwargs': {'reads': 2000, 'by_id': True}}
         ]
 

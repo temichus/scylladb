@@ -332,6 +332,7 @@ class TableManager(object):
                 .format(ks=self.keyspace, table_name=self.table_name,
                         using='' if not using_clause else using_str,
                         set_clause=set_str, filter=filter_str)
+            logger.debug(f"{statement}")
             self.session.execute(statement)
             return (set_dict, filter_str)
         return (None, None)
