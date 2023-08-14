@@ -34,6 +34,7 @@ from ccmlib.node import NodetoolError
 from tools.stress import format_cs_output, assert_cs_success
 from tools.files import get_node_cf_dir, remove_files_in_folder
 from tools.marks import unmark
+from tools.cluster import run_rest_api
 
 import logging
 
@@ -748,7 +749,6 @@ class TestMaterializedViews(CommonUtils):
         """ Create 10 materialized views in parallel with a node restart """
         self._mv_populating_from_existing_data_during_changes_test('restart node')
 
-    @pytest.mark.no_boot_speedups
     @pytest.mark.parametrize("enable_repair_based_node_ops", [True, False], ids=["with_rbno", "without_rbno"])
     def test_mv_resurrected_rows_after_decommission_interrupt(self, enable_repair_based_node_ops):
         """
@@ -765,16 +765,25 @@ class TestMaterializedViews(CommonUtils):
         - decommission when enable_repair_based_node_ops is True and allowed RBNO for decommission
         - decommission when enable_repair_based_node_ops is False
         """
+        nodeops_watchdog_timeout_seconds = 30 if self.debug_mode else 10
         if enable_repair_based_node_ops:
-            options = {'enable_repair_based_node_ops': "true", 'allowed_repair_based_node_ops': "decommission"}
+            options = {
+                'enable_repair_based_node_ops': "true",
+                'allowed_repair_based_node_ops': "decommission",
+                "nodeops_watchdog_timeout_seconds": nodeops_watchdog_timeout_seconds,
+                "nodeops_heartbeat_interval_seconds": 1
+            }
         else:
             options = {'enable_repair_based_node_ops': "false"}
 
-        session = self.prepare(rf=3, nodes=4, user_table=True, options=options)
+        nodes = 2 if self.debug_mode else 4
+        rf = 1 if self.debug_mode else 3
+        session = self.prepare(rf=rf, nodes=nodes, user_table=True, options=options)
+        node1 = self.cluster.nodelist()[0]
         keyspace_name = "ks"
         base_table_name = "users"
         mv_name = "users_by_state"
-        gc_grace_seconds = 5
+        gc_grace_seconds = 1
         logger.info(f"Set gc_grace_seconds to {gc_grace_seconds} for {base_table_name} table and {mv_name} "
                     "materialized view")
         session.execute(f"ALTER TABLE {base_table_name} WITH gc_grace_seconds = {gc_grace_seconds}")
@@ -797,7 +806,7 @@ class TestMaterializedViews(CommonUtils):
         logger.info("Flush data into sstables")
         self.cluster.flush()
 
-        decommissioned_node = self.cluster.nodelist()[2]
+        decommissioned_node = self.cluster.nodelist()[-1]
         decommissioned_node_hostid = decommissioned_node.hostid()
         if enable_repair_based_node_ops:
             unbootstrap_str = [f"repair - decommission_with_repair: finished with keyspace={keyspace_name}"]
@@ -825,17 +834,25 @@ class TestMaterializedViews(CommonUtils):
             return
 
         # Due to interruption decommission operation is still may be considered in progress, and it will prevent node
-        # removing. It has a timeout of 120 seconds by default after which the condition should be cleared.
-        # Reboot all nodes causes to clear the decommission operation state
-        self.cluster.stop(wait_other_notice=True)
-        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+        # removing. Sleep the watchdog timeout to make sure the decommission op is aborted.
+        if enable_repair_based_node_ops:
+            time.sleep(nodeops_watchdog_timeout_seconds + 1)
+            decommissioned_node.start(wait_for_binary_proto=True, wait_other_notice=True)
+        else:
+            # Reboot all nodes causes to clear the decommission operation state
+            self.cluster.stop(wait_other_notice=True)
+            self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+            session = self.patient_cql_connection(node1, 'ks')
+
+        logger.info("Cleanup nodes")
+        self.cluster.cleanup()
 
         logger.info("Delete all rows")
         for i in range(rows):
             session.execute(f"DELETE FROM {base_table_name} WHERE username = 'user{i}'")
 
         logger.info(f"Wait for gc_grace_seconds {gc_grace_seconds} sec")
-        time.sleep(gc_grace_seconds)
+        time.sleep(gc_grace_seconds + 1)
 
         # Run compaction to remove not owned tokens
         logger.info("Run major compaction on all nodes")
@@ -847,13 +864,25 @@ class TestMaterializedViews(CommonUtils):
         logger.info(f"Remove node {decommissioned_node.name} from cluster")
         self.cluster.nodelist()[0].removenode(decommissioned_node_hostid)
 
-        # Try to count rows. Expected empty result
-        read_stmt = "SELECT count(*) FROM %s"
-        row = session.execute(read_stmt % base_table_name)
-        assert row.one()[0] == 0
+        logger.info("Clear caches")
+        for node in self.cluster.nodelist():
+            if node != decommissioned_node:
+                run_rest_api(node, '/system/drop_sstable_caches')
 
-        row = session.execute(read_stmt % mv_name)
-        assert row.one()[0] == 0
+        session = self.patient_cql_connection(node1, 'ks')
+
+        # List all rows. Expect empty result
+        read_stmt = SimpleStatement(f"SELECT * from {base_table_name}",
+                                    consistency_level=ConsistencyLevel.ALL)
+        res = session.execute(read_stmt)
+        rows = list(res)
+        assert rows == []
+
+        read_stmt = SimpleStatement(f"SELECT * from {mv_name}",
+                                    consistency_level=ConsistencyLevel.ALL)
+        res = session.execute(read_stmt)
+        rows = list(res)
+        assert rows == []
 
     def _mv_populating_from_existing_data_during_changes_test(self, change_type, nodes=4, rf=3, mvs=None, prefill=None):
         session = self.prepare(rf=rf, nodes=nodes, options={'prometheus_port': 0})
