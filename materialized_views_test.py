@@ -121,6 +121,10 @@ class CommonUtils(Tester):
                              "SELECT * FROM users WHERE STATE IS NOT NULL AND username IS NOT NULL "
                              "PRIMARY KEY (state, username)"))
 
+        self.fixture_dtest_setup.ignore_log_patterns += [
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception',
+        ]
+
         return session
 
     def update_view(self, session, query, flush, compact=False):
