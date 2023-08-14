@@ -25,11 +25,13 @@ from ccmlib.scylla_cluster import ScyllaCluster
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
 from tools.cluster import new_node, run_rest_api
+from tools.context import nodetool_context
 from tools.data import rows_to_list, insert_c1c2, insert_c1c2_no_prepared, get_node_sstables_compression
 from tools.assertions import PytestRegex
 from tools.misc import ImmutableMapping, retry_till_success
 from tools.files import copy_files_to, get_node_cf_dir
 from tools.status import nodetool_gossipinfo, nodetool_status
+from tools.stress import format_cs_output, assert_cs_success
 from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
@@ -2594,6 +2596,40 @@ class TestNodetool(Tester):
         #                         sstable_compression : org.apache.cassandra.io.compress.LZ4Compressor
         assert ks in out
         assert tbl in out
+
+    def test_disablebinary_and_disablegossip(self):
+        self.run_cluster(nodes=2)
+        node1, node2 = self.cluster.nodelist()
+        ks_name, table_name = 'keyspace1', 'standard1'
+
+        logger.info('Run stress command')
+        num_keys = 1000000 if self.cluster.scylla_mode != "debug" else 10000
+        results = node1.stress(['write', f'n={num_keys}', '-rate', 'threads=10',
+                               '-schema', 'compaction(strategy=SizeTieredCompactionStrategy,enabled=false)'])
+        logger.info('Stress results:\n' + format_cs_output(results))
+        assert_cs_success(results)
+
+        for node in self.cluster.nodelist():
+            node.flush()
+        with nodetool_context(node=node1, start_command="disablebinary", end_command="enablebinary"):
+            time.sleep(5)
+            with nodetool_context(node=node1, start_command="disablegossip", end_command="enablegossip"):
+                time.sleep(30)
+                node1.compact()
+        time.sleep(20)
+        log_position = node1.mark_log()
+        time.sleep(30)
+        assert not node1.grep_log(expr="gate closed", from_mark=log_position), \
+            "After executing enablebinary, the node still prints 'gate closed' messages"
+        status = nodetool_status(node2)
+        node1_status = None
+        for s in status["nodes"]:
+            if s['address'] == node1.address():
+                node1_status = s['status']
+                break
+        assert node1_status, "{} not found in {}".format(node1.address(), status["nodes"])
+        logger.info("Verifying node 1's status is UN")
+        assert node1_status == "UN", "Node 1's status is expected to be UN, but instead it's {}".format(node1_status)
 
 
 # example for input "Current trace probability: 0.001\n"
