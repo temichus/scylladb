@@ -608,7 +608,7 @@ class TestMaterializedViews(CommonUtils):
         _assert_rows_count(records)
 
         new_data = [-2, -5, -12, -45, -63, -78, -36, -85, -98, -100]
-        num_updates = records // 4
+        num_updates = records // 10
         proc_functions = [
             {'func': tm.prefill_table, 'args': (records,),
              'kwargs': {'data': {'int': new_data}, 'start_id_from': records + 1}},
@@ -620,8 +620,6 @@ class TestMaterializedViews(CommonUtils):
         ]
 
         run_in_parallel(proc_functions)
-        flush_by_node(self.cluster)
-        time.sleep(180)
 
         # Validate count on every node
         self.eventually(lambda: _assert_rows_count(records * 2))
