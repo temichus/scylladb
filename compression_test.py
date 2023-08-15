@@ -156,3 +156,68 @@ class TestCompression(TestHelper):
         assert 'org.apache.cassandra.io.compress.SnappyCompressor' == meta.options['compression']['class']
         assert '256' == meta.options['compression']['chunk_length_in_kb']
         assert_crc_check_chance_equal(session, "start_disabled_compression_table", 0.25)
+
+
+@pytest.mark.single_node
+@pytest.mark.dtest_full
+@pytest.mark.next_gating
+class TestCompressionChunkSize(TestHelper):
+    @pytest.mark.parametrize('compressor', ['DeflateCompressor', 'LZ4Compressor', 'SnappyCompressor'])
+    def test_sstable_compression_chunk_size_positive(self, compressor):
+        cluster = self.cluster
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        [node] = cluster.nodelist()
+
+        session = self.patient_cql_connection(node)
+        create_ks(session, 'ks', 1)
+
+        # Create negative test
+        with pytest.raises(Exception, match="Query invalid because of configuration issue"):
+            session.execute(f"""
+                create table compression_opts_table
+                    (id uuid PRIMARY KEY )
+                    WITH compression = {{
+                        'sstable_compression': '{compressor}',
+                        'chunk_length_in_kb': 256
+                    }}
+                """)
+
+        # Create positive test
+        session.execute(f"""
+            create table compression_opts_table
+                (id uuid PRIMARY KEY )
+                WITH compression = {{
+                    'sstable_compression': '{compressor}',
+                    'chunk_length_in_kb': 128
+                }}
+            """)
+
+        session.cluster.refresh_schema_metadata()
+        meta = session.cluster.metadata.keyspaces['ks'].tables['compression_opts_table']
+        assert f'org.apache.cassandra.io.compress.{compressor}' == meta.options['compression'][
+            'sstable_compression']
+        assert '128' == meta.options['compression']['chunk_length_in_kb']
+
+        # # Alter negative test
+        with pytest.raises(Exception, match="Query invalid because of configuration issue"):
+            session.execute(f"""
+                alter table compression_opts_table
+                    WITH compression = {{
+                        'sstable_compression': '{compressor}',
+                        'chunk_length_in_kb': 256
+                    }}
+                """)
+
+        # Positive alter test
+        session.execute(f"""
+                        alter table compression_opts_table
+                            WITH compression = {{
+                                'sstable_compression': '{compressor}',
+                                'chunk_length_in_kb': 64
+                            }}
+                        """)
+        session.cluster.refresh_schema_metadata()
+        meta = session.cluster.metadata.keyspaces['ks'].tables['compression_opts_table']
+        assert f'org.apache.cassandra.io.compress.{compressor}' == meta.options['compression'][
+            'sstable_compression']
+        assert '64' == meta.options['compression']['chunk_length_in_kb']
