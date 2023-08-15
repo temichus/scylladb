@@ -178,6 +178,23 @@ LATEST_MASTER_JOB_ID=`aws s3 ls downloads.scylladb.com/relocatable/unstable/mast
 LATEST_SCYLA_VERSION=master:${LATEST_MASTER_JOB_ID}
 ```
 
+> **Note**
+> When running tests which install Scylla versions less or equal to 5.2, you could run into errors like:
+> ```
+> Please install openjdk-8 or openjdk-11 before running install.sh.
+> ```
+> This error message comes from `unified/install.sh`. This script checks if the supported Java is
+> available before installing the relocatable package. But before 5.3, we only check `/usr/bin/java`,
+> and error out with this error message if `/usr/bin/java` points to an unsupported Java. This is
+> quite normal on an update-to-date distro where the latest LTS Java release is used by default.
+> To address this issue, it is recommended to temporarily point `/usr/bin/java` to Java-11. On
+> Debian/Fedora and their derivatives, please select Java-11 at the prompt of following command:
+> ```bash
+> alternatives --config java
+> ```
+> Please note, the tests involving multiple versions of Scylla also pull relocatable packages from
+> S3. So this note also applies to them.
+
 ### Running with relocatable packages from compiled tarballs
 
 Taking a relocatable using you own scylla core compiled package
@@ -207,6 +224,7 @@ Command to run tests using docker:
 ```bash
 WORKSPACE='absolute/path/to/scylla' SCYLLA_UNIFIED_PACKAGE='absolute/path/to/scylla-package.tar.gz' ./scripts/run_test.sh --scylla-version='local_tarball'  <file>::<class>::<test>
 ```
+
 ### Running different architecture
 
 Use `SCYLLA_ARCH` environment variable, so ccm and run_test.sh could know which architecture to use.
