@@ -11,6 +11,7 @@ from dtest_setup import DTestSetup
 from tools.assertions import assert_one, assert_none, assert_all, assert_row_count
 from tools.data import rows_to_list, prepare_statement
 from tools.metrics import get_node_metrics
+from tools.marks import unmark
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,7 @@ class TestLwt(Tester):
         # scylla_storage_proxy_coordinator_cas_write_unfinished_commit
 
     @pytest.mark.no_boot_speedups
+    @unmark.next_gating
     def test_read_round_optimization(self):
         """
          3.5 Ensure read-round-optimization works: update the record using
