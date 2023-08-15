@@ -671,7 +671,7 @@ class MaterializedViewManager(object):
 # implementation choice - we also know the state of the build for dead nodes,
 # but waiting only for live nodes makes it easier to write tests which check
 # how view building and dead nodes interact.
-def wait_for_view(cluster, session, ks, view, raise_exception=True):
+def wait_for_view(cluster, session, ks, view, raise_exception=True, timeout=None):
     logger.debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
     def _view_build_finished_on_live_nodes():
@@ -695,8 +695,13 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True):
                 pass
         return True
 
-    # wait for up to 5 minutes for view building to finish
-    for trial in range(60):
+    if not timeout:
+        timeout = 600
+        if hasattr(cluster, 'scylla_mode') and cluster.scylla_mode == 'debug':
+            timeout = 900
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
         if _view_build_finished_on_live_nodes():
             return
         time.sleep(5)
