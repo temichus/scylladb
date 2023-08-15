@@ -5,6 +5,7 @@ import logging
 from copy import deepcopy
 import time
 from uuid import UUID
+from collections import defaultdict
 
 from cassandra import ConsistencyLevel
 from cassandra.concurrent import execute_concurrent_with_args
@@ -674,16 +675,16 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True):
     logger.debug("Waiting for view {}.{} to finish building...".format(ks, view))
 
     def _view_build_finished_on_live_nodes():
-        done = set()
+        status = defaultdict(set)
         entries = rows_to_list(session.execute(view_built_status_query(ks, view, 'host_id,status')))
-        logger.debug(f"wait_for_view {ks}.{view}: status={entries}")
         for entry in entries:
-            if entry[1] == 'SUCCESS':
-                done.add(entry[0])
+            status[entry[1]].add(entry[0])
+        logger.debug(f"wait_for_view {ks}.{view}: status={status}")
+        done = status['SUCCESS']
         for node in cluster.nodelist():
             try:
                 if node.is_live() and not (UUID(node.hostid()) in done):
-                    logger.debug(f"wait_for_view {ks}.{view}: node {node.hostid()}/{node.address} is not done yet")
+                    logger.debug(f"wait_for_view {ks}.{view}: node {node.hostid()}/{node.address()} is not done yet")
                     return False
             except NodetoolError:
                 # If we decomissioned a node with "nodetool decommission"
