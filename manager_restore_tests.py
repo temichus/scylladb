@@ -68,10 +68,6 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
                                                        batch_size=batch_size)
         final_status = restore_task.wait_and_get_final_status(step=5)
         assert final_status == TaskStatus.DONE, f"Restore task failed: {restore_task.full_progress_string()}"
-        for node in self.cluster.nodelist():
-            if self._is_node_at_status(node.address(), functioning_node=healthy_node, desirable_status="UN",
-                                       tolerate_missing=True):
-                node.nodetool("repair")
         self.cluster.stress(['read', f'n={number_of_rows}', '-rate', f'threads={threads}'])
 
     def test_basic_restore(self):
@@ -133,8 +129,6 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         assert final_status == TaskStatus.DONE, \
             f"The restore task should not fail when the schema has been altered, but the restore task has reached " \
             f"the status of {final_status} after a column was added to the target table"
-        node1.nodetool("repair")
-        node2.nodetool("repair")
         self._compare_single_column(node=node1, column_name="key", prefix="k%d")
         self._compare_single_column(node=node1, column_name="c1", prefix=C1_PREFIX)
         self._compare_single_column(node=node1, column_name="c2", prefix=C2_PREFIX)
@@ -154,8 +148,6 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         assert final_status == TaskStatus.DONE, \
             f"The restore task should not fail when the schema has been altered, but the restore task has reached " \
             f"the status of {final_status} after a column from the target table was removed"
-        node1.nodetool("repair")
-        node2.nodetool("repair")
         self._compare_single_column(node=node1, column_name="key", prefix="k%d")
         self._compare_single_column(node=node1, column_name="c1", prefix=C1_PREFIX)
 
@@ -174,8 +166,6 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         assert final_status == TaskStatus.DONE, \
             f"The restore task should not fail when the schema has been altered, but the restore task has reached " \
             f"the status of {final_status} after a column from the target table was removed"
-        node1.nodetool("repair")
-        node2.nodetool("repair")
         self._compare_single_column(node=node1, column_name="key", prefix="k%d")
         self._compare_single_column(node=node1, column_name="c1", prefix=C1_PREFIX)
         self._validate_all_column_values_none(node=node1, column_name="c2")
@@ -289,8 +279,6 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
                                                        snapshot_tag=backup_task.get_snapshot_tag(),
                                                        keyspace_list=["ks_*"])
         restore_task.wait_for_status(list_status=[TaskStatus.DONE], step=5)
-        node1.nodetool("repair")
-        node2.nodetool("repair")
         self.verify_c1c2(
             node=node1,
             keyspace_table_and_key_range={ks: keyspace_table_and_key_range[ks] for ks in backed_up_keyspaces})
