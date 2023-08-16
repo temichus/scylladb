@@ -34,7 +34,7 @@ LONG_TEXT_LENGTH = 8193
 OVERSIZE_LENGTH = 66536
 
 
-class SecondaryIndexesHelpers:
+class SecondaryIndexesHelpers(Tester):
     compaction_strategy = None
     INDEX_TYPE: str
     cluster: ScyllaCluster
@@ -245,7 +245,7 @@ class SecondaryIndexesHelpers:
 
 
 @pytest.mark.dtest_full
-class TestStaticSecondaryIndexes(Tester, SecondaryIndexesHelpers):
+class TestStaticSecondaryIndexes(SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
 
     @unmark.next_gating  # this is failing as xfailed
@@ -348,7 +348,7 @@ class TestStaticSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
 
 @pytest.mark.dtest_full
-class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
+class TestSecondaryIndexes(SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
 
     @staticmethod
@@ -1614,7 +1614,7 @@ class TestSecondaryIndexes(Tester, SecondaryIndexesHelpers):
 
 @pytest.mark.dtest_full
 @pytest.mark.single_node
-class TestSecondaryIndexesOnCollections(Tester, SecondaryIndexesHelpers):
+class TestSecondaryIndexesOnCollections(SecondaryIndexesHelpers):
     INDEX_TYPE = 'global'
 
     def test_tuple_indexes(self):
@@ -1934,7 +1934,7 @@ class TestUpgradeSecondaryIndexes(Tester):
 
 @pytest.mark.skip('Not relevant for Scylla')
 @pytest.mark.dtest_full
-class TestPreJoinCallback(Tester, SecondaryIndexesHelpers):
+class TestPreJoinCallback(SecondaryIndexesHelpers):
 
     @pytest.fixture(autouse=True)
     def fixture_add_additional_log_patterns(self, fixture_dtest_setup: DTestSetup):
@@ -2031,7 +2031,7 @@ class TestPreJoinCallback(Tester, SecondaryIndexesHelpers):
 
 
 @pytest.mark.dtest_full
-class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
+class TestLocalIndexes(SecondaryIndexesHelpers):
     INDEX_TYPE = 'local'
 
     def config_keyspace(self, session, ks_name, table_name, index, columns=None, ks_create=True,
@@ -2677,7 +2677,7 @@ class TestLocalIndexes(Tester, SecondaryIndexesHelpers):
 
 
 @pytest.mark.dtest_full
-class TestMultipleSecondaryIndexes(Tester, SecondaryIndexesHelpers):
+class TestMultipleSecondaryIndexes(SecondaryIndexesHelpers):
     def _prepare_for_multi_index_test(self):
         session = self.prepare(user_table=False, nodes=4, rf=3, keyspace_name='ks')
         session.consistency_level = 'ONE'
