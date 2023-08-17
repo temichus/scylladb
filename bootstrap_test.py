@@ -953,3 +953,51 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         logger.debug("Deleting {}".format(data_dir))
         node.rmtree(data_dir)
         node.rmtree(commitlog_dir)
+
+    def test_reject_node_bootstrap_no_gossip(self):
+        """
+        Node n4 will learn the ip and uuid of n3, but it does not know the gossip status of n3 since gossip status is
+        published only by the node itself.
+        After full cluster shutdown, gossip status of n3 will not be present until n3 is restarted again.
+        So n4 will not think n3 is part of the ring.
+        In this case, it is better to reject the bootstrap.
+
+        A test for rejecting new node(4) bootstrap
+        if one of the previous nodes is down after cluster restart.
+        The new node does not know the gossip status of n3
+        since gossip status is published only by the node itself.
+        According to task: https://github.com/scylladb/scylla-dtest/issues/2858
+        """
+        self.fixture_dtest_setup.ignore_log_patterns.append("Startup failed:")
+        logger.info("Populating cluster with one node")
+        cluster = self.cluster
+        cluster.populate(3)
+        logger.info("Starting cluster")
+        cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+        (node1, node2, node3) = cluster.nodelist()
+        logger.info("Inserting some data to the cluster")
+        session = self.patient_exclusive_cql_connection(node1)
+        n_of_keys = 1000
+        create_ks(session, 'ks', 3)
+        create_cf(session, 'cf', columns={'c1': 'text', 'c2': 'text'})
+        insert_c1c2(session, n=n_of_keys, consistency=ConsistencyLevel.ALL)
+        logger.info("Stopping cluster")
+        cluster.stop(gently=True)
+        logger.info("Stopping cluster has finished.")
+        logger.info("Starting node 1")
+        node1.start(wait_other_notice=True)
+        logger.info("Starting node 2")
+        node2.start(wait_other_notice=True)
+        expected_error = "Startup failed:* has gossip status=UNKNOWN"
+        with pytest.raises(expected_exception=(RuntimeError,)):
+            node4 = cluster.new_node(4)
+            mark4 = node4.mark_log()
+            node4.start(wait_other_notice=True)
+            node4.watch_log_for(expected_error, from_mark=mark4)
+        node3.start(wait_other_notice=True)
+        node4.stop(wait_other_notice=False)
+        node4.start(wait_other_notice=True, wait_for_binary_proto=True)
+        node3.stop(wait_other_notice=False)
+        session = self.patient_exclusive_cql_connection(node4)
+        for k in range(n_of_keys):
+            query_c1c2(session, k, consistency=ConsistencyLevel.QUORUM)
