@@ -83,7 +83,7 @@ def getUnifiedRelocArtifact (String cloudUrl, String buildMode) {
     unifiedPackageName = unifiedPackageName.substring(unifiedPackageName.lastIndexOf('/') + 1)
 
     if (buildMode == "debug") {
-        unifiedPackageName = unifiedPackageName.replace("${params.PRODUCT_NAME}-", "${params.PRODUCT_NAME}-debug-")
+        unifiedPackageName = unifiedPackageName.replace("-unified-", "-debug-unified-")
     }
 
 	target = "$WORKSPACE/${params.PRODUCT_NAME}/build/${buildMode}/dist/tar"
