@@ -713,7 +713,7 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True, timeout=None
     deadline = time.time() + timeout
     while time.time() < deadline:
         if _view_build_finished_on_live_nodes():
-            return
+            return True
         time.sleep(5)
 
     error_msg = "View {}.{} not built".format(ks, view)
@@ -721,6 +721,7 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True, timeout=None
         raise Exception(error_msg)
     else:
         logger.debug(error_msg)
+        return False
 
 
 def wait_for_view_build_start(session, ks, view, seconds_to_wait=20):
