@@ -4487,13 +4487,14 @@ class TestInterruptBuildProcess(CommonUtils):
             return 2
 
     @pytest.mark.dtest_heavy
-    def test_interrupt_build_process_test(self):
+    @pytest.mark.parametrize("colocated_view_replicas", [True, False], ids=["colocated_view_replicas", "non_colocated_view_replicas"])
+    def test_interrupt_build_process_test(self, colocated_view_replicas):
         logger.debug("Acquiring lock")
         with TestInterruptBuildProcess.lock:
             logger.debug("Running test")
-            self._interrupt_build_process_test()
+            self._interrupt_build_process_test(colocated_view_replicas)
 
-    def _interrupt_build_process_test(self):
+    def _interrupt_build_process_test(self, colocated_view_replicas):
         """Test that an interrupted MV build process is resumed as it should"""
         session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
         node1, node2, node3 = self.cluster.nodelist()
@@ -4506,7 +4507,8 @@ class TestInterruptBuildProcess(CommonUtils):
         logger.debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
         for i in range(rows):
-            session.execute(insert_stmt, (i, i, 'a', 3.0))
+            v = i if colocated_view_replicas else random.randint(0, rows*10)
+            session.execute(insert_stmt, (i, v, 'a', 3.0))
 
         logger.debug("Create a MV")
         # Don't wait for schema agreement, or we risk view building concluding too soon
@@ -4522,10 +4524,26 @@ class TestInterruptBuildProcess(CommonUtils):
         logger.debug("Ensure view building didn't finish.")
         self._ensure_view_building_did_not_finish(len(self.cluster.nodelist()))
 
-        logger.debug("Restart the cluster")
-        self.cluster.start(wait_for_binary_proto=True)
-        session = self.patient_cql_connection(node1)
-        session.execute("USE ks")
+        self.ignore_log_patterns += [
+            r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::unavailable_exception',
+        ]
+
+        logger.debug("Restart only some of the nodes")
+        for n in [node1, node3]:
+            n.start(wait_for_binary_proto=True, wait_other_notice=True)
+        session = self.patient_cql_connection(node1, 'ks')
+
+        if colocated_view_replicas:
+            logger.debug("Wait and ensure the MV build resumed while a node is down.")
+            wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
+        else:
+            logger.debug("Ensure view building didn't finish while a node is down.")
+            self._ensure_view_building_did_not_finish(2)
+            assert not wait_for_view(cluster=self.cluster, session=session, ks="ks",
+                                     view="t_by_v", timeout=1, raise_exception=False)
+
+        logger.debug("Restart the rest of the cluster")
+        node2.start(wait_for_binary_proto=True, wait_other_notice=True)
 
         logger.debug("Wait and ensure the MV build resumed.")
         wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
