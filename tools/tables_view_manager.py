@@ -8,6 +8,7 @@ from uuid import UUID
 from collections import defaultdict
 
 from cassandra import ConsistencyLevel
+from cassandra.query import SimpleStatement
 from cassandra.concurrent import execute_concurrent_with_args
 
 from ccmlib.node import NodetoolError
@@ -671,12 +672,21 @@ class MaterializedViewManager(object):
 # implementation choice - we also know the state of the build for dead nodes,
 # but waiting only for live nodes makes it easier to write tests which check
 # how view building and dead nodes interact.
-def wait_for_view(cluster, session, ks, view, raise_exception=True, timeout=None):
-    logger.debug("Waiting for view {}.{} to finish building...".format(ks, view))
+def wait_for_view(cluster, session, ks, view, raise_exception=True, timeout=None, cl=None):
+    num_nodes = len(cluster.nodelist())
+    num_alive = len([node for node in cluster.nodelist() if node.is_live()])
+    if cl is None:
+        cl = ConsistencyLevel.ONE if num_alive == 1 else ConsistencyLevel.QUORUM
+    cl_name = ConsistencyLevel.value_to_name[cl]
+    logger.debug(
+        f"Waiting for view {ks}.{view} to finish building: num_nodes={num_nodes} num_alive={num_alive} cl={cl_name}")
+
+    query = SimpleStatement(view_built_status_query(ks, view, 'host_id,status'),
+                            consistency_level=cl)
 
     def _view_build_finished_on_live_nodes():
         status = defaultdict(set)
-        entries = rows_to_list(session.execute(view_built_status_query(ks, view, 'host_id,status')))
+        entries = rows_to_list(session.execute(query))
         for entry in entries:
             status[entry[1]].add(entry[0])
         logger.debug(f"wait_for_view {ks}.{view}: status={status}")
