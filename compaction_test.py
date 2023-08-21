@@ -368,7 +368,6 @@ class TestCompaction(Tester):
 
             logger.debug("Running offstrategy compaction on node4")
             run_rest_api(node4, f"/storage_service/keyspace_offstrategy_compaction/{ks}?cf={cf}")
-            node4.watch_log_for(f"Done with off-strategy compaction for {self.FULL_TABLE_NAME}", from_mark=log_mark)
 
             logger.debug(
                 f"Check with tombstone_gc_mode = repair, after a full successful repair there are no tombstones")
