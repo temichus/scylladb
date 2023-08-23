@@ -334,7 +334,7 @@ if $dry_run ; then
     PYTEST_FLAGS="$PYTEST_FLAGS --collect-only"
 fi
 
-if [ ! -z $pytest_ext_opts ]; then
+if [ ! -z "$pytest_ext_opts" ]; then
     PYTEST_FLAGS="$PYTEST_FLAGS $pytest_ext_opts"
 fi
 
