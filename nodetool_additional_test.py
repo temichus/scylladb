@@ -2313,15 +2313,16 @@ class TestNodetool(Tester):
                 pass
             break
 
-        try:
-            list(session.execute('SELECT * FROM ks.cf'))
-        except:
-            pass
+        if mode == "SEGREGATE":
+            try:
+                list(session.execute('SELECT * FROM ks.cf'))
+            except:
+                pass
 
     @pytest.mark.single_node
     @unmark.next_gating
     def test_scrub_with_one_node_expect_data_loss(self):
-        self._scrub_with_one_node_expect_data_loss()
+        self._scrub_with_one_node_expect_data_loss(mode="SEGREGATE")
 
     def test_scrub_with_multi_nodes_expect_data_rebuild(self):
         cluster = self.run_cluster(nodes=3)
