@@ -94,10 +94,10 @@ class TestCommitLog(Tester):
         return os.path.join(self.node1.get_path(), 'commitlogs')
 
     def _get_commitlog_files(self):
-        """ Returns the number of commitlog files in the directory """
+        """ Returns the commitlog files in the directory """
 
         path = self._get_commitlog_path()
-        return [os.path.join(path, p) for p in os.listdir(path)]
+        return glob.glob(path + '/CommitLog-*.log')
 
     def _get_commitlog_size(self, all=False, allow_errors=False):
         """ Returns the commitlog directory size in MB """
