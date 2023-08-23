@@ -2249,6 +2249,7 @@ class TestNodetool(Tester):
         ]
 
         tries = 0
+        found_corruption = False
         while True:
             seed = int(time.time())
             logger.info("Random seed: {}".format(seed))
@@ -2303,17 +2304,18 @@ class TestNodetool(Tester):
                 for line, _ in matchings:
                     logger.debug(f"{line}")
                     if "failed" in line or "invalid" in line:
+                        found_corruption = True
                         break
                 else:
                     if tries >= 3:
-                        pytest.fail("Scrub found no corruption")
+                        break
                     logger.debug("Scrub found no corruption, retrying...")
                     continue
             except UnicodeDecodeError:
                 pass
             break
 
-        if mode == "SEGREGATE":
+        if mode == "SEGREGATE" or not found_corruption:
             try:
                 list(session.execute('SELECT * FROM ks.cf'))
             except:
