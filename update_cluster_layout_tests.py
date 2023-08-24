@@ -70,7 +70,7 @@ class TestUpdateClusterLayout(Tester):
         return values
 
     def check_rows_on_node(self, node_to_check, rows, found=None, missings=None, restart=True, ks='ks', cf='cf',
-                           counter_column=None, timeout=None):
+                           timeout=None):
         if found is None:
             found = []
         if missings is None:
@@ -86,16 +86,15 @@ class TestUpdateClusterLayout(Tester):
             timeout = self.cql_timeout(300)
 
         session = self.patient_cql_connection(node_to_check, ks)
-        if rows > 1000 and counter_column:
-            query = SimpleStatement(f"SELECT count({counter_column}) FROM {ks}.{cf} LIMIT {rows * 2}",
-                                    consistency_level=ConsistencyLevel.ONE)
-            result = list(session.execute(query, timeout=timeout))
-            count = result[0][0]
-            assert count == rows
+        query = SimpleStatement(f"SELECT * FROM {ks}.{cf} LIMIT {rows * 2}",
+                                consistency_level=ConsistencyLevel.ONE)
+        result = session.execute(query, timeout=timeout)
+        if rows > 1000:
+            # count the number by iterating the resultset for smaller memory footprint
+            count = sum(1 for _ in result)
         else:
-            query = SimpleStatement(f"SELECT * FROM {ks}.{cf} LIMIT {rows * 2}", consistency_level=ConsistencyLevel.ONE)
-            result = list(session.execute(query, timeout=timeout))
-            assert len(result) == rows
+            count = len(list(result))
+        assert count == rows
 
         for k in found:
             query_c1c2(session, k, ConsistencyLevel.ONE)
@@ -1809,9 +1808,9 @@ class TestUpdateClusterLayout(Tester):
         logger.debug("Node 2 started")
 
         logger.debug("Check rows on node2")
-        self.check_rows_on_node(node2, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn', timeout=timeout)
+        self.check_rows_on_node(node2, nr_rows, ks='keyspace1', cf='standard1', timeout=timeout)
         logger.debug("Check rows on node1")
-        self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', counter_column='cn', timeout=timeout)
+        self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', timeout=timeout)
 
     def test_increment_decrement_counters_in_threads_nodes_restarted(self):
         """
