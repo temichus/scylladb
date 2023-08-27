@@ -1286,9 +1286,10 @@ class TesterAlternator(BaseAlternator):
                 threads.append(pool.submit(self.update_items, table_name=table_name, node=node1,
                                            items=add_operations[chunk_idx: chunk_idx + chunk_size],
                                            primary_key=self._table_primary_key, action="ADD"))
-            logger.info("Waiting 60 seconds until all threads will finish")
+            timeout = self.cql_timeout(60)
+            logger.info(f"Waiting {timeout} seconds until all threads will finish")
             for thread in threads:
-                thread.result(timeout=60)
+                thread.result(timeout=timeout)
 
         result = self.scan_table(table_name=table_name, node=node1)
         assert len(result) == 1
