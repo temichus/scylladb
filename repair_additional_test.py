@@ -2026,13 +2026,16 @@ class RepairAdditionalBase(Tester):
                 logger.debug(ex)
 
         checking_keys_num('Before Repair')
+
+        mark = node3.mark_log()
+
         executor = ThreadPoolExecutor(max_workers=1)
         thread1 = executor.submit(repair_thread, ['ks'])
 
         logger.debug("Wait for Repair to start")
         # Older scylla reports x out of y ranges is being repaired.
         # Newer scylla reports m out of n tables is being repaired.
-        node3.watch_log_for("Repair 5 out of|Started to repair 1 out of", timeout=200)
+        node3.watch_log_for("Repair 5 out of|Started to repair 1 out of", timeout=200, from_mark=mark)
         logger.debug("Repair has started")
 
         logger.debug('Abort repair sessions')
