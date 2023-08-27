@@ -1030,7 +1030,7 @@ class TestUpdateClusterLayout(Tester):
 
         # starting node2 - it should reconnect and run as is
         logger.debug("Start node2 ")
-        node2.start(wait_other_notice=False, wait_for_binary_proto=True)
+        node2.start(wait_other_notice=True, wait_for_binary_proto=True)
         session2 = self.patient_cql_connection(node2)
         result = list(session2.execute("SELECT * FROM ks.cf"))
         assert len(result) == 10000
