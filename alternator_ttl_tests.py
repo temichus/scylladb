@@ -97,7 +97,8 @@ class TestAlternatorTTL(BaseAlternator):
         4. Verify all data is eventually deleted on cluster nodes.
         """
         ttl_polling_interval = 4
-        self.prepare_dynamodb_cluster(num_of_nodes=4,
+        nodes = 4 if self.cluster.scylla_mode != "debug" else 2
+        self.prepare_dynamodb_cluster(num_of_nodes=nodes,
                                       extra_config={'alternator_ttl_period_in_seconds': ttl_polling_interval})
         node1, *_ = self.cluster.nodelist()
         table = self.create_table(node=node1)
@@ -115,7 +116,8 @@ class TestAlternatorTTL(BaseAlternator):
         decommission_thread = self.run_decommission_add_node_thread()
 
         logger.info('Run flush and compaction on cluster nodes')
-        for _ in range(3):
+        iterations = 3 if self.cluster.scylla_mode != "debug" else 1
+        for _ in range(iterations):
             try:
                 random.choice(self.cluster.nodelist()).flush()
                 random.choice(self.cluster.nodelist()).compact()
