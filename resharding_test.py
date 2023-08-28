@@ -254,6 +254,9 @@ class TestReshardingTombstonesSingleNode(Tester):
         node1: ScyllaNode = self.cluster.nodelist()[0]
         session: Session = self.patient_cql_connection(node1)
 
+        session.execute(f"alter table {self.keyspace}.{self.table} " +
+                        f"with compaction = {{'class':'{compaction_strategy}', 'enabled':'true'}}")
+
         for i in range(self.keys):
             session.execute(f"insert into {self.keyspace}.{self.table} (key, val) values ({i}, 1)")
         logging.debug("Flush sstables")
@@ -263,7 +266,7 @@ class TestReshardingTombstonesSingleNode(Tester):
         logging.debug("Deleting {} keys".format(self.keys))
         for i in range(self.keys):
             session.execute(f"delete from {self.keyspace}.{self.table} where key = {i}")
-        node1.flush()
+        node1.flush(self.keyspace, self.table)
 
         # we passed gc_period and force an update so that compaction will
         # be triggered on a single shard (removing data and tombstone)
@@ -273,13 +276,16 @@ class TestReshardingTombstonesSingleNode(Tester):
         logging.debug("Inserting data and waiting for new compaction")
         while compactions_1 == compactions_2:
             session.execute(f'insert into {self.keyspace}.{self.table} (key, val) values ({self.keys + 1},1);')
-            node1.flush()
+            node1.flush(self.keyspace, self.table)
             compactions_2 = self.compactions_count(session, self.keyspace, self.table)
         node1.wait_for_compactions()
         compactions_2 = self.compactions_count(session, self.keyspace, self.table)
 
         num_compactions = compactions_2 - compactions_1
         logging.debug("{} compaction(s) completed".format(num_compactions))
+
+        session.execute(f"alter table {self.keyspace}.{self.table} " +
+                        f"with compaction = {{'class':'{compaction_strategy}', 'enabled':'false'}}")
 
         # Stop node and start with increased smp number
         logging.debug("Stopping node1")
@@ -297,7 +303,7 @@ class TestReshardingTombstonesSingleNode(Tester):
         m = node1.mark_log()
         node1.start(wait_for_binary_proto=True, jvm_args=['--smp', f'{self.NEW_SMP}'])
         # validate that resharding for test keyspace was run
-        node1.watch_log_for([rf"Resharding.*{self.keyspace}/{self.table}"], from_mark=m, timeout=60)
+        node1.watch_log_for([rf"Resharded.*{self.keyspace}/{self.table}"], from_mark=m, timeout=60)
 
         session: Session = self.patient_cql_connection(node1, self.keyspace)
 
