@@ -2598,16 +2598,32 @@ class TestNodetool(Tester):
         assert tbl in out
 
     def test_disablebinary_and_disablegossip(self):
-        self.run_cluster(nodes=2)
-        node1, node2 = self.cluster.nodelist()
-        ks_name, table_name = 'keyspace1', 'standard1'
+        def run_stress(node, num_keys, mode, consistency, limited_rows_per_second=None):
+            # mode = read or write
+            logger.debug('Start stress command')
+            rate_string = 'threads=10' + (f' throttle={limited_rows_per_second}/s' if limited_rows_per_second else '')
+            result = node.stress([mode,
+                                  f'n={num_keys}',
+                                  f'cl={consistency}',
+                                  '-rate', rate_string,
+                                  '-schema', 'replication(factor=3)'],
+                                 capture_output=True)
+            logger.info('Stress results:\n' + format_cs_output(result))
+            assert_cs_success(result)
 
-        logger.info('Run stress command')
-        num_keys = 1000000 if self.cluster.scylla_mode != "debug" else 10000
-        results = node1.stress(['write', f'n={num_keys}', '-rate', 'threads=10',
-                               '-schema', 'compaction(strategy=SizeTieredCompactionStrategy,enabled=false)'])
-        logger.info('Stress results:\n' + format_cs_output(results))
-        assert_cs_success(results)
+        self.run_cluster(nodes=3)
+        node1, node2, _ = self.cluster.nodelist()
+        logger.info('Writing data')
+        number_of_keys = 1000000
+        run_stress(node2, number_of_keys, mode="write", consistency="ALL")
+        # Start stress in thread
+        executor = ThreadPoolExecutor(max_workers=1)
+        read_stress_run = executor.submit(run_stress,
+                                          node=node2,
+                                          num_keys=number_of_keys,
+                                          mode="read",
+                                          consistency="QUORUM",
+                                          limited_rows_per_second=5000)
 
         for node in self.cluster.nodelist():
             node.flush()
@@ -2630,6 +2646,10 @@ class TestNodetool(Tester):
         assert node1_status, "{} not found in {}".format(node1.address(), status["nodes"])
         logger.info("Verifying node 1's status is UN")
         assert node1_status == "UN", "Node 1's status is expected to be UN, but instead it's {}".format(node1_status)
+
+        read_stress_run.result()
+        # Validation thread
+        run_stress(node1, number_of_keys, mode="read", consistency="ALL")
 
 
 # example for input "Current trace probability: 0.001\n"
