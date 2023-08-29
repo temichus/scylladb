@@ -310,7 +310,7 @@ class TestNodetool(Tester):
         cursor = self.patient_cql_connection(node1)
 
         logger.info('Run stress write test')
-        strs = self.stress_write(node1, times=1000, opt=['no-warmup'])
+        strs = self.stress_write(node1, times=1000)
         node1.flush()
 
         logger.info('Run and verify cfstats')
@@ -2141,6 +2141,7 @@ class TestNodetool(Tester):
         cmd += ['cl=' + cl]
         if opt is None:
             opt = []
+        cmd += ["no-warmup"]
         if duration:
             cmd += ['duration=' + duration]
         else:
