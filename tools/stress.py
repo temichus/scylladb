@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 def create_stress_compatible_table(self, node, rf=1, dclocal_read_repair_chance=0.1, gc_grace_seconds=864000,
                                    read_repair_chance=0.0, default_time_to_live=0, speculative_retry="'99.0PERCENTILE'",
-                                   compaction="'class': 'SizeTieredCompactionStrategy', 'sstable_size_in_mb': '100'"):
+                                   compaction="'class': 'LeveledCompactionStrategy', 'sstable_size_in_mb': '100'"):
     session = self.patient_cql_connection(node)
     session.execute(f"""CREATE KEYSPACE keyspace1 WITH replication = {{
     'class': 'SimpleStrategy',
