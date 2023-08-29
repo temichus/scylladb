@@ -279,7 +279,7 @@ def doParallelDtest (Map args) {
                         customFailurePatterns: [
                             'connection-lost':  '.*Could not connect to .*? to send interrupt signal to process.*',
                             'termination-request': '.*Termination requested.*',
-                            'node-removed': '.*was marked offline: Node is being removed$',
+                            'node-removed': '.*was marked offline: (Node is being removed|Connection was broken)$',
                             'channel-termination': '.*Unexpected termination of the channel$',
                             ],
                         stageNameFilterPatterns:  [".*${dtestType}-split${nodeIndex}.*"],
