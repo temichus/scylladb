@@ -246,6 +246,7 @@ docker_cmd="docker run --init --detach=true \
     -e PYTHONUNBUFFERED=1 \
     -e GITHUB_TOKEN \
     -e DTEST_REQUIRE \
+    -e DTEST_SPLIT_NAME \
     -e SCYLLA_ARCH \
     -e SCYLLA_PRODUCT \
     -w ${DTEST_DIR} \

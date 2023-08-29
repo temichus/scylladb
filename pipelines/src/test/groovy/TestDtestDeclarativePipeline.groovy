@@ -100,6 +100,9 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
             c.runSteps.delegate = delegate
             helper.callClosure(c.runSteps)
         })
+        helper.registerAllowedMethod('junit', [Map], { Map args ->
+            println "report junit results"
+        })
     }
 
     @Test
@@ -112,6 +115,7 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
             }.any { call ->
                 callArgsToString(call).contains("--mode=release")
             })
+            assertCallStackContains('dtest.junit({testResults=scylla-dtest.heavy.release.001*.xml, keepProperties=true})')
         } finally {
             printCallStack()
             println binding.getVariable('currentBuild')
@@ -128,6 +132,7 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
             }.any { call ->
                 callArgsToString(call).contains("--mode=debug")
             })
+            assertCallStackContains('dtest.junit({testResults=scylla-dtest.heavy.debug.001*.xml, keepProperties=true})')
         } finally {
             printCallStack()
             println binding.getVariable('currentBuild')

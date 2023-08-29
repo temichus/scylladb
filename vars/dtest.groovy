@@ -216,7 +216,7 @@ boolean publishTestResults (String testsWildcardFiles, String baseDir) {
 	dir(baseDir) {
         echo "Going to publish junit files: $testsWildcardFiles"
         try {
-            junit testsWildcardFiles
+            junit(testResults:testsWildcardFiles, keepProperties:true)
         } catch (error) {
             echo "Error: Could not publish junit files: |$testsWildcardFiles|. Error: |$error|"
             status = true
@@ -295,7 +295,8 @@ def doParallelDtest (Map args) {
 
                             results["${dtestType}-split${nodeIndex}"] += 1
                             jenkins.checkAndTagAwsInstance(args.runningUserID)
-                            withEnv(["NODE_TOTAL=${numOfSplitFiles}", "NODE_INDEX=${nodeIndex}"]) {
+                            withEnv(["NODE_TOTAL=${numOfSplitFiles}", "NODE_INDEX=${nodeIndex}",
+                                     "DTEST_SPLIT_NAME=${dtestType}.${args.dtestMode}.${nodeIndex}"]) {
                                 prepareDtestLocalTree (
                                     preserveWorkspace: false,
                                     dtestRepo: args.dtestRepo,

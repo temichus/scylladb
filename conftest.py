@@ -142,6 +142,17 @@ def fixture_dtest_cluster_name():
     return "test"
 
 
+@pytest.fixture(name='split_info', scope='session')
+def fixture_split_information():
+    """
+    :return: split related information
+    """
+    split_name = os.getenv('DTEST_SPLIT_NAME')
+    build_url = os.getenv("BUILD_URL")
+    return dict(split_name=split_name or 'N/A',
+                logs_link=f'<a href={build_url}artifact/logs-{split_name}>logs-{split_name}</a>' if split_name else 'N/A')
+
+
 r"""
 Not exactly sure why :\ but, this fixture needs to be scoped to function level and not
 session or class. If you invoke pytest with tests across multiple test classes, when scopped
@@ -154,7 +165,7 @@ logger once per test class vs. once per session in the grand scheme of things.
 
 
 @pytest.fixture(scope="function", autouse=True)
-def fixture_logging_setup(request):
+def fixture_logging_setup(request, record_property, split_info):
     logging_plugin = request.config.pluginmanager.get_plugin("logging-plugin")
 
     # adding name of the test to the print of logs
@@ -170,6 +181,10 @@ def fixture_logging_setup(request):
         logging_plugin.log_file_handler.baseFilename = filename
         logging_plugin.log_file_handler.stream = open(filename, mode="w", encoding="UTF-8")
         log_per_process_data["worker_id"] = worker_id
+
+    record_property('WORKER_ID', worker_id)
+    record_property('SPLIT_NAME', split_info['split_name'])
+    record_property('LOGS_LINK', split_info['logs_link'])
 
     # configure the error logger to go only to log file
     if 'error_logger' not in log_per_process_data:

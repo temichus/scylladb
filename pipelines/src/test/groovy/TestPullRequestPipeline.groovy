@@ -109,6 +109,10 @@ class TestPullRequestPipeline extends DeclarativePipelineTest {
             c.delegate = delegate
             helper.callClosure(c)
         })
+        helper.registerAllowedMethod('junit', [Map], { Map args ->
+            println "report junit results"
+        })
+
         binding.getVariable('currentBuild').getBuildCauses = { "Started by user" }
     }
 
