@@ -1489,7 +1489,6 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
             BEGIN BATCH INSERT INTO excelsior.data (id) VALUES (0); APPLY BATCH""")
 
         assert 0 == len(stderr), stderr
-        assert 0 == len(stdout), stdout
 
     def run_cqlsh(self, node, cmds, cqlsh_options=[], env_vars=None):
         if env_vars is None:

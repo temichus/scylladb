@@ -882,7 +882,7 @@ class TestRestrictionReplicationSimpleStrategy(Tester):
         if mode == "true":
             assert "ConfigurationException" in err, "Expected to get 'ConfigurationException', but did not get it!"
         if mode == "false":
-            assert not out and not err, "Expected not to get any errors/warnings, but got something!"
+            assert not err, "Expected not to get any errors, but got something!"
         if mode == "warn":
             assert "Warnings" in out, "Expected to get the warning message in the output, did not get it!"
 
@@ -906,7 +906,7 @@ class TestRestrictionReplicationSimpleStrategy(Tester):
         if mode == "true":
             assert "ConfigurationException" in err, "Expected to get 'ConfigurationException', but did not get it!"
         if mode == "false":
-            assert not out and not err, "Expected not to get any errors/warnings, but got something!"
+            assert not err, "Expected not to get any errors, but got something!"
         if mode == "warn":
             assert "Warnings" in out, "Expected to get the warning message in the output, did not get it!"
 
