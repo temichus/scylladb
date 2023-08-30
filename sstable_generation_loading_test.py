@@ -197,10 +197,9 @@ class TestSSTableGenerationAndLoading(Tester):
         ignore_patterns = ['WARN .* Ignoring codec',
                            'ERROR .* LEAK DETECTED']
         for line in buf:
-            for ignore_pattern in ignore_patterns:
-                if re.search(ignore_pattern, line):
-                    logger.debug("Ignoring sstableloader warning: %s", line.strip())
-                    break
+            if any(re.search(ignore_pattern, line) for ignore_pattern in ignore_patterns):
+                logger.debug("Ignoring sstableloader warning: %s", line.strip())
+            else:
                 # not matched, so it is an error
                 return True
         return False
