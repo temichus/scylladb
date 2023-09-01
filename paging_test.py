@@ -3,6 +3,7 @@ import uuid
 import random
 import ctypes
 import logging
+import re
 from collections import Counter
 from packaging.version import Version
 
@@ -2697,20 +2698,25 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         pf = PageFetcher(future).request_all()
         assert pf.pagecount() == 1, f'Expected 1 page but received {pf.pagecount()}'
         assert pf.num_results_all() == [1], f'Expected 1 single result, but received {pf.num_results_all()}'
-        self.assertEqualIgnoreOrder(pf.all_data(), expected_data, assert_msg)
+        expected_col_name, expected_col_value = list(expected_data[0].items())[
+            0]  # we expect a single page, with a single row
+        col_name, col_value = list(pf.all_data()[0].items())[0]
+        if type(expected_col_name) == str:
+            assert expected_col_name == col_name, assert_msg
+        else:  # expect re.Pattern
+            assert expected_col_name.fullmatch(col_name) is not None, assert_msg
+        assert expected_col_value == col_value, assert_msg
 
     def _verify_col_func_results(self,
                                  session,
                                  filtered_list,
-                                 query_fmt,
-                                 result_fmt,
+                                 core_query,
+                                 result_desc,
                                  col,
                                  query_func,
                                  exp_func,
                                  where_clause,
                                  allow_filtering):
-        core_query = query_fmt.format(**locals())
-        result_desc = result_fmt.format(**locals())
         query = "select {} from paging_test where {}{}".format(
             core_query,
             where_clause,
@@ -2724,23 +2730,22 @@ class TestPagingWithIndexingAndAggregation(BasePagingTester, PageAssertionMixin)
         )
 
     def _verify_col_results(self, session, filtered_list, col, where_clause, allow_filtering):
-        query_fmt = '{query_func}({col})'
-        result_fmt = 'system.{query_func}({col})'
-        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt,
-                                      col, 'count', len, where_clause, allow_filtering)
-        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt,
-                                      col, 'min', min, where_clause, allow_filtering)
-        self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt,
-                                      col, 'max', max, where_clause, allow_filtering)
+        for query_func, exp_func in [('count', len), ('min', min), ('max', max)]:
+            query_fmt = f'{query_func}({col})'
+            result_desc = f'system.{query_func}({col})'
+            self._verify_col_func_results(session, filtered_list, query_fmt, result_desc,
+                                          col, query_func, exp_func, where_clause, allow_filtering)
         if col.endswith('int'):
+            query_func = "sum"
             if col.endswith('bigint'):
-                query_fmt = '{query_func}(cast({col} as varint))'
-                result_fmt = 'system.{query_func}(system.castasvarint({col}))'
+                int_type = 'varint'
             else:
-                query_fmt = '{query_func}(cast({col} as bigint))'
-                result_fmt = 'system.{query_func}(system.castasbigint({col}))'
-            self._verify_col_func_results(session, filtered_list, query_fmt, result_fmt,
-                                          col, 'sum', sum, where_clause, allow_filtering)
+                int_type = 'bigint'
+            query_fmt = f'{query_func}(cast({col} as {int_type}))'
+            result_desc = re.compile(
+                f'system.{query_func}\\(cast\\({col} as {int_type}\\)\\)|system.{query_func}\\(system.castas{int_type}\\({col}\\)\\)')
+            self._verify_col_func_results(session, filtered_list, query_fmt, result_desc,
+                                          col, query_func, sum, where_clause, allow_filtering)
 
     def _create_and_verify_results(self, session, cols, filter_func, where_clause, allow_filtering):
         all_data = self.create_and_insert_data(self.data, session)
