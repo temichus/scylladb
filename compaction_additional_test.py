@@ -121,9 +121,9 @@ def get_strategies_upgrade_options():
 @pytest.mark.single_node
 class TestCompactionAdditional(CompactionAdditionalTester):
     SSTABLE_PREFIX_REG_EXPR = "m[c-e]|n[a-b]"
-    REG_EXPR_TEMPLATE = (r"\[shard (?P<run_shard>\d+)\] compaction - \[.* {ks}\.{table} (?P<run_task_id>.*)\] "
+    REG_EXPR_TEMPLATE = (r"\[shard (?P<run_shard>\d+)(?::\w+)?\] compaction - \[.* {ks}\.{table} (?P<run_task_id>.*)\] "
                          r"((?P<compaction_type>Compacting|Cleaning) \[(?P<sstables>.*\/{ks}\/{table}-.*\/(?:%s)-.*))|"
-                         r"\[shard (?P<stop_shard>\d+)\] compaction - \[Compact {ks}\.{table} (?P<stop_task_id>.*)\] "
+                         r"\[shard (?P<stop_shard>\d+)(?::\w+)?\] compaction - \[Compact {ks}\.{table} (?P<stop_task_id>.*)\] "
                          r"Compacting of .* (?P<interrupt>interrupted due) to: .* user-triggered operation"
                          % SSTABLE_PREFIX_REG_EXPR)
 
@@ -1545,7 +1545,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
 
         shard_count = node2._smp
         msgs = [
-            rf"\[shard {i}+\].*Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}" for i in range(0, shard_count)]
+            rf"\[shard {i}(?::\w+)?\].*Done with off-strategy compaction for {self.keyspace_name}.{self.table_name}" for i in range(0, shard_count)]
         matchings = node2.watch_log_for(msgs, timeout=60)
         offstrategy_count = len(matchings)
         assert offstrategy_count % shard_count == 0, f"'{matchings}' wer logged {offstrategy_count} times which is not a multiple of shard_count={shard_count}"
