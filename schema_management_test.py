@@ -16,6 +16,8 @@ from tools.assertions import assert_all,  assert_invalid
 from tools.data import rows_to_list, create_c1c2_table, insert_c1c2, query_c1c2
 from dtest_class import Tester, create_ks, create_cf
 from ccmlib.scylla_cluster import ScyllaCluster
+from tools.marks import unmark
+
 
 logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.next_gating
@@ -213,6 +215,7 @@ class TestSchemaManagement(Tester):
         """
         raise NotImplementedError
 
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/15200 https://github.com/scylladb/python-driver/issues/168
     @pytest.mark.parametrize("case", ("create_table", "alter_table", "drop_table"))
     def test_update_schema_while_node_is_killed(self, case):
         """
