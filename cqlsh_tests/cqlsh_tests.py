@@ -4,12 +4,15 @@ import csv
 import datetime
 import os
 import re
+import ssl
 import subprocess
 from decimal import Decimal
 from tempfile import NamedTemporaryFile
 from uuid import UUID, uuid4
 import logging
 from functools import cached_property
+from pathlib import Path
+from textwrap import dedent
 
 import pytest
 from cassandra import InvalidRequest
@@ -22,6 +25,7 @@ from .cqlsh_tools import monkeypatch_driver, unmonkeypatch_driver
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import create_c1c2_table, insert_c1c2, rows_to_list
 from tools.cluster import new_node
+from tools.misc import generate_ssl_stores
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,8 @@ pytestmark = pytest.mark.next_gating
 
 
 class CqlshVersionMixing(Tester):
+    ssl = False
+
     @cached_property
     def cqlsh_version(self) -> Version:
         node, *_ = self.cluster.nodelist()
@@ -40,6 +46,8 @@ class CqlshVersionMixing(Tester):
         opts = ['-u', 'cassandra', '-p', 'cassandra']
         if self.cqlsh_version >= Version('6.2.0'):
             opts += ['--insecure-password-without-warning']
+        if self.ssl:
+            opts += ['--ssl', '--cqlshrc', self.cqlshrc_file]
         return opts
 
 
@@ -1890,3 +1898,45 @@ class TestCqlLogin(CqlshVersionMixing):
             cqlsh_options=self.cqlsh_options())
         assert [x for x in cqlsh_stdout.split() if x] == ['ks1table']
         assert 'Username and/or password are incorrect' in cqlsh_stderr
+
+
+@pytest.mark.dtest_full
+@pytest.mark.single_node
+class TestCqlshWithSSL(TestCqlsh):
+    ssl = True
+
+    def create_session(self, username: str = None, password: str = None):
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ssl_context.load_cert_chain(certfile=os.path.join(self.test_path, 'ccm_node.pem'),
+                                    keyfile=os.path.join(self.test_path, 'ccm_node.key'))
+        ssl_context.verify_mode = ssl.CERT_REQUIRED
+        ssl_context.load_verify_locations(cafile=os.path.join(self.test_path, 'ccm_node.cer'))
+
+        return self.patient_cql_connection(self.node1, ssl_context=ssl_context, user=username, password=password)
+
+    @pytest.fixture(scope='function', autouse=True)
+    def setup(self, tmp_path):
+        generate_ssl_stores(self.test_path, ip_addresses=[f"{self.cluster.get_ipprefix()}1"])
+        options = {'enabled': True}
+        options.update({
+            'certificate': os.path.join(self.test_path, 'ccm_node.pem'),
+            'keyfile': os.path.join(self.test_path, 'ccm_node.key')
+        })
+        options.update({
+            'truststore': os.path.join(self.test_path, 'ccm_node.cer'),
+            'require_client_auth': True
+        })
+        self.cluster.set_configuration_options({'client_encryption_options': options})
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        self.node1, *_ = self.cluster.nodelist()
+
+        self.cqlshrc_file = tmp_path / 'cqlshrc'
+        self.cqlshrc_file.write_text(dedent(f"""
+            [ssl]
+            certfile = {Path(self.test_path) / 'ccm_node.cer'}
+            validate = true
+            userkey = {Path(self.test_path) / 'ccm_node.key'}
+            usercert = {Path(self.test_path) / 'ccm_node.pem'}
+        """))
+
+        self.session = self.create_session()
