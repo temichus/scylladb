@@ -374,7 +374,7 @@ class TestSchemaManagement(Tester):
                                         consistency_level=ConsistencyLevel.ALL))
 
         logger.debug("Stopping node2")
-        node2.stop(gently=True)
+        node2.stop(gently=True, wait_other_notice=True)
 
         logger.debug("Re-creating schema")
         session.execute("DROP TABLE cf;")
