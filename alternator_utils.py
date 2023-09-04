@@ -56,7 +56,7 @@ DEFAULT_STRING_LENGTH = 5
 # 32-byte UUID string -> 222 + 1 + 32 = 255 (The longest dynanodb's table name)
 LONGEST_TABLE_SIZE = 222
 SHORTEST_TABLE_SIZE = 3
-GLOBAL_CONFIG = botocore.client.Config(retries={"max_attempts": 0}, read_timeout=300)
+GLOBAL_CONFIG = botocore.client.Config(retries={"max_attempts": 5}, read_timeout=300)
 
 
 class WriteIsolation(Enum):
