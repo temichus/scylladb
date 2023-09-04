@@ -63,7 +63,7 @@ class TestSchemaManagement(Tester):
 
         n_partitions = 20
         for i in range(n_partitions):
-            session.execute(insert_statement, [i], timeout=1)
+            session.execute(insert_statement, [i])
 
         rows = session.execute("SELECT * FROM users")
         res = sorted(rows)
