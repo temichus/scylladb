@@ -18,6 +18,7 @@ from cassandra.cluster import Cluster as PyCluster, default_lbp_factory
 from cassandra.cluster import NoHostAvailable
 from cassandra.cluster import EXEC_PROFILE_DEFAULT
 from cassandra.policies import WhiteListRoundRobinPolicy
+from cassandra.policies import ExponentialReconnectionPolicy
 from ccmlib.common import is_win
 from ccmlib.cluster import Cluster
 from ccmlib.scylla_cluster import ScyllaCluster
@@ -421,7 +422,14 @@ class DTestSetup:
                             allow_beta_protocol_version=True,
                             topology_event_refresh_window=topology_event_refresh_window,
                             execution_profiles=profiles,
-                            ssl_context=ssl_context)
+                            ssl_context=ssl_context,
+                            # The default reconnection policy has a large maximum interval
+                            # between retries (600 seconds). In tests that restart/replace nodes,
+                            # where a node can be unavailable for an extended period of time,
+                            # this can cause the reconnection retry interval to get very large,
+                            # longer than a test timeout.
+                            reconnection_policy=ExponentialReconnectionPolicy(1.0, 4.0)
+                            )
         session = cluster.connect(wait_for_all_pools=True)
 
         if keyspace is not None:
