@@ -1540,6 +1540,7 @@ class TestMaterializedViews(CommonUtils):
         for i in range(1000):
             assert_one(session, "SELECT * FROM t_by_v WHERE v = {}".format(i), [i, i])
 
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/15046
     def test_populate_mv_after_insert_wide_rows(self):
         """Test that a view is OK when created with existing data with wide rows"""
 
