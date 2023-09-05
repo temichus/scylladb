@@ -13,6 +13,7 @@ import logging
 from collections.abc import Mapping
 from ccmlib.utils.version import Version
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
@@ -36,7 +37,7 @@ def retry_till_success(fun, *args, **kwargs):
                 time.sleep(0.25)
 
 
-def generate_ssl_stores(base_dir, passphrase='cassandra'):
+def generate_ssl_stores(base_dir, passphrase='cassandra', ip_addresses: Optional[list[str]] = None, dns_names: Optional[list[str]] = None):
     """
     Util for generating ssl stores using java keytool -- nondestructive method if stores already exist this method is
     a no-op.
@@ -54,11 +55,19 @@ def generate_ssl_stores(base_dir, passphrase='cassandra'):
 
     legacy = ['-legacy'] if '-legacy' in subprocess.run(['openssl', 'pkcs12', '--help'],
                                                         universal_newlines=True, stderr=subprocess.PIPE).stderr else []
+    ext = []
+    ext_list = []
+    if dns_names:
+        ext_list += [f"dns:{name}" for name in dns_names]
+    if ip_addresses:
+        ext_list += [f"ip:{ip}" for ip in ip_addresses]
+    if ext_list:
+        ext = ['-ext', f'san={",".join(ext_list)}']
 
     logger.debug("generating keystore.jks in [{0}]".format(base_dir))
     subprocess.check_call(['keytool', '-genkeypair', '-alias', 'ccm_node', '-keyalg', 'RSA', '-validity', '365',
                            '-keystore', os.path.join(base_dir, 'keystore.jks'), '-storepass', passphrase,
-                           '-dname', 'cn=Cassandra Node,ou=CCMnode,o=DataStax,c=US', '-keypass', passphrase])
+                           '-dname', 'cn=Cassandra Node,ou=CCMnode,o=DataStax,c=US', '-keypass', passphrase] + ext)
     logger.debug("exporting cert from keystore.jks in [{0}]".format(base_dir))
     subprocess.check_call(['keytool', '-export', '-rfc', '-alias', 'ccm_node',
                            '-keystore', os.path.join(base_dir, 'keystore.jks'),
