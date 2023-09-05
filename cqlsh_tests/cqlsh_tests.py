@@ -594,7 +594,6 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 (5 rows)
 """)
 
-    @pytest.mark.skip("Indexes not implemented")
     def test_describe(self):
         """
         @jira_ticket CASSANDRA-7814
@@ -680,16 +679,18 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.execute(cql='DESCRIBE INDEX test.myindex',
                      expected_output=self.get_index_output('myindex', 'test', 'users', 'age'))
 
-        # Alter table. Renaming indexed columns is not allowed, and since 3.0 neither is dropping them
-        # Prior to 3.0 the index would have been automatically dropped, but now we need to explicitly do that.
-        self.execute(cql='DROP INDEX test.test_val_idx')
-        self.execute(cql='ALTER TABLE test.test DROP val')
-        self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(
-            has_val=False, has_val_idx=False))
-        self.execute(cql='DESCRIBE test.test_val_idx', expected_err="'test_val_idx' not found in keyspace 'test'")
-        self.execute(cql='ALTER TABLE test.test ADD val text')
-        self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(has_val=True, has_val_idx=False))
-        self.execute(cql='DESCRIBE test.test_val_idx', expected_err="'test_val_idx' not found in keyspace 'test'")
+        if not self.node1.is_scylla():  # scylla doesn't support removing columns that are in use
+            # Alter table. Renaming indexed columns is not allowed, and since 3.0 neither is dropping them
+            # Prior to 3.0 the index would have been automatically dropped, but now we need to explicitly do that.
+            self.execute(cql='DROP INDEX test.test_val_idx')
+            self.execute(cql='ALTER TABLE test.test DROP val')
+            self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(
+                has_val=False, has_val_idx=False))
+            self.execute(cql='DESCRIBE test.test_val_idx', expected_err="'test_val_idx' not found in keyspace 'test'")
+            self.execute(cql='ALTER TABLE test.test ADD val text')
+            self.execute(cql="DESCRIBE test.test", expected_output=self.get_test_table_output(
+                has_val=True, has_val_idx=False))
+            self.execute(cql='DESCRIBE test.test_val_idx', expected_err="'test_val_idx' not found in keyspace 'test'")
 
     def test_describe_describes_non_default_compaction_parameters(self):
         node, = self.cluster.nodelist()
@@ -715,7 +716,6 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         assert "" == err
         assert "CREATE TABLE ks.map (" in out
 
-    @pytest.mark.skip('materialized view')
     def test_describe_mv(self):
         """
         @jira_ticket CASSANDRA-9961
@@ -749,7 +749,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.execute(cql='USE test; DESCRIBE "users_by_state"', expected_output=self.get_users_by_state_mv_output())
 
     def get_keyspace_output(self):
-        return ("CREATE KEYSPACE test WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': '1'}  AND durable_writes = true;" +
+        return ("CREATE KEYSPACE test WITH replication = {'class': 'NetworkTopologyStrategy', 'datacenter1': '1'}  AND durable_writes = true;" +
                 self.get_test_table_output() +
                 self.get_users_table_output())
 
@@ -770,7 +770,25 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
                 PRIMARY KEY (id, col)
                 """
 
-        if Version(self.cluster.version()) >= Version('3.0'):
+        if self.node1.is_scylla():
+            ret += """
+        ) WITH CLUSTERING ORDER BY (col ASC)
+            AND bloom_filter_fp_chance = 0.01
+            AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
+            AND comment = ''
+            AND compaction = {'class': 'SizeTieredCompactionStrategy'}
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND crc_check_chance = 1.0
+            AND dclocal_read_repair_chance = 0.0
+            AND default_time_to_live = 0
+            AND gc_grace_seconds = 864000
+            AND max_index_interval = 2048
+            AND memtable_flush_period_in_ms = 0
+            AND min_index_interval = 128
+            AND read_repair_chance = 0.0
+            AND speculative_retry = '99.0PERCENTILE';
+        """
+        elif Version(self.cluster.version()) >= Version('3.0'):
             ret += """
         ) WITH CLUSTERING ORDER BY (col ASC)
             AND bloom_filter_fp_chance = 0.01
@@ -810,7 +828,11 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
         if has_val_idx:
             val_idx_def = self.get_index_output('test_val_idx', 'test', 'test', 'val')
-            if Version(self.cluster.version()) >= Version('2.2'):
+            if self.node1.is_scylla():
+                return (ret + "\n" + col_idx_def + "\n" + val_idx_def + "\n" +
+                        self.get_mv_output('test_col_idx', 'test', 'test', 'col', 'id') +
+                        self.get_mv_output('test_val_idx', 'test', 'test', 'val', 'id', has_val_idx=True))
+            elif Version(self.cluster.version()) >= Version('2.2'):
                 return ret + "\n" + val_idx_def + "\n" + col_idx_def
             else:
                 return ret + "\n" + col_idx_def + "\n" + val_idx_def
@@ -818,7 +840,30 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
             return ret + "\n" + col_idx_def
 
     def get_users_table_output(self):
-        if Version(self.cluster.version()) >= Version('3.0'):
+        if self.node1.is_scylla():
+            return ("""
+            CREATE TABLE test.users (
+            userid text PRIMARY KEY,
+            age int,
+            firstname text,
+            lastname text
+            ) WITH bloom_filter_fp_chance = 0.01
+            AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
+            AND comment = ''
+            AND compaction = {'class': 'SizeTieredCompactionStrategy'}
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND crc_check_chance = 1.0
+            AND dclocal_read_repair_chance = 0.0
+            AND default_time_to_live = 0
+            AND gc_grace_seconds = 864000
+            AND max_index_interval = 2048
+            AND memtable_flush_period_in_ms = 0
+            AND min_index_interval = 128
+            AND read_repair_chance = 0.0
+            AND speculative_retry = '99.0PERCENTILE';
+        """ + self.get_index_output('myindex', 'test', 'users', 'age') +
+                    self.get_mv_output('myindex', 'test', 'users', 'age', 'userid'))
+        elif Version(self.cluster.version()) >= Version('3.0'):
             return """
         CREATE TABLE test.users (
             userid text PRIMARY KEY,
@@ -865,34 +910,94 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
     def get_index_output(self, index, ks, table, col):
         return "CREATE INDEX {} ON {}.{} ({});".format(index, ks, table, col)
 
+    def get_mv_output(self, index, ks, table, col, _id, has_val_idx=False):
+        if has_val_idx:
+            mv = f"""
+            CREATE MATERIALIZED VIEW {ks}.{index}_index AS
+            SELECT {col}, idx_token, {_id}, col
+            FROM {ks}.{table}
+            WHERE {col} IS NOT NULL
+            PRIMARY KEY ({col}, idx_token, {_id}, col)
+            WITH CLUSTERING ORDER BY (idx_token ASC, {_id} ASC, col ASC)
+            """
+        else:
+            mv = f"""
+            CREATE MATERIALIZED VIEW {ks}.{index}_index AS
+            SELECT {col}, idx_token, {_id}
+            FROM {ks}.{table}
+            WHERE {col} IS NOT NULL
+            PRIMARY KEY ({col}, idx_token, {_id})
+            WITH CLUSTERING ORDER BY (idx_token ASC, {_id} ASC)
+            """
+        return f"""{mv}
+            AND bloom_filter_fp_chance = 0.01
+            AND caching = {{'keys': 'ALL', 'rows_per_partition': 'ALL'}}
+            AND comment = ''
+            AND compaction = {{'class': 'SizeTieredCompactionStrategy'}}
+            AND compression = {{'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}}
+            AND crc_check_chance = 1.0
+            AND dclocal_read_repair_chance = 0.0
+            AND default_time_to_live = 0
+            AND gc_grace_seconds = 864000
+            AND max_index_interval = 2048
+            AND memtable_flush_period_in_ms = 0
+            AND min_index_interval = 128
+            AND read_repair_chance = 0.0
+            AND speculative_retry = '99.0PERCENTILE';
+        """
+
     def get_users_by_state_mv_output(self):
-        return """
+        if self.node1.is_scylla():
+            return """
                 CREATE MATERIALIZED VIEW test.users_by_state AS
                 SELECT *
                 FROM test.users
-                WHERE state IS NOT NULL AND username IS NOT NULL
+                WHERE state IS NOT null AND username IS NOT null
                 PRIMARY KEY (state, username)
                 WITH CLUSTERING ORDER BY (username ASC)
                 AND bloom_filter_fp_chance = 0.01
-                AND caching = {'keys': 'ALL', 'rows_per_partition': 'NONE'}
+                AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
                 AND comment = ''
-                AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy', 'max_threshold': '32', 'min_threshold': '4'}
-                AND compression = {'chunk_length_in_kb': '64', 'class': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+                AND compaction = {'class': 'SizeTieredCompactionStrategy'}
+                AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
                 AND crc_check_chance = 1.0
-                AND dclocal_read_repair_chance = 0.1
+                AND dclocal_read_repair_chance = 0.0
                 AND default_time_to_live = 0
                 AND gc_grace_seconds = 864000
                 AND max_index_interval = 2048
                 AND memtable_flush_period_in_ms = 0
                 AND min_index_interval = 128
                 AND read_repair_chance = 0.0
-                AND speculative_retry = '99PERCENTILE';
-               """
+                AND speculative_retry = '99.0PERCENTILE';
+            """
+        else:
+            return """
+                    CREATE MATERIALIZED VIEW test.users_by_state AS
+                    SELECT *
+                    FROM test.users
+                    WHERE state IS NOT NULL AND username IS NOT NULL
+                    PRIMARY KEY (state, username)
+                    WITH CLUSTERING ORDER BY (username ASC)
+                    AND bloom_filter_fp_chance = 0.01
+                    AND caching = {'keys': 'ALL', 'rows_per_partition': 'NONE'}
+                    AND comment = ''
+                    AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy', 'max_threshold': '32', 'min_threshold': '4'}
+                    AND compression = {'chunk_length_in_kb': '64', 'class': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+                    AND crc_check_chance = 1.0
+                    AND dclocal_read_repair_chance = 0.1
+                    AND default_time_to_live = 0
+                    AND gc_grace_seconds = 864000
+                    AND max_index_interval = 2048
+                    AND memtable_flush_period_in_ms = 0
+                    AND min_index_interval = 128
+                    AND read_repair_chance = 0.0
+                    AND speculative_retry = '99PERCENTILE';
+                   """
 
     def execute(self, cql, expected_output=None, expected_err=None):
         logger.debug(cql)
         node1, = self.cluster.nodelist()
-        output, err = node1.run_cqlsh(node1, cql, return_output=True)
+        output, err = node1.run_cqlsh(cql, cqlsh_options=self.cqlsh_options(), return_output=True)
 
         if err:
             if expected_err:
@@ -1361,7 +1466,6 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         assert 0 == len(err), err
         assert select_out == reloaded_select_out
 
-    @pytest.mark.skip("fails on Jenkins")
     def test_clear(self):
         """
         Test the CLEAR command
@@ -1369,7 +1473,6 @@ Unlogged batch covering 2 partitions detected against table [client_warnings.tes
         """
         self._test_clear_screen('CLEAR')
 
-    @pytest.mark.skip("fails on Jenkins")
     def test_cls(self):
         """
         Test the CLS command
