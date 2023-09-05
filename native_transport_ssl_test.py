@@ -21,16 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 class BaseSslTester(Tester):
-    def _create_cluster_session(self, node_to_connect, port=9042, use_ssl=False, ca_certs=None):
+    def _create_cluster_session(self, node_to_connect, port=9042, use_ssl=False, ca_certs_required=False):
         ssl_context, ssl_options = None, {}
-        if use_ssl or ca_certs:
-            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         if use_ssl:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             ssl_context.load_cert_chain(certfile=os.path.join(self.test_path, 'ccm_node.pem'),
                                         keyfile=os.path.join(self.test_path, 'ccm_node.key'))
-            ssl_options['server_hostname'] = get_ip_from_node(node_to_connect)
-        if ca_certs:
-            ssl_context.verify_mode = ssl.CERT_REQUIRED
+            ssl_context.check_hostname = ca_certs_required
+            ssl_context.verify_mode = ssl.CERT_REQUIRED if ca_certs_required else ssl.CERT_NONE
             ssl_context.load_verify_locations(cafile=os.path.join(self.test_path, 'ccm_node.cer'))
         cluster_connection = Cluster(
             [get_ip_from_node(node_to_connect)],
@@ -47,7 +45,8 @@ class BaseSslTester(Tester):
         cluster = self.cluster
 
         if enableSSL:
-            generate_ssl_stores(self.test_path)
+            ip_addresses = [f'{cluster.get_ipprefix()}{i}' for i in range(1, nodes_num+1)]
+            generate_ssl_stores(self.test_path, ip_addresses=ip_addresses)
             is_scylla = common.isScylla(cluster.get_install_dir())
             # C* versions before 3.0 (CASSANDRA-10559) do not know about
             # 'client_encryption_options.optional' - so we must not add that parameter
@@ -158,9 +157,9 @@ class TestNativeTransportSSL(BaseSslTester):
         with pytest.raises(NoHostAvailable):
             # try to connect without auth cert
             logger.info('Should not be able to connect to SSL socket without SSL enabled client')
-            self._create_cluster_session(node1, use_ssl=False, ca_certs=True)
+            self._create_cluster_session(node1, use_ssl=False, ca_certs_required=True)
 
-        session = self._create_cluster_session(node1, use_ssl=True, ca_certs=True)
+        session = self._create_cluster_session(node1, use_ssl=True, ca_certs_required=True)
         self._putget(cluster, session)
 
         # verify connection fails after revoking certificate
@@ -170,7 +169,7 @@ class TestNativeTransportSSL(BaseSslTester):
 
         try:  # hack around assertRaise's lack of msg parameter
             # try to connect with cert in revocation list
-            self._create_cluster_session(node1, use_ssl=True, ca_certs=True)
+            self._create_cluster_session(node1, use_ssl=True, ca_certs_required=True)
             self.fail('Should not be able to connect to SSL socket with revoked certificate')
         except NoHostAvailable:
             pass
@@ -242,7 +241,7 @@ class TestNativeTransportSSL(BaseSslTester):
         tmpdir = safe_mkdtemp()
         try:
             # create new certs
-            generate_ssl_stores(tmpdir)
+            generate_ssl_stores(tmpdir, ip_addresses=[n.address() for n in cluster.nodelist()])
 
             with pytest.raises(NoHostAvailable):
                 # try to connect without new, mismatched cert truststore (and required verification). Should fail
@@ -375,7 +374,8 @@ class TestServerEncryption(BaseSslTester):
 
         restart a node configured with server encryption
         """
-        generate_ssl_stores(self.test_path)
+        ip_addresses = [f'{self.cluster.get_ipprefix()}{i}' for i in range(1, 3)]
+        generate_ssl_stores(self.test_path, ip_addresses=ip_addresses)
 
         options = dict(internode_encryption='all')
 

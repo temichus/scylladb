@@ -406,9 +406,11 @@ class TestLimits(Tester):
         return cluster
 
     def create_cql_session_with_ssl(self, node_to_connect: Node) -> Session:
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ssl_context.load_cert_chain(certfile=os.path.join(self.test_path, 'ccm_node.pem'),
                                     keyfile=os.path.join(self.test_path, 'ccm_node.key'))
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
         return self.patient_cql_connection(node=node_to_connect, ssl_context=ssl_context,
                                            ssl_opts={"server_hostname": get_ip_from_node(node_to_connect)})
 
