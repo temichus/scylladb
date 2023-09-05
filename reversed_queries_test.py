@@ -591,7 +591,7 @@ class TestOptimizedReversedQueriesFlag(Tester):
           Ref: https://github.com/scylladb/scylla/pull/9908
         """
 
-        self.ignore_log_patterns += ['Memory usage of (unpaged|reversed) read exceeds hard limit of 1']
+        self.ignore_log_patterns += ['Memory usage of (unpaged query|reversed read) exceeds hard limit of 1']
 
         logger.info('Setup cluster')
         cluster = self.cluster
