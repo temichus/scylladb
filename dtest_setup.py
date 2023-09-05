@@ -736,7 +736,7 @@ class DTestSetup:
                 if f not in experimental_features:
                     experimental_features.append(f)
 
-        if not cassandra_v4_cluster:
+        if isinstance(self.cluster, ScyllaCluster):
             if self.dtest_config.consistent_cluster_management:
                 values['consistent_cluster_management'] = True
                 values['force_schema_commit_log'] = True

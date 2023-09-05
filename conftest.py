@@ -293,9 +293,9 @@ def fixture_dtest_setup(request,
                              setup_overrides=fixture_dtest_setup_overrides,
                              cluster_name=fixture_dtest_cluster_name)
 
-    cassandra_v4_cluster = dtest_config.cassandra_version and dtest_config.cassandra_version >= '4'
+    cassandra_cluster = dtest_config.cassandra_version
 
-    if not cassandra_v4_cluster:
+    if not cassandra_cluster:
         if request.node.get_closest_marker('single_node') or \
                 not request.node.get_closest_marker('no_boot_speedups'):
             dtest_setup.cluster_options.setdefault('skip_wait_for_gossip_to_settle', 0)
