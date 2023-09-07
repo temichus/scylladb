@@ -14,6 +14,7 @@ from cassandra.cluster import ExecutionProfile
 
 from ccmlib.node import TimeoutError
 
+from dtest_config import global_config
 
 logger = logging.getLogger(__name__)
 logger.debug("Python driver version in use: {}".format(cassandra.__version__))
@@ -174,11 +175,14 @@ class DtestTimeoutError(Exception):
     pass
 
 
-def create_ks(session, name, rf):
+def create_ks(session, name, rf, tablets=0):
+    tablets = tablets if tablets else global_config.initial_tablets
     query = 'CREATE KEYSPACE %s WITH replication={%s}'
     if isinstance(rf, int):
-        # we assume simpleStrategy
-        query = query % (name, "'class':'SimpleStrategy', 'replication_factor':%d" % rf)
+        # we assume simpleStrategy without tablets
+        r_class = 'NetworkTopologyStrategy' if tablets else 'SimpleStrategy'
+        query = query % (name, "'class':'%s', 'replication_factor':%d%s" %
+                         (r_class, rf, f", 'initial_tablets': {tablets}" if tablets else ""))
     else:
         assert len(rf) >= 0, "At least one datacenter/rf pair is needed"
         # we assume networkTopologyStrategy

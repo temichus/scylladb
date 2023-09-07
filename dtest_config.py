@@ -1,5 +1,7 @@
 import subprocess
 import os
+from dataclasses import dataclass
+
 from packaging.version import Version
 
 from cassandra.connection import DRIVER_NAME, DRIVER_VERSION
@@ -8,6 +10,19 @@ import ccmlib.repository
 import ccmlib.scylla_repository
 from ccmlib.common import is_win, get_version_from_build, get_scylla_full_version, scylla_extract_install_dir_and_mode, \
     isScylla
+
+
+@dataclass
+class GlobalConfig:
+    """Use as singleton (by importing global_config below) to access configuration from anywhere"""
+    tablets: bool = False
+
+    @property
+    def initial_tablets(self):
+        return 8 if self.tablets else 0
+
+
+global_config = GlobalConfig()
 
 
 class DTestConfig:
@@ -32,6 +47,7 @@ class DTestConfig:
         self.jemalloc_path = find_libjemalloc()
         self.experimental_features = []
         self.consistent_cluster_management = False
+        self.tablets = False
 
     def setup(self, request):
         self.use_vnodes = request.config.getoption("--use-vnodes")
@@ -55,6 +71,8 @@ class DTestConfig:
         self.enable_jacoco_code_coverage = request.config.getoption("--enable-jacoco-code-coverage")
         self.experimental_features = request.config.getoption('--experimental-features')
         self.consistent_cluster_management = request.config.getoption('--consistent-cluster-management')
+        self.tablets = request.config.getoption('--tablets', default=False)
+        global_config.tablets = self.tablets
 
     def get_version_from_build(self):
         # There are times when we want to know the C* version we're testing against

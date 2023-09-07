@@ -747,6 +747,14 @@ class DTestSetup:
             else:
                 values['consistent_cluster_management'] = False
 
+        if isinstance(self.cluster, ScyllaCluster):
+            if self.dtest_config.tablets:
+                experimental_features = values.setdefault('experimental_features', [])
+                logger.debug("Enabling tablets by setting experimental_features")
+                values['consistent_cluster_management'] = True
+                values['experimental_features'] = list(
+                    set(experimental_features).union({'tablets', 'consistent-topology-changes'}))
+
         self.cluster.set_configuration_options(values)
         logger.debug("Done setting configuration options:\n" + pprint.pformat(self.cluster._config_options, indent=4))
 

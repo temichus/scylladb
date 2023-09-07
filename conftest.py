@@ -95,6 +95,8 @@ def pytest_addoption(parser):
                      help="Pass experimental features <feature>,<feature> to enable")
     parser.addoption('--consistent-cluster-management', action='store_true', default=False,
                      help="enable consistent_cluster_management a.k.a raft")
+    parser.addoption('--tablets', action='store_true', default=False,
+                     help="enable tablets support")
     parser.addoption("--collect-required", action="store_true", default=False,
                      help="collect a report on require tests")
 
@@ -296,8 +298,9 @@ def fixture_dtest_setup(request,
     cassandra_cluster = dtest_config.cassandra_version
 
     if not cassandra_cluster:
-        if request.node.get_closest_marker('single_node') or \
-                not request.node.get_closest_marker('no_boot_speedups'):
+        if ((request.node.get_closest_marker('single_node') or
+                not request.node.get_closest_marker('no_boot_speedups'))
+                and not dtest_setup.dtest_config.tablets):  # workaround for https://github.com/scylladb/scylladb/issues/15152
             dtest_setup.cluster_options.setdefault('skip_wait_for_gossip_to_settle', 0)
 
         # Reduce waiting time for the nodes to hear from others before joining the ring.
