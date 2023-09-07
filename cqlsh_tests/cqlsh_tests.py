@@ -60,6 +60,10 @@ class TestCqlsh(CqlshVersionMixing):
         self.node1, *_ = self.cluster.nodelist()
         self.session = self.create_session()
 
+    @pytest.fixture(scope='function', autouse=True)
+    def get_default_compaction_strategy(self, dtest_config):
+        self.default_compaction_strategy = 'IncrementalCompactionStrategy' if dtest_config.is_enterprise else 'SizeTieredCompactionStrategy'
+
     def create_session(self, username: str = None, password: str = None):
         return self.patient_cql_connection(self.node1, user=username, password=password)
 
@@ -771,13 +775,13 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
                 """
 
         if self.node1.is_scylla():
-            ret += """
+            ret += f"""
         ) WITH CLUSTERING ORDER BY (col ASC)
             AND bloom_filter_fp_chance = 0.01
-            AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
+            AND caching = {{'keys': 'ALL', 'rows_per_partition': 'ALL'}}
             AND comment = ''
-            AND compaction = {'class': 'SizeTieredCompactionStrategy'}
-            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND compaction = {{'class': '{self.default_compaction_strategy}'}}
+            AND compression = {{'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}}
             AND crc_check_chance = 1.0
             AND dclocal_read_repair_chance = 0.0
             AND default_time_to_live = 0
@@ -841,17 +845,17 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
     def get_users_table_output(self):
         if self.node1.is_scylla():
-            return ("""
+            return (f"""
             CREATE TABLE test.users (
             userid text PRIMARY KEY,
             age int,
             firstname text,
             lastname text
             ) WITH bloom_filter_fp_chance = 0.01
-            AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
+            AND caching = {{'keys': 'ALL', 'rows_per_partition': 'ALL'}}
             AND comment = ''
-            AND compaction = {'class': 'SizeTieredCompactionStrategy'}
-            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND compaction = {{'class': '{self.default_compaction_strategy}'}}
+            AND compression = {{'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}}
             AND crc_check_chance = 1.0
             AND dclocal_read_repair_chance = 0.0
             AND default_time_to_live = 0
@@ -933,7 +937,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
             AND bloom_filter_fp_chance = 0.01
             AND caching = {{'keys': 'ALL', 'rows_per_partition': 'ALL'}}
             AND comment = ''
-            AND compaction = {{'class': 'SizeTieredCompactionStrategy'}}
+            AND compaction = {{'class': '{self.default_compaction_strategy}'}}
             AND compression = {{'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}}
             AND crc_check_chance = 1.0
             AND dclocal_read_repair_chance = 0.0
@@ -948,7 +952,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
     def get_users_by_state_mv_output(self):
         if self.node1.is_scylla():
-            return """
+            return f"""
                 CREATE MATERIALIZED VIEW test.users_by_state AS
                 SELECT *
                 FROM test.users
@@ -956,10 +960,10 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
                 PRIMARY KEY (state, username)
                 WITH CLUSTERING ORDER BY (username ASC)
                 AND bloom_filter_fp_chance = 0.01
-                AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}
+                AND caching = {{'keys': 'ALL', 'rows_per_partition': 'ALL'}}
                 AND comment = ''
-                AND compaction = {'class': 'SizeTieredCompactionStrategy'}
-                AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+                AND compaction = {{'class': '{self.default_compaction_strategy}'}}
+                AND compression = {{'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}}
                 AND crc_check_chance = 1.0
                 AND dclocal_read_repair_chance = 0.0
                 AND default_time_to_live = 0
