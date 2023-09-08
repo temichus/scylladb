@@ -33,6 +33,7 @@ from tools.context import log_filter
 from tools.funcutils import merge_dicts
 from tools.log_utils import remove_control_chars
 from tools.log_utils import DisableLogger
+from tools.misc import minimum_scylla_version
 
 logger = logging.getLogger(__name__)
 
@@ -665,6 +666,7 @@ class DTestSetup:
     def init_default_config(self):
         # the failure detector can be quite slow in such tests with quick start/stop
         phi_values = {'phi_convict_threshold': 5}
+        tasks_values = dict()
 
         cassandra_v4_cluster = not isinstance(self.cluster, ScyllaCluster) and self.cluster.version() >= '4'
 
@@ -684,6 +686,8 @@ class DTestSetup:
         self.count_request_timeout = self.cql_timeout(400)
 
         if isinstance(self.cluster, ScyllaCluster):
+            if minimum_scylla_version(self.cluster.version(), '5.2-rc0', '2023.1-rc0'):
+                tasks_values = {'task_ttl_in_seconds': 0}
             logger.debug("Scylla mode is '{}'".format(self.cluster.scylla_mode))
         logger.debug(
             "Cluster *_request_timeout_in_ms={}, range_request_timeout_in_ms={}, cql request_timeout={}".format(
@@ -692,7 +696,7 @@ class DTestSetup:
         values = self.cluster_options or dict()
 
         if not cassandra_v4_cluster:
-            values = merge_dicts(values, phi_values, repaired_data_tracking_values, {
+            values = merge_dicts(values, phi_values, tasks_values, repaired_data_tracking_values, {
                 'read_request_timeout_in_ms': timeout,
                 'range_request_timeout_in_ms': range_timeout,
                 'write_request_timeout_in_ms': timeout,
