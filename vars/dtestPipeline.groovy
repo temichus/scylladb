@@ -56,7 +56,7 @@ def call(Map pipelineParams) {
             timeout(time: params.TIMEOUT_PARAM, unit: 'HOURS')
             buildDiscarder(
                 logRotator(
-                    numToKeepStr: '200',
+                    daysToKeepStr: '240',
                     artifactDaysToKeepStr: '240'
                 )
             )
