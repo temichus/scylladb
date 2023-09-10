@@ -40,7 +40,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-pytestmark = pytest.mark.next_gating
+# taken out gating until sorting out:
+# https://github.com/scylladb/scylladb/issues/15046
+# pytestmark = pytest.mark.next_gating
 
 # CASSANDRA-10978. Migration wait (in seconds) to use in bootstrapping tests. Needed to handle
 # pathological case of flushing schema keyspace for multiple data directories. See CASSANDRA-6696
@@ -4056,7 +4058,6 @@ class TestMaterializedViews(CommonUtils):
                                   "delete_close_range_in_few_partitions",
                                   "delete_open_range_in_few_partitions",
                                   "run_few_delete_queries"])
-    @pytest.mark.next_gating
     def test_range_tombstone_and_repair_test(self, where_clauses):
         """
         https://github.com/scylladb/scylladb/commit/c25201c1a311cdb23056404947af00c3237fc876
@@ -4112,7 +4113,6 @@ class TestMaterializedViews(CommonUtils):
         for where_clause in where_clauses:
             assert_none(query=f"select * from {mv_name} where {where_clause} ALLOW FILTERING", session=session)
 
-    @pytest.mark.next_gating
     def test_range_tombstone_and_repair_multiple_cycles(self):
         """
         https://github.com/scylladb/scylladb/commit/c25201c1a311cdb23056404947af00c3237fc876
