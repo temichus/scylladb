@@ -3,8 +3,11 @@ import time
 import subprocess
 import os
 import shutil
+import json
 from enum import Enum
 import logging
+import tempfile
+from pathlib import Path
 
 import docker
 import pytest
@@ -12,7 +15,8 @@ import boto3
 from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
 from cassandra.protocol import ConfigurationException
-
+from packaging.version import Version
+from ccmlib.node import ToolError
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2, query_c1c2, rows_to_list
 from tools.snapshots import get_table_description
@@ -21,6 +25,8 @@ from tools.assertions import assert_one
 from tools.log_utils import wait_for_any_log
 from tools.ldap_docker import running_in_docker
 from tools.marks import unmark
+from tools.files import get_list_of_sstables
+from tools.context import disable_autocompation
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +261,59 @@ class KMSRealKeyProviderFactory(BaseKeyProviderFactory):
         return True
 
 
+def validate_sstables_encrypted(node, keyspace='ks', column_family='cf'):
+
+    with disable_autocompation(node, keyspace_name=keyspace, table_name=column_family):
+        for sstable in get_list_of_sstables(node=node, keyspace_name=keyspace,
+                                            table_name=column_family, suffix='-Scylla.db'):
+            assert b'scylla_encryption_options' in Path(sstable).read_bytes()
+
+        if Version(node.cluster.version()) >= Version('2023.2'):
+            with pytest.raises(subprocess.CalledProcessError) as exc:
+                node.dump_sstables(keyspace, column_family)
+            assert 'malformed_sstable_exception' in str(
+                exc.value.stderr), "failed to read sstable from the wrong reason"
+        else:
+            json_path = tempfile.mktemp(suffix='.schema.json')
+            try:
+                with pytest.raises(ToolError, match='NullPointerException|ArrayIndexOutOfBoundsException'):
+                    with open(json_path, 'w') as fdw:
+                        node.run_sstable2json(out_file=fdw, keyspace='ks')
+            finally:
+                os.unlink(json_path)
+
+
+def validate_sstables_clear(node, keyspace='ks', column_family='cf'):
+    node.compact()
+    with disable_autocompation(node, keyspace_name=keyspace, table_name=column_family):
+        for sstable in get_list_of_sstables(node=node, keyspace_name=keyspace,
+                                            table_name=column_family, suffix='-Scylla.db'):
+            assert b'scylla_encryption_options' not in Path(sstable).read_bytes()
+
+        if Version(node.cluster.version()) >= Version('2023.2'):
+            try:
+                node.dump_sstables(keyspace, column_family)
+            except subprocess.CalledProcessError as exc:
+                raise Exception("sstable could be read, and it was expected to be clear") from exc
+        else:
+            json_path = tempfile.mktemp(suffix='.schema.json')
+            try:
+                with open(json_path, 'w') as fdw:
+                    node.run_sstable2json(out_file=fdw, keyspace='ks')
+                with open(json_path, 'r') as fdr:
+                    data = fdr.read()
+                if 'as the config file' in data:
+                    # need to skip first line cause: https://github.com/scylladb/scylla-tools-java/issues/213
+                    data = '\n'.join(data.split('\n')[1:])
+                data_json = json.loads(data.replace("][", ","))
+
+                assert data_json
+            except ToolError as exc:
+                raise Exception("sstable could be read, and it was expected to be clear") from exc
+            finally:
+                os.unlink(json_path)
+
+
 class EncryptionAtRestBase(Tester):
     multiple_num = 3
     default_node_num = 2
@@ -419,7 +478,7 @@ class EncryptionAtRestBase(Tester):
 
     def _upgrade_sstables(self):
         for node in self.cluster.nodelist():
-            out, err = node.nodetool('upgradesstables')
+            out, err = node.nodetool('upgradesstables -a')
 
     def _alter_test(self, key_provider=KeyProviderEnum.local):
         with self.get_key_provider(key_provider) as kp:
@@ -430,12 +489,16 @@ class EncryptionAtRestBase(Tester):
                 query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
 
                 self.prepare_write_workload(session)
+                validate_sstables_encrypted(node1)
+
                 logger.debug('disable encryption at-rest')
                 session.execute(query % "{'key_provider': 'none'}")
                 table_desc = get_table_description(node1, "ks", "cf")
                 assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
                 self._upgrade_sstables()
+                validate_sstables_clear(node1)
                 session = self.rolling_restart()
+                validate_sstables_clear(node1)
                 self.read_verify_workload(session)
 
                 logger.debug('re-enable encryption at-rest: %s' % options)
@@ -450,7 +513,9 @@ class EncryptionAtRestBase(Tester):
                     err_msg = f"key_provider isn't changed to {key_provider.value}, schema: \n {table_desc}"
                     assert f"'key_provider': '{key_provider.value}'" in table_desc, err_msg
                 self._upgrade_sstables()
+                validate_sstables_encrypted(node1)
                 session = self.rolling_restart()
+                validate_sstables_encrypted(node1)
                 self.read_verify_workload(session)
             finally:
                 self.cleanup()
