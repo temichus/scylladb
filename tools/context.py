@@ -5,6 +5,8 @@ making those context managers function.
 import logging
 from contextlib import contextmanager
 
+import requests
+
 from tools.env import ALLOW_NOISY_LOGGING
 
 
@@ -79,3 +81,28 @@ def nodetool_context(node, start_command, end_command):
         yield result
     finally:
         node.nodetool(end_command)
+
+
+@contextmanager
+def disable_autocompation(node, keyspace_name, table_name):
+    """
+    temporary disable autocompletion for specific table
+    would call the api only if node is up.
+    :param node: the target db node
+    :param keyspace_name: name of the keyspace
+    :param table_name: name of the table
+    :return: None
+    """
+
+    api_url = f"http://{node.address()}:10000/column_family/autocompaction/{keyspace_name}:{table_name}"
+
+    if node.status == 'UP':
+        response = requests.post(api_url)
+        response.raise_for_status()
+    try:
+        node.wait_for_compactions()
+        yield
+    finally:
+        if node.status == 'UP':
+            response = requests.delete(api_url)
+            response.raise_for_status()

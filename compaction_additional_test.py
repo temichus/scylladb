@@ -47,7 +47,7 @@ from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
 from tools.scylla_defines import CompactionStrategy
 from tools.stress import fill_data_by_cs
-
+from tools.context import disable_autocompation
 
 logger = logging.getLogger(__name__)
 
@@ -1437,21 +1437,21 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
         max_timestamp = stats['max_timestamp']
         return self.micros_to_seconds(max_timestamp - min_timestamp)
 
-    def _check_sstable_timestamps(self, node, window_size=None, window_unit=None):
+    def _check_sstable_timestamps(self, node, window_size=None, window_unit=None, keyspace_name=keyspace_name, table_name=table_name):
         window_size = window_size or self.window_size
         window_unit = window_unit or self.window_unit
-
-        statistics_files = self._get_list_of_sstables(node)
-        assert len(statistics_files) > 0, "No statisitcs files"
-        multiplier = 60 if window_unit == "MINUTES" else 3600
-        for sf in statistics_files:
-            stats = self.get_stats(sf)
-            tw = self._get_time_window_in_seconds(sf, stats)
-            # Allow an error margin of a half-window.
-            margin = 1.5 * window_size * multiplier
-            assert tw <= margin, f"time window of {tw} seconds is greater than {margin} \
-                                   seconds margin: sstable={sf} \
-                                   min_timestamp={stats['min_timestamp']} max_timestamp={stats['max_timestamp']}"
+        with disable_autocompation(node=node, keyspace_name=keyspace_name, table_name=table_name):
+            statistics_files = self._get_list_of_sstables(node)
+            assert len(statistics_files) > 0, "No statisitcs files"
+            multiplier = 60 if window_unit == "MINUTES" else 3600
+            for sf in statistics_files:
+                stats = self.get_stats(sf)
+                tw = self._get_time_window_in_seconds(sf, stats)
+                # Allow an error margin of a half-window.
+                margin = 1.5 * window_size * multiplier
+                assert tw <= margin, f"time window of {tw} seconds is greater than {margin} \
+                                       seconds margin: sstable={sf} \
+                                       min_timestamp={stats['min_timestamp']} max_timestamp={stats['max_timestamp']}"
 
     def _get_min_max_window_bounds(self, statistics_file, stats=None):
         if not stats:
