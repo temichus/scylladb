@@ -9,15 +9,17 @@ from alternator.utils import enums
 from alternator_utils import BaseAlternatorStream, NUM_OF_ITEMS, TABLE_NAME, StreamsTable
 from tools.retrying import retrying
 from tools.cluster import new_node
+from tools.marks import unmark
 
 
 logger = logging.getLogger(__name__)
 
 
-# @pytest.mark.dtest_full
+@pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestAlternatorStreams(BaseAlternatorStream):
 
-    @pytest.mark.next_gating
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/15260
     def test_verify_all_nodes_have_same_stream(self):
         num_of_items = NUM_OF_ITEMS
         self.prepare_dynamodb_cluster(num_of_nodes=3)
@@ -34,6 +36,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
 
     @pytest.mark.cluster_options(uuid_sstable_identifiers_enabled=False)
     @pytest.mark.no_boot_speedups
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/15260
     def test_verify_stream_records_after_topology_changed(self):
         """
         The tests verify the data after topology changes - Stream during maintenance operations that alter topology
@@ -143,7 +146,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
         assert len(empty_streams_list) == 0, \
             f"Got unexpected list of Streams after the last evaluated Stream: {empty_streams_list}"
 
-    @pytest.mark.next_gating
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/15260
     def test_updated_shards_during_add_decommission_node(self):
         """
         The tests verify Streams handles topology changes of decommission a node and adding new node.
@@ -178,7 +181,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
         wait_for_open_shards_diff()
         decommission_thread.join()
 
-    @pytest.mark.next_gating
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/15260
     def test_sequence_numbers_during_add_decommission_node(self):
         """
         Verify shards sequence numbers on topology changes.
@@ -232,7 +235,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
 
         decommission_thread.join()
 
-    @pytest.mark.next_gating
+    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/15260
     def test_added_node_gets_closed_shards(self):
         """
         test scenario:
