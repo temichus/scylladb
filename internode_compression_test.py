@@ -1,6 +1,7 @@
 import subprocess
 import time
 import re
+import getpass
 
 import pytest
 from cassandra import ConsistencyLevel
@@ -20,7 +21,7 @@ class PacketAnalyzer:
         self._captured_packets = []
 
     def start(self):
-        cmd = f"sudo tcpdump -i lo host {get_ip_from_node(self.node1)} and host {get_ip_from_node(self.node2)} and port 7000"
+        cmd = f"sudo tcpdump -Z {getpass.getuser()} -i lo host {get_ip_from_node(self.node1)} and host {get_ip_from_node(self.node2)} and port 7000"
         logger.debug(f"Starting tcpdump with command: {cmd}")
         self._tcpdump_process = subprocess.Popen(
             cmd.split(), stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
