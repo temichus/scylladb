@@ -33,6 +33,7 @@ class PacketAnalyzer:
         self._tcpdump_process.wait()
         logger.debug("Tcpdump stopped")
         self._captured_packets = self._tcpdump_process.stdout.readlines()
+        logger.debug(f"stderr: {self._tcpdump_process.stderr.read()}")
         logger.debug("Captured %s packets", len(self._captured_packets))
 
     def get_max_packet_length(self):
