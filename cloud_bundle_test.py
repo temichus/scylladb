@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.single_node
 @pytest.mark.dtest_full
+@pytest.mark.next_gating
 class TestScyllaCloudBundle(Tester):
 
     @pytest.fixture(scope='function', autouse=True)
