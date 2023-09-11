@@ -268,9 +268,12 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
                       dclocal_read_repair_chance=0.0, speculative_retry='NONE')
 
         node3.stop(wait_other_notice=True)
-        repair_task = mgr_cluster.repair_api.repair(keyspace_list=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
-        assert repair_task.wait_for_status(list_status=[TaskStatus.ERROR], timeout=300, step=5), \
-            "Repairing an unavailable node did not fail as expected"
+        try:
+            _ = mgr_cluster.repair_api.repair(keyspace_list=self.KEYSPACE_NAME, cluster_name=mgr_cluster.id)
+            self.fail('Repairing an unavailable node did not fail as expected')
+        except ScyllaManagerError as err:
+            assert "One of the nodes is down. Task cannot be created." in err.args[0], "Unexpected error: {}".format(
+                err.args[0])
 
     def test_repair_dc_by_name(self):
         """
