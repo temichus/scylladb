@@ -397,7 +397,7 @@ class TestLimits(Tester):
 
     def populate_cluster_with_ssl_enabled(self, nodes_num: int) -> Cluster:
         cluster = self.cluster
-        generate_ssl_stores(self.test_path)
+        generate_ssl_stores(self.test_path, ip_addresses=[f"{self.cluster.get_ipprefix()}1"])
         options = {"enabled": True,
                    "certificate": os.path.join(self.test_path, 'ccm_node.pem'),
                    "keyfile": os.path.join(self.test_path, 'ccm_node.key')}
@@ -409,10 +409,11 @@ class TestLimits(Tester):
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ssl_context.load_cert_chain(certfile=os.path.join(self.test_path, 'ccm_node.pem'),
                                     keyfile=os.path.join(self.test_path, 'ccm_node.key'))
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        return self.patient_cql_connection(node=node_to_connect, ssl_context=ssl_context,
-                                           ssl_opts={"server_hostname": get_ip_from_node(node_to_connect)})
+        ssl_context.check_hostname = True
+        ssl_context.verify_mode = ssl.CERT_REQUIRED
+        ssl_context.load_verify_locations(cafile=os.path.join(self.test_path, 'ccm_node.cer'))
+
+        return self.patient_cql_connection(node=node_to_connect, ssl_context=ssl_context)
 
 
 @pytest.mark.dtest_full
