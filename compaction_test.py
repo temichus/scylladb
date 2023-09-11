@@ -51,6 +51,12 @@ class TestCompaction(Tester):
         dtest_setup_overrides.cluster_options = ImmutableMapping({'start_rpc': 'true'})
         return dtest_setup_overrides
 
+    def dump_sstables(self, node, keyspace, column_family):
+        node.nodetool('disableautocompaction')
+        jsoninfo = node.dump_sstables(keyspace, column_family)
+        node.nodetool('enableautocompaction')
+        return jsoninfo
+
     def _test_compaction_delete(self):
         cluster = self.cluster
         cluster.populate(1).start(wait_for_binary_proto=True)
@@ -75,7 +81,7 @@ class TestCompaction(Tester):
         for x in range(0, 10):
             assert_none(session, 'select * from cf where key = ' + str(x))
 
-        jsoninfo = node1.dump_sstables('ks', 'cf')
+        jsoninfo = self.dump_sstables(node1, 'ks', 'cf')
         node1.info(jsoninfo)
 
         numfound = sum('tombstone' in partition for partition in jsoninfo)
@@ -107,7 +113,7 @@ class TestCompaction(Tester):
         node1.flush()
         node1.compact()
 
-        jsoninfo = node1.dump_sstables('ks', 'cf')
+        jsoninfo = self.dump_sstables(node1, 'ks', 'cf')
         node1.info(jsoninfo)
 
         numfound = sum('tombstone' in partition for partition in jsoninfo)
@@ -128,7 +134,7 @@ class TestCompaction(Tester):
         node1.flush()
         node1.compact()
 
-        jsoninfo = node1.dump_sstables('ks', 'cf')
+        jsoninfo = self.dump_sstables(node1, 'ks', 'cf')
         node1.info(jsoninfo)
 
         numfound = sum('tombstone' in partition for partition in jsoninfo)
@@ -161,7 +167,7 @@ class TestCompaction(Tester):
         node.flush()
         node.compact()
 
-        partitions = node.dump_sstables(keyspace=self.KEYSPACE_NAME,
+        partitions = self.dump_sstables(node, keyspace=self.KEYSPACE_NAME,
                                         column_family=self.COLUMN_FAMILY_NAME)
         numfound = sum('tombstone' in partition for partition in partitions)
         logger.debug(f'Number of tombstones found on node {node.name}: {numfound}')
@@ -446,7 +452,7 @@ class TestCompaction(Tester):
             if found:
                 msg = f"Expected no SSTables in {path}, but found: {found}"
                 logger.error(msg)
-                jsoninfo = node1.dump_sstables('ks', 'cf')
+                jsoninfo = self.dump_sstables(node1, 'ks', 'cf')
                 logger.debug("%s", jsoninfo)
                 pytest.fail(msg)
 
