@@ -6,7 +6,7 @@ from pprint import pformat
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
-from dtest_scylla_manager import HostRestStatus, ScyllaManagerTool, ScyllaManagerMixin, \
+from dtest_scylla_manager import HostRestStatus, ScyllaManagerError, ScyllaManagerTool, ScyllaManagerMixin, \
     NodeStatus, HostHealth, Status
 from dtest_class import Tester, WaitTimeoutExpired, create_ks, create_cf
 from dtest_scylla_manager import TaskStatus
@@ -614,11 +614,13 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
 
         node3.stop(wait_other_notice=True)
 
-        regular_repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=keyspace_name,
-                                                            num_retries=1)
-        regular_repair_task.wait_and_get_final_status(step=5)
-        assert regular_repair_task.status == TaskStatus.ERROR, \
-            "Without the ignore-down-hosts parameter, the repair task did not fail when one of the nodes was DN"
+        try:
+            _ = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=keyspace_name,
+                                              num_retries=1)
+            self.fail('Should not be able to start repair task when host in DN')
+        except ScyllaManagerError as err:
+            assert "One of the nodes is down. Task cannot be created." in err.args[0], "Unexpected error: {}".format(
+                err.args[0])
 
         ignoring_repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id, keyspace_list=keyspace_name,
                                                              ignore_down_hosts=True)
