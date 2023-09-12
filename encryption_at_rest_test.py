@@ -747,6 +747,7 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
 
         logger.debug('Flushing cluster ......')
         self.cluster.flush()
+        self.cluster.stop()
 
         logger.debug(
             "Verify PART 2: check sstable files -------------\n`system_info_encryption` won't encrypt sstable files on disk")
