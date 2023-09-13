@@ -12,7 +12,8 @@ from subprocess import getoutput, getstatusoutput
 from concurrent.futures import ThreadPoolExecutor
 import logging
 
-from cassandra import ConsistencyLevel, InvalidRequest
+from cassandra import ConsistencyLevel, InvalidRequest, Unavailable
+from cassandra.cluster import NoHostAvailable
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodetoolError, Node
 from ccmlib.scylla_node import ScyllaNode
@@ -26,6 +27,7 @@ from tools.files import get_node_cf_dir, remove_files_in_folder
 from tools.metrics import get_node_metrics
 from tools.cluster import run_rest_api
 import tools.commitlog as commitlog
+from tools.schema import change_schema_safely
 
 logger = logging.getLogger(__name__)
 
@@ -3374,3 +3376,154 @@ class TestRepairAdditional(RepairAdditionalBase):
                                       expected_tx_row_nr=node1_base_metrics['tx_row_nr'] + 10,
                                       expected_rx_row_nr=node1_base_metrics['rx_row_nr'],
                                       list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
+
+    def test_repair_one_node(self):
+        """
+        Test that repairing a single node picks up all tokens that belong to it,
+        whether the node is their primary owner or just a replica.
+        1. Create a cluster with RF=3
+        2. Write data on single nodes at a time by stopping other node(s)
+        3. Start all nodes
+        4. Repair one of the nodes
+        5. Verify the data exclusively on all node
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options({'hinted_handoff_enabled': 'false'})
+        num_nodes = 3
+        cluster.populate(num_nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1 = cluster.nodelist()[0]
+        keyspace = 'ks'
+        table = 'tbl'
+        dc = node1.get_datacenter_name()
+
+        logger.debug(f'Create {keyspace}.{table} with rf={num_nodes}')
+        with self.patient_cql_connection(node1) as session:
+            session.execute(
+                f"CREATE KEYSPACE {keyspace}"
+                f" WITH REPLICATION = {{ 'class' : 'NetworkTopologyStrategy', '{dc}' : {num_nodes} }};")
+            session.execute(
+                f"CREATE TABLE {keyspace}.{table} (pk int PRIMARY KEY, v int)"
+                f" WITH compaction = {{'class': 'NullCompactionStrategy'}}"
+                f" AND speculative_retry = 'NONE'")
+
+        keys_per_node = 100
+        num_keys = keys_per_node * num_nodes
+        expected_values = []
+        for i in range(num_nodes):
+            node = cluster.nodelist()[i]
+            logger.debug(f'Insert {num_keys//num_nodes} keys on {node.name}')
+            nodes_to_stop = [n for n in cluster.nodelist() if n != node]
+            cluster.stop_nodes(nodes_to_stop, wait_other_notice=True)
+            with self.patient_exclusive_cql_connection(node, keyspace) as session1:
+                insert_query = session1.prepare(f"INSERT INTO {keyspace}.{table} (pk, v) VALUES (?, ?)")
+                expected_values.append([(pk, pk) for pk in range(i, num_keys, num_nodes)])
+                for k, v in expected_values[i]:
+                    session1.execute(insert_query, (k, v))
+            cluster.start_nodes(nodes_to_stop, wait_for_binary_proto=True, wait_other_notice=True)
+
+        for i in range(num_nodes):
+            node = cluster.nodelist()[i]
+            logger.debug(f'Verify partial data exclusively on {node.name}')
+            nodes_to_stop = [n for n in cluster.nodelist() if n != node]
+            cluster.stop_nodes(nodes_to_stop, wait_other_notice=True)
+            query = SimpleStatement(f"SELECT * from {keyspace}.{table}", consistency_level=ConsistencyLevel.ONE)
+            with self.patient_exclusive_cql_connection(node, keyspace) as session1:
+                res = session1.execute(query)
+            values = [(r.pk, r.v) for r in sorted(res)]
+            assert values == expected_values[i]
+            cluster.start_nodes(nodes_to_stop, wait_for_binary_proto=True, wait_other_notice=True)
+
+        node = random.choice(cluster.nodelist())
+        logger.debug(f'Repair only {node.name}')
+        node.nodetool('repair')
+
+        for node in cluster.nodelist():
+            logger.debug(f'Verify data exclusively on {node.name}')
+            nodes_to_stop = [n for n in cluster.nodelist() if n != node]
+            cluster.stop_nodes(nodes_to_stop, wait_other_notice=True)
+            query = SimpleStatement(f"SELECT * from {keyspace}.{table}", consistency_level=ConsistencyLevel.ONE)
+            with self.patient_exclusive_cql_connection(node, keyspace) as session1:
+                res = session1.execute(query)
+            values = [(r.pk, r.v) for r in sorted(res)]
+            expected = [(i, i) for i in range(num_keys)]
+            assert values == expected
+            cluster.start_nodes(nodes_to_stop, wait_for_binary_proto=True, wait_other_notice=True)
+
+    def test_repair_one_node_alter_rf(self):
+        """
+        Test that repairing a single node picks up all tokens that belong to it,
+        whether the node is their primary owner or just a replica.
+        1. Create a cluster with RF=1
+        2. Write data
+        3. Start all nodes
+        4. Repair one of the nodes
+        5. Verify the data exclusively on all node
+        """
+        cluster = self.cluster
+        cluster.set_configuration_options({'hinted_handoff_enabled': 'false'})
+        num_nodes = 3
+        cluster.populate(num_nodes).start(wait_for_binary_proto=True, wait_other_notice=True)
+        node1 = cluster.nodelist()[0]
+        keyspace = 'ks'
+        table = 'tbl'
+        dc = node1.get_datacenter_name()
+        keys_per_node = 100
+        num_keys = keys_per_node * num_nodes
+
+        logger.debug(f'Create {keyspace}.{table} with rf=1')
+        with self.patient_cql_connection(node1) as session:
+            session.execute(
+                f"CREATE KEYSPACE {keyspace}"
+                f" WITH REPLICATION = {{ 'class' : 'NetworkTopologyStrategy', '{dc}' : 1 }};")
+            session.execute(
+                f"CREATE TABLE {keyspace}.{table} (pk int PRIMARY KEY, v int)"
+                f" WITH compaction = {{'class': 'NullCompactionStrategy'}}"
+                f" AND speculative_retry = 'NONE'")
+
+            logger.debug(f'Insert {num_keys} keys')
+            insert_query = session.prepare(f"INSERT INTO {keyspace}.{table} (pk, v) VALUES (?, ?)")
+            for pk in range(num_keys):
+                session.execute(insert_query, (pk, pk))
+
+        total_found = 0
+        for i in range(num_nodes):
+            node = cluster.nodelist()[i]
+            logger.debug(f'Collect partial data exclusively on {node.name}')
+            nodes_to_stop = [n for n in cluster.nodelist() if n != node]
+            cluster.stop_nodes(nodes_to_stop, wait_other_notice=True)
+            found = 0
+            with self.patient_exclusive_cql_connection(node, keyspace) as session1:
+                for pk in range(num_keys):
+                    query = SimpleStatement(
+                        f"SELECT * from {keyspace}.{table} WHERE pk={pk}", consistency_level=ConsistencyLevel.ONE)
+                    try:
+                        session1.execute(query)
+                        found += 1
+                    except (NoHostAvailable, Unavailable):
+                        pass
+            cluster.start_nodes(nodes_to_stop, wait_for_binary_proto=True, wait_other_notice=True)
+            logger.debug(f"Found {found} keys on {node.name}")
+            total_found += found
+        assert total_found == num_keys
+
+        logger.debug(f'Change replication factor to rf={num_nodes}')
+        with self.patient_cql_connection(node1) as session:
+            change_schema_safely(session, cluster.nodelist(),
+                                 f"ALTER KEYSPACE {keyspace}"
+                                 f" WITH REPLICATION = {{ 'class' : 'NetworkTopologyStrategy', '{dc}' : {num_nodes} }};")
+
+        node = random.choice(cluster.nodelist())
+        logger.debug(f'Repair only {node.name}')
+        node.nodetool('repair')
+
+        for node in cluster.nodelist():
+            logger.debug(f'Verify data exclusively on {node.name}')
+            nodes_to_stop = [n for n in cluster.nodelist() if n != node]
+            cluster.stop_nodes(nodes_to_stop, wait_other_notice=True)
+            query = SimpleStatement(f"SELECT * from {keyspace}.{table}", consistency_level=ConsistencyLevel.ONE)
+            with self.patient_exclusive_cql_connection(node, keyspace) as session1:
+                res = session1.execute(query)
+            values = [(r.pk, r.v) for r in sorted(res)]
+            expected = [(i, i) for i in range(num_keys)]
+            assert values == expected
+            cluster.start_nodes(nodes_to_stop, wait_for_binary_proto=True, wait_other_notice=True)
