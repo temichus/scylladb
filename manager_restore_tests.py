@@ -1,5 +1,8 @@
 import logging
 import re
+import os
+import shutil
+from glob import glob
 
 import pytest
 
@@ -7,6 +10,7 @@ from dtest_scylla_manager import ScyllaManagerError, TaskStatus, ScyllaManagerMi
 from dtest_class import Tester
 from manager_backup_tests import ManagerBackupMixin, minio_docker
 from tools.misc import remove_node
+from tools.files import get_list_of_sstables
 
 CLUSTER_NAME = 'cluster1'
 DESTINATION_BUCKET = 'backup-bucket'
@@ -480,3 +484,61 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
             assert len(list(result)) == 1, f"There was suppose to be only one row in the Mview after the restore, " \
                                            f"but instead there were {len(list(result))} lines"
         self.verify_c1c2(node=cluster2_node1, keyspace_table_and_key_range={keyspace_name: {view_name: (1, 2)}})
+
+    @staticmethod
+    def _corrupt_data(node, keyspace_name, table_name):
+        table_glob_path = os.path.join(node.get_path(), "data", keyspace_name, f"{table_name}-*")
+        table_path = glob(table_glob_path)[0]
+        shutil.rmtree(path=table_path)
+
+    def _template_post_restore_repair_only_restored_table_is_repaired(self, second_cluster, key_range):
+        keyspace_name = list(key_range.keys())[0]
+        table_name = list(key_range[keyspace_name].keys())[0]
+        restore_key_range = {"ks": {"cf1": (1, 21)}}
+
+        node1, _ = self.config_and_create_cluster(nodes=2)
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+        backup_task = self.insert_data_backup_and_cleanup(node1, mgr_cluster,
+                                                          keyspace_table_and_key_range=restore_key_range)
+
+        cluster2_node1, cluster2_node2 = self.config_and_create_cluster(nodes=2, cluster=second_cluster)
+        self.insert_data_from_ranges(healthy_node=cluster2_node1,
+                                     keyspace_table_and_key_range=key_range, rf=2)
+        for node in second_cluster.nodelist():
+            node.flush()
+        self._corrupt_data(cluster2_node2, keyspace_name, table_name)
+        mgr_cluster2 = self._create_mgr_cluster(node=cluster2_node1, name=CLUSTER_NAME+"2")
+        self.restore_schema(mgr_cluster=mgr_cluster2, backup_task=backup_task, cluster=second_cluster)
+        self.restore_and_verify(mgr_cluster2, backup_task, cluster2_node1)
+        return not get_list_of_sstables(cluster2_node2, keyspace_name, table_name)
+
+    def test_post_restore_different_keyspace_not_repaired(self, secondary_cluster):
+        """
+        Since version 3.2, the manager starts a repair automatically after a data restore task.
+        In this test, we:
+        1. create one cluster and create a keyspace "ks" in it
+        2. back the first cluster up
+        3. create a second cluster and create a different keyspace in it, "ks_2", and intentionally create a fault in it
+           on one of the nodes
+        4. restore the backup from the first cluster into the second one (both schema and data)
+        5. the test verifies that "ks_2" was NOT repaired
+        """
+        assert self._template_post_restore_repair_only_restored_table_is_repaired(
+            secondary_cluster, key_range={"ks_2": {"cf_2": (1, 21)}},), \
+            "Restoring one keyspace caused a different keyspace to be repaired"
+
+    def test_post_restore_different_table_not_repaired(self, secondary_cluster):
+        """
+        Since version 3.2, the manager starts a repair automatically after a data restore task.
+        In this test, we:
+        1. create one cluster and create a keyspace "ks" in it
+        2. back the first cluster up
+        3. create a second cluster
+        4. restore the schema from the backup of the first cluster into the second one
+        5. create a different table in "ks", "cf_2", and intentionally create a fault in it on one of the nodes
+        4. restore the data from the backup from the first cluster into the second one
+        5. the test verifies that "cf_2" was NOT repaired
+        """
+        assert self._template_post_restore_repair_only_restored_table_is_repaired(
+            secondary_cluster, key_range={"ks": {"cf_2": (1, 21)}}), \
+            "Restoring the data of one table caused a different table in the same keyspace to be repaired"
