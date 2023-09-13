@@ -250,7 +250,8 @@ class TestUpdateClusterLayout(Tester):
         cluster.start()
         node1, *_ = cluster.nodelist()
 
-        cql = "ALTER KEYSPACE system_auth WITH replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': '3'}"
+        dc = node1.get_datacenter_name()
+        cql = f"ALTER KEYSPACE system_auth WITH replication = {{'class': 'NetworkTopologyStrategy', '{dc}': '3'}}"
         with self.patient_cql_connection(node1) as session:
             session.execute(cql)
 
