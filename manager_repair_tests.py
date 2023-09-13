@@ -7,9 +7,8 @@ from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 
 from dtest_scylla_manager import HostRestStatus, ScyllaManagerError, ScyllaManagerTool, ScyllaManagerMixin, \
-    NodeStatus, HostHealth, Status
+    NodeStatus, HostHealth, Status, TaskStatus, RepairTask
 from dtest_class import Tester, WaitTimeoutExpired, create_ks, create_cf
-from dtest_scylla_manager import TaskStatus
 from tools.data import insert_c1c2
 from tools.assertions import assert_all
 
@@ -650,3 +649,57 @@ class TestScyllaMgmtRepair(Tester, ScyllaManagerMixin):
         repair_task.wait_and_get_final_status(step=5)
         assert repair_task.status == TaskStatus.DONE, \
             "A repair with ignore-down-hosts parameter has failed, even when the entire cluster was UN"
+
+    @staticmethod
+    def _get_repaired_keyspace_list(task: RepairTask):
+        # The table in the repair progress contains 4 columns, so the lists that describes those lines will have 4 items
+        # Like so:
+        # Run:		5dfbc8df-5169-11ee-99a9-f4ee08c9cc47
+        # Status:		DONE
+        # Start time:	12 Sep 23 15:39:08 IDT
+        # End time:	12 Sep 23 15:39:09 IDT
+        # Duration:	1s
+        # Progress:	100%
+        # Datacenters:
+        #   - datacenter1
+        # +-------------------------------+--------------------------------+----------+----------+
+        # | Keyspace                      |                          Table | Progress | Duration |
+        # +-------------------------------+--------------------------------+----------+----------+
+        # | ks                            |                             cf | 100%     | 0s       |
+        # +-------------------------------+--------------------------------+----------+----------+
+        # | scylla_manager                |                     backup_run | 100%     | 0s       |
+        # | scylla_manager                |            backup_run_progress | 100%     | 0s       |
+        # | scylla_manager                |                        cluster | 100%     | 0s       |
+        # | scylla_manager                |                         drawer | 100%     | 0s       |
+        # | scylla_manager                |                 gocqlx_migrate | 100%     | 0s       |
+        # | scylla_manager                |                     repair_run | 100%     | 0s       |
+        # | scylla_manager                |            repair_run_progress | 100%     | 0s       |
+        # +-------------------------------+--------------------------------+----------+----------+
+        #
+        # Translates to:
+        # 05 = {list: 1} ['Progress: 100%']
+        # 06 = {list: 1} ['Datacenters:']
+        # 07 = {list: 1} ['- datacenter1']
+        # 08 = {list: 4} ['Keyspace', 'Table', 'Progress', 'Duration']
+        # 09 = {list: 4} ['ks', 'cf', '100%', '0s']
+        # 10 = {list: 4} ['scylla_manager', 'backup_run', '100%', '0s']
+        # 11 = {list: 4} ['scylla_manager', 'backup_run_progress', '100%', '0s']
+        # 12 = {list: 4} ['scylla_manager', 'cluster', '100%', '0s']
+        parsed_progress, _ = task.progress_details()
+        table_lines = [line for line in parsed_progress if len(line) == 4]
+        keyspace_names = [line[0] for line in table_lines]
+        return keyspace_names
+
+    def test_system_traces_excluded_from_repair(self):
+        self._initiate_cluster_with_data()
+        node1 = self.cluster.nodelist()[0]
+        mgr_cluster = self._create_mgr_cluster(node=node1, name=CLUSTER_NAME)
+
+        repair_task = mgr_cluster.repair_api.repair(cluster_name=mgr_cluster.id)
+        task_final_status = repair_task.wait_and_get_final_status()
+        assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(
+            repair_task.id, str(repair_task.status))
+        keyspace_names = self._get_repaired_keyspace_list(repair_task)
+        assert "system_traces" not in keyspace_names, (f"even though its suppose to be excluded, system_traces was "
+                                                       f"included in the standard repair:\n"
+                                                       f"{repair_task.full_progress_string()}")
