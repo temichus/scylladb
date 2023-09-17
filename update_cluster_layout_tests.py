@@ -1832,9 +1832,9 @@ class TestUpdateClusterLayout(Tester):
         cluster.populate(3).start()
         nodes = cluster.nodelist()
 
-        session = self.patient_cql_connection(nodes[0])
-        create_ks(session, 'ks', 3)
-        create_cf(session, 'cf', validation="CounterColumnType", columns={'c': 'counter'})
+        with self.patient_cql_connection(nodes[0]) as session:
+            create_ks(session, 'ks', 3)
+            create_cf(session, 'cf', validation="CounterColumnType", columns={'c': 'counter'})
 
         nb_increment = 500
         nb_counter = 2
@@ -1863,12 +1863,14 @@ class TestUpdateClusterLayout(Tester):
 
         executor = ThreadPoolExecutor(max_workers=num_threads)
 
+        sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
+
         # stop and restart one node for a while
         nodes[2].stop()
 
         threads = []
         for x in range(num_threads):
-            conn = self.patient_cql_connection(nodes[x % (len(nodes) - 1)], 'ks')
+            conn = sessions[x % (len(nodes) - 1)]
             decrement = (x % len(nodes)) == 0
             threads.append(executor.submit(run, conn, decrement))
 
@@ -1883,7 +1885,7 @@ class TestUpdateClusterLayout(Tester):
 
         threads = []
         for x in range(num_threads):
-            conn = self.patient_cql_connection(nodes[2], 'ks')
+            conn = sessions[2]
             decrement = (x % len(nodes)) == 0
             threads.append(executor.submit(run, conn, decrement))
 
@@ -1893,8 +1895,6 @@ class TestUpdateClusterLayout(Tester):
 
         nodes[0].start(wait_other_notice=True, wait_for_binary_proto=True)
         nodes[1].start(wait_other_notice=True, wait_for_binary_proto=True)
-
-        sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
 
         keys = ",".join(["'counter%i'" % c for c in range(0, nb_counter)])
         query = SimpleStatement("SELECT key, c FROM cf WHERE key IN (%s)" % keys,
