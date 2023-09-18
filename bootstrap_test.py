@@ -755,7 +755,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         kill_node_err_msg = "The process is dead, returncode={}"
         ks_name, consistency_level_key = "keyspace", "TWO"
         beginning_stream_session_msg = f"Beginning stream session|sync data for keyspace={ks_name}, status=started"
-        removing_from_gossip_msg = r"FatClient {} has been silent for (\d+)ms, removing from gossip"
+        removing_from_gossip_msg = r"FatClient .*{} has been silent for (\d+)ms, removing from gossip"
         stress_duration_minutes = 3
         replication_factor = 2
         cluster_size = 2

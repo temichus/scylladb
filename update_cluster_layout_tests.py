@@ -1592,7 +1592,7 @@ class TestUpdateClusterLayout(Tester):
         node4.stop(gently=False)
 
         logger.debug("Check node 1 removed node4  ...")
-        node1.watch_log_for("FatClient {} has been silent for .*ms, removing from gossip".format(node4.address()))
+        node1.watch_log_for("FatClient .*{} has been silent for .*ms, removing from gossip".format(node4.address()))
 
         logger.debug("Check the hearbeat of node 1 ...")
         status1, err1 = node1.nodetool('gossipinfo')

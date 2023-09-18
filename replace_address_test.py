@@ -763,7 +763,7 @@ class TestReplaceAddress(Tester):
         node6.start(wait_for_binary_proto=True, replace_node_host_id=replace_node_host_id,
                     replace_address=replace_address)
         for node in [node1, node2, node3, node4, node6]:
-            node.watch_log_for(f"FatClient {ip5} has been silent for .*ms, removing from gossip")
+            node.watch_log_for(f"FatClient .*{ip5} has been silent for .*ms, removing from gossip")
 
         logger.info("Verifying tokens migrated successfully")
         moved_tokens_list = self.get_sorted_tokens(node6)
@@ -880,7 +880,7 @@ class TestReplaceAddress(Tester):
         session = self.patient_cql_connection(node6)
 
         for node in [node1, node2, node3, node4, node6]:
-            node.watch_log_for(f"FatClient {ip5} has been silent for .*ms, removing from gossip")
+            node.watch_log_for(f"FatClient .*{ip5} has been silent for .*ms, removing from gossip")
 
         write_thread.result()
 
