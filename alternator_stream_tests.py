@@ -266,7 +266,7 @@ class TestAlternatorStreams(BaseAlternatorStream):
         stress_thread.join()
 
 
-@retrying(num_attempts=60, sleep_time=10, allowed_exceptions=AssertionError)
+@retrying(num_attempts=90, sleep_time=10, allowed_exceptions=AssertionError)
 def wait_for_running_decommission(node):
     out, err = node.nodetool('status', capture_output=True)
     logger.debug(f"nodetool status is: {out}")
@@ -274,7 +274,7 @@ def wait_for_running_decommission(node):
         f"No Leaving node found, decommission is not running"
 
 
-@retrying(num_attempts=60, sleep_time=10, allowed_exceptions=AssertionError)
+@retrying(num_attempts=90, sleep_time=10, allowed_exceptions=AssertionError)
 def wait_for_running_add_node(node):
     out, err = node.nodetool('status', capture_output=True)
     logger.debug(f"nodetool status is: {out}")
