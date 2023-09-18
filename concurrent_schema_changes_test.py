@@ -13,6 +13,7 @@ from dtest_class import Tester, create_ks
 from tools.assertions import assert_row_count_in_select
 from tools.cluster import new_node
 from tools.marks import unmark
+from ccmlib.scylla_cluster import ScyllaCluster
 
 
 logger = logging.getLogger(__name__)
@@ -123,14 +124,23 @@ class TestConcurrentSchemaChanges(Tester):
         # remove an index
         session.execute("DROP INDEX index_%s" % namespace)
 
-    def validate_schema_consistent(self, node):
+    def validate_schema_consistent(self, node, timeout=None):
         """ Makes sure that there is only one schema """
-        logger.debug("validate_schema_consistent() " + node.name)
 
-        response = node.nodetool('describecluster', True)[0]
-        schemas = response.split('Schema versions:')[1].strip()
-        num_schemas = len(re.findall(r'\[.*?\]', schemas))
-        assert num_schemas == 1, "There were multiple schema versions: " + pprint.pformat(schemas)
+        if timeout is None:
+            timeout = 180 if isinstance(self.cluster, ScyllaCluster) and self.cluster.scylla_mode == "debug" else 60
+        logger.debug(f"validate_schema_consistent {node.name}: timeout={timeout}")
+        deadline = time.time() + timeout
+        while True:
+            response = node.nodetool('describecluster', True)[0]
+            schemas = response.split('Schema versions:')[1].strip()
+            num_schemas = len(re.findall(r'\[.*?\]', schemas))
+            if num_schemas == 1:
+                return
+            if time.time() < deadline:
+                time.sleep(min(10, 1 + deadline - time.time()))
+            else:
+                assert num_schemas == 1, "There were multiple schema versions: " + pprint.pformat(schemas)
 
     def test_create_lots_of_tables_concurrently(self):
         """
@@ -159,8 +169,8 @@ class TestConcurrentSchemaChanges(Tester):
         table_meta = session.cluster.metadata.keyspaces["lots_o_tables"].tables
         assert 250 == len(table_meta), f"expected 250, got len(table_meta)={len(table_meta)} "
         self.validate_schema_consistent(node1)
-        self.validate_schema_consistent(node2)
-        self.validate_schema_consistent(node3)
+        self.validate_schema_consistent(node2, timeout=0)
+        self.validate_schema_consistent(node3, timeout=0)
 
     def test_create_lots_of_alters_concurrently(self):
         """
@@ -196,8 +206,8 @@ class TestConcurrentSchemaChanges(Tester):
         # primary key + alters
         assert 510 == column_ct, f"expected 510, column_ct = {column_ct}"
         self.validate_schema_consistent(node1)
-        self.validate_schema_consistent(node2)
-        self.validate_schema_consistent(node3)
+        self.validate_schema_consistent(node2, timeout=0)
+        self.validate_schema_consistent(node3, timeout=0)
 
     def test_create_lots_of_indexes_concurrently(self, fixture_dtest_setup):
         """
@@ -240,7 +250,7 @@ class TestConcurrentSchemaChanges(Tester):
         session.cluster.refresh_schema_metadata()
         index_meta = session.cluster.metadata.keyspaces["lots_o_indexes"].indexes
         self.validate_schema_consistent(node1)
-        self.validate_schema_consistent(node2)
+        self.validate_schema_consistent(node2, timeout=0)
         assert 10 == len(index_meta), f"expect 10 , got len(index_meta)={len(index_meta)}"
         for n in range(5):
             assert f"ix_base_{n}_c1" in index_meta, f"ix_base_{n}_c1 not found in {index_meta}"
@@ -319,8 +329,8 @@ class TestConcurrentSchemaChanges(Tester):
         # the above should guarantee this -- but to be sure
         node1, node2, node3 = self.cluster.nodelist()
         self.validate_schema_consistent(node1)
-        self.validate_schema_consistent(node2)
-        self.validate_schema_consistent(node3)
+        self.validate_schema_consistent(node2, timeout=0)
+        self.validate_schema_consistent(node3, timeout=0)
 
         session.cluster.refresh_schema_metadata()
         table_meta = session.cluster.metadata.keyspaces["lots_o_churn"].tables
@@ -420,7 +430,7 @@ class TestConcurrentSchemaChanges(Tester):
         wait(3)
         self.validate_schema_consistent(node1)
         # check both, just because we can
-        self.validate_schema_consistent(node2)
+        self.validate_schema_consistent(node2, timeout=0)
 
     def test_changes_while_node_down(self, fixture_dtest_setup):
         """
