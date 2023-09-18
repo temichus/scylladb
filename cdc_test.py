@@ -59,9 +59,11 @@ class CdcLogOperations(IntEnum):
 
 class CDCInitializeHelper:  # pylint: disable=no-member
 
-    def populate_sequentially(self, n: Union[list, int], wait_other_notice: bool = True):
+    def populate_sequentially(self, n: Union[list, int], wait_other_notice: bool = True,
+                              custom_args: list[str] = []):
         cluster = self.cluster  # pylint: disable=no-member
         jvm_args = ['--blocked-reactor-notify-ms', '100' if cluster.scylla_mode != "debug" else '1000000']
+        jvm_args += custom_args
         logger.debug('Starting node 1')
         # We need to use populate() for the first node, because it writes
         # a configuration file that specifies the first node as a seed.
@@ -426,7 +428,8 @@ class TestCdc(Tester, CDCInitializeHelper):
     def schema_change_template(self, request, alter_query, cluster_size, replication, with_preimage=False, additional_fields=[]):
         logger.debug(f'Setup a cluster: size={cluster_size} replication={replication} with_preimage={with_preimage}')
         cluster = self.cluster
-        self.populate_sequentially(n=cluster_size)
+        # Enable migration_manager=trace for debugging scylladb/scylladb#15357
+        self.populate_sequentially(n=cluster_size, custom_args=['--logger-log-level', 'migration_manager=trace'])
         node1 = cluster.nodes['node1']
         session = self.patient_cql_connection(node1)
 
