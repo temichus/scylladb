@@ -1246,7 +1246,7 @@ class TesterAlternator(BaseAlternator):
          * List - The result should contain the list of the values from all items added with duplicates.
         """
         value = literal_eval(value)
-        num_of_items = 10000
+        num_of_items = 10000 if self.cluster.scylla_mode != 'debug' else 3000
         num_of_threads = 3
         var_type = type(value)
         item = {
