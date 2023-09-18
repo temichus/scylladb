@@ -28,14 +28,17 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
         ttl = 30
         test_max_duration_minutes = 4
-        session = self.patient_cql_connection(self.cluster.nodelist()[0])
+        node = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
 
         self._prepare_twcs_table(ttl=ttl, session=session)
-        sstables = self.create_sstables_with_short_ttl(session, ttl=30)
+        node.nodetool('disableautocompaction')
+        sstables = self.create_sstables_with_short_ttl(session, ttl=ttl)
+        node.nodetool('enableautocompaction')
         p = self._start_high_load_on_cluster(duration_minutes=test_max_duration_minutes)
         sleep(ttl)  # wait for sstables to be expired
         mark = self.cluster.nodelist()[0].mark_log()
-        timeout = test_max_duration_minutes * 60 - ttl
+        timeout = (test_max_duration_minutes + 1) * 60
         sstable_exists = self.wait_until_sstables_are_evicted(sstables, timeout)
         self.stop_high_load_on_cluster(p)
 
@@ -130,6 +133,7 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
             sstables = [table for table in sstables if os.path.exists(cf_dir + '/' + table)]
             if sstables:
                 logger.debug(f"still not removed: {sstables}")
+                node.flush()
                 sleep(2)
                 continue
             break
