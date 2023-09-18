@@ -394,8 +394,12 @@ class TestSLA(SLATester):
                         logger.warning(f"It is possible that service level '{sl_name}' has been removed by another "
                                        f"thread. Error: {str(exc)}")
                     else:
+                        logger.error(
+                            f"Exception {str(exc)}, role: {role.name}, service level: {sl.name if sl else 'None'}.")
                         raise
-                except Exception as e:
+                except Exception as exc:
+                    logger.error(f"Exception {str(exc)}, role: {role.name}, service level: {sl.name if sl else 'None'}. "
+                                 f"Exception type: {type(exc)}. Is it NoHostAvailable: {type(exc) is NoHostAvailable}.")
                     raise
                 finally:
                     if sl:
