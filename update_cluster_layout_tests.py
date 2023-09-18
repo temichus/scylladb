@@ -2777,7 +2777,7 @@ class TestStopNodeEarly(Tester):
             # we need other nodes to first notice the stopping node to be UP
             # before we actually stop the node, if we want other nodes to notice
             # the node to be DOWN during stop procedure.
-            msg = f"InetAddress {node1.address()} is now UP"
+            msg = f"{node1.address()} is now UP"
             logger.debug(f"Waiting for '{msg}'")
             for node, mark in other_marks:
                 node.watch_log_for(msg, from_mark=mark)
