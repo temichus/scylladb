@@ -1866,7 +1866,7 @@ class TestUpdateClusterLayout(Tester):
         sessions = [self.patient_cql_connection(node, 'ks') for node in nodes]
 
         # stop and restart one node for a while
-        nodes[2].stop()
+        nodes[2].stop(wait_other_notice=True)
 
         threads = []
         for x in range(num_threads):
@@ -1880,8 +1880,8 @@ class TestUpdateClusterLayout(Tester):
 
         nodes[2].start(wait_other_notice=True, wait_for_binary_proto=True)
 
-        nodes[0].stop()
-        nodes[1].stop()
+        nodes[0].stop(wait_other_notice=True)
+        nodes[1].stop(wait_other_notice=True)
 
         threads = []
         for x in range(num_threads):
