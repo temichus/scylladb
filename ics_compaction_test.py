@@ -48,7 +48,9 @@ def create_table(session, compaction_strategy=None,
         query = 'create table {} (pk int, ck int, {}, clist list<int>, cset set<text>, cmap map<int, text>, ' \
                 'PRIMARY KEY(pk, ck))'.format(table_name,
                                               ', '.join('c%d int' % i for i in range(1, NUM_OF_COLUMNS)))
-    compaction_params = {'class': compaction_strategy._value_, 'sstable_size_in_mb': str(sstable_size_in_mb)}
+    compaction_params = {'class': compaction_strategy._value_}
+    if compaction_strategy in [CompactionStrategy.INCREMENTAL, CompactionStrategy.LEVELED]:
+        compaction_params['sstable_size_in_mb'] = str(sstable_size_in_mb)
     if compaction_additional_params:
         compaction_params.update(compaction_additional_params)
     query += f" WITH compaction = {compaction_params}"
@@ -77,7 +79,7 @@ class TestIcsCompaction(Tester):
         if compaction_strategy:
             dict_requested_compaction['class'] = compaction_strategy._value_
 
-        if sstable_size_in_mb:
+        if sstable_size_in_mb and compaction_strategy in [CompactionStrategy.INCREMENTAL, CompactionStrategy.LEVELED]:
             dict_requested_compaction['sstable_size_in_mb'] = sstable_size_in_mb
 
         if additional_compaction_params:
@@ -494,8 +496,7 @@ class TestIcsCompaction(Tester):
         session = self.prepare(num_of_nodes=1, r_factor=1,
                                compaction_strategy=CompactionStrategy.SIZE_TIERED,
                                keyspace_name=KEYSPACE_NAME,
-                               table_name=TABLE_NAME,
-                               sstable_size_in_mb=sstable_size_in_mb)
+                               table_name=TABLE_NAME)
 
         node1 = self.cluster.nodelist()[0]
         num_rows_per_sstable = 50
