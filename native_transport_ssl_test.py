@@ -131,8 +131,8 @@ class TestNativeTransportSSL(BaseSslTester):
             "Missing SSL handshake exception while connecting with non-SSL enabled client"
 
         # enabled ssl on the client and try again (this should work)
-        session = self._create_cluster_session(node1, use_ssl=True)
-        self._putget(cluster, session)
+        with self._create_cluster_session(node1, use_ssl=True) as session:
+            self._putget(cluster, session)
 
     def test_connect_to_ssl_client_auth(self):
         """
@@ -159,8 +159,8 @@ class TestNativeTransportSSL(BaseSslTester):
             logger.info('Should not be able to connect to SSL socket without SSL enabled client')
             self._create_cluster_session(node1, use_ssl=False, ca_certs_required=True)
 
-        session = self._create_cluster_session(node1, use_ssl=True, ca_certs_required=True)
-        self._putget(cluster, session)
+        with self._create_cluster_session(node1, use_ssl=True, ca_certs_required=True) as session:
+            self._putget(cluster, session)
 
         # verify connection fails after revoking certificate
         mark = node1.mark_log()
@@ -185,13 +185,13 @@ class TestNativeTransportSSL(BaseSslTester):
 
         # try to connect without ssl options
         cluster.start()
-        session = self.patient_cql_connection(node1)
-        self._putget(cluster, session)
+        with self.patient_cql_connection(node1) as session:
+            self._putget(cluster, session)
 
         # enabled ssl on the client and try again (this should work)
-        session = self.patient_cql_connection(
-            node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')})
-        self._putget(cluster, session, ks='ks2')
+        with self.patient_cql_connection(
+                node1, ssl_opts={'ca_certs': os.path.join(self.test_path, 'ccm_node.cer')}) as session:
+            self._putget(cluster, session, ks='ks2')
 
     def test_use_custom_port(self):
         """
@@ -207,8 +207,8 @@ class TestNativeTransportSSL(BaseSslTester):
             logger.info('Should not be able to connect to non-default port')
             self._create_cluster_session(node1, use_ssl=False)
 
-        session = self._create_cluster_session(node1, port=9567, use_ssl=False)
-        self._putget(cluster, session)
+        with self._create_cluster_session(node1, port=9567, use_ssl=False) as session:
+            self._putget(cluster, session)
 
     def test_use_custom_ssl_port(self):
         """
@@ -221,12 +221,12 @@ class TestNativeTransportSSL(BaseSslTester):
         cluster.start()
 
         # we should be able to connect to default non-ssl port
-        session = self._create_cluster_session(node1, use_ssl=False)
-        self._putget(cluster, session)
+        with self._create_cluster_session(node1, use_ssl=False) as session:
+            self._putget(cluster, session)
 
         # connect to additional dedicated ssl port
-        session = self._create_cluster_session(node1, use_ssl=True, port=9666)
-        self._putget(cluster, session, ks='ks2')
+        with self._create_cluster_session(node1, use_ssl=True, port=9666) as session:
+            self._putget(cluster, session, ks='ks2')
 
     @pytest.mark.dtest_debug
     def test_reload_certificates(self):
@@ -258,8 +258,8 @@ class TestNativeTransportSSL(BaseSslTester):
             wait_for_cert_reload(node1, "cql_server", ["ccm_node.pem", "ccm_node.key"], from_mark=mark)
 
             # now we should match
-            session = self._create_cluster_session(node1, use_ssl=True)
-            self._putget(cluster, session)
+            with self._create_cluster_session(node1, use_ssl=True) as session:
+                self._putget(cluster, session)
         finally:
             shutil.rmtree(tmpdir)
 
@@ -273,8 +273,8 @@ class TestNativeTransportSSL(BaseSslTester):
         cluster = self._populateCluster(enableSSL=True, nativePortSSL=9142, nativePort=0)
         cluster.start()
         node1 = cluster.nodelist()[0]
-        session = self._create_cluster_session(node1, use_ssl=True, port=9142)
-        create_ks(session, "ks", 1)
+        with self._create_cluster_session(node1, use_ssl=True, port=9142) as session:
+            create_ks(session, "ks", 1)
         is_port_listening = common.check_socket_listening(cluster.get_binary_interface(1), timeout=20)
         assert not is_port_listening, \
             "Even after disabling the default cql port, the cluster continues to listen to it"
@@ -397,13 +397,13 @@ class TestServerEncryption(BaseSslTester):
 
         cluster.start()
 
-        session = self._create_cluster_session(node1)
-        self._putget(cluster, session)
+        with self._create_cluster_session(node1) as session:
+            self._putget(cluster, session)
 
-        node1.stop()
-        node1.start()
+            node1.stop()
+            node1.start()
 
-        node1.stop()
-        node1.start()
+            node1.stop()
+            node1.start()
 
-        putget(cluster, session)
+            putget(cluster, session)
