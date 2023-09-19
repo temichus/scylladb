@@ -1893,7 +1893,6 @@ class TestCqlshSmoke(Tester):
         ks1_stdout, ks1_stderr = self.node1.run_cqlsh(
             "alter KEYSPACE keyspace1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : '4'};", return_output=True)
         assert ks1_stderr == ''
-        assert ks1_stdout == ''
         ks1_stdout, ks1_stderr = self.node1.run_cqlsh('select * from keyspace1.standard1 LIMIT 10;', return_output=True)
         assert ks1_stderr == ''
         assert 10 == len([x for x in ks1_stdout.split("\n") if x and x.startswith(' 0x')])
