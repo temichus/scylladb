@@ -252,7 +252,7 @@ class TestCompactionAdditional(CompactionAdditionalTester):
         while compactions_1 + 2 > compactions_2:
             time.sleep(gc_grace_seconds)
             node1.flush()
-            node1.compact(keyspace = 'ks')
+            node1.compact(keyspace='ks')
             compactions_2 = compactions_count()
         node1.wait_for_compactions()
 
