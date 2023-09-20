@@ -161,7 +161,7 @@ class TestReplaceAddress(Tester):
     def _template_replace_node_then_shut_down(self, use_same_ip):
         executor = ThreadPoolExecutor(max_workers=1)
         consistency_level_key = "QUORUM"
-        stress_duration_minutes = 6
+        stress_duration_minutes = 2 if self.cluster.scylla_mode != 'debug' else 6
         replication_factor = 3
         ks_name = "keyspace2"
         write_stress_cmd = ["write", f"cl={consistency_level_key}", f"duration={stress_duration_minutes}m",
