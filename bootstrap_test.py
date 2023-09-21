@@ -466,13 +466,13 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         # Avoid reporting bootstrap errors in logs
         node3.stop(gently=False)
 
-    def test_shutdown_wiped_node_cannot_join(self):
-        self._wiped_node_cannot_join_test(gently=True)
+    def test_shutdown_wiped_node_can_join(self):
+        self._wiped_node_can_join_test(gently=True)
 
-    def test_killed_wiped_node_cannot_join(self):
-        self._wiped_node_cannot_join_test(gently=False)
+    def test_killed_wiped_node_can_join(self):
+        self._wiped_node_can_join_test(gently=False)
 
-    def _wiped_node_cannot_join_test(self, gently):
+    def _wiped_node_can_join_test(self, gently):
         """
         @jira_ticket CASSANDRA-9765
         Test that if we stop a node and wipe its data then the node cannot join
@@ -480,7 +480,8 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         the gently parameter.
         """
         cluster = self.cluster
-        cluster.populate(3)
+        initial_nodes = 2
+        cluster.populate(initial_nodes)
         cluster.start(wait_for_binary_proto=True)
 
         stress_table = 'keyspace1.standard1'
@@ -493,26 +494,30 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         original_rows = list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Add a new node, bootstrap=True ensures that it is not a seed
-        node4 = cluster.new_node(4, auto_bootstrap=True)
-        node4.start(wait_for_binary_proto=True)
+        new_node = cluster.new_node(initial_nodes + 1, auto_bootstrap=True)
+        new_node.start(wait_for_binary_proto=True)
 
-        session = self.patient_cql_connection(node4)
-        assert original_rows == list(session.execute("SELECT * FROM {}".format(stress_table,)))
+        with self.patient_cql_connection(new_node) as session:
+            assert original_rows == list(session.execute("SELECT * FROM {}".format(stress_table,)))
 
         # Stop the new node and wipe its data
-        node4.stop(gently=gently)
-        self._cleanup(node4)
+        new_node.stop(gently=gently)
+        self._cleanup(new_node)
 
-        # Now start it, it should not be allowed to join.
-        expected_error = "A node with address {} already exists, cancelling join".format(self.cluster.get_node_ip(4))
+        # Now start it
+        # If gossiper still uses the endpoint address to locate the endpoint state
+        # then it should not be allowed to join.
+        # But if the gossiper used the host_id to locate the endpoint state
+        # then it will be able to join, so accept both cases.
+        expected_error = "A node with address {} already exists, cancelling join".format(new_node.address())
         self.ignore_log_patterns += [expected_error]
-        mark = node4.mark_log()
+        mark = new_node.mark_log()
         try:
-            node4.start(no_wait=True)
+            new_node.start(timeout=self.cql_timeout(120))
         except NodeError:
             # It is expected that the node will not boot
-            pass
-        node4.watch_log_for(expected_error, from_mark=mark)
+            res = new_node.grep_log(expected_error, from_mark=mark)
+            assert res, f"Did not find expected error: '{expected_error}'"
 
     @staticmethod
     def _validate_off_strategy_started(node: ScyllaNode, keyspace: str, table: str, from_mark: int):
