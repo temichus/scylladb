@@ -8,6 +8,9 @@ from dtest_class import Tester, create_ks
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2
 
 
+# see:
+#  https://github.com/scylladb/scylla-tools-java/blob/9dddad27bfd9f2f93c712821087cba6d0c7fae69/src/java/org/apache/cassandra/tools/NodeTool.java#L144')
+@pytest.mark.skip("scylla doens't support any hinted handoff nodetool command")
 class TestHintedHandoffConfig(Tester):
     """
     Tests the hinted handoff configuration options introduced in
