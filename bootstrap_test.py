@@ -466,13 +466,13 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         # Avoid reporting bootstrap errors in logs
         node3.stop(gently=False)
 
-    def test_shutdown_wiped_node_can_join(self):
-        self._wiped_node_can_join_test(gently=True)
+    def test_shutdown_wiped_node_may_join(self):
+        self._wiped_node_may_join_test(gently=True)
 
-    def test_killed_wiped_node_can_join(self):
-        self._wiped_node_can_join_test(gently=False)
+    def test_killed_wiped_node_may_join(self):
+        self._wiped_node_may_join_test(gently=False)
 
-    def _wiped_node_can_join_test(self, gently):
+    def _wiped_node_may_join_test(self, gently):
         """
         @jira_ticket CASSANDRA-9765
         Test that if we stop a node and wipe its data then the node cannot join
@@ -510,11 +510,15 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         # But if the gossiper used the host_id to locate the endpoint state
         # then it will be able to join, so accept both cases.
         expected_error = "A node with address {} already exists, cancelling join".format(new_node.address())
-        self.ignore_log_patterns += [expected_error]
+        self.ignore_log_patterns += [
+            expected_error,
+            # this error is recoverable after retry
+            'Could not retrieve CDC streams with timestamp',
+        ]
         mark = new_node.mark_log()
         try:
-            new_node.start(timeout=self.cql_timeout(120))
-        except NodeError:
+            new_node.start(wait_other_notice=True, wait_for_binary_proto=True)
+        except (NodeError, RuntimeError):
             # It is expected that the node will not boot
             res = new_node.grep_log(expected_error, from_mark=mark)
             assert res, f"Did not find expected error: '{expected_error}'"
