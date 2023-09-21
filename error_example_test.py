@@ -1,8 +1,11 @@
+import pytest
+
 from dtest_class import Tester, create_ks
 
 MY_NODE = 0
 
 
+@pytest.mark.scylla_mode('!release')
 class TestExample(Tester):
 
     def test_some(self, nodes=3, rf=3, jvm_args=None):
