@@ -13,15 +13,17 @@ from dtest_class import Tester, create_ks, get_ip_from_node, logger
 
 class PacketAnalyzer:
     """Class for analyzing packets between two nodes using tcpdump utility"""
+    packet_lenght_regexp = re.compile(r'length (\d+)')
 
-    def __init__(self, node1, node2):
-        self.node1 = node1
-        self.node2 = node2
+    def __init__(self, source, destination):
+        self.source = source
+        self.destination = destination
         self._tcpdump_process = None
         self._captured_packets = []
 
     def start(self):
-        cmd = f"sudo tcpdump -Z {getpass.getuser()} -i lo host {get_ip_from_node(self.node1)} and host {get_ip_from_node(self.node2)} and port 7000"
+        cmd = (f"sudo tcpdump -Z {getpass.getuser()} -i lo -n "
+               f"src host {get_ip_from_node(self.source)} and dst host {get_ip_from_node(self.destination)} and port 7000")
         logger.debug(f"Starting tcpdump with command: {cmd}")
         self._tcpdump_process = subprocess.Popen(
             cmd.split(), stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
@@ -38,9 +40,12 @@ class PacketAnalyzer:
         logger.debug("Captured %s packets", len(self._captured_packets))
 
     def get_max_packet_length(self):
-        packet_lenght_regexp = re.compile(r'length (\d+)')
         return max([int(packet_lenght.group(1)) for packet in self._captured_packets
-                    if (packet_lenght := packet_lenght_regexp.search(packet))])
+                    if (packet_lenght := self.packet_lenght_regexp.search(packet))])
+
+    def get_packets_with_length(self, length):
+        return [packet for packet in self._captured_packets
+                if (packet_lenght := self.packet_lenght_regexp.search(packet)) and int(packet_lenght.group(1)) == length]
 
 
 @pytest.mark.dtest_full
@@ -59,18 +64,29 @@ class TestInternodeCompression(Tester):
         create_ks(session, 'ks', 2)
         session.execute("CREATE TABLE ks.cf (key int PRIMARY KEY, val TEXT)")
 
-        packet_analyzer = PacketAnalyzer(node1, node2)
-        packet_analyzer.start()
-        # insert >1kb size (compressible) row and wait for tcpdump to analyze packets for several seconds
+        packet_analyzer_1 = PacketAnalyzer(node1, node2)
+        packet_analyzer_2 = PacketAnalyzer(node2, node1)  # other direction
+
+        packet_analyzer_1.start()
+        packet_analyzer_2.start()
+
+        # insert >8kb size (compressible) row and wait for tcpdump to analyze packets for several seconds
         session.execute(
             SimpleStatement(f"insert into ks.cf (key, val) values (1, '{'1' * 8192}')",
                             consistency_level=ConsistencyLevel.ALL))
         session.shutdown()
         time.sleep(1)  # wait for tcpdump to print packets
-        packet_analyzer.stop()
+        packet_analyzer_1.stop()
+        packet_analyzer_2.stop()
 
-        assert packet_analyzer.get_max_packet_length() < 8000, \
-            "max packet length is bigger than 8192 bytes - compression is not working properly"
+        biggest_packet_length_1 = packet_analyzer_1.get_max_packet_length()
+        biggest_packet_length_2 = packet_analyzer_2.get_max_packet_length()
+        if biggest_packet_length_1 > biggest_packet_length_2:
+            biggest_packet = packet_analyzer_1.get_packets_with_length(biggest_packet_length_1)
+        else:
+            biggest_packet = packet_analyzer_2.get_packets_with_length(biggest_packet_length_2)
+        assert max(biggest_packet_length_1, biggest_packet_length_2) < 8000, \
+            f"max packet length is bigger than 8192 bytes - compression is not working properly. Packet data: {biggest_packet}"
 
     def test_internode_compression_between_datacenters(self):
         """
@@ -88,10 +104,13 @@ class TestInternodeCompression(Tester):
         session.execute("CREATE TABLE ks.cf (key int PRIMARY KEY, val TEXT)")
 
         # start tcpdump sniffing on traffic between node1 and node2 on port 7000
-        intra_dc_packet_analyzer = PacketAnalyzer(node1, node2)
+        intra_dc_packet_analyzer_1 = PacketAnalyzer(node1, node2)
+        intra_dc_packet_analyzer_2 = PacketAnalyzer(node2, node1)
+
         dc_packet_analyzer_1 = PacketAnalyzer(node1, node3)
         dc_packet_analyzer_2 = PacketAnalyzer(node2, node3)
-        intra_dc_packet_analyzer.start()
+        intra_dc_packet_analyzer_1.start()
+        intra_dc_packet_analyzer_2.start()
         dc_packet_analyzer_1.start()
         dc_packet_analyzer_2.start()
         # insert >1kb size (compressible) row and wait for tcpdump to analyze packets for several seconds
@@ -100,9 +119,17 @@ class TestInternodeCompression(Tester):
                             consistency_level=ConsistencyLevel.ALL))
         session.shutdown()
         time.sleep(1)  # wait for tcpdump to print packets
-        intra_dc_packet_analyzer.stop()
+        intra_dc_packet_analyzer_1.stop()
+        intra_dc_packet_analyzer_2.stop()
         dc_packet_analyzer_1.stop()
         dc_packet_analyzer_2.stop()
-        assert intra_dc_packet_analyzer.get_max_packet_length() > 8192, "intra-datacenter was compressed but shouldn't be"
-        assert max(dc_packet_analyzer_1.get_max_packet_length(), dc_packet_analyzer_2.get_max_packet_length()) < 8000, \
-            "between datacenters communication should be compressed but it wasn't"
+        biggest_packet_length_1 = dc_packet_analyzer_1.get_max_packet_length()
+        biggest_packet_length_2 = dc_packet_analyzer_2.get_max_packet_length()
+        if biggest_packet_length_1 > biggest_packet_length_2:
+            biggest_packet = dc_packet_analyzer_1.get_packets_with_length(biggest_packet_length_1)
+        else:
+            biggest_packet = dc_packet_analyzer_2.get_packets_with_length(biggest_packet_length_2)
+        assert max(intra_dc_packet_analyzer_1.get_max_packet_length(), intra_dc_packet_analyzer_2.get_max_packet_length()) > 8192, \
+            "intra-datacenter was compressed but shouldn't be"
+        assert max(biggest_packet_length_1, biggest_packet_length_2) < 8000, \
+            f"between datacenters communication should be compressed but it wasn't. Packet data: {biggest_packet}"
