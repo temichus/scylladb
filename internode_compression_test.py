@@ -44,7 +44,6 @@ class PacketAnalyzer:
 
 
 @pytest.mark.dtest_full
-@pytest.mark.next_gating
 class TestInternodeCompression(Tester):
 
     def test_internode_compression_compress_packets_between_nodes(self):
