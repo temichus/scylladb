@@ -3535,15 +3535,27 @@ class TestMaterializedViews(CommonUtils):
 
         self._stop_nodes([node2, node3])
 
-        session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'a', 3.0)")
-        session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'a', 3.0)")
+        # We have a cluster of 5 nodes and a keyspace of RF=5. Only 3 of
+        # the nodes are currently alive, so a write will *eventually* succeed
+        # to these 3 nodes. To avoid this test becoming flaky (see
+        # https://github.com/scylladb/scylladb/issues/15314) let's convert
+        # this eventuality to something synchronous, by using CL=THREE
+        # we'll wait for all three copies to be written. Because N=RF, the
+        # view writes are also synchronous, so the view too will be up-to-date
+        # as soon as these inserts finish.
+        session.execute(SimpleStatement("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'a', 3.0)",
+                        consistency_level=ConsistencyLevel.THREE))
+        session.execute(SimpleStatement("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'a', 3.0)",
+                        consistency_level=ConsistencyLevel.THREE))
         # Scylla doesn't leverage the batchlog for MVs
         # self._replay_batchlogs()
         logger.debug('Verify the data in the MV on node1 with CL=ONE')
         assert_all(session, "SELECT * FROM ks.t_by_v WHERE v2 = 'a'", [['a', 1, 1, 3.0], ['a', 2, 2, 3.0]])
 
-        session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'b', 3.0)")
-        session.execute("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'b', 3.0)")
+        session.execute(SimpleStatement("INSERT INTO ks.t (id, v, v2, v3) VALUES (1, 1, 'b', 3.0)",
+                        consistency_level=ConsistencyLevel.THREE))
+        session.execute(SimpleStatement("INSERT INTO ks.t (id, v, v2, v3) VALUES (2, 2, 'b', 3.0)",
+                        consistency_level=ConsistencyLevel.THREE))
         # Scylla doesn't leverage the batchlog for MVs
         # self._replay_batchlogs()
         logger.debug('Verify the data in the MV on node1 with CL=ONE')
@@ -3554,7 +3566,7 @@ class TestMaterializedViews(CommonUtils):
         self._stop_nodes([node1, node4, node5])
         self._start_nodes([node2, node3])
 
-        session2 = self.patient_cql_connection(node2)
+        session2 = self.patient_exclusive_cql_connection(node2)
         session2.execute('USE ks')
 
         logger.debug('Verify the data in the MV on node2 with CL=ONE. No rows should be found.')
