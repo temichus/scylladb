@@ -1003,6 +1003,13 @@ class TestUserTypes(Tester):
         assert_all(session=session, query=after_update_query, expected=expected_res, result_as_string=True)
 
     def test_add_udt_to_another_data_types(self):
+        logging.getLogger("cassandra").setLevel(logging.DEBUG)
+        try:
+            self.internal_add_udt_to_another_data_types()
+        finally:
+            logging.getLogger("cassandra").setLevel(logging.INFO)
+
+    def internal_add_udt_to_another_data_types(self):
         """"
         Test user defined types, with complex format.
         Alter user defined type with another  user defined type
