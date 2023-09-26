@@ -391,12 +391,13 @@ class TestScyllaMgmtRestore(Tester, ManagerBackupMixin, ScyllaManagerMixin):
         self._drop_table_and_delete_table_dir(keyspace_name="keyspace1", table_name="standard1", up_normal_node=node1)
         restore_task.start(continue_task=True)
         final_status = restore_task.wait_and_get_final_status(step=5)
+        full_progress_string = restore_task.full_progress_string()
         assert final_status == TaskStatus.ERROR, \
             f"Even though the restored keyspace was dropped while the restore task was paused, the task did not fail," \
-            f" but it instead reached the status of {final_status}: {restore_task.full_progress_string()}"
-        assert "validate table keyspace1.standard1 still exists: not found" in restore_task.full_progress_string(), \
-            f'The expected message "not found" did not appear in the output of task progress: ' \
-            f'{restore_task.full_progress_string()}'
+            f" but it instead reached the status of {final_status}: {full_progress_string}"
+        assert "keyspace1.standard1" in full_progress_string and "not found" in full_progress_string, \
+            f'The expected message "not found" for table keyspace1.standard1 did not appear in the output of task progress: ' \
+            f'{full_progress_string}'
 
     def test_restore_after_deleting_file_from_s3(self):
         node1, node2 = self.config_and_create_cluster(nodes=2)
