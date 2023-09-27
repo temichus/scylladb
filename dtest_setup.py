@@ -341,7 +341,7 @@ class DTestSetup:
         return ClusterSession(session)
 
     def patient_cql_cluster_session(self, node, keyspace=None, user=None, password=None,
-                                    request_timeout=None, compression=True, timeout=60,
+                                    request_timeout=None, compression=True,
                                     protocol_version=None, port=None, ssl_opts=None,
                                     topology_event_refresh_window=10, exclusive=False, **kwargs):
         """
@@ -349,16 +349,12 @@ class DTestSetup:
 
         If the timeout is exceeded, the exception is raised.
         """
-        if is_win():
-            timeout *= 2
-
         return retry_till_success(
             self.cql_cluster_session,
             node,
             keyspace=keyspace,
             user=user,
             password=password,
-            timeout=timeout,
             request_timeout=request_timeout,
             compression=compression,
             protocol_version=protocol_version,
@@ -442,15 +438,13 @@ class DTestSetup:
         return session
 
     def patient_cql_connection(self, node, keyspace=None,
-                               user=None, password=None, timeout=30, compression=True,
+                               user=None, password=None, compression=True,
                                protocol_version=None, port=None, ssl_opts=None, **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
 
         If the timeout is exceeded, the exception is raised.
         """
-        if is_win():
-            timeout *= 2
 
         expected_log_lines = ('Control connection failed to connect, shutting down Cluster:',
                               '[control connection] Error connecting to ')
@@ -461,7 +455,6 @@ class DTestSetup:
                 keyspace=keyspace,
                 user=user,
                 password=password,
-                timeout=timeout,
                 compression=compression,
                 protocol_version=protocol_version,
                 port=port,
@@ -473,15 +466,13 @@ class DTestSetup:
         return session
 
     def patient_exclusive_cql_connection(self, node, keyspace=None,
-                                         user=None, password=None, timeout=30, compression=True,
+                                         user=None, password=None, compression=True,
                                          protocol_version=None, port=None, ssl_opts=None, **kwargs):
         """
         Returns a connection after it stops throwing NoHostAvailables due to not being ready.
 
         If the timeout is exceeded, the exception is raised.
         """
-        if is_win():
-            timeout *= 2
 
         return retry_till_success(
             self.exclusive_cql_connection,
@@ -489,7 +480,6 @@ class DTestSetup:
             keyspace=keyspace,
             user=user,
             password=password,
-            timeout=timeout,
             compression=compression,
             protocol_version=protocol_version,
             port=port,
