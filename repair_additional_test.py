@@ -28,6 +28,7 @@ from tools.metrics import get_node_metrics
 from tools.cluster import run_rest_api
 import tools.commitlog as commitlog
 from tools.schema import change_schema_safely
+from tools.context import disable_autocompation
 
 logger = logging.getLogger(__name__)
 
@@ -701,7 +702,9 @@ class RepairAdditionalBase(Tester):
         #      'type': 'regular',
         #      'timestamp': 1691723022125706,
         #      'value': 'hi'}}}]}]
-        partitions = node.dump_sstables(ks, cf)
+        with disable_autocompation(node=node, keyspace_name=ks, table_name=cf):
+            partitions = node.dump_sstables(ks, cf)
+
         for partition in partitions:
             for clustering_element in partition.get('clustering_elements', []):
                 cell = clustering_element['columns'].get(column_name)
