@@ -6,7 +6,7 @@ pipeline {
     }
      parameters {
 
-        string(defaultValue: 'release:5.1',
+        string(defaultValue: 'release:2023.1',
                description: 'Scylla relocatable packages build to be used',
                name: 'scylla_version')
 
