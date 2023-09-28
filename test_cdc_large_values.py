@@ -47,6 +47,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
             # Ref: https://github.com/scylladb/scylladb/issues/12600
             rf'[Ee]xception when communicating with {node.address()}, to read from [^\s]+: std::bad_alloc',
             rf'exception during mutation write to {node.address()}: std::bad_alloc',
+            rf'[Ee]xception when communicating with {node.address()}, to read from [^\s]+: utils::memory_limit_reached \(kill limit triggered on semaphore _read_concurrency_sem by permit .*\)'
         ]
         self.ignore_log_patterns.extend(self.expected_errors)
         return (node, session)
@@ -168,7 +169,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
 
         update_value = bytes("2".encode()) * 1 * MB
         if prepare_statements:
-            update_statement = SimpleStatement("UPDATE ks.cf SET v = v + ? WHERE pk=? and ck=?")
+            update_statement = session.prepare("UPDATE ks.cf SET v = v + ? WHERE pk=? and ck=?")
         else:
             update_statement = SimpleStatement("UPDATE ks.cf SET v = v + %(v)s WHERE pk=%(pk)s and ck=%(ck)s")
         update_parameters = [{"pk": i, "ck": j, "v": {f"key{k}": update_value}}
