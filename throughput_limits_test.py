@@ -5,12 +5,12 @@ import logging
 from time import time
 
 import pytest
-from cassandra.protocol import ConfigurationException
 from ccmlib.scylla_node import ScyllaNode
 
 from dtest_class import Tester
 from tools.cluster import new_node
 from tools.metrics import get_node_metrics
+from tools.rate_limit import rate_limit_expected_errors
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ class TestPerPartitionRateLimiter(Tester):
                 queries_count += 1
                 session.execute(f"insert into {KEYSPACE}.standard1 (a, b) values (1, 1)")
                 queries_passed += 1
-            except ConfigurationException:
+            except rate_limit_expected_errors:
                 # For drivers that don't recognize rate limit error, ConfigurationException is raised
                 pass
         metrics_node_1 = get_node_metrics(
@@ -203,7 +203,7 @@ class TestPerPartitionRateLimiter(Tester):
                 queries_count += 1
                 session.execute("select * from test_ks.standard1 where a = 1")
                 queries_passed += 1
-            except ConfigurationException:
+            except rate_limit_expected_errors:
                 pass
         metrics_node_1 = get_node_metrics(
             node_ip=node_1.address(),

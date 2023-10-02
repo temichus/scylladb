@@ -17,11 +17,10 @@ from cassandra.cluster import Session
 from cassandra.query import SimpleStatement
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.policies import RoundRobinPolicy, TokenAwarePolicy
-from cassandra.protocol import ConfigurationException
 
 from dtest_class import Tester, create_ks
 from tools.cluster import new_node
-
+from tools.rate_limit import rate_limit_expected_errors
 
 logger = logging.getLogger(__file__)
 
@@ -78,8 +77,7 @@ def is_per_partition_limit_reached_error(err):
     # limit was reached, scylla will use it - otherwise, ConfigurationException
     # will be returned.
     #
-    # TODO: Detect the new exception if it is added to the driver
-    return isinstance(err, ConfigurationException)
+    return isinstance(err, rate_limit_expected_errors)
 
 
 @pytest.mark.dtest_full
