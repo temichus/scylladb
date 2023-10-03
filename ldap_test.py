@@ -107,7 +107,7 @@ class TestLdap(Tester):
                             f'ldap_bind_dn: cn=admin,{self.test_ldap_docker.ldap_base_object}\n'
                             f'ldap_bind_pw: scylla\n')
                 self.saslauthd_proc = subprocess.Popen(
-                    ['saslauthd', '-d', '-n', '1', '-a', 'ldap',
+                    ['saslauthd', '-d', '-n', '1', '-l', '-a', 'ldap',
                         '-O', saslauthd_conf_path, '-m', self.saslauthd_dir],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 # make sure saslauthd has start and listening
