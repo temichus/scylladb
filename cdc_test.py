@@ -473,7 +473,7 @@ class TestCdc(Tester, CDCInitializeHelper):
         self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication, with_preimage=True)
 
-    @pytest.mark.next_gating
+    # @pytest.mark.next_gating - taken out until https://github.com/scylladb/scylladb/issues/15357 is fixed
     @pytest.mark.no_boot_speedups
     def test_add_field_with_cdc(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf ADD c int",
