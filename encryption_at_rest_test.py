@@ -399,7 +399,8 @@ class EncryptionAtRestBase(Tester):
         for node in self.cluster.nodelist():
             node.stop(wait_other_notice=True)
             try:
-                node.start(wait_other_notice=True, wait_for_binary_proto=True)
+                node.start(wait_other_notice=True, wait_for_binary_proto=True,
+                           jvm_args=['--logger-log-level', 'kms=trace'])
             except RuntimeError as e:
                 if allow_start_failure:
                     errors.append(e)
@@ -410,7 +411,8 @@ class EncryptionAtRestBase(Tester):
     def cluster_restart(self, user=None, password=None):
         logger.debug('Restart cluster ...')
         self.cluster.stop(wait_other_notice=True)
-        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True)
+        self.cluster.start(wait_for_binary_proto=True, wait_other_notice=True,
+                           jvm_args=['--logger-log-level', 'kms=trace'])
         return self.get_session(user=user, password=password)
 
     def get_key_provider(self, key_provider=None):
@@ -561,7 +563,8 @@ class EncryptionAtRestBase(Tester):
                     for i in range(3):
                         logger.debug('Kill node {}, and restart'.format(node.name))
                         node.stop(gently=False)
-                        node.start(wait_for_binary_proto=True, wait_other_notice=False)
+                        node.start(wait_for_binary_proto=True, wait_other_notice=False,
+                                   jvm_args=['--logger-log-level', 'kms=trace'])
                     self.read_verify_workload(self.get_session())
             finally:
                 self.cleanup()
@@ -831,7 +834,8 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
                    'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'
                    }
         self.cluster.set_configuration_options(options)
-        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True)
+        self.cluster.populate(3).start(wait_for_binary_proto=True, wait_other_notice=True,
+                                       jvm_args=['--logger-log-level', 'kms=trace'])
         wait_for_any_log(self.cluster.nodelist(), 'Created default superuser', 10)
         node1 = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node1, user='cassandra', password='cassandra')
@@ -878,5 +882,6 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
                 # ugh, disable wait_other_notice to avoid 120s timeout.
                 # restarting w. dirty commitlog can be somewhat tardy now.
                 # because of schema commitlog?
-                node.start(wait_for_binary_proto=True, wait_other_notice=False)
+                node.start(wait_for_binary_proto=True, wait_other_notice=False,
+                           jvm_args=['--logger-log-level', 'kms=trace'])
                 self.read_verify_workload(self.get_session())
