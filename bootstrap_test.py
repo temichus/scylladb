@@ -968,7 +968,9 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         since gossip status is published only by the node itself.
         According to task: https://github.com/scylladb/scylla-dtest/issues/2858
         """
-        self.fixture_dtest_setup.ignore_log_patterns.append("Startup failed:")
+        expected_error = "Startup failed:.* has gossip status=UNKNOWN"
+        self.fixture_dtest_setup.ignore_log_patterns += [expected_error]
+
         logger.info("Populating cluster with one node")
         cluster = self.cluster
         cluster.populate(3)
@@ -988,14 +990,14 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         node1.start(wait_other_notice=True)
         logger.info("Starting node 2")
         node2.start(wait_other_notice=True)
-        expected_error = "Startup failed:* has gossip status=UNKNOWN"
-        with pytest.raises(expected_exception=(RuntimeError,)):
-            node4 = cluster.new_node(4)
-            mark4 = node4.mark_log()
-            node4.start(wait_other_notice=True)
-            node4.watch_log_for(expected_error, from_mark=mark4)
-        node3.start(wait_other_notice=True)
+
+        node4 = cluster.new_node(4)
+        mark4 = node4.mark_log()
+        node4.start(wait_other_notice=False, wait_for_binary_proto=False)
+        node4.watch_log_for(expected_error, from_mark=mark4)
         node4.stop(wait_other_notice=False)
+
+        node3.start(wait_other_notice=True)
         node4.start(wait_other_notice=True, wait_for_binary_proto=True)
         node3.stop(wait_other_notice=False)
         session = self.patient_exclusive_cql_connection(node4)
