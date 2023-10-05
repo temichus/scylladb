@@ -1,6 +1,6 @@
 #!groovy
-library identifier: 'camunda-community'
-library identifier: 'pipeline-logparser@3.2'
+library identifier: 'camunda-shared-library'
+library identifier: 'pipeline-logparser-shared-library@3.2'
 
 def createEmptyDir(String path) {
 	sh "rm -rf $path && mkdir -p $path"
