@@ -1,3 +1,4 @@
+from collections import namedtuple
 from contextlib import contextmanager
 from dataclasses import dataclass
 import logging
@@ -560,6 +561,9 @@ class TestCQLAudit(AuditTester):
                                           'audit_categories': 'DDL, ADMIN,AUTH',
                                           'audit_keyspaces': 'ks'})
 
+    PasswordMaskingCase = namedtuple('PasswordMaskingCase',
+                                     ['name', 'password', 'new_password'])
+
     def test_user_password_masking(self):
         """
         CREATE USER, ALTER USER, DROP USER statements
@@ -571,20 +575,22 @@ class TestCQLAudit(AuditTester):
                                                          self.audit_default_settings, **kwargs,
                                                          user="cassandra", ks="")
 
-        execute_and_validate_audit_entry(
-            "CREATE USER user1 WITH PASSWORD 'secret'",
-            category="DCL",
-            expected_operation="CREATE USER user1 WITH PASSWORD '***'",
-        )
-        execute_and_validate_audit_entry(
-            "ALTER USER user1 WITH PASSWORD 'Secret^%$#@!'",
-            category="DCL",
-            expected_operation="ALTER USER user1 WITH PASSWORD '***'",
-        )
-        execute_and_validate_audit_entry(
-            "DROP USER user1",
-            category="DCL",
-        )
+        tests = [self.PasswordMaskingCase('user1', 'secret', 'Secret^%$#@!')]
+        for username, password, new_password in tests:
+            execute_and_validate_audit_entry(
+                f"CREATE USER {username} WITH PASSWORD '{password}'",
+                category="DCL",
+                expected_operation=f"CREATE USER {username} WITH PASSWORD '***'",
+            )
+            execute_and_validate_audit_entry(
+                f"ALTER USER {username} WITH PASSWORD '{new_password}'",
+                category="DCL",
+                expected_operation=f"ALTER USER {username} WITH PASSWORD '***'",
+            )
+            execute_and_validate_audit_entry(
+                f"DROP USER {username}",
+                category="DCL",
+            )
 
     def test_role_password_masking(self):
         """
@@ -597,20 +603,22 @@ class TestCQLAudit(AuditTester):
                                                          self.audit_default_settings, **kwargs,
                                                          user="cassandra", ks="")
 
-        execute_and_validate_audit_entry(
-            "CREATE ROLE role1 WITH PASSWORD = 'Secret!@#$'",
-            category="DCL",
-            expected_operation="CREATE ROLE role1 WITH PASSWORD = '***'",
-        )
-        execute_and_validate_audit_entry(
-            "ALTER ROLE role1 WITH PASSWORD = 'Secret^%$#@!'",
-            category="DCL",
-            expected_operation="ALTER ROLE role1 WITH PASSWORD = '***'",
-        )
-        execute_and_validate_audit_entry(
-            "DROP ROLE role1",
-            category="DCL",
-        )
+        tests = [self.PasswordMaskingCase('role1', 'Secret!@#$', 'Secret^%$#@!')]
+        for role_name, password, new_password in tests:
+            execute_and_validate_audit_entry(
+                f"CREATE ROLE {role_name} WITH PASSWORD = '{password}'",
+                category="DCL",
+                expected_operation=f"CREATE ROLE {role_name} WITH PASSWORD = '***'",
+            )
+            execute_and_validate_audit_entry(
+                f"ALTER ROLE {role_name} WITH PASSWORD = '{new_password}'",
+                category="DCL",
+                expected_operation=f"ALTER ROLE {role_name} WITH PASSWORD = '***'",
+            )
+            execute_and_validate_audit_entry(
+                f"DROP ROLE {role_name}",
+                category="DCL",
+            )
 
     def test_login(self):
         """
