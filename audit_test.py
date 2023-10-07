@@ -575,7 +575,8 @@ class TestCQLAudit(AuditTester):
                                                          self.audit_default_settings, **kwargs,
                                                          user="cassandra", ks="")
 
-        tests = [self.PasswordMaskingCase('user1', 'secret', 'Secret^%$#@!')]
+        tests = [self.PasswordMaskingCase('user1', 'secret', 'Secret^%$#@!'),
+                 self.PasswordMaskingCase('user2', '', '')]
         for username, password, new_password in tests:
             execute_and_validate_audit_entry(
                 f"CREATE USER {username} WITH PASSWORD '{password}'",
@@ -603,7 +604,8 @@ class TestCQLAudit(AuditTester):
                                                          self.audit_default_settings, **kwargs,
                                                          user="cassandra", ks="")
 
-        tests = [self.PasswordMaskingCase('role1', 'Secret!@#$', 'Secret^%$#@!')]
+        tests = [self.PasswordMaskingCase('role1', 'Secret!@#$', 'Secret^%$#@!'),
+                 self.PasswordMaskingCase('role2', '', '')]
         for role_name, password, new_password in tests:
             execute_and_validate_audit_entry(
                 f"CREATE ROLE {role_name} WITH PASSWORD = '{password}'",
