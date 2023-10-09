@@ -1,6 +1,7 @@
 import re
 import pytest
 import logging
+import math
 import cassandra.concurrent
 
 from tools.metrics import prometheus_get
@@ -84,5 +85,30 @@ class TestDatabaseMetrics(Tester):
         def read_func():
             cassandra.concurrent.execute_concurrent_with_args(session, select_stmt, params, concurrency=32)
             return count * reads_per_key
+
+        self._do_run(node, read_func)
+
+    def test_total_reads_system(self):
+        """
+        Same principle as test_total_reads_user, but read a system table instead,
+        and check that the reads are still classified as "user" reads.
+        """
+        self.cluster.populate(1).start(wait_for_binary_proto=True)
+        node = self.cluster.nodelist()[0]
+        session = self.patient_cql_connection(node)
+
+        all_rows = list(session.execute("SELECT keyspace_name, table_name, column_name FROM system_schema.columns"))
+
+        params = []
+        for _ in range(math.ceil(1000/len(all_rows))):
+            for r in all_rows:
+                params.append((r.keyspace_name, r.table_name, r.column_name))
+
+        select_stmt = session.prepare(
+            "SELECT * FROM system_schema.columns WHERE keyspace_name=? AND table_name=? AND column_name=?")
+
+        def read_func():
+            cassandra.concurrent.execute_concurrent_with_args(session, select_stmt, params, concurrency=32)
+            return len(params)
 
         self._do_run(node, read_func)
