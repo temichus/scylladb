@@ -47,7 +47,7 @@ from tools.misc import ImmutableMapping
 from tools.rest_clients import StorageServiceClient
 from tools.scylla_defines import CompactionStrategy
 from tools.stress import fill_data_by_cs
-from tools.context import disable_autocompation
+from tools.context import disable_autocompaction
 
 logger = logging.getLogger(__name__)
 
@@ -1440,7 +1440,7 @@ class TestTimeWindowDataSegregation(CompactionAdditionalTester):
     def _check_sstable_timestamps(self, node, window_size=None, window_unit=None, keyspace_name=keyspace_name, table_name=table_name):
         window_size = window_size or self.window_size
         window_unit = window_unit or self.window_unit
-        with disable_autocompation(node=node, keyspace_name=keyspace_name, table_name=table_name):
+        with disable_autocompaction(node=node, keyspace_name=keyspace_name, table_name=table_name):
             statistics_files = self._get_list_of_sstables(node)
             assert len(statistics_files) > 0, "No statisitcs files"
             multiplier = 60 if window_unit == "MINUTES" else 3600

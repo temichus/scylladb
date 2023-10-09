@@ -84,9 +84,9 @@ def nodetool_context(node, start_command, end_command):
 
 
 @contextmanager
-def disable_autocompation(node, keyspace_name, table_name):
+def disable_autocompaction(node, keyspace_name, table_name):
     """
-    temporary disable autocompletion for specific table
+    temporarily disable autocompaction for specific table
     would call the api only if node is up.
     :param node: the target db node
     :param keyspace_name: name of the keyspace

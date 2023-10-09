@@ -26,7 +26,7 @@ from tools.log_utils import wait_for_any_log
 from tools.ldap_docker import running_in_docker
 from tools.marks import unmark
 from tools.files import get_list_of_sstables
-from tools.context import disable_autocompation
+from tools.context import disable_autocompaction
 
 logger = logging.getLogger(__name__)
 
@@ -263,7 +263,7 @@ class KMSRealKeyProviderFactory(BaseKeyProviderFactory):
 
 def validate_sstables_encrypted(node, keyspace='ks', column_family='cf'):
 
-    with disable_autocompation(node, keyspace_name=keyspace, table_name=column_family):
+    with disable_autocompaction(node, keyspace_name=keyspace, table_name=column_family):
         for sstable in get_list_of_sstables(node=node, keyspace_name=keyspace,
                                             table_name=column_family, suffix='-Scylla.db'):
             assert b'scylla_encryption_options' in Path(sstable).read_bytes()
@@ -285,7 +285,7 @@ def validate_sstables_encrypted(node, keyspace='ks', column_family='cf'):
 
 def validate_sstables_clear(node, keyspace='ks', column_family='cf'):
     node.compact()
-    with disable_autocompation(node, keyspace_name=keyspace, table_name=column_family):
+    with disable_autocompaction(node, keyspace_name=keyspace, table_name=column_family):
         for sstable in get_list_of_sstables(node=node, keyspace_name=keyspace,
                                             table_name=column_family, suffix='-Scylla.db'):
             assert b'scylla_encryption_options' not in Path(sstable).read_bytes()
