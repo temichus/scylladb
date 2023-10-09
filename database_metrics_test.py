@@ -1,6 +1,7 @@
 import re
 import pytest
 import logging
+import cassandra.concurrent
 
 from tools.metrics import prometheus_get
 from dtest_class import Tester, get_ip_from_node, create_ks
@@ -53,8 +54,15 @@ class TestDatabaseMetrics(Tester):
         count = 100
         keys = range(count)
         insert_c1c2(session=session, ks=keyspace_name, keys=keys)
+
+        select_stmt = session.prepare("SELECT * FROM cf WHERE key=?")
+
+        reads_per_key = 16
+        params = []
         for k in keys:
-            session.execute(f"SELECT * FROM cf WHERE key='{k}'")
+            params += [(str(k),) for _ in range(reads_per_key)]
+
+        cassandra.concurrent.execute_concurrent_with_args(session, select_stmt, params, concurrency=32)
 
         final_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
@@ -65,6 +73,9 @@ class TestDatabaseMetrics(Tester):
             logger.debug(f"final_reads[{metric_name}]={final_reads[metric_name]} " +
                          f"initial_reads[{metric_name}]={initial_reads[metric_name]} " +
                          f"({added} added)")
-        assert count <= total <= int(count * 1.1), \
-            f"Expected additional reads to be in the [{count}, " \
-            f"{int(count*1.1)}] range, but metrics show {total} additional reads"
+        total_count = count * reads_per_key
+        min_count = total_count
+        max_count = total_count * 1.1
+        assert min_count <= total <= max_count, \
+            f"Expected additional reads to be in the [{min_count}, " \
+            f"{max_count}] range, but metrics show {total} reads"
