@@ -2739,8 +2739,8 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
 
         node.wait_for_compactions()
 
-        regex_match = self._get_table_levels(node=node)
-        self._validate_levels_distribution(regex_match)
+        levels = self._get_table_levels(node=node)
+        self._validate_levels_distribution(levels)
 
     @pytest.mark.require("scylladb/scylla-dtest#2938")
     def test_lcs_table_promotion_major_compaction(self):
@@ -2754,8 +2754,8 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
 
         storage_service_client.compact_ks_cf(keyspace=self.KS, cf=self.CF)
 
-        regex_match = self._get_table_levels(node=node)
-        self._validate_levels_distribution(regex_match)
+        levels = self._get_table_levels(node=node)
+        self._validate_levels_distribution(levels)
 
     def test_lcs_table_promotion_after_stcs_migration(self):
         node, session, _ = self._prepare()
@@ -2771,11 +2771,11 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         session.execute(f"ALTER TABLE ks.cf WITH compaction={self.LCS}")
         node.nodetool(f"refresh {self.KS} {self.CF}")
 
-        regex_match = self._get_table_levels(node=node)
-        self._validate_levels_distribution(regex_match)
+        levels = self._get_table_levels(node=node)
+        self._validate_levels_distribution(levels)
 
-    def _get_table_levels(self, node: Node) -> Optional[Match[AnyStr]]:
-        r"""
+    def _get_table_levels(self, node: Node) -> list[int]:
+        """
         Run <nodetool cfstats> command and get the sstable levels
         info from it.
 
@@ -2796,28 +2796,25 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
                 ...
                 Maximum tombstones per slice (last five minutes): 0.0
 
-            Regex: SSTables in each level:\s*\[(?P<sstable_list>[\d,\s/]*)\]
-            returned Match with groupdict: {"sstable_list": "0, 2, 15"}
+            returned [0, 2, 15]
         """
         cfstats = "\n".join(node.nodetool(f"cfstats {self.KS}.{self.CF}"))
         sstable_levels_line_pattern = re.compile(self.TABLE_LEVELS_PATTERN)
-        return sstable_levels_line_pattern.search(cfstats)
+        matched = sstable_levels_line_pattern.search(cfstats)
+        assert matched
+        # Get the sstable_list from the Match object and parse it into a list of integers
+        raw_levels = matched.group("sstable_list").split(",")
+        return [int(item.split('/')[0]) for item in raw_levels]
 
     @staticmethod
-    def _validate_levels_distribution(levels_regex: Match[AnyStr]):
-        assert levels_regex
-
-        # Get the sstable_list from the Match object and parse it into a list of integers
-        raw_levels = levels_regex.group("sstable_list").split(",")
-
-        levels = [int(item.split('/')[0]) for item in raw_levels]
+    def _validate_levels_distribution(levels: list[int]):
         assert levels[-1] != sum(levels), "Expected sstables to not be promoted solely to the " \
-                                          "top level, but found all in the top level: %s" % raw_levels
+                                          f"top level, but found all in the top level: {levels}"
 
         for level_0, level_1 in zip(levels[:-1], levels[1:]):
             assert level_1 >= level_0 * 10, \
                 ("Expected each LCS level to be at least 10x of the previous level, "
-                 f"but they were not: {raw_levels}")
+                 f"but they were not: {levels}")
 
     def _prepare(self):
         [node], session = self.prepare(1)
