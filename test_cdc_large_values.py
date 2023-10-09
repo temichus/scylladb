@@ -47,7 +47,7 @@ class TestLargeColumnsWithCDC(Tester, CDCInitializeHelper):
             # Ref: https://github.com/scylladb/scylladb/issues/12600
             rf'[Ee]xception when communicating with {node.address()}, to read from [^\s]+: std::bad_alloc',
             rf'exception during mutation write to {node.address()}: std::bad_alloc',
-            rf'[Ee]xception when communicating with {node.address()}, to read from [^\s]+: utils::memory_limit_reached \(kill limit triggered on semaphore _read_concurrency_sem by permit .*\)'
+            rf'[Ee]xception when communicating with {node.address()}, to read from [^\s]+: utils::memory_limit_reached \(kill limit triggered on semaphore [^\s]+ by permit .*\)'
         ]
         self.ignore_log_patterns.extend(self.expected_errors)
         return (node, session)
