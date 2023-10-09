@@ -2814,9 +2814,10 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         assert levels[-1] != sum(levels), "Expected sstables to not be promoted solely to the " \
                                           "top level, but found all in the top level: %s" % raw_levels
 
-        level_count_validation = reduce(lambda x, y: y >= (x * 10), levels)
-        assert level_count_validation, "Expected each LCS level to be at least 10x of the previous " \
-                                       "level, but they were not: %s" % raw_levels
+        for level_0, level_1 in zip(levels[:-1], levels[1:]):
+            assert level_1 >= level_0 * 10, \
+                ("Expected each LCS level to be at least 10x of the previous level, "
+                 f"but they were not: {raw_levels}")
 
     def _prepare(self):
         [node], session = self.prepare(1)
