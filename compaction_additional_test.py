@@ -2770,8 +2770,17 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
 
         session.execute(f"ALTER TABLE ks.cf WITH compaction={self.LCS}")
         node.nodetool(f"refresh {self.KS} {self.CF}")
+        levels = []
+        # wait before the level distribution converges
+        COMPACTION_CONVERGE_ITERATIONS = 10
+        for _ in range(COMPACTION_CONVERGE_ITERATIONS):
+            new_levels = self._get_table_levels(node)
+            if levels != new_levels:
+                levels = new_levels
+            else:
+                break
+            node.wait_for_compactions()
 
-        levels = self._get_table_levels(node=node)
         self._validate_levels_distribution(levels)
 
     def _get_table_levels(self, node: Node) -> list[int]:
