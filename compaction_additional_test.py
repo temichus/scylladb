@@ -2810,7 +2810,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         # Get the sstable_list from the Match object and parse it into a list of integers
         raw_levels = [levels_regex.groupdict().get("sstable_list").split(",")][0]
 
-        levels = [int(item.split('/')[0] if '/' in item else item) for item in raw_levels]
+        levels = [int(item.split('/')[0]) for item in raw_levels]
         assert levels[-1] != sum(levels), "Expected sstables to not be promoted solely to the " \
                                           "top level, but found all in the top level: %s" % raw_levels
 
