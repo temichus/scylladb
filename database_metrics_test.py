@@ -33,6 +33,29 @@ class TestDatabaseMetrics(Tester):
                     metrics_res[name] = val
         return metrics_res
 
+    def _do_run(self, node, read_func):
+        metrics = ['scylla_database_total_reads']
+        metric_class = 'user'
+
+        initial_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
+
+        total_count = read_func()
+
+        final_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
+
+        total = 0
+        for metric_name in list(initial_reads.keys()):
+            added = int(final_reads[metric_name])-int(initial_reads[metric_name])
+            total += added
+            logger.debug(f"final_reads[{metric_name}]={final_reads[metric_name]} " +
+                         f"initial_reads[{metric_name}]={initial_reads[metric_name]} " +
+                         f"({added} added)")
+        min_count = total_count
+        max_count = total_count * 1.1
+        assert min_count <= total <= max_count, \
+            f"Expected additional reads to be in the [{min_count}, " \
+            f"{max_count}] range, but metrics show {total} reads"
+
     def test_total_reads_user(self):
         """
         Following scylladb/scylla:0c6bbc8 queries are now classified by its initiator, so here is a small test that aims
@@ -43,13 +66,9 @@ class TestDatabaseMetrics(Tester):
         node = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
 
-        metrics = ['scylla_database_total_reads']
-        metric_class = 'user'
         keyspace_name = 'database_metrics'
         create_ks(session=session, name=keyspace_name, rf=1)
         create_c1c2_table(session=session)
-
-        initial_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
         count = 100
         keys = range(count)
@@ -62,20 +81,8 @@ class TestDatabaseMetrics(Tester):
         for k in keys:
             params += [(str(k),) for _ in range(reads_per_key)]
 
-        cassandra.concurrent.execute_concurrent_with_args(session, select_stmt, params, concurrency=32)
+        def read_func():
+            cassandra.concurrent.execute_concurrent_with_args(session, select_stmt, params, concurrency=32)
+            return count * reads_per_key
 
-        final_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
-
-        total = 0
-        for metric_name in list(initial_reads.keys()):
-            added = int(final_reads[metric_name])-int(initial_reads[metric_name])
-            total += added
-            logger.debug(f"final_reads[{metric_name}]={final_reads[metric_name]} " +
-                         f"initial_reads[{metric_name}]={initial_reads[metric_name]} " +
-                         f"({added} added)")
-        total_count = count * reads_per_key
-        min_count = total_count
-        max_count = total_count * 1.1
-        assert min_count <= total <= max_count, \
-            f"Expected additional reads to be in the [{min_count}, " \
-            f"{max_count}] range, but metrics show {total} reads"
+        self._do_run(node, read_func)
