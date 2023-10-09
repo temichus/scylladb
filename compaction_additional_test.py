@@ -2758,7 +2758,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         self._validate_levels_distribution(regex_match)
 
     def test_lcs_table_promotion_after_stcs_migration(self):
-        node, session, storage_service_client = self._prepare()
+        node, session, _ = self._prepare()
         create_ks(session=session, name=self.KS, rf=1)
         create_cf(session=session, name=self.CF, columns={'c1': 'text', 'c2': 'text'},
                   compaction=self.STCS)
