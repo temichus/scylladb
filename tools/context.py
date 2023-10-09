@@ -94,15 +94,25 @@ def disable_autocompaction(node, keyspace_name, table_name):
     :return: None
     """
 
+    if node.status != 'UP':
+        yield
+        return
+
     api_url = f"http://{node.address()}:10000/column_family/autocompaction/{keyspace_name}:{table_name}"
 
-    if node.status == 'UP':
-        response = requests.post(api_url)
-        response.raise_for_status()
+    response = requests.get(api_url)
+    response.raise_for_status()
+    enabled = response.json()
+    if not enabled:
+        node.wait_for_compactions()
+        yield
+        return
+
+    response = requests.delete(api_url)
+    response.raise_for_status()
     try:
         node.wait_for_compactions()
         yield
     finally:
-        if node.status == 'UP':
-            response = requests.delete(api_url)
-            response.raise_for_status()
+        response = requests.post(api_url)
+        response.raise_for_status()
