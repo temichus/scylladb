@@ -2808,7 +2808,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         assert levels_regex
 
         # Get the sstable_list from the Match object and parse it into a list of integers
-        raw_levels = [levels_regex.groupdict().get("sstable_list").split(",")][0]
+        raw_levels = [levels_regex.group("sstable_list").split(",")][0]
 
         levels = [int(item.split('/')[0]) for item in raw_levels]
         assert levels[-1] != sum(levels), "Expected sstables to not be promoted solely to the " \
