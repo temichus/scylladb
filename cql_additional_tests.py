@@ -5954,7 +5954,7 @@ class TestCQL(Tester):
 
         # try to insert utf-8 characters into an ascii column and make sure it fails
         assert_invalid(session, "insert into invalid_string_literals (k, a) VALUES (0, '\xE0\x80\x80')",
-                       expected=InvalidRequest, matching='Invalid ASCII character in string literal')
+                       expected=InvalidRequest, matching='(Invalid ASCII character in string literal|Value not compatible)')
 
     @pytest.mark.single_node
     def test_negative_timestamp(self):
