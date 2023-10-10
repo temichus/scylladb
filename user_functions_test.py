@@ -133,7 +133,7 @@ class TestUserFunctions(Tester):
             "CREATE OR REPLACE FUNCTION overloaded(a ascii) called on null input RETURNS text LANGUAGE lua AS 'return \"f4\"'")
 
         # ensure that works with correct specificity
-        assert_invalid(session, "SELECT v FROM tab WHERE k = overloaded('foo')",
+        assert_invalid(session, "SELECT v FROM tab WHERE t = overloaded('foo')",
                        "Ambiguous call to function overloaded")
         assert_one(session, "SELECT v, overloaded(v) FROM tab", ["foo", "f3"])  # varchar is the same as text
         assert_one(session, "SELECT i, overloaded(i) FROM tab", [1, "f2"])
