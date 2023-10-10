@@ -5931,7 +5931,6 @@ class TestCQL(Tester):
         session.execute("alter table test drop v")
         session.execute("alter table test add v int")
 
-    @pytest.mark.require('#5421')
     @pytest.mark.single_node
     def test_invalid_string_literals(self):
         """
