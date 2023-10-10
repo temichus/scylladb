@@ -140,6 +140,9 @@ def copy_logs(request, dtest_config, directory=None, name=None, cores=None):
     for jmx_core_file in jmx_core_files:
         shutil.copyfile(jmx_core_file, Path(logdir) / Path(jmx_core_file).name)
 
+    for pcap in glob.glob(str(Path(cluster_path) / "tcpdump_*.pcap")):
+        shutil.copyfile(pcap, Path(logdir) / Path(pcap).name)
+
     if hasattr(dtest_config.cluster, '_scylla_manager') and dtest_config.cluster._scylla_manager:
         log = os.path.join(dtest_config.cluster._scylla_manager._get_path(), 'scylla-manager.log')
         if os.path.exists(log):

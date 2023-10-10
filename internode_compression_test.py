@@ -1,51 +1,12 @@
-import subprocess
 import time
-import re
-import getpass
 
 import pytest
 from cassandra import ConsistencyLevel
 from cassandra.cluster import DCAwareRoundRobinPolicy
 from cassandra.query import SimpleStatement
 
-from dtest_class import Tester, create_ks, get_ip_from_node, logger
-
-
-class PacketAnalyzer:
-    """Class for analyzing packets between two nodes using tcpdump utility"""
-    packet_lenght_regexp = re.compile(r'length (\d+)')
-
-    def __init__(self, source, destination):
-        self.source = source
-        self.destination = destination
-        self._tcpdump_process = None
-        self._captured_packets = []
-
-    def start(self):
-        cmd = (f"sudo tcpdump -Z {getpass.getuser()} -i lo -n "
-               f"src host {get_ip_from_node(self.source)} and dst host {get_ip_from_node(self.destination)} and port 7000")
-        logger.debug(f"Starting tcpdump with command: {cmd}")
-        self._tcpdump_process = subprocess.Popen(
-            cmd.split(), stderr=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
-        self._tcpdump_process.stdout.readline()  # Wait for tcpdump to start
-        logger.debug("Tcpdump started")
-
-    def stop(self):
-        logger.debug("Stopping tcpdump")
-        subprocess.Popen(f"sudo pkill -P {self._tcpdump_process.pid}", shell=True).wait()
-        self._tcpdump_process.wait()
-        logger.debug("Tcpdump stopped")
-        self._captured_packets = self._tcpdump_process.stdout.readlines()
-        logger.debug(f"stderr: {self._tcpdump_process.stderr.read()}")
-        logger.debug("Captured %s packets", len(self._captured_packets))
-
-    def get_max_packet_length(self):
-        return max([int(packet_lenght.group(1)) for packet in self._captured_packets
-                    if (packet_lenght := self.packet_lenght_regexp.search(packet))])
-
-    def get_packets_with_length(self, length):
-        return [packet for packet in self._captured_packets
-                if (packet_lenght := self.packet_lenght_regexp.search(packet)) and int(packet_lenght.group(1)) == length]
+from dtest_class import Tester, create_ks
+from tools.packet_analyzer import PacketAnalyzer
 
 
 @pytest.mark.dtest_full
