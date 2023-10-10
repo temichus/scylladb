@@ -257,7 +257,7 @@ class TestUserFunctions(Tester):
         # ensure we cannot use a udt from another keyspace as function argument
         assert_invalid(
             session,
-            "CREATE FUNCTION overloaded(v ks.udt) called on null input RETURNS text LANGUAGE java AS 'return \"f1\";'",
+            "CREATE FUNCTION overloaded(v ks.udt) called on null input RETURNS text LANGUAGE lua AS 'return \"f1\"'",
             "Statement on keyspace user_ks cannot refer to a user type in keyspace ks"
         )
 
@@ -265,7 +265,7 @@ class TestUserFunctions(Tester):
         assert_invalid(
             session,
             ("CREATE FUNCTION test(v text) called on null input RETURNS ks.udt "
-             "LANGUAGE java AS 'return null;';"),
+             "LANGUAGE lua AS 'return nil';"),
             "Statement on keyspace user_ks cannot refer to a user type in keyspace ks"
         )
 
