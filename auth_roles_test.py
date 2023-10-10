@@ -379,7 +379,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE role1 FROM mike")
         assert_invalid(mike,
                        "INSERT INTO ks.cf (id, val) VALUES (0, 0)",
-                       "mike has no MODIFY permission on <table ks.cf> or any of its parents",
+                       re.escape("mike has no MODIFY permission on <table ks.cf> or any of its parents"),
                        Unauthorized)
 
         cassandra.execute("GRANT role1 TO mike")
@@ -387,7 +387,7 @@ class TestAuthRoles(Tester):
 
         assert_invalid(mike,
                        "INSERT INTO ks.cf (id, val) VALUES (0, 0)",
-                       "mike has no MODIFY permission on <table ks.cf> or any of its parents",
+                       re.escape("mike has no MODIFY permission on <table ks.cf> or any of its parents"),
                        Unauthorized)
 
     # Issue: Convert user-defined functions to lua #2175
@@ -883,7 +883,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("GRANT EXECUTE ON FUNCTION ks.func_one(int) TO mike")
         mike.execute(select_one)
         assert_invalid(mike, select_two,
-                       r"User mike has no EXECUTE permission on <function ks.func_two\(int\)> or any of its parents",
+                       re.escape("User mike has no EXECUTE permission on <function ks.func_two(int)> or any of its parents"),
                        Unauthorized)
         # granting EXECUTE on all of the parent keyspace's should enable mike to use both functions
         cassandra.execute("GRANT EXECUTE ON ALL FUNCTIONS IN KEYSPACE ks TO mike")
@@ -893,7 +893,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE EXECUTE ON ALL FUNCTIONS IN KEYSPACE ks FROM mike")
         mike.execute(select_one)
         assert_invalid(mike, select_two,
-                       r"User mike has no EXECUTE permission on <function ks.func_two\(int\)> or any of its parents",
+                       re.escape("User mike has no EXECUTE permission on <function ks.func_two(int)> or any of its parents"),
                        Unauthorized)
         # now check that EXECUTE on ALL FUNCTIONS works in the same way
         cassandra.execute("GRANT EXECUTE ON ALL FUNCTIONS TO mike")
@@ -902,7 +902,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE EXECUTE ON ALL FUNCTIONS FROM mike")
         mike.execute(select_one)
         assert_invalid(mike, select_two,
-                       r"User mike has no EXECUTE permission on <function ks.func_two\(int\)> or any of its parents",
+                       re.escape("User mike has no EXECUTE permission on <function ks.func_two(int)> or any of its parents"),
                        Unauthorized)
         # finally, check that revoking function level permissions doesn't affect root/keyspace level perms
         cassandra.execute("GRANT EXECUTE ON ALL FUNCTIONS IN KEYSPACE ks TO mike")
@@ -942,7 +942,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("CREATE ROLE role1")
         cql = "GRANT EXECUTE ON FUNCTION ks.plus_one(int) TO role1"
         assert_invalid(mike, cql,
-                       r"User mike has no AUTHORIZE permission on <function ks.plus_one\(int\)> or any of its parents",
+                       re.escape("User mike has no AUTHORIZE permission on <function ks.plus_one(int)> or any of its parents"),
                        Unauthorized)
         cassandra.execute("GRANT AUTHORIZE ON FUNCTION ks.plus_one(int) TO mike")
         mike.execute(cql)
@@ -950,7 +950,7 @@ class TestAuthRoles(Tester):
         cassandra.execute("REVOKE AUTHORIZE ON FUNCTION ks.plus_one(int) FROM mike")
         cql = "REVOKE EXECUTE ON FUNCTION ks.plus_one(int) FROM role1"
         assert_invalid(mike, cql,
-                       r"User mike has no AUTHORIZE permission on <function ks.plus_one\(int\)> or any of its parents",
+                       re.escape("User mike has no AUTHORIZE permission on <function ks.plus_one(int)> or any of its parents"),
                        Unauthorized)
         cassandra.execute("GRANT AUTHORIZE ON FUNCTION ks.plus_one(int) TO mike")
         mike.execute(cql)
@@ -958,7 +958,7 @@ class TestAuthRoles(Tester):
         # can't drop a function without DROP
         cql = "DROP FUNCTION ks.plus_one(int)"
         assert_invalid(mike, cql,
-                       r"User mike has no DROP permission on <function ks.plus_one\(int\)> or any of its parents",
+                       re.escape("User mike has no DROP permission on <function ks.plus_one(int)> or any of its parents"),
                        Unauthorized)
         cassandra.execute("GRANT DROP ON FUNCTION ks.plus_one(int) TO mike")
         mike.execute(cql)
@@ -970,7 +970,7 @@ class TestAuthRoles(Tester):
 
         cql = "DROP FUNCTION ks.no_such_function(int,int)"
         assert_invalid(mike, cql,
-                       r"Unconfigured function ks.no_such_function\(int,int\)",
+                       re.escape("Unconfigured function ks.no_such_function(int,int)"),
                        InvalidRequest)
 
         # can't create a new function without CREATE on the parent keyspace's collection of functions
@@ -1128,7 +1128,7 @@ class TestAuthRoles(Tester):
         mike = self.get_session(user='mike', password='12345')
         assert_invalid(mike,
                        cql,
-                       r"User mike has no EXECUTE permission on <function ks.plus_one\(int\)> or any of its parents",
+                       re.escape("User mike has no EXECUTE permission on <function ks.plus_one(int)> or any of its parents"),
                        Unauthorized)
 
         cassandra.execute("GRANT EXECUTE ON FUNCTION ks.plus_one(int) TO mike")
@@ -1151,7 +1151,7 @@ class TestAuthRoles(Tester):
         select = "SELECT k, v, ks.plus_one(v) FROM ks.t1 WHERE k = 1"
         assert_invalid(mike,
                        select,
-                       r"User mike has no EXECUTE permission on <function ks.plus_one\(int\)> or any of its parents",
+                       re.escape("User mike has no EXECUTE permission on <function ks.plus_one(int)> or any of its parents"),
                        Unauthorized)
 
         cassandra.execute("GRANT function_user TO mike")
@@ -1190,16 +1190,16 @@ class TestAuthRoles(Tester):
         else:
             # UDF premissions aren't supported before 5.3 (https://github.com/scylladb/scylladb/issues/5572)
             assert_invalid(cassandra, "GRANT EXECUTE ON FUNCTION system.intasblob(int) TO mike",
-                           "Error from server: code=2000 [Syntax error in CQL query]",
+                           re.escape("Error from server: code=2000 [Syntax error in CQL query]"),
                            SyntaxException)
             assert_invalid(cassandra, "REVOKE ALL PERMISSIONS ON FUNCTION system.intasblob(int) FROM mike",
-                           "Error from server: code=2000 [Syntax error in CQL query]",
+                           re.escape("Error from server: code=2000 [Syntax error in CQL query]"),
                            SyntaxException)
             assert_invalid(cassandra, "GRANT EXECUTE ON ALL FUNCTIONS IN KEYSPACE system TO mike",
-                           "Error from server: code=2000 [Syntax error in CQL query]",
+                           re.escape("Error from server: code=2000 [Syntax error in CQL query]"),
                            SyntaxException)
             assert_invalid(cassandra, "REVOKE ALL PERMISSIONS ON ALL FUNCTIONS IN KEYSPACE system FROM mike",
-                           "Error from server: code=2000 [Syntax error in CQL query]",
+                           re.escape("Error from server: code=2000 [Syntax error in CQL query]"),
                            SyntaxException)
 
     @pytest.mark.next_gating
@@ -1219,7 +1219,7 @@ class TestAuthRoles(Tester):
                        "Resource <keyspace ks> does not support any of the requested permissions",
                        SyntaxException)
         assert_invalid(cassandra, "GRANT EXECUTE ON TABLE ks.t1 TO mike",
-                       "Resource <table ks.t1> does not support any of the requested permissions",
+                       re.escape("Resource <table ks.t1> does not support any of the requested permissions"),
                        SyntaxException)
         # Resource type RoleResource does not support any of the requested permissions
         assert_invalid(cassandra, "GRANT EXECUTE ON ALL ROLES TO mike",
@@ -1259,12 +1259,13 @@ class TestAuthRoles(Tester):
         # check permissions to create the aggregate
         assert_invalid(mike,
                        create_aggregate_cql,
-                       r"User mike has no EXECUTE permission on <function ks.state_function\(int, int\)> or any of its parents",
+                       re.escape(
+                           "User mike has no EXECUTE permission on <function ks.state_function(int, int)> or any of its parents"),
                        Unauthorized)
         cassandra.execute("GRANT EXECUTE ON FUNCTION ks.state_function(int, int) TO mike")
         assert_invalid(mike,
                        create_aggregate_cql,
-                       r"User mike has no EXECUTE permission on <function ks.final_function\(int\)> or any of its parents",
+                       re.escape("User mike has no EXECUTE permission on <function ks.final_function(int)> or any of its parents"),
                        Unauthorized)
         cassandra.execute("GRANT EXECUTE ON FUNCTION ks.final_function(int) TO mike")
         mike.execute(create_aggregate_cql)
@@ -1276,12 +1277,13 @@ class TestAuthRoles(Tester):
         execute_aggregate_cql = "SELECT ks.simple_aggregate(v) FROM ks.t1"
         assert_invalid(mike,
                        execute_aggregate_cql,
-                       r"User mike has no EXECUTE permission on <function ks.state_function\(int, int\)> or any of its parents",
+                       re.escape(
+                           "User mike has no EXECUTE permission on <function ks.state_function(int, int)> or any of its parents"),
                        Unauthorized)
         cassandra.execute("GRANT EXECUTE ON FUNCTION ks.state_function(int, int) TO mike")
         assert_invalid(mike,
                        execute_aggregate_cql,
-                       r"User mike has no EXECUTE permission on <function ks.final_function\(int\)> or any of its parents",
+                       re.escape("User mike has no EXECUTE permission on <function ks.final_function(int)> or any of its parents"),
                        Unauthorized)
         cassandra.execute("GRANT EXECUTE ON FUNCTION ks.final_function(int) TO mike")
 

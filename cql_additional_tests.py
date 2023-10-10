@@ -1717,7 +1717,7 @@ class TestCQL(Tester):
         # existing table
         assert_invalid(session, "CREATE TABLE test3 (k int PRIMARY KEY, c int)",
                        expected=AlreadyExists,
-                       matching="ks.test3")
+                       matching=re.escape("ks.test3"))
         # repeated column
         assert_invalid(session, "CREATE TABLE test4 (k int PRIMARY KEY, c int, k text)",
                        matching="code=2200")

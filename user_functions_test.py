@@ -1,4 +1,5 @@
 import math
+import re
 import time
 
 import pytest
@@ -105,7 +106,7 @@ class TestUserFunctions(Tester):
         # try giving existing function bad input, should error
         assert_invalid(session1,
                        "SELECT key, value, x_2(key) FROM udf_kv where key = 1",
-                       "Type error: key cannot be passed as argument 0 of function ks.x_2 of type double")
+                       re.escape("Type error: key cannot be passed as argument 0 of function ks.x_2 of type double"))
 
         session2.execute("drop function x_2")
         session3.execute("drop function x_3")
@@ -149,7 +150,8 @@ class TestUserFunctions(Tester):
 
         # varchar is the same as text here too.
         session.execute("DROP FUNCTION overloaded(varchar)")
-        assert_invalid(session, "DROP FUNCTION overloaded(text)", "User function ks.overloaded(text) doesn't exist")
+        assert_invalid(session, "DROP FUNCTION overloaded(text)",
+                       re.escape("User function ks.overloaded(text) doesn't exist"))
 
         session.execute("DROP FUNCTION overloaded(ascii)")
 
