@@ -771,7 +771,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
                             f"replication(factor={replication_factor}) keyspace={ks_name}"]
 
         logger.info("Executing the following write stress command '%s'", write_stress_cmd)
-        stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd, capture_output=True))
+        stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd))
 
         logger.info("Adding new node")
         node3 = cluster.new_node(i=cluster_size + 1, debug=True, auto_bootstrap=True, is_seed=False)
