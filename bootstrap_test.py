@@ -13,6 +13,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib.node import NodeError
 from psutil import Process
 
+from ccmlib.node import ToolError
 from ccmlib.scylla_node import ScyllaNode
 from dtest_class import create_cf, create_ks, Tester, get_ip_from_node
 from dtest_setup import DTestSetup
@@ -798,9 +799,12 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         assert kill_node_err_msg.format(1 if is_gracefully else -9) == str(start_new_node_thread.exception()), \
             f"The node '{node3.name}' should be killed by SIGKILL signal"
         logger.info("Waiting until stress thread will finish running")
-        results = stress_thread.result()
-        logger.debug(format_cs_output(results))
-        assert_cs_success(results)
+        # c-s is expected to fail with CL=TWO when the bootstrapped node is killed
+        try:
+            results = stress_thread.result()
+            assert_cs_success(results)
+        except ToolError:
+            pass
 
     @require("#4488")
     def test_cluster_become_unavailable_when_force_kill_node_during_bootstrap(self):
