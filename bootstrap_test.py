@@ -788,6 +788,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         mark_log_list = [node.mark_log() for node in nodes]
         logger.info("%s killing node'%s' (PID is '%s')", {'Gracefully' if is_gracefully else 'Force'}, node3.name,
                     node3.pid)
+        self.ignore_log_patterns.append(r'bootstrap.*failed')
         node3.stop(wait=True, gently=is_gracefully)
         removing_from_gossip_msg = removing_from_gossip_msg.format(get_ip_from_node(node=node3))
         for node, mark_log in zip(nodes, mark_log_list):
