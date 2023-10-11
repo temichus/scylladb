@@ -757,7 +757,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         ks_name, consistency_level_key = "keyspace", "TWO"
         beginning_stream_session_msg = f"Beginning stream session|sync data for keyspace={ks_name}, status=started"
         removing_from_gossip_msg = r"FatClient .*{} has been silent for (\d+)ms, removing from gossip"
-        stress_duration_minutes = 3
+        stress_duration_minutes = 1
         replication_factor = 2
         cluster_size = 2
 
@@ -790,7 +790,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         logger.info("%s killing node'%s' (PID is '%s')", {'Gracefully' if is_gracefully else 'Force'}, node3.name,
                     node3.pid)
         self.ignore_log_patterns.append(r'bootstrap.*failed')
-        node3.stop(wait=True, gently=is_gracefully)
+        node3.stop(wait=True, gently=is_gracefully, wait_other_notice=True)
         removing_from_gossip_msg = removing_from_gossip_msg.format(get_ip_from_node(node=node3))
         for node, mark_log in zip(nodes, mark_log_list):
             logger.info("Checking the following message '%s' exits in node '%s'", removing_from_gossip_msg, node.name)
@@ -805,6 +805,13 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             assert_cs_success(results)
         except ToolError:
             pass
+
+        # Now, after bottstrapping was aborted, c-s must pass
+        logger.info("Executing the following write stress command: '%s'", write_stress_cmd)
+        stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd))
+        results = stress_thread.result()
+        assert_cs_success(results)
+        logger.debug(format_cs_output(results))
 
     @require("#4488")
     def test_cluster_become_unavailable_when_force_kill_node_during_bootstrap(self):
