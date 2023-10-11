@@ -595,6 +595,11 @@ class TestCdc(Tester, CDCInitializeHelper):
         request.addfinalizer(lambda: stop_event.set())
         start_time = time.time()
 
+        def print_fatal_exception(worker_id, operation_start_time, e):
+            ago = time.time() - operation_start_time
+            logger.error(('Worker #{}: Got a critical error for a write that started {} seconds ago: {}. ' +
+                          'The worker will not continue and the test will fail').format(worker_id, ago, e))
+
         def run_writes(worker_id):
             confirmed_writes = 0
             unconfirmed_writes = 0
@@ -604,20 +609,25 @@ class TestCdc(Tester, CDCInitializeHelper):
             # We don't want the driver to retry writes, because this would cause us to count writes incorrectly.
             stmt.retry_policy = FallthroughRetryPolicy()
             while not stop_event.is_set():
+                operation_start_time = time.time()
                 try:
                     session.execute(stmt, (i, str(worker_id)))
                     confirmed_writes += 1
                 except ConnectionException as e:
-                    logger.debug('Got ConnectionException, probably because the cluster is being downsized, retrying; ' +
-                                 'exception was {}'.format(e))
+                    logger.debug(('Worker #{}: Got ConnectionException, probably because the cluster is being downsized, retrying; ' +
+                                  'exception was {}').format(worker_id, e))
                     # We cannot determine if the write was successful.
                     unconfirmed_writes += 1
                 except InvalidRequest as e:
                     if "cdc: attempted to get a stream from an earlier generation than the currently used" in str(e):
-                        logger.debug('Attempted to write with a timestamp older than the current generation. ' +
-                                     'This is a non critical error, continuing; exception was: {}'.format(e))
+                        logger.debug(('Worker #{}: Attempted to write with a timestamp older than the current generation. ' +
+                                      'This is a non critical error, continuing; exception was: {}').format(worker_id, e))
                     else:
+                        print_fatal_exception(worker_id, operation_start_time, e)
                         raise e
+                except Exception as e:
+                    print_fatal_exception(worker_id, operation_start_time, e)
+                    raise e
                 i += 1
             return confirmed_writes, unconfirmed_writes
 
