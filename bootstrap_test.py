@@ -748,8 +748,6 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         Kill n3 before n3 finishes bootstrap
         Check n1 and n2 will notice n3 is gone
         Check writes with CL = 2 will recover
-
-        https://github.com/scylladb/scylla/issues/4488
         """
         executor = ThreadPoolExecutor(max_workers=2)
         bootstrap_msg = "Starting to bootstrap"
@@ -813,11 +811,9 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         assert_cs_success(results)
         logger.debug(format_cs_output(results))
 
-    @require("#4488")
     def test_cluster_become_unavailable_when_force_kill_node_during_bootstrap(self):
         self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=False)
 
-    @require("#4488")
     def test_cluster_become_unavailable_when_gracefully_kill_node_during_bootstrap(self):
         self._cluster_become_unavailable_when_kill_node_during_bootstrap(is_gracefully=True)
 
