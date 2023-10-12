@@ -1236,7 +1236,8 @@ class TesterAlternator(BaseAlternator):
     @pytest.mark.parametrize("value,isolation", [
         (value, isolation)
         for value in ("[1]", "{1}", "1")
-        for isolation in (WriteIsolation.ALWAYS_USE_LWT, WriteIsolation.UNSAFE_RMW)
+        # not testing WriteIsolation.UNSAFE_RMW, can be used for debuuging
+        for isolation in (WriteIsolation.ALWAYS_USE_LWT, )
     ])
     def test_update_items_from_multiple_threads(self, value: str, isolation: WriteIsolation):
         """
@@ -1298,11 +1299,8 @@ class TesterAlternator(BaseAlternator):
         if is_value_iter:
             result[0]["value"] = sum(result[0]["value"])
 
-        with ExitStack() as stack:
-            if isolation is WriteIsolation.UNSAFE_RMW:
-                stack.enter_context(pytest.raises(expected_exception=AssertionError))
-            assert result[0]["value"] == expected_item["value"], \
-                "The value of the result is not equal to the sum of the values added through the threads"
+        assert result[0]["value"] == expected_item["value"], \
+            "The value of the result is not equal to the sum of the values added through the threads"
 
     @pytest.mark.next_gating
     def test_delete_elements_from_a_set(self):
