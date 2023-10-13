@@ -6564,7 +6564,10 @@ class TestCQL(Tester):
         assert len(res.current_rows) == 10, "Unexpected number of table rows."
 
     def _assert_invalid_filtering(self, session, query):
-        assert_invalid(session=session, query=query, matching=MSG_ALLOW_FILTERING)
+        msg_upper = 'ALLOW FILTERING'
+        msg_lower = msg_upper.lower()
+        matching = f'{msg_upper}|{msg_lower}'
+        assert_invalid(session=session, query=query, matching=matching)
 
     def _assert_valid_query(self, session, query):
         try:
