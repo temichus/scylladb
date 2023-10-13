@@ -43,8 +43,6 @@ from tools.metrics import get_node_metrics
 from tools.stress import format_cs_output
 from tools.marks import unmark
 
-MSG_ALLOW_FILTERING = "ALLOW FILTERING"
-
 logger = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.next_gating
@@ -1437,7 +1435,7 @@ class TestCQL(Tester):
             session.execute("CREATE INDEX on test(v1)")
             ALLOW_FILTERING = ''
         else:
-            ALLOW_FILTERING = MSG_ALLOW_FILTERING
+            ALLOW_FILTERING = "ALLOW FILTERING"
 
         # Inserts
         session.execute("INSERT INTO test (k, c, v1, v2) VALUES (0, 0, null, {'1', '2'})")
