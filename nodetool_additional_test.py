@@ -58,17 +58,19 @@ class TestNodetool(Tester):
 
         self.width = 160
         self.multi_dc_queries_method_list = [{"func": self.verify_info, "time": 60, "args": [None, 'dc1', 'RAC1']},
-                                             {"func": self.verify_status, "time": 25}, {
-                                                 "func": self.verify_netstats, "time": 40},
-                                             {"func": self.verify_cfhistograms, "time": 25}, {
-                                                 "func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
-                                             {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
+                                             {"func": self.verify_status, "time": 25},
+                                             {"func": self.verify_netstats, "time": 40},
+                                             {"func": self.verify_cfhistograms, "time": 25},
+                                             {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
+                                             {"func": self.verify_describering, "time": 25},
+                                             {"func": self.verify_decribecluster, "time": 25}]
         self.queries_method_list = [{"func": self.verify_info, "time": 60},
-                                    {"func": self.verify_status, "time": 25}, {
-                                        "func": self.verify_netstats, "time": 40},
-                                    {"func": self.verify_cfhistograms, "time": 25}, {
-                                        "func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
-                                    {"func": self.verify_describering, "time": 25}, {"func": self.verify_decribecluster, "time": 25}]
+                                    {"func": self.verify_status, "time": 25},
+                                    {"func": self.verify_netstats, "time": 40},
+                                    {"func": self.verify_cfhistograms, "time": 25},
+                                    {"func": self.verify_cfstats, "time": 25, "args": [None, "keyspace1"]},
+                                    {"func": self.verify_describering, "time": 25},
+                                    {"func": self.verify_decribecluster, "time": 25}]
         self.reserved_names = ['view_pending_updates']
         self.cluster_started = False
         self.validation_expected_errs = [
@@ -2013,11 +2015,17 @@ class TestNodetool(Tester):
                 logger.info("Test call flow:\n" + self.print_time(times, start))
 
     def test_concurrent_repair(self):
-        tst = [{"operations": [{"func": self.run_cluster, "block": True}, {"func": self.concurrent_stress, "delay": 5}, {"func": self.repair, "time": 300, "delay": 10}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
+        tst = [{"operations": [{"func": self.run_cluster, "block": True},
+                               {"func": self.concurrent_stress, "delay": 5},
+                               {"func": self.repair, "time": 300, "delay": 10}],
+                "recurrent": [{"func": self.verify_all_api, "block": True},
+                              {"func": self.verify_info, "time": 60, "delay": 10}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 5}]},
-               {"operations": [{"func": self.add_node, "time": 300}, {"func": self.repair, "time": 300}],
-                "recurrent": [{"func": self.verify_info, "time": 90}, {"func": self.verify_status, "time": 25}, {"func": self.verify_netstats, "time": 26}]}]
+               {"operations": [{"func": self.add_node, "time": 300},
+                               {"func": self.repair, "time": 300}],
+                "recurrent": [{"func": self.verify_info, "time": 90},
+                              {"func": self.verify_status, "time": 25},
+                              {"func": self.verify_netstats, "time": 26}]}]
         self.general_concurrent(tst)
 
     def rebuild(self, node=None, dc=""):
@@ -2054,8 +2062,14 @@ class TestNodetool(Tester):
         call rebuild
         """
         expected_errors = ["No schema agreement from live replicas after"]
-        tst = [{"operations": [{"func": self.run_cluster, "args": [[3, 2], {'hinted_handoff_enabled': False, 'compaction_enforce_min_threshold': True}], "block": True}, {"func": self.stop, "delay": 5, "args": [[3, 4]]}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
+        tst = [{"operations": [{"func": self.run_cluster,
+                                "args": [[3, 2],
+                                         {'hinted_handoff_enabled': False,
+                                          'compaction_enforce_min_threshold': True}],
+                                "block": True},
+                               {"func": self.stop, "delay": 5, "args": [[3, 4]]}],
+                "recurrent": [{"func": self.verify_all_api, "block": True},
+                              {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 15,
                                 "args": [None, {"cl": "ONE", "duration": "1m",
                                                 "opt": ["-schema", "replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)", "-rate", "threads=10"],
@@ -2102,10 +2116,21 @@ class TestNodetool(Tester):
         node_to_drain = 2
         expected_errors = self.stress_node_down_expected_errors(node_to_drain)
         tst = [{"operations": [{"func": self.run_cluster}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m", "opt": ["-schema", "replication(strategy=SimpleStrategy, replication_factor=2)", "-rate", "threads=10"]}]}],
+                "recurrent": [{"func": self.verify_all_api, "block": True},
+                              {"func": self.verify_info, "time": 60, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress,
+                                "delay": 5,
+                                "args": [None,
+                                         {"duration": "1m",
+                                          "opt": ["-schema", "replication(strategy=SimpleStrategy, replication_factor=2)",
+                                                  "-rate", "threads=10"]}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl": "ONE", "duration": "2m", "expected_errors": expected_errors}]},
+               {"operations": [{"func": self.concurrent_stress,
+                                "delay": 5,
+                                "args": [None,
+                                         {"cl": "ONE",
+                                          "duration": "2m",
+                                          "expected_errors": expected_errors}]},
                                {"func": self.drain, "delay": 90, "args": [node_to_drain]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
@@ -2126,10 +2151,21 @@ class TestNodetool(Tester):
         node_to_drain = 2
         expected_errors = self.stress_node_down_expected_errors(node_to_drain)
         tst = [{"operations": [{"func": self.run_cluster}],
-                "recurrent": [{"func": self.verify_all_api, "block": True}, {"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"duration": "1m", "opt": ["-schema", "replication(strategy=SimpleStrategy, replication_factor=2)", "-rate", "threads=10"]}]}],
+                "recurrent": [{"func": self.verify_all_api, "block": True},
+                              {"func": self.verify_info, "time": 60, "delay": 10}]},
+               {"operations": [{"func": self.concurrent_stress,
+                                "delay": 5,
+                                "args": [None,
+                                         {"duration": "1m",
+                                          "opt": ["-schema", "replication(strategy=SimpleStrategy, replication_factor=2)",
+                                                  "-rate", "threads=10"]}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress, "delay": 5, "args": [None, {"cl": "ONE", "duration": "2m", "expected_errors": expected_errors}]},
+               {"operations": [{"func": self.concurrent_stress,
+                                "delay": 5,
+                                "args": [None,
+                                         {"cl": "ONE",
+                                          "duration": "2m",
+                                          "expected_errors": expected_errors}]},
                                {"func": self.restart, "delay": 10, "args": [node_to_drain]}],
                 "recurrent": self. queries_method_list}]
         self.general_concurrent(tst)
