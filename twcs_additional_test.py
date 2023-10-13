@@ -34,10 +34,11 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         self._prepare_twcs_table(ttl=ttl, session=session)
         node.nodetool('disableautocompaction')
         sstables = self.create_sstables_with_short_ttl(session, ttl=ttl)
-        node.nodetool('enableautocompaction')
+        sleep(1)  # make other sstables to expire later
         p = self._start_high_load_on_cluster(duration_minutes=test_max_duration_minutes)
         sleep(ttl)  # wait for sstables to be expired
         mark = self.cluster.nodelist()[0].mark_log()
+        node.nodetool('enableautocompaction')
         timeout = (test_max_duration_minutes + 1) * 60
         sstable_exists = self.wait_until_sstables_are_evicted(sstables, timeout)
         self.stop_high_load_on_cluster(p)
