@@ -970,27 +970,27 @@ class TestCQL(Tester):
 
         with subtests.test("Filter by counter column with equal condition", i=1):
             assert_all(session=session,
-                       query=f"select * from clicks where c1 = 2 {MSG_ALLOW_FILTERING}",
+                       query="select * from clicks where c1 = 2 ALLOW FILTERING",
                        expected=[[1, 2, 2, 2], [0, 2, 2, None]])
 
         with subtests.test("Filter by counter column with more condition", i=2):
             assert_all(session=session,
-                       query=f"select * from clicks where c1 > 2 {MSG_ALLOW_FILTERING}",
+                       query="select * from clicks where c1 > 2 ALLOW FILTERING",
                        expected=[[1, 3, 3, 3], [1, 4, 4, 4], [0, 3, 3, None], [0, 4, 4, None]])
 
         with subtests.test("Filter by counter column with more and equal condition", i=3):
             assert_all(session=session,
-                       query=f"select * from clicks where c1 > 3 and c2 = 4 {MSG_ALLOW_FILTERING}",
+                       query="select * from clicks where c1 > 3 and c2 = 4 ALLOW FILTERING",
                        expected=[[1, 4, 4, 4]])
 
         with subtests.test("Filter by counter column with \"in\" and >= condition"):
             assert_all(session=session,
-                       query=f"select * from clicks where c1 in (0, 2) and c2 >= 2 {MSG_ALLOW_FILTERING}",
+                       query="select * from clicks where c1 in (0, 2) and c2 >= 2 ALLOW FILTERING",
                        expected=[[1, 2, 2, 2]])
 
         with subtests.test("Filter by all columns including counter column"):
             assert_all(session=session,
-                       query=f"select * from clicks where pk = 1 and ck = 4 and c1 < 3 and c2 = 0 {MSG_ALLOW_FILTERING}",
+                       query="select * from clicks where pk = 1 and ck = 4 and c1 < 3 and c2 = 0 ALLOW FILTERING",
                        expected=[])
 
         with subtests.test("Verify ALLOW FILTERING error message"):
@@ -1006,22 +1006,22 @@ class TestCQL(Tester):
                        query=f"select * from clicks where pk=1 and ck=1",
                        expected=[[1, 1, 1, 1, None]])
             assert_all(session=session,
-                       query=f"select count(*) from clicks where c3 = 0 {MSG_ALLOW_FILTERING}",
+                       query="select count(*) from clicks where c3 = 0 ALLOW FILTERING",
                        expected=[[0]])  # c3 is null, which cannot be selected with filtering.
 
             session.execute(f"UPDATE clicks SET c3 = c3-1 WHERE pk=0 and ck=1")
             assert_all(session=session,
-                       query=f"select * from clicks where c3 = -1 {MSG_ALLOW_FILTERING}",
+                       query="select * from clicks where c3 = -1 ALLOW FILTERING",
                        expected=[[0, 1, 1, None, -1]])
 
         with subtests.test("Delete counter column"):
             session.execute("DELETE c1 FROM clicks WHERE pk = 1 and ck = 1")
             assert_all(session=session,
-                       query=f"select * from clicks where c1 = 1 {MSG_ALLOW_FILTERING}",
+                       query="select * from clicks where c1 = 1 ALLOW FILTERING",
                        expected=[[0, 1, 1, None, -1]])
 
             assert_all(session=session,
-                       query=f"select * from clicks where c1 = 0 {MSG_ALLOW_FILTERING}",
+                       query="select * from clicks where c1 = 0 ALLOW FILTERING",
                        expected=[[1, 0, 0, 0, None], [0, 0, 0, None, None]])
 
     @pytest.mark.single_node
