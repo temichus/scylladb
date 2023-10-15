@@ -13,11 +13,21 @@
                             "Min": 28,
                             "Max": 32
                         },
+                        "ExcludedInstanceTypes": [
+                            "c3.8xlarge",
+                            "i2.8xlarge",
+                            "m5d.8xlarge",
+                            "r3.8xlarge",
+                            "x1e.8xlarge"
+                        ],
                         "MemoryMiB": {
                             "Min": 7168,
                             "Max": 262144
                         },
                         "LocalStorage": "required",
+                        "LocalStorageTypes": [
+                            "ssd"
+                        ],
                         "TotalLocalStorageGB": {
                             "Min": 100.0,
                             "Max": 2000.0
