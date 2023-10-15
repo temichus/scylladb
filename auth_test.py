@@ -1990,7 +1990,8 @@ class TestAuth(Tester):
                   'authorizer': 'com.scylladb.auth.TransitionalAuthorizer'}
         nodes[0].set_configuration_options(values=config)
         nodes[0].start(wait_for_binary_proto=True)
-        wait_for_any_log(self.cluster.nodelist(), 'Created default superuser authentication record', 30)
+        timeout = 30 if self.cluster.scylla_mode != 'debug' else 180
+        wait_for_any_log(self.cluster.nodelist(), 'Created default superuser authentication record', timeout)
 
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
         session.execute("CREATE USER normal WITH PASSWORD '123456' NOSUPERUSER")
