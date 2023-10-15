@@ -215,7 +215,6 @@ class TestSchemaManagement(Tester):
         """
         raise NotImplementedError
 
-    @unmark.next_gating  # https://github.com/scylladb/scylladb/issues/15200 https://github.com/scylladb/python-driver/issues/168
     @pytest.mark.parametrize("case", ("create_table", "alter_table", "drop_table"))
     def test_update_schema_while_node_is_killed(self, case):
         """
