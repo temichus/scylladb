@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class PacketAnalyzer:
     """Class for analyzing packets between two nodes using tcpdump utility"""
-    packet_lenght_regexp = re.compile(r'length (\d+)')
+    packet_length_regexp = re.compile(r'length (\d+)')
 
     def __init__(self, source: Node = None, destination: Node = None, port: int = 7000, output_dir: str | Path = None):
         self.source = source
@@ -55,12 +55,14 @@ class PacketAnalyzer:
         logger.debug(f"stderr: {self._tcpdump_process.stderr.read()}")
 
     def get_max_packet_length(self):
-        return max([int(packet_lenght.group(1)) for packet in self._captured_packets
-                    if (packet_lenght := self.packet_lenght_regexp.search(packet))])
+        if not self._captured_packets:
+            return -1
+        return max([int(packet_length.group(1)) for packet in self._captured_packets
+                    if (packet_length := self.packet_length_regexp.search(packet))])
 
     def get_packets_with_length(self, length):
         return [packet for packet in self._captured_packets
-                if (packet_lenght := self.packet_lenght_regexp.search(packet)) and int(packet_lenght.group(1)) == length]
+                if (packet_length := self.packet_length_regexp.search(packet)) and int(packet_length.group(1)) == length]
 
 
 @contextmanager
