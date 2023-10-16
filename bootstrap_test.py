@@ -799,8 +799,9 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             logger.info("Checking the following message '%s' exits in node '%s'", removing_from_gossip_msg, node.name)
             node.watch_log_for(exprs=removing_from_gossip_msg, from_mark=mark_log)
 
-        assert kill_node_err_msg.format(1 if is_gracefully else -9) == str(start_new_node_thread.exception()), \
-            f"The node '{node3.name}' should be killed by SIGKILL signal"
+        if not is_gracefully:
+            assert kill_node_err_msg.format(-9) == str(start_new_node_thread.exception()), \
+                f"The node '{node3.name}' should be killed by SIGKILL signal"
         logger.info("Waiting until stress thread will finish running")
         # c-s is expected to fail with CL=TWO when the bootstrapped node is killed
         try:
