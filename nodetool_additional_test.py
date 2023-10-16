@@ -2714,7 +2714,7 @@ def set_node_probability(node, value: float):
 
 
 @pytest.mark.dtest_full
-@pytest.mark.dtest_gating
+@pytest.mark.next_gating
 class TestGetTraceProbability(Tester):
     """
     Check gettraceprobablility command returned value after settraceprobablility operations:

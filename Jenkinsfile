@@ -97,7 +97,7 @@ pipeline {
                         lastStage = env.STAGE_NAME
                         sh '''
                         export INSTALL_CASSANDRA="pip3 install --user https://github.com/scylladb/scylla-ccm/archive/next.zip"
-                         ./scripts/run_test.sh --collect-only --collect-required -qqq
+                         ./scripts/run_test.sh --collect-only --collect-required -qqq -Werror -W'ignore:The asyncore module is deprecated:DeprecationWarning' -W'ignore:A private pytest class or function was used:DeprecationWarning'
                         '''
                     }
                 }
