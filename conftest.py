@@ -10,6 +10,7 @@ import argparse
 
 import pytest
 import github
+import requests
 from psutil import virtual_memory
 from botocore.exceptions import ClientError as AwsClientError
 from botocore.exceptions import BotoCoreError
@@ -601,6 +602,16 @@ def pytest_markeval_namespace():
     )
 
 
+def get_aws_instance_type():
+    try:
+        res = requests.get('http://169.254.169.254/latest/meta-data/instance-type', timeout=10)
+        res.raise_for_status()
+        return res.text
+
+    except requests.exceptions.RequestException:
+        return "N/A"
+
+
 @pytest.fixture(scope='session', autouse=True)
 def configure_es(request: pytest.FixtureRequest, dtest_config):
     elk_reporter = None
@@ -610,11 +621,13 @@ def configure_es(request: pytest.FixtureRequest, dtest_config):
         pass
 
     if elk_reporter:
+
         extra_data = {
             "SCYLLA_FULL_VERSION": dtest_config.scylla_full_version,
             "SCYLLA_BRANCH_VERSION":  dtest_config.cassandra_version_from_build,
             "SCYLLA_MODE": dtest_config.scylla_mode,
-            "CQL_DRIVER_VERSION": dtest_config.driver_version
+            "CQL_DRIVER_VERSION": dtest_config.driver_version,
+            "AWS_INSTANCE_TYPE": get_aws_instance_type(),
         }
         elk_reporter.session_data.update(**extra_data)
 
