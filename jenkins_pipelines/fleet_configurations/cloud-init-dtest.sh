@@ -31,7 +31,7 @@ dnf -y install docker-ce docker-ce-cli containerd.io podman
 useradd -c "Cloud User" -u 1001 -m -s /bin/bash jenkins
 usermod -aG jenkins,wheel,docker jenkins
 
-mkdir /home/jenkins/.ssh
+mkdir -p /home/jenkins/.ssh
 cp /home/fedora/.ssh/authorized_keys /home/jenkins/.ssh/authorized_keys
 chmod 700 /home/jenkins/.ssh
 chown jenkins:jenkins -R /home/jenkins/.ssh
@@ -57,10 +57,11 @@ echo "* soft nofile 40000" >> /etc/security/limits.conf
 systemctl enable docker
 systemctl start docker
 
-num=$(fdisk -l | grep "^Disk /dev/nvme[1-9]" | wc -l)
+num=$(fdisk -l | grep -cE "^Disk /dev/nvme[1-9]|^Disk /dev/xvd[b-z]")
+
 if [[ $num -gt "0" ]]; then
   for (( c=1; c<=$num; c++)) ; do
-    echo -e "o\nn\np\n1\n\n\nt\n8e\nw" | fdisk `fdisk -l | grep "^Disk /dev/nvme[1-9]" | awk NR==$c | awk '{print $2}' | tr -d ':'`
+    echo -e "o\nn\np\n1\n\n\nt\n8e\nw" | fdisk `fdisk -l | grep -E "^Disk /dev/nvme[1-9]|^Disk /dev/xvd[b-z]" | awk NR==$c | awk '{print $2}' | tr -d ':'`
   done
 
   part_list=$(fdisk -l | grep "Linux LVM" | awk '{print $1}' ORS=' ')
@@ -70,13 +71,12 @@ if [[ $num -gt "0" ]]; then
   mkfs.xfs /dev/vg_jenkins/vol_data
   mount /dev/vg_jenkins/vol_data /jenkins
   chown jenkins:jenkins -R /jenkins
-  mkdir -p /jenkins/var/cache/ccache
   mkdir -p /jenkins/tmp
-  mount --bind /jenkins/var/cache/ccache/ /var/cache/ccache
   mount --bind /jenkins/tmp /tmp
   chmod 1777 /tmp
-  echo "max_size = 95G" > /var/cache/ccache/ccache.conf
-  chown jenkins:ccache -R /jenkins/var/cache/ccache
+else
+  echo "Couldn't find local SSD or local NVMe disks"
+  exit 1
 fi
 
 timedatectl set-timezone Asia/Jerusalem
