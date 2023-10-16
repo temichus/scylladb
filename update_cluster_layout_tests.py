@@ -105,7 +105,7 @@ class TestUpdateClusterLayout(Tester):
         if restart:
             self.cluster.start_nodes()
 
-    def test_simple_add_node_1(self):
+    def do_test_simple_add_node(self, test_stream_plan_ranges_fraction):
         """
         Test bootstrapped node streams all data
         1. Create a cluster with a single node with rf=2, insert data
@@ -118,6 +118,11 @@ class TestUpdateClusterLayout(Tester):
         # interfer with the test (this must be after the populate)
         cluster.set_configuration_options(
             values=self.default_config_options(), batch_commitlog=True)
+
+        if test_stream_plan_ranges_fraction:
+            self.cluster.set_configuration_options(values={
+                'stream_plan_ranges_fraction': 1, 'enable_repair_based_node_ops': False})
+
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
 
@@ -139,6 +144,20 @@ class TestUpdateClusterLayout(Tester):
 
         self.check_rows_on_node(node2, 2000)
         self.check_rows_on_node(node1, 2000)
+
+        if test_stream_plan_ranges_fraction:
+            pattern = f"Streaming plan for Bootstrap-ks-index-"
+            matchings = node2.grep_log(pattern)
+            assert len(matchings) == 1
+
+    def test_simple_add_node_1(self):
+        self.do_test_simple_add_node(False)
+
+    def test_simple_add_node_2(self):
+        """
+        Test bootstrap with stream_plan_ranges_fraction set to 1
+        """
+        self.do_test_simple_add_node(True)
 
     def _iterative_add_decommission(self, iterations=2, node_count=2, rf=1):
         """
