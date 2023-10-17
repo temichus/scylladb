@@ -406,7 +406,10 @@ class TestLimits(Tester):
         return cluster
 
     def create_cql_session_with_ssl(self, node_to_connect: Node) -> Session:
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        # cause of issue https://github.com/scylladb/python-driver/issues/261
+        # we are reverting to older TLS version, until we'll figure it out
+        # or release a driver with work-around
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         ssl_context.load_cert_chain(certfile=os.path.join(self.test_path, 'ccm_node.pem'),
                                     keyfile=os.path.join(self.test_path, 'ccm_node.key'))
         ssl_context.check_hostname = True
