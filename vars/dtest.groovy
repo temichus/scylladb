@@ -308,7 +308,7 @@ def doParallelDtest (Map args) {
                                 )
 
                                 def currentWorkSpace = sh(returnStdout: true, script: 'echo $WORKSPACE').trim()
-                                instanceType = sh(returnStdout: true, script: "curl http://169.254.169.254/latest/meta-data/instance-type").trim()
+                                instanceType = sh(returnStdout: true, script: "curl -s http://169.254.169.254/latest/meta-data/instance-type").trim()
                                 echo "instanceType: ${instanceType}"
 
                                 // HACK: avoid getting Argument list too long
