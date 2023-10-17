@@ -13,7 +13,7 @@ from cassandra.concurrent import execute_concurrent_with_args
 from ccmlib.node import NodeError
 from psutil import Process
 
-from ccmlib.node import ToolError
+from ccmlib.node import ToolError, TimeoutError
 from ccmlib.scylla_node import ScyllaNode
 from dtest_class import create_cf, create_ks, Tester, get_ip_from_node
 from dtest_setup import DTestSetup
@@ -753,10 +753,9 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         bootstrap_msg = "Starting to bootstrap"
         kill_node_err_msg = "The process is dead, returncode={}"
         ks_name, consistency_level_key = "keyspace", "TWO"
-        compact_ks_msg = f"Compact {ks_name}"
         beginning_stream_session_msg = f"Beginning stream session|sync data for keyspace={ks_name}, status=started"
         removing_from_gossip_msg = r"FatClient .*{} has been silent for (\d+)ms, removing from gossip"
-        stress_duration_minutes = 1
+        stress_duration_seconds = 60
         replication_factor = 2
         cluster_size = 2
 
@@ -765,16 +764,20 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         cluster.populate(nodes=cluster_size).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
-        write_stress_cmd = ["write", f"cl={consistency_level_key}", f"duration={stress_duration_minutes}m",
-                            "-rate", "threads=10", "-log", "interval=5", "-schema",
-                            f"replication(factor={replication_factor}) keyspace={ks_name}"]
+        def write_in_background(node, duration_seconds=stress_duration_seconds):
+            write_stress_cmd = ["write", f"cl={consistency_level_key}", f"duration={duration_seconds}s",
+                                "-rate", "threads=10", "-log", "interval=5", "-schema",
+                                f"replication(factor={replication_factor}) keyspace={ks_name}"]
 
-        logger.info("Executing the following write stress command '%s'", write_stress_cmd)
-        stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd))
+            logger.info(f"Starting stress command on {node.name}: {write_stress_cmd}")
+            return executor.submit(lambda: node.stress(stress_options=write_stress_cmd))
 
-        # wait for some data to accumulate in the user table
-        logger.info("Waiting for data to be written and compacted on node1")
-        node1.watch_log_for(exprs=compact_ks_msg)
+        # Pre-populate some data on the node
+        # to ensure the keyspace will be included in the new node bootstrap
+        write_in_background(node1, duration_seconds=30).result()
+
+        # And then continue to write in background while bootstrapping a new node
+        stress_thread = write_in_background(node1)
 
         logger.info("Adding new node")
         node3 = cluster.new_node(i=cluster_size + 1, debug=True, auto_bootstrap=True, is_seed=False)
@@ -811,8 +814,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
             pass
 
         # Now, after bottstrapping was aborted, c-s must pass
-        logger.info("Executing the following write stress command: '%s'", write_stress_cmd)
-        stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd))
+        stress_thread = write_in_background(node1)
         results = stress_thread.result()
         assert_cs_success(results)
         logger.debug(format_cs_output(results))
