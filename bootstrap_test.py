@@ -753,6 +753,7 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         bootstrap_msg = "Starting to bootstrap"
         kill_node_err_msg = "The process is dead, returncode={}"
         ks_name, consistency_level_key = "keyspace", "TWO"
+        compact_ks_msg = f"Compact {ks_name}"
         beginning_stream_session_msg = f"Beginning stream session|sync data for keyspace={ks_name}, status=started"
         removing_from_gossip_msg = r"FatClient .*{} has been silent for (\d+)ms, removing from gossip"
         stress_duration_minutes = 1
@@ -770,6 +771,10 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
 
         logger.info("Executing the following write stress command '%s'", write_stress_cmd)
         stress_thread = executor.submit(lambda: node1.stress(stress_options=write_stress_cmd))
+
+        # wait for some data to accumulate in the user table
+        logger.info("Waiting for data to be written and compacted on node1")
+        node1.watch_log_for(exprs=compact_ks_msg)
 
         logger.info("Adding new node")
         node3 = cluster.new_node(i=cluster_size + 1, debug=True, auto_bootstrap=True, is_seed=False)
