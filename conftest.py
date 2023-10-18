@@ -628,6 +628,7 @@ def configure_es(request: pytest.FixtureRequest, dtest_config):
             "SCYLLA_MODE": dtest_config.scylla_mode,
             "CQL_DRIVER_VERSION": dtest_config.driver_version,
             "AWS_INSTANCE_TYPE": get_aws_instance_type(),
+            "SCYLLA_ARCH": os.environ.get("SCYLLA_ARCH") or os.uname().machine,
         }
         elk_reporter.session_data.update(**extra_data)
 
