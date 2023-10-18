@@ -104,3 +104,23 @@ def isSpotTermination (String lastStage = env.STAGE_NAME) {
 		echo "Other error: |$error|"
 	}
 }
+
+def getBuilderLabel (String architecture=x86ArchName) {
+    if (architecture == generalProperties.x86ArchName) {
+        return generalProperties.targetDtestBuilder
+    }
+    if (architecture == generalProperties.armArchName) {
+        return generalProperties.armTargetDtestBuilder
+    }
+    error("$architecture isn't supported")
+}
+
+def getTestRunnerLabel (String architecture=x86ArchName) {
+    if (architecture == generalProperties.x86ArchName) {
+        return generalProperties.targetDtestStrongBuilder
+    }
+    if (architecture == generalProperties.armArchName) {
+        return generalProperties.armTargetDtestStrongBuilder
+    }
+    error("$architecture isn't supported")
+}

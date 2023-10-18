@@ -57,6 +57,9 @@ pipeline {
         string(name: 'SCYLLA_DTEST_BRANCH', defaultValue: '', description: '')
         string(name: 'SCYLLA_CCM_REPO', defaultValue: '', description: '')
         string(name: 'SCYLLA_CCM_BRANCH', defaultValue: '', description: '')
+        string(name: 'BUILD_MODE', defaultValue: "", description: 'Choose: dev|release|debug, If empty, default to release')
+        string(name: 'ARCHITECTURE', defaultValue: "", description: 'Choose: x86_64|aarch64, If empty, default to x86_64')
+
     }
     stages {
         stage("precommit") {
@@ -260,6 +263,7 @@ def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtest
         baseRelocJob: RELOC_JOB_NAME,
         relocBuildID: params.RELOC_BUILD_ID,
         buildMode: BUILD_MODE,
+        architecture: params.ARCHITECTURE,
     )
     numOfSplitFiles = dtest.splitAndCopyDtestJobs (
         splitTimeTarget: params.SPLIT_TIME_TARGET,
@@ -287,6 +291,7 @@ def runParallelDtest(String splitMaxNodes, String includeDtestsTag, String dtest
         splitFleetLabel: params.SPLIT_FLEET_LABEL,
         dtestType: dtestType,
         managerPackage: managerPackage,
+        architecture: params.ARCHITECTURE,
     )
 }
 

@@ -7,7 +7,9 @@ def call(Map pipelineParams) {
             booleanParam(name: 'RUN_DTEST_HEAVY', defaultValue: "${pipelineParams.get('RUN_DTEST_HEAVY', 'true')}", description: 'Uncheck this to run DtestHeavy, when running in parallel mode only!.')
             booleanParam(name: 'RUN_DTEST_LONG', defaultValue: "${pipelineParams.get('RUN_DTEST_LONG', 'true')}", description: 'Uncheck this to run DtestLong, when running in parallel mode only!.')
 
-            string(name: 'SPLIT_FLEET_LABEL', defaultValue: '', description: 'On which spot instance fleet to run the parallel jobs. default: ec2-asg-strong-dtest-spot')
+            string(name: 'PIPELINE_LABEL', defaultValue: "${pipelineParams.get('PIPELINE_LABEL', '')}", description: 'On which spot instance fleet/asg the pipeline itself gonna run. default: ec2-fleet-4cpu-dtest-asg-spot')
+            string(name: 'SPLIT_FLEET_LABEL', defaultValue: "${pipelineParams.get('SPLIT_FLEET_LABEL', '')}", description: 'On which spot instance fleet to run the parallel jobs. default: ec2-asg-strong-dtest-spot')
+
             string(name: 'SPLIT_TIME_TARGET', defaultValue: "${pipelineParams.get('SPLIT_TIME_TARGET', '240')}", description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
             string(name: 'SPLIT_MAX_NODES', defaultValue: '100', description: 'Maximum number of nodes to run tests on parallel.')
             string(name: 'BRANCH', defaultValue: "${pipelineParams.get('BRANCH', 'master')}", description: 'Choose: master|branch-4.4')
@@ -16,6 +18,8 @@ def call(Map pipelineParams) {
             //Not mandatory
             string(name: 'TIMEOUT_PARAM', defaultValue: "${pipelineParams.get('TIMEOUT_PARAM', '4')}", description: 'hours. This time includes the time needed to wait for local machines. Could be much less for cloud machines.')
             string(name: 'BUILD_MODE', defaultValue: "${pipelineParams.get('BUILD_MODE', 'release')}", description: 'Choose: dev|release|debug, If empty, default to release')
+            string(name: 'ARCHITECTURE', defaultValue: "${pipelineParams.get('ARCHITECTURE', 'x86_64')}", description: 'Choose: x86_64|aarch64, If empty, default to x86_64')
+
             string(name: 'ARTIFACT_SOURCE_JOB_NAME', defaultValue: '', description: 'Build path to take Relocatable data from')
             string(name: 'ARTIFACT_SOURCE_BUILD_NUM', defaultValue: '', description: 'Build ID to take relocatable package files from. Leave empty to use last success build.')
             string(name: 'ARTIFACT_WEB_URL', defaultValue: 'latest', description: 'URL to take reloc items from. Use when reloc is not available on jenkins, or when running on AWS, which will download faster from S3.')
@@ -44,7 +48,7 @@ def call(Map pipelineParams) {
         }
 
         agent {
-            label generalProperties.targetDtestBuilder
+            label params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)
         }
 
         triggers {
@@ -103,7 +107,7 @@ def call(Map pipelineParams) {
                         }
                         steps {
                             script {
-                                node(generalProperties.targetDtestBuilder) {
+                                node(params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)) {
                                     runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_heavy and not dtest_long'",
                                         "heavy", params.SPLIT_FLEET_LABEL, "240")
                                 }
@@ -116,7 +120,7 @@ def call(Map pipelineParams) {
                         }
                         steps {
                             script {
-                                node(generalProperties.targetDtestBuilder) {
+                                node(params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)) {
                                     runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_long'",
                                         "long", params.SPLIT_FLEET_LABEL, "240")
                                 }
@@ -152,6 +156,7 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         baseRelocJob: baseRelocJob,
         relocBuildID: params.RELOC_BUILD_ID,
         buildMode: buildMode,
+        architecture: params.ARCHITECTURE,
     )
     numOfSplitFiles = dtest.splitAndCopyDtestJobs (
         splitTimeTarget: splitTimeTarget,
@@ -181,5 +186,6 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         driverVersion: params.DRIVER_VERSION,
         pyTestExtraCLIOptions: params.PYTEST_EXTRA_COMMANDLINE_OPTIONS,
         spotRetryCount: params.SPOT_RETRY_COUNT,
+        architecture: params.ARCHITECTURE,
     )
 }

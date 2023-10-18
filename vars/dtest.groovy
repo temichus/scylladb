@@ -37,6 +37,7 @@ String setDtestParams (Map args) {
     String managerPackage = args.managerPackage ?: ""
     String driverVersion = args.driverVersion ?: ""
     String pyTestExtraCLIOptions = args.pyTestExtraCLIOptions ?: ""
+    String architecture = args.architecture ?: ""
 
 	String dtestParameters = "--home=${WORKSPACE}/${params.PRODUCT_NAME}"
 	dtestParameters += " --mode=$args.dtestMode"
@@ -85,7 +86,7 @@ String setDtestParams (Map args) {
     	dtestParameters = dtestParameters + " --pytest-ext-opts=\"$pyTestExtraCLIOptions\""
     }
 
-	setupTestEnv(args.dtestMode, args.cloudUrl)
+	setupTestEnv(args.dtestMode, args.cloudUrl, architecture)
 
 	echo "dtestParameters: |$dtestParameters|"
 	return "$dtestParameters"
@@ -105,7 +106,7 @@ def artifactScyllaVersion() {
 def setupTestEnv(String buildMode, String relocWebUrl = "latest", architecture = generalProperties.x86ArchName, boolean dryRun=false) {
 	// This override of HOME as an empty dir is needed by ccm
 	echo "Setting test environment, mode: |$buildMode|"
-	unifiedPackageName = artifact.getUnifiedRelocArtifact(relocWebUrl, buildMode)
+	unifiedPackageName = artifact.getUnifiedRelocArtifact(relocWebUrl, buildMode, architecture)
 
     String scyllaUnifiedPkgFile = "$WORKSPACE/${params.PRODUCT_NAME}/build/$buildMode/dist/tar/${unifiedPackageName}"
 
@@ -142,6 +143,7 @@ def prepareDtestLocalTree (Map args) {
 	String ccmRepo = args.ccmRepo ?: branchProperties.ccmDefaultRepo
 	String relocWebUrl = args.relocWebUrl ?: "latest"
 	String buildMode = args.buildMode ?: "release"
+    String architecture = args.architecture ?: generalProperties.x86ArchName
 
 	jenkins.cleanWorkSpaceUponRequest(preserveWorkspace)
     dir('scylla-dtest') {
@@ -159,7 +161,7 @@ def prepareDtestLocalTree (Map args) {
         }
     }
 
-	setupTestEnv(buildMode, relocWebUrl)
+	setupTestEnv(buildMode, relocWebUrl, architecture)
 	echo "dtest will run based on relocatable package. Info: ============="
 	sh "cat ${generalProperties.buildMetadataFile}"
 	echo "============================"
@@ -241,6 +243,7 @@ def doParallelDtest (Map args) {
 	// String (default stableBranch): ccmBranch
 	// String (default stableBranch): dtestBranch
 	// String (default null): pyTestExtraCLIOptions: string with experimental features
+	// String (default x86ArchName): architecture: architecture of the scylla package that would be downloaded
 
 	boolean dryRun = args.dryRun ?: false
 	boolean dtestDebugInfoFlag = args.dtestDebugInfoFlag ?: false
@@ -253,9 +256,10 @@ def doParallelDtest (Map args) {
     String managerPackage = args.managerPackage ?: ""
     String driverVersion = args.driverVersion ?: ""
     String pyTestExtraCLIOptions = args.pyTestExtraCLIOptions ?: ""
+    String architecture = args.architecture ?: generalProperties.x86ArchName
 
 	def branches = [:]
-	def runnersLabel =  args.splitFleetLabel ?: generalProperties.targetDtestStrongBuilder
+	def runnersLabel =  args.splitFleetLabel ?: jenkins.getTestRunnerLabel(architecture)
 	boolean dtestFailed = false
 	boolean publishFailed = false
 	int numOfSplitFiles = args.numOfSplitFiles
@@ -305,6 +309,7 @@ def doParallelDtest (Map args) {
                                     ccmBranch: args.ccmBranch,
                                     relocWebUrl: cloudUrl,
                                     buildMode: args.dtestMode,
+                                    architecture: args.architecture,
                                 )
 
                                 def currentWorkSpace = sh(returnStdout: true, script: 'echo $WORKSPACE').trim()
@@ -315,7 +320,7 @@ def doParallelDtest (Map args) {
                                 sh 'ulimit -s 65536'
 
                                 unstash(name: "${dtestType}-dtest-split-files")
-                                setupTestEnv(args.dtestMode, cloudUrl)
+                                setupTestEnv(args.dtestMode, cloudUrl, args.architecture)
                                 String splitFileName = "$WORKSPACE/scylla-dtest/include_${NODE_INDEX}.txt"
                                 if (! fileExists(splitFileName)) {
                                     error("split file missing - ${splitFileName}")
@@ -333,7 +338,8 @@ def doParallelDtest (Map args) {
                                     managerPackage: managerPackage,
                                     cloudUrl: cloudUrl,
                                     driverVersion: driverVersion,
-                                    pyTestExtraCLIOptions: pyTestExtraCLIOptions)
+                                    pyTestExtraCLIOptions: pyTestExtraCLIOptions,
+                                    architecture: args.architecture)
 
                                 String dtestScript = "$WORKSPACE/scylla-dtest/scripts/pytest_dtest.sh"
                                 echo "dtestParameters: |${dtestParameters}|"
@@ -435,7 +441,8 @@ def doDtest (Map args) {
 			managerPackage: managerPackage,
 			driverVersion: driverVersion,
 			cloudUrl: cloudUrl,
-			pyTestExtraCLIOptions: pyTestExtraCLIOptions
+			pyTestExtraCLIOptions: pyTestExtraCLIOptions,
+			architecture: architecture
 		)
 
 	boolean dtestFailed = false

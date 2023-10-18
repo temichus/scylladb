@@ -15,6 +15,11 @@ aws ec2 request-spot-fleet --region us-east-1 \
 aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-4cpu-dtest-asg-spot.json --region us-east-1
 aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-strong-dtest-asg.json --region us-east-1
 aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-strong-dtest-asg-spot.json --region us-east-1
+
+# arm ASGs
+aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-4cpu-dtest-asg-arm-spot.json --region us-east-1
+aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-strong-dtest-arm-asg-spot.json --region us-east-1
+
 ```
 
 ## upload cloud-init script (if it changed)

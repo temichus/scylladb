@@ -5,6 +5,9 @@ import groovy.transform.Field
 @Field String targetDtestBuilder = 'ec2-fleet-4cpu-dtest-asg-spot'
 @Field String targetDtestStrongBuilder = 'ec2-asg-strong-dtest-spot'
 
+@Field String armTargetDtestBuilder = 'ec2-fleet-4cpu-dtest-asg-arm-spot'
+@Field String armTargetDtestStrongBuilder = 'ec2-asg-strong-dtest-arm-spot'
+
 @Field String smpNumber = "2"
 
 @Field String x86MetadataFile= "metadata_x86_64.txt"

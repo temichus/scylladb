@@ -17,6 +17,7 @@ def call(Map pipelineParams) {
             //Not mandatory
             string(name: 'TIMEOUT_PARAM', defaultValue: "${pipelineParams.get('TIMEOUT_PARAM', '4')}", description: 'hours. This time includes the time needed to wait for local machines. Could be much less for cloud machines.')
             string(name: 'BUILD_MODE', defaultValue: "${pipelineParams.get('BUILD_MODE', 'release')}", description: 'Choose: dev|release|debug, If empty, default to release')
+            string(name: 'ARCHITECTURE', defaultValue: "${pipelineParams.get('ARCHITECTURE', 'x86_64')}", description: 'Choose: x86_64|aarch64, If empty, default to x86_64')
             string(name: 'ARTIFACT_SOURCE_JOB_NAME', defaultValue: '', description: 'Build path to take Relocatable data from')
             string(name: 'ARTIFACT_SOURCE_BUILD_NUM', defaultValue: '', description: 'Build ID to take relocatable package files from. Leave empty to use last success build.')
             string(name: 'ARTIFACT_WEB_URL', defaultValue: 'latest', description: 'URL to take reloc items from. Use when reloc is not available on jenkins, or when running on AWS, which will download faster from S3.')
@@ -44,7 +45,7 @@ def call(Map pipelineParams) {
         }
 
         agent {
-            label generalProperties.targetDtestBuilder
+            label params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)
         }
 
         options {
@@ -116,6 +117,7 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         baseRelocJob: baseRelocJob,
         relocBuildID: params.RELOC_BUILD_ID,
         buildMode: buildMode,
+        architecture: params.ARCHITECTURE,
     )
     numOfSplitFiles = dtest.splitAndCopyDtestJobs (
         splitTimeTarget: splitTimeTarget,
@@ -145,5 +147,6 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         driverVersion: params.DRIVER_VERSION,
         pyTestExtraCLIOptions: params.PYTEST_EXTRA_COMMANDLINE_OPTIONS,
         spotRetryCount: params.SPOT_RETRY_COUNT,
+        architecture: params.ARCHITECTURE,
     )
 }

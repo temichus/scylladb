@@ -61,13 +61,12 @@ def getManagerRelocUrl(String url, String architecture='x86_64') {
     return "$url$directory$filename"
 }
 
-def getUnifiedRelocArtifact (String cloudUrl, String buildMode) {
+def getUnifiedRelocArtifact (String cloudUrl, String buildMode, architecture=generalProperties.x86ArchName) {
 	// get Test artifacts from jenkins or cloud
 	//
 	// Parameters:
 	def artifactsTargets = [:]
     String url = getRelocatableLink(cloudUrl)
-    String architecture = generalProperties.x86ArchName
 
     // normalize the url to make sure it's a vaild s3 url
     url = url.replaceFirst("http://", "")
