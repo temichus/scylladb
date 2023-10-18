@@ -2745,11 +2745,9 @@ class TestGetTraceProbability(Tester):
             node.nodetool(f'settraceprobability {invalid_value}')
         assert re.search(message, str(error)), f"invalid_value={invalid_value} Expected: message"
 
-    def tracing_table_check(self, session, node, probability, num_keys, prev_count):
+    def tracing_table_check(self, session, probability, num_keys, prev_count):
         logger.info("Populating a table with {} keys...".format(num_keys))
         insert_c1c2_no_prepared(session, keys=range(num_keys))
-        node.flush()
-        node.flush()
         logger.info("Check that all tracing session have been flushed...")
         pattern = re.compile("INSERT INTO")
         tracing_query = SimpleStatement('SELECT parameters FROM system_traces.sessions')
@@ -2802,6 +2800,6 @@ class TestGetTraceProbability(Tester):
                 for node in (self.node1, self.node2, self.node3,):
                     set_node_probability(node, valid_value)
                 probability_value = get_node_probability(self.node1)
-                prev_count = self.tracing_table_check(self.session, self.node2, probability_value,
+                prev_count = self.tracing_table_check(self.session, probability_value,
                                                       self.valid_values[valid_value],
                                                       prev_count)
