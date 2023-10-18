@@ -2740,6 +2740,11 @@ class TestGetTraceProbability(Tester):
         self.node1, self.node2, self.node3 = cluster.nodelist()
         self.session = fixture_dtest_setup.patient_exclusive_cql_connection(self.node1)
 
+    def random_valid_values(self):
+        values = list(self.valid_values.keys())
+        random.shuffle(values)
+        return values
+
     def set_invalid_trace_probability(self, node, invalid_value, message: str):
         with pytest.raises(NodetoolError) as error:
             node.nodetool(f'settraceprobability {invalid_value}')
@@ -2773,7 +2778,7 @@ class TestGetTraceProbability(Tester):
         return count
 
     def test_after_stop_start_value_is_default(self, subtests):
-        for valid_value in self.valid_values:
+        for valid_value in self.random_valid_values():
             with subtests.test(valid_value=valid_value):
                 set_node_probability(self.node1, valid_value)
                 logger.info("Stop node1...")
@@ -2796,7 +2801,7 @@ class TestGetTraceProbability(Tester):
     def test_valid_value_affect_only_one_node(self, subtests):
         node2_value = 0.1234
         set_node_probability(self.node2, node2_value)
-        for valid_value in self.valid_values:
+        for valid_value in self.random_valid_values():
             with subtests.test(valid_value=valid_value):
                 set_node_probability(self.node1, valid_value)
                 probability_node1, probability_node2 = get_nodes_probability((self.node1, self.node2,))
@@ -2807,7 +2812,7 @@ class TestGetTraceProbability(Tester):
         create_ks(self.session, 'ks', 2)
         create_cf(self.session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
         prev_count = 0
-        for valid_value in self.valid_values:
+        for valid_value in self.random_valid_values():
             with subtests.test(valid_value=valid_value):
                 for node in (self.node1, self.node2, self.node3,):
                     set_node_probability(node, valid_value)
