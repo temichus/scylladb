@@ -31,7 +31,7 @@ from dtest_class import Tester, create_ks, create_cf, get_ip_from_node, retry_ti
 from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, query_c1c2_concurrent, insert_c1cn
 from tools.cluster import new_node, get_group0_members, get_token_ring_members
 from tools.status import verify_nodes_status, wait_for_nodes_status, nodetool_status, nodetool_gossipinfo
-from tools.data import rows_to_list
+from tools.data import rows_to_list, insert_c1c2_no_prepared
 from tools.rackdc import update_properties
 from iptables import IPTable, IPTableRule
 
@@ -1782,11 +1782,9 @@ class TestUpdateClusterLayout(Tester):
         nr_partitions = 100  # 100 fails 10 works
         if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
             nr_partitions //= 10
-        # In cassandra-stress-custom-large-partition-1.yaml
-        # name: key2
-        # cluster: uniform(3000..3000)
         # each partition has 3000 cql rows, so there will be nr_partitions * 3000 cql rows
-        nr_rows = nr_partitions * 3000
+        rows_per_partition = 3000
+        nr_rows = nr_partitions * rows_per_partition
 
         # Disable hinted handoff and set batch commit log so this doesn't
         # interfer with the test (this must be after the populate)
@@ -1794,24 +1792,26 @@ class TestUpdateClusterLayout(Tester):
             values=self.default_config_options(), batch_commitlog=True)
         cluster.populate(1).start()
         node1 = cluster.nodelist()[0]
-
-        logger.debug("Node 1 started")
-        c_s_profile = os.path.join("test_data", "c-s-profiles", "cassandra-stress-custom-large-partition-1.yaml")
-        with template_file(c_s_profile, nr_partitions=nr_partitions) as profile:
-            logger.debug("Inject data with cassandra-stress starts")
-            logger.debug(profile)
-            node1.stress(['user', f'n={nr_partitions}', 'cl=ONE', f'profile={profile}', 'ops(insert=1)',
-                          '-rate threads=1'])
-        logger.debug("Inject data with cassandra-stress completes")
+        ks = 'ks'
+        tbl = 'test'
+        logger.debug(f"Populate {node1.name} with {nr_partitions} partitions, {rows_per_partition} rows in each")
+        with self.patient_cql_connection(node1) as session:
+            create_ks(session, ks, 2)
+            session.execute(f"CREATE TABLE {ks}.{tbl} (pk varchar, ck varchar, PRIMARY KEY(pk, ck))")
+            stmt = session.prepare(f"INSERT into {ks}.{tbl} (pk, ck) VALUES (?, ?)")
+            for pk in range(nr_partitions):
+                for ck in range(rows_per_partition):
+                    session.execute(stmt, (f"key{pk}", f"row{ck}"))
+        logger.debug("Data population completed")
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
         logger.debug("Node 2 started")
 
         logger.debug("Check rows on node2")
-        self.check_rows_on_node(node2, nr_rows, ks='keyspace1', cf='standard1', timeout=timeout)
+        self.check_rows_on_node(node2, nr_rows, ks=ks, cf=tbl, timeout=timeout)
         logger.debug("Check rows on node1")
-        self.check_rows_on_node(node1, nr_rows, ks='keyspace1', cf='standard1', timeout=timeout)
+        self.check_rows_on_node(node1, nr_rows, ks=ks, cf=tbl, timeout=timeout)
 
     def test_increment_decrement_counters_in_threads_nodes_restarted(self):
         """
