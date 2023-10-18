@@ -2751,9 +2751,21 @@ class TestGetTraceProbability(Tester):
         logger.info("Check that all tracing session have been flushed...")
         pattern = re.compile("INSERT INTO")
         tracing_query = SimpleStatement('SELECT parameters FROM system_traces.sessions')
-        rows = rows_to_list(session.execute(tracing_query))
-        count = functools.reduce(lambda x, y: x + y, map(lambda row: len(pattern.findall(row[0]['query'])), rows))
+        # Wait for tracing results to stabilize
+        # Sleep for 2s intervals, corresponding to Scylla's
+        # tracing::write_period = std::chrono::seconds(2);
+        write_period = 2
+        count = None
+        for _ in range(5):
+            time.sleep(write_period)
+            rows = rows_to_list(session.execute(tracing_query))
+            cur_count = functools.reduce(
+                lambda x, y: x + y, map(lambda row: len(pattern.findall(row[0]['query'])), rows)) if rows else 0
+            if count == cur_count:
+                break
+            count = cur_count
         calculated_probability = (count - prev_count) / num_keys
+        logger.debug(f"Tracing rows={count} keys={num_keys} probability={probability} actual={calculated_probability}")
         diff = math.fabs(calculated_probability - probability)
         allowed_diff = self.valid_tolerance[probability]
         message = f"Error: probability={probability} actual={calculated_probability} diff={diff} allowed={allowed_diff}"
