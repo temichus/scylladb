@@ -16,6 +16,7 @@ from collections import namedtuple
 from uuid import UUID
 
 import pytest
+from _pytest.outcomes import Failed
 from cassandra import AlreadyExists, ConsistencyLevel, InvalidRequest, ReadTimeout, WriteTimeout
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.protocol import ConfigurationException
@@ -6596,7 +6597,7 @@ class TestCQL(Tester):
         stress_run_th = Thread(target=run_stress, args=(node1, ))
         stress_run_th.start()
 
-        timeout_duration_ms = 10
+        timeout_duration_ms = 2
         cql_timeout_duration_param = f'{timeout_duration_ms}ms'
         timeout_msg = "Coordinator node timed out waiting for replica nodes"
         session = self.patient_cql_connection(node1)
@@ -6615,7 +6616,7 @@ class TestCQL(Tester):
 
         verify_full_scan_minimal_duration()
 
-        @retrying(num_attempts=8, sleep_time=2, allowed_exceptions=(AssertionError, ))
+        @retrying(num_attempts=8, sleep_time=2, allowed_exceptions=(Failed, ))
         def verify_full_scan_timeout_failure():
             with pytest.raises(ReadTimeout, match=timeout_msg):
                 execution_start = time.time()
