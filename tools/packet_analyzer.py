@@ -55,10 +55,8 @@ class PacketAnalyzer:
         logger.debug(f"stderr: {self._tcpdump_process.stderr.read()}")
 
     def get_max_packet_length(self):
-        if not self._captured_packets:
-            return -1
         return max([int(packet_length.group(1)) for packet in self._captured_packets
-                    if (packet_length := self.packet_length_regexp.search(packet))])
+                    if (packet_length := self.packet_length_regexp.search(packet))] or [-1])
 
     def get_packets_with_length(self, length):
         return [packet for packet in self._captured_packets
