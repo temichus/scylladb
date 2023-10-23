@@ -15,6 +15,7 @@ from tools.data import rows_to_list
 from tools.tables_view_manager import TableManager, MaterializedViewManager
 from tools.files import get_sstables_files, get_node_cf_dir
 from tools.assertions import assert_one, assert_two_queries_equal, assert_none
+from tools.context import disable_autocompaction
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 from tools.marks import enterprise_only_param
@@ -232,7 +233,8 @@ class TestReshardingTombstonesSingleNode(Tester):
 
     @staticmethod
     def get_number_of_marked_to_delete(node, keyspace, table):
-        jsoninfo = node.dump_sstables(keyspace, table)
+        with disable_autocompaction(node, keyspace, table):
+            jsoninfo = node.dump_sstables(keyspace, table)
         return sum('tombstone' in partition for partition in jsoninfo)
 
     def test_disable_tombstone_removal_during_reshard(self, node_count, compaction_strategy, murmur3):
