@@ -2748,10 +2748,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
                   compaction=self.LCS)
         insert_c1c2(session=session, n=1_000_000)
         node.flush()
-
-        node.wait_for_compactions()
-
-        levels = self._get_table_levels(node=node)
+        levels = self._wait_until_table_levels_converge(node)
         self._validate_levels_distribution(levels)
 
     @pytest.mark.require("scylladb/scylla-dtest#2938")
@@ -2765,8 +2762,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         node.flush()
 
         storage_service_client.compact_ks_cf(keyspace=self.KS, cf=self.CF)
-
-        levels = self._get_table_levels(node=node)
+        levels = self._wait_until_table_levels_converge(node)
         self._validate_levels_distribution(levels)
 
     def test_lcs_table_promotion_after_stcs_migration(self):
