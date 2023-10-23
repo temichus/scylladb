@@ -254,6 +254,11 @@ class TestCleanup(Tester):
         rows = session.execute(query)
         assert rows.one()[0] == 0
 
+        # Note: since fixing #14870 we cannot rely on tombstones going fully away unless
+        # commitlogs are also exorcised. Luckily, nodetool flush will help us do that
+        for node in [node1, node2]:
+            node.flush()
+
         logger.info(f"Sleeping until gc_grace_seconds={gc_grace_seconds} pass")
         time.sleep(gc_grace_seconds + 1)
         logger.info("Running compaction")
