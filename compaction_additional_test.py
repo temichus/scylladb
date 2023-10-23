@@ -2730,7 +2730,7 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
 
         Scylla commit: 9de7abdc80721c14663fc698c7132a0dce878c18
         """
-        node, session, storage_service_client = self._prepare()
+        node, session, _ = self._prepare()
         create_ks(session=session, name=self.KS, rf=1)
         create_cf(session=session, name=self.CF, columns={'c1': 'text', 'c2': 'text'},
                   compaction=self.LCS)
