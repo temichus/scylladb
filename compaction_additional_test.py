@@ -2742,7 +2742,6 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         levels = self._get_table_levels(node=node)
         self._validate_levels_distribution(levels)
 
-    @pytest.mark.require("scylladb/scylla-dtest#2938")
     def test_lcs_table_promotion_major_compaction(self):
         node, session, storage_service_client = self._prepare()
         create_ks(session=session, name='ks', rf=1)
@@ -2817,13 +2816,19 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
 
     @staticmethod
     def _validate_levels_distribution(levels: list[int]):
-        assert levels[-1] != sum(levels), "Expected sstables to not be promoted solely to the " \
-                                          f"top level, but found all in the top level: {levels}"
-
-        for level_0, level_1 in zip(levels[:-1], levels[1:]):
-            assert level_1 >= level_0 * 10, \
-                ("Expected each LCS level to be at least 10x of the previous level, "
-                 f"but they were not: {levels}")
+        # we hardwire fanout_size to 10, see leveled_manifest::leveled_fan_out
+        FANOUT_SIZE = 10
+        # we use 4 in leveled_manifest::max_bytes_for_level() when evaluating if
+        # the sstables at level0 should be compacted
+        LEVEL0_MAX_SIZE = 4
+        # as the size of each sstable in LCS is fixed, size here actually
+        # implies the total number of sstables at a certain level.
+        for level, size in enumerate(levels):
+            # L0=4, L1=10, L2=100, L3=1000
+            size_max = LEVEL0_MAX_SIZE if level == 0 else FANOUT_SIZE ** level
+            assert size <= size_max, \
+                (f"The size of LCS level[{level}] should be less than {size_max}, "
+                 f"but it is: {size}")
 
     def _prepare(self):
         [node], session = self.prepare(1)
