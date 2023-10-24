@@ -31,12 +31,11 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         node = self.cluster.nodelist()[0]
         session = self.patient_cql_connection(node)
 
-        self._prepare_twcs_table(ttl=ttl, session=session)
+        self._prepare_twcs_table(ttl=120, session=session)
         node.nodetool('disableautocompaction')
         sstables = self.create_sstables_with_short_ttl(session, ttl=ttl)
-        sleep(1)  # make other sstables to expire later
         p = self._start_high_load_on_cluster(duration_minutes=test_max_duration_minutes)
-        sleep(ttl)  # wait for sstables to be expired
+        sleep(ttl+30)  # wait for sstables to be expired with some margin
         mark = self.cluster.nodelist()[0].mark_log()
         node.nodetool('enableautocompaction')
         timeout = (test_max_duration_minutes + 1) * 60
