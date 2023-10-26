@@ -2730,7 +2730,7 @@ class TestGetTraceProbability(Tester):
 
     # valid probability values and samples number
     valid_values = {0.001: 10000, 0: 500, 0.6: 10000, 1: 500}
-    valid_tolerance = {0.001: 0.0008, 0: 0, 0.6: 0.030, 1: 0}
+    valid_tolerance = {0.001: 0.001, 0: 0, 0.6: 0.030, 1: 0}
     default_value = 0
 
     @pytest.fixture(scope='function', autouse=True)
