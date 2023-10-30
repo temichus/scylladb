@@ -771,7 +771,7 @@ class TestReplaceAddress(Tester):
         assert self.get_sorted_tokens(node1, node5.address()) == []
 
     @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
-    def test_replace_node_same_ip(self, use_host_id: bool):
+    def test_replace_node_same_ip(self, use_host_id: bool, fixture_dtest_setup: DTestSetup):
         logger.info("Starting cluster with 5 nodes.")
         cluster = self.cluster
         cluster.populate(5).start(wait_for_binary_proto=True)
@@ -793,6 +793,9 @@ class TestReplaceAddress(Tester):
         replace_address = ip5 if not use_host_id else None
         node5.start(wait_for_binary_proto=True, replace_node_host_id=replace_node_host_id,
                     replace_address=replace_address, jvm_args=jvm_args)
+
+        # Sometimes we got closed_error for the old RPC client for the old node5.  Just ignore it.
+        fixture_dtest_setup.ignore_log_patterns.append(r".*seastar::rpc::closed_error \(connection is closed\).*")
 
     @pytest.mark.dtest_heavy
     @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
