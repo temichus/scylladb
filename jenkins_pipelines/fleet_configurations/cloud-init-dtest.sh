@@ -41,6 +41,12 @@ sed -i 's/^# %wheel/%wheel/' /etc/sudoers
 echo "fs.aio-max-nr = 30000000" > /etc/sysctl.d/aio-max-nr.conf
 sysctl -p /etc/sysctl.d/aio-max-nr.conf
 
+cat > /etc/sysctl.d/99-sysctl.conf << EOL
+vm.dirty_ratio = 60
+vm.dirty_background_ratio = 30
+EOL
+sysctl -p /etc/sysctl.d/99-sysctl.conf
+
 mkdir -p /jenkins/slave
 chown jenkins:jenkins -R /jenkins
 setfacl -d -m g::rwx /jenkins
