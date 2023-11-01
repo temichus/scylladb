@@ -2892,10 +2892,12 @@ class TestLargeScaleCluster(Tester):
             while keys < max_keys and not add_nodes_done:
                 node = random.choice(list(sessions.keys()))
                 session = sessions[node]
+                insert_query = session.prepare(f"INSERT INTO ks.test (key, val) VALUES (?, ?)")
+                insert_query.consistency_level = ConsistencyLevel.QUORUM
                 logger.debug(f"Stress: writing keys {keys}..{keys + n} using {node.name}")
                 for k in random.choices(range(test_keys), k=n):
                     v = (values[k] or random.randint(0, 1000000)) + 1
-                    session.execute(f"INSERT INTO ks.test (key, val) VALUES ('key{k}', {v})")
+                    session.execute(insert_query, (f"key{k}", v))
                     values[k] = v
                 keys += n
             logger.debug(f"Stress: wrote {keys} keys: add_nodes_done={add_nodes_done}")
@@ -2940,8 +2942,10 @@ class TestLargeScaleCluster(Tester):
 
         n = keys
         logger.debug(f"Stress: read {n} keys: starting")
+        query = session.prepare("SELECT val FROM ks.test WHERE key = ?")
+        query.consistency_level = ConsistencyLevel.QUORUM
         for k in range(test_keys):
-            res = list(session.execute(f"SELECT val FROM ks.test WHERE key = 'key{k}'"))
+            res = list(session.execute(query, (f"key{k}",)))
             if values[k] is not None:
                 assert len(res) == 1
                 assert res[0].val == values[k]
