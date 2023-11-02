@@ -55,6 +55,7 @@ function setup_environment_vars {
   echo "LANG=\"$LANG\""
   echo "LANGUAGE=\"$LANGUAGE\""
   export LOG_SAVED_DIR=`pwd`/logs-$dtest_type.$mode.$NODE_INDEX
+  export LLVM_PROFILE_FILE=$LOG_SAVED_DIR/coverage/%3m.profraw
   echo "Env settings done"
 }
 
@@ -322,6 +323,7 @@ export SCYLLA_EXT_ENV="$scylla_ext_env_param"
 if [ "$mode" == "debug" -a -z "$SCYLLA_EXT_ENV" ]; then
     export SCYLLA_EXT_ENV="ASAN_OPTIONS=disable_coredump=0:abort_on_error=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1;BOOST_TEST_CATCH_SYSTEM_ERRORS=no"
 fi
+export SCYLLA_EXT_ENV="$SCYLLA_EXT_ENV;LLVM_PROFILE_FILE=$LLVM_PROFILE_FILE"
 
 # Following 2 env vars are for debug. https://github.com/scylladb/scylla/wiki/Scylla-DTEST#additional-good-to-know
 if $set_dtest_debug ; then
