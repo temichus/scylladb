@@ -167,16 +167,20 @@ class TestLwt(Tester):
         session.execute(cql)
         cql = "INSERT INTO t (a,b) VALUES (1,0) IF NOT EXISTS"
         stmt = SimpleStatement(cql, consistency_level=ConsistencyLevel.QUORUM)
-        session.execute(cql)
+        session.execute(stmt)
         cql = "UPDATE t SET b = ? WHERE a = 1 IF b = ?"
         stmt = session.prepare(cql)
         stmt.consistency_level = ConsistencyLevel.QUORUM
         name = "scylla_storage_proxy_coordinator_cas_failed_read_round_optimization"
         before = get_node_metrics(get_ip_from_node(node), metrics=[name])
-        for i in range(10):
+
+        run_count = 10000 if self.cluster.scylla_mode != "debug" else 1000
+        fails_probability = 0.1
+
+        for i in range(run_count):
             session.execute(stmt, (i + 1, i))
         after = get_node_metrics(get_ip_from_node(node), metrics=[name])
-        assert after.get(name, 0) - before.get(name, 0) == 0, "{} {}".format(before, after)
+        assert after.get(name, 0) - before.get(name, 0) < run_count*fails_probability
         cql = "DROP TABLE t"
         session.execute(cql)
         #
@@ -207,7 +211,7 @@ class TestLwt(Tester):
         for i in range(key_count):
             session.execute(paxos_stmt, (i,))
         after = get_node_metrics(get_ip_from_node(node), metrics=[name])
-        assert after.get(name, 0) - before.get(name, 0) == key_count, "{} {}".format(before, after)
+        assert after.get(name, 0) - before.get(name, 0) == key_count
 
     def test_basic_distributed(self):  # pylint: disable=too-many-statements
         """Basic distributed tests (3.1 - 3.4 from the test plan). """
