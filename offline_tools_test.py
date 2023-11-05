@@ -7,6 +7,7 @@ import logging
 
 from ccmlib import common
 from dtest_class import Tester, create_ks
+from tools.context import disable_autocompaction
 
 
 logger = logging.getLogger(__name__)
@@ -244,8 +245,9 @@ class TestOfflineTools(Tester):
         # test on existing sstables:
         node1.stress(['write', 'n=100', '-schema', 'replication(factor=1)'])
         node1.flush()
-        (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
-        assert_rc(rc, 0, out, err)
+        with disable_autocompaction(node1, "keyspace1", "standard1"):
+            (out, err, rc) = node1.run_sstableverify("keyspace1", "standard1", output=True)
+            assert_rc(rc, 0, out, err)
 
         # Generate multiple sstables and test works properly in the simple case
         node1.stress(['write', 'n=10K', '-schema', 'replication(factor=1)'])
