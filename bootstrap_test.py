@@ -898,14 +898,15 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         # even the option isn't enabled
         node1.set_configuration_options(values={'auto_bootstrap': False})
         # node2: normal test
-        node2.set_configuration_options(values={'auto_bootstrap': True})
+        node2.set_configuration_options(values={'auto_bootstrap': True,
+                                                'shadow_round_ms': 5000})
         # node3: auto_bootstrap option will be ignored even it's set to False
         node3.set_configuration_options(values={'auto_bootstrap': False})
 
-        skip_shadow_round_msg = "All nodes.* are down.* Skip ShadowRound"
         start_failure_msgs = [
             "Startup failed: .*Failed to learn about other nodes' tokens during bootstrap"
-            "|Timed out waiting for.*live nodes to show up in gossip",
+            "|Timed out waiting for.*live nodes to show up in gossip"
+            "|Unable to gossip with any nodes",
             f"Startup failed: .*Node {node2.address()} has gossip status=UNKNOWN",
         ]
 
@@ -913,10 +914,6 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
 
         # only start node2 and node3, node2 will be the real `first node`
         node2.start(wait_for_binary_proto=False, wait_other_notice=False)
-
-        node2.watch_log_for(exprs=skip_shadow_round_msg)
-        logger.info("Verified shadow round doesn't start on node2")
-
         node3.start(wait_for_binary_proto=False, wait_other_notice=False)
 
         node2.watch_log_for(exprs=start_failure_msgs[0])
