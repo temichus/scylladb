@@ -904,20 +904,24 @@ class TestBootstrap(Tester):  # pylint: disable=too-many-public-methods
         node3.set_configuration_options(values={'auto_bootstrap': False})
 
         start_failure_msgs = [
-            "Startup failed: .*Failed to learn about other nodes' tokens during bootstrap"
-            "|Timed out waiting for.*live nodes to show up in gossip"
-            "|Unable to gossip with any nodes",
-            f"Startup failed: .*Node {node2.address()} has gossip status=UNKNOWN",
+            "Startup failed: .*Failed to learn about other nodes' tokens during bootstrap",
+            "Timed out waiting for.*live nodes to show up in gossip",
+            "Unable to gossip with any nodes",
+            "Startup failed: .*Node .* has gossip status=UNKNOWN",
         ]
 
         self.ignore_log_patterns.extend(start_failure_msgs)
 
         # only start node2 and node3, node2 will be the real `first node`
-        node2.start(wait_for_binary_proto=False, wait_other_notice=False)
-        node3.start(wait_for_binary_proto=False, wait_other_notice=False)
+        proc2 = node2.start(wait_for_binary_proto=False, wait_other_notice=False)
+        proc3 = node3.start(wait_for_binary_proto=False, wait_other_notice=False)
 
-        node2.watch_log_for(exprs=start_failure_msgs[0])
-        node3.watch_log_for(exprs=start_failure_msgs[1])
+        proc2.communicate(timeout=300)
+        proc3.communicate(timeout=300)
+
+        # When Scylla startup procedure fails, it returns exit code 1.
+        assert proc2.returncode == 1
+        assert proc3.returncode == 1
 
     def test_seeds_on_duty(self):
         """
