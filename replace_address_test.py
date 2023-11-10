@@ -931,7 +931,8 @@ class TestReplaceAddress(Tester):
         jvm_args = ['--auto-bootstrap', 'true', '--seed-provider-parameters', 'seeds={}'.format(node1.address())]
         replace_node_host_id = node5_hostid if use_host_id else None
         replace_address = ip5 if not use_host_id else None
-        node5.start(wait_for_binary_proto=False, replace_node_host_id=replace_node_host_id,
+        node5.start(wait_for_binary_proto=False, wait_other_notice=False,
+                    replace_node_host_id=replace_node_host_id,
                     replace_address=replace_address, jvm_args=jvm_args)
 
         with_replacing_take_write_patch = True
