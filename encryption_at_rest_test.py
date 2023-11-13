@@ -269,10 +269,16 @@ def validate_sstables_encrypted(node, keyspace='ks', column_family='cf'):
             assert b'scylla_encryption_options' in Path(sstable).read_bytes()
 
         if Version(node.cluster.version()) >= Version('2023.2'):
-            with pytest.raises(subprocess.CalledProcessError) as exc:
-                node.dump_sstables(keyspace, column_family)
-            assert 'malformed_sstable_exception' in str(
-                exc.value.stderr), "failed to read sstable from the wrong reason"
+            try:
+                scylla_metadata = node.dump_sstable_scylla_metadata(
+                    keyspace=keyspace,
+                    column_family=column_family)
+
+                assert all('scylla_encryption_options' in metadata.get('extension_attributes', {})
+                           for table, metadata in scylla_metadata.items())
+            except subprocess.CalledProcessError as exc:
+                raise Exception(f"failed with : {exc.stderr}")
+
         else:
             json_path = tempfile.mktemp(suffix='.schema.json')
             try:
@@ -292,9 +298,13 @@ def validate_sstables_clear(node, keyspace='ks', column_family='cf'):
 
         if Version(node.cluster.version()) >= Version('2023.2'):
             try:
-                node.dump_sstables(keyspace, column_family)
+                scylla_metadata = node.dump_sstable_scylla_metadata(
+                    keyspace=keyspace,
+                    column_family=column_family)
+                assert all('scylla_encryption_options' not in metadata.get('extension_attributes', {}) for table, metadata in
+                           scylla_metadata.items())
             except subprocess.CalledProcessError as exc:
-                raise Exception("sstable could be read, and it was expected to be clear") from exc
+                raise Exception("sstable couldn't be read, and it was expected to be clear") from exc
         else:
             json_path = tempfile.mktemp(suffix='.schema.json')
             try:
@@ -491,16 +501,19 @@ class EncryptionAtRestBase(Tester):
                 query = "ALTER TABLE ks.cf with scylla_encryption_options=%s"
 
                 self.prepare_write_workload(session)
-                validate_sstables_encrypted(node1)
+                if key_provider not in (KeyProviderEnum.replicated,):
+                    validate_sstables_encrypted(node1)
 
                 logger.debug('disable encryption at-rest')
                 session.execute(query % "{'key_provider': 'none'}")
                 table_desc = get_table_description(node1, "ks", "cf")
                 assert "key_provider" not in table_desc, f"key_provider isn't disabled, schema:\n {table_desc}"
                 self._upgrade_sstables()
-                validate_sstables_clear(node1)
+                if key_provider not in (KeyProviderEnum.replicated,):
+                    validate_sstables_clear(node1)
                 session = self.rolling_restart()
-                validate_sstables_clear(node1)
+                if key_provider not in (KeyProviderEnum.replicated,):
+                    validate_sstables_clear(node1)
                 self.read_verify_workload(session)
 
                 logger.debug('re-enable encryption at-rest: %s' % options)
@@ -515,9 +528,11 @@ class EncryptionAtRestBase(Tester):
                     err_msg = f"key_provider isn't changed to {key_provider.value}, schema: \n {table_desc}"
                     assert f"'key_provider': '{key_provider.value}'" in table_desc, err_msg
                 self._upgrade_sstables()
-                validate_sstables_encrypted(node1)
+                if key_provider not in (KeyProviderEnum.replicated,):
+                    validate_sstables_encrypted(node1)
                 session = self.rolling_restart()
-                validate_sstables_encrypted(node1)
+                if key_provider not in (KeyProviderEnum.replicated,):
+                    validate_sstables_encrypted(node1)
                 self.read_verify_workload(session)
             finally:
                 self.cleanup()
