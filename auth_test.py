@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from cassandra import AuthenticationFailed, Unauthorized, InvalidRequest, AlreadyExists
 from cassandra.cluster import NoHostAvailable
 from cassandra import Unavailable
+from packaging.version import Version
 
 from dtest_setup import DTestSetup
 from tools.assertions import assert_invalid
@@ -25,6 +26,7 @@ from tools.log_utils import wait_for_any_log
 from dtest_class import Tester
 from tools.misc import require
 from tools.cluster import new_node
+from tools.misc import minimum_scylla_version
 
 from tools.sslkeygen import create_self_signed_x509_certificate, create_ca
 
@@ -1599,7 +1601,6 @@ class TestAuth(Tester):
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
         self._check_session_available(session)
 
-    @require("2339")
     def test_remove_dead_node_consistency_failed(self):
         """
         **Description:** Run "nodetool removenode"' on the dead node (when RF=2).
@@ -1625,8 +1626,15 @@ class TestAuth(Tester):
         with pytest.raises(NoHostAvailable) as exc:
             self.get_session(node_idx=0, user='cassandra', password='cassandra')
         logger.info(exc.value.errors)
-        assert isinstance(list(exc.value.errors.values())[0], AuthenticationFailed)
-        assert 'Cannot achieve consistency level QUORUM' in str(list(exc.value.errors.values())[0])
+        error_msg_list = list(exc.value.errors.values())[0]
+        assert isinstance(error_msg_list, AuthenticationFailed)
+        is_consistency_error = re.search("Cannot achieve consistency level.*QUORUM", str(error_msg_list))
+        if minimum_scylla_version(self.cluster.version(), '5.5.0-dev', '2024.1.0~rc0'):
+            assert is_consistency_error
+        # An older version might be missing the fix of https://github.com/scylladb/scylladb/issues/2339
+        # and fail for 'authentication failed'
+        elif not is_consistency_error:
+            assert 'authentication failed' in str(error_msg_list)
 
     @pytest.mark.skip('not-implemented')
     def test_manually_copy_system_auth_files_after_system_auth_was_lost(self):
