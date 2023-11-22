@@ -474,7 +474,7 @@ class TestTopPartitions(Tester):
 
         expected_average_top_partition_keys = ['(keyspace1:standard1) 1500', '(keyspace1:standard1) 1501',
                                                '(keyspace1:standard1) 1499', '(keyspace1:standard1) 1502',
-                                               '(keyspace1:standard1) 1498', '(keyspace1:standard1)1497',
+                                               '(keyspace1:standard1) 1498', '(keyspace1:standard1) 1497',
                                                '(keyspace1:standard1) 1503']
 
         for actual_results in top_5_write_partitions_keys_results:
