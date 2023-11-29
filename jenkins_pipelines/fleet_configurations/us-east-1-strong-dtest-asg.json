@@ -1,5 +1,5 @@
 {
-    "AutoScalingGroupName": "strong-dtest-asg",
+    "AutoScalingGroupName": "strong-dtest",
     "MixedInstancesPolicy": {
         "LaunchTemplate": {
             "LaunchTemplateSpecification": {
@@ -56,7 +56,7 @@
     ],
     "HealthCheckType": "EC2",
     "HealthCheckGracePeriod": 300,
-    "VPCZoneIdentifier": "subnet-0723db0c564ee7605,subnet-00e1b2e66aa39795a,subnet-0202b242e1ddafba6,subnet-0b779f8ce827eefec,subnet-05c01a25a078d1351",
+    "VPCZoneIdentifier": "subnet-08be0e5fba2c59e3d,subnet-0bb3f61e0cad91b38,subnet-064aa9ef4f305eba2,subnet-025324c72eb8f6fb6,subnet-04283454acdc3fd86",
     "Tags": [
         {
             "Key": "Name",
@@ -78,7 +78,7 @@
         "Default"
     ],
     "NewInstancesProtectedFromScaleIn": false,
-    "ServiceLinkedRoleARN": "arn:aws:iam::797456418907:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling",
+    "ServiceLinkedRoleARN": "arn:aws:iam::158855661827:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling",
     "CapacityRebalance": true,
     "DesiredCapacityType": "units"
 }

@@ -9,6 +9,19 @@ aws ec2 request-spot-fleet --region us-east-1 \
  --spot-fleet-request-config file://fedora-33-4cpu-dtest-us-east-1.json
 ```
 
+## create launch template
+
+```bash
+aws ec2 create-launch-template \
+    --launch-template-name dtest-asg-template \
+    --launch-template-data file://dtest-template-data.json
+
+# arm launch-template
+aws ec2 create-launch-template \
+    --launch-template-name dtest-asg-arm-template \
+    --launch-template-data file://dtest-template-arm-data.json
+```
+
 ## create ASGs
 
 ```bash
@@ -18,7 +31,7 @@ aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-stro
 
 # arm ASGs
 aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-4cpu-dtest-asg-arm-spot.json --region us-east-1
-aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-strong-dtest-arm-asg-spot.json --region us-east-1
+aws autoscaling create-auto-scaling-group --cli-input-json file://us-east-1-strong-dtest-asg-arm-spot.json --region us-east-1
 
 ```
 
@@ -37,7 +50,7 @@ Click "Add new Cloud" -> "AWS EC2 Fleet", to create a new configuration
 And configure it as following:
 
 * Name: DtestFleetCloud
-* AWS Credentials: (jenkins2 aws account)
+* AWS Credentials: (jenkins-releng aws account)
 * Region: us-east-1 US East (N. Virginia)
 * Endpoint like https://ec2.us-east-2.amazonaws.com
 * EC2 Fleet: [select the id of the create fleet, from the dropdown]

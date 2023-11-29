@@ -1,0 +1,18 @@
+{
+    "BlockDeviceMappings": [
+        {
+            "DeviceName": "/dev/sda1",
+            "Ebs": {
+                "Encrypted": false,
+                "DeleteOnTermination": true,
+                "SnapshotId": "snap-0d02fb53bddbf5243",
+                "VolumeSize": 50,
+                "VolumeType": "gp3"
+            }
+        }
+    ],
+    "SecurityGroupIds": ["sg-088128b2712c264d1"],
+    "ImageId": "ami-0072670cfcc190347",
+    "KeyName": "scylla-qa-ec2",
+    "UserData": "Q29udGVudC1UeXBlOiBtdWx0aXBhcnQvbWl4ZWQ7IGJvdW5kYXJ5PSIvLyIKTUlNRS1WZXJzaW9uOiAxLjAKCi0tLy8KQ29udGVudC1UeXBlOiB0ZXh0L2Nsb3VkLWNvbmZpZzsgY2hhcnNldD0idXMtYXNjaWkiCk1JTUUtVmVyc2lvbjogMS4wCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IDdiaXQKQ29udGVudC1EaXNwb3NpdGlvbjogYXR0YWNobWVudDsgZmlsZW5hbWU9ImNsb3VkLWNvbmZpZy50eHQiCgojY2xvdWQtY29uZmlnCmNsb3VkX2ZpbmFsX21vZHVsZXM6Ci0gW3NjcmlwdHMtdXNlciwgYWx3YXlzXQotLS8vCm9udGVudC1UeXBlOiB0ZXh0L3gtc2hlbGxzY3JpcHQ7IGNoYXJzZXQ9InVzLWFzY2lpIgpNSU1FLVZlcnNpb246IDEuMApDb250ZW50LVRyYW5zZmVyLUVuY29kaW5nOiA3Yml0CkNvbnRlbnQtRGlzcG9zaXRpb246IGF0dGFjaG1lbnQ7IGZpbGVuYW1lPSJ1c2VyZGF0YS50eHQiCgojIS9iaW4vYmFzaApjdXJsIGh0dHA6Ly9kb3dubG9hZHMuc2N5bGxhZGIuY29tL3VzZXJEYXRhL2Nsb3VkLWluaXQtZHRlc3Quc2ggLW8gY2xvdWQtaW5pdC1kdGVzdC5zaApjaG1vZCAreCBjbG91ZC1pbml0LWR0ZXN0LnNoCi4vY2xvdWQtaW5pdC1kdGVzdC5zaCA+IGNsb3VkLWluaXQubG9nIDI+JjEKLS0vLwo="
+}
