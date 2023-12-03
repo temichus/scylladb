@@ -11,7 +11,7 @@ import string
 import hashlib
 import logging
 from collections.abc import Mapping
-from ccmlib.utils.version import Version
+from ccmlib.utils.version import Version, parse_version
 from pathlib import Path
 from typing import Optional
 
@@ -348,11 +348,11 @@ def micros_to_seconds(micros):
 
 
 def minimum_scylla_version(version, oss_version, enterprise_version):
-    v = Version(version)
-    if v >= Version('2000'):
-        return v >= Version(enterprise_version)
+    v = parse_version(version)
+    if v >= parse_version('2000'):
+        return v >= parse_version(enterprise_version)
     else:
-        return v >= Version(oss_version)
+        return v >= parse_version(oss_version)
 
 
 def get_manager_version(install_dir):
