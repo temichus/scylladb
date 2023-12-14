@@ -1024,20 +1024,14 @@ class TestUpdateClusterLayout(Tester):
                                   jvm_args=['--logger-log-level', 'stream_session=debug'])
         node1, node2, node3 = cluster.nodelist()
 
-        session = self.patient_cql_connection(node1)
-        create_ks(session, 'ks', 1)
-        create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
+        with self.cql_cluster_session(node1) as session:
+            create_ks(session, 'ks', 1)
+            create_cf(session, 'cf', read_repair=0.0, columns={'c1': 'text', 'c2': 'text'})
 
-        insert_c1c2(session, keys=range(10000), consistency=ConsistencyLevel.ONE)
-
-        def run():
-            try:
-                node2.decommission()
-            except Exception:
-                pass
+            insert_c1c2(session, keys=range(10000), consistency=ConsistencyLevel.ONE)
 
         executor = ThreadPoolExecutor(max_workers=1)
-        executor.submit(run)
+        decomission_thread = executor.submit(node2.decommission)
 
         # check node2 has started decommission
         node2.watch_log_for("DECOMMISSIONING: unbootstrap starts")
@@ -1048,12 +1042,16 @@ class TestUpdateClusterLayout(Tester):
         logger.debug("Stop node2 ")
         node2.stop(gently=False)
 
+        logger.debug("wait for decommission to fail")
+        with pytest.raises(NodetoolError):
+            decomission_thread.result(timeout=120)
+
         # starting node2 - it should reconnect and run as is
         logger.debug("Start node2 ")
         node2.start(wait_other_notice=True, wait_for_binary_proto=True)
-        session2 = self.patient_cql_connection(node2)
-        result = list(session2.execute("SELECT * FROM ks.cf"))
-        assert len(result) == 10000
+        with self.cql_cluster_session(node2) as session2:
+            result = list(session2.execute("SELECT * FROM ks.cf"))
+            assert len(result) == 10000
 
         verify_nodes_status(node1, ['UN', 'UN', 'UN'])
 
