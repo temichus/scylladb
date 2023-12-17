@@ -13,7 +13,7 @@ from tools.scylla_defines import CompactionStrategy
 @pytest.mark.next_gating
 class TestSchema(Tester):
 
-    def drop_column_compact_test(self):
+    def test_drop_column_compact(self):
         session = self.prepare()
 
         session.execute("USE ks")
@@ -48,7 +48,7 @@ class TestSchema(Tester):
         assert_all(session, "SELECT c1 FROM ks.cf", [[None], [None], [None], [4]], ignore_order=True)
 
     @pytest.mark.dtest_debug
-    def drop_column_queries_test(self):
+    def test_drop_column_queries(self):
         session = self.prepare()
 
         session.execute("USE ks")
