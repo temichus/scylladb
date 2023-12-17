@@ -94,9 +94,9 @@ def buildDocker(String Architecture) {
             #!/bin/bash
             set -xe
 
-            docker login docker.io -u=\$DOCKER_USERNAME -p=\$DOCKER_PASSWORD
+            sudo dnf install -y docker-buildx-plugin
 
-            # docker run --privileged --rm tonistiigi/binfmt --install all
+            docker login docker.io -u=\$DOCKER_USERNAME -p=\$DOCKER_PASSWORD
 
             export DTEST_DOCKER_IMAGE=$DTEST_IMAGE_NAME-$Architecture:$DTEST_DOCKER_TAG
 
