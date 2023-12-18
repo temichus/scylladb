@@ -36,9 +36,14 @@ class TestDatabaseMetrics(Tester):
 
     def _do_run(self, node, read_func):
         metrics = ['scylla_database_total_reads']
-        metric_class = 'user'
+        metric_class = 'sl:default'
 
         initial_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
+
+        if 'scylla_database_total_reads' not in initial_reads:
+            # OSS doesn't have service levels, and enterprise up to 2024.1 merges some metrics into the user class
+            metric_class = 'user'
+            initial_reads = self.get_metrics(get_ip_from_node(node), metrics=metrics, metric_class=metric_class)
 
         total_count = read_func()
 
