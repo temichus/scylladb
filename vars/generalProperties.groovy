@@ -2,11 +2,11 @@
 import groovy.transform.Field
 
 @Field String buildMetadataFile = '00-Build.txt'
-@Field String targetDtestBuilder = 'ec2-fleet-4cpu-dtest-asg-spot'
-@Field String targetDtestStrongBuilder = 'ec2-asg-strong-dtest-spot'
+@Field String targetDtestBuilder = 'ec2-4cpu-dtest-asg-spot-releng'
+@Field String targetDtestStrongBuilder = 'ec2-strong-dtest-asg-spot-releng'
 
-@Field String armTargetDtestBuilder = 'ec2-fleet-4cpu-dtest-asg-arm-spot'
-@Field String armTargetDtestStrongBuilder = 'ec2-asg-strong-dtest-arm-spot'
+@Field String armTargetDtestBuilder = 'ec2-4cpu-dtest-asg-arm-spot-releng'
+@Field String armTargetDtestStrongBuilder = 'ec2-strong-dtest-asg-arm-spot-releng'
 
 @Field String smpNumber = "2"
 
