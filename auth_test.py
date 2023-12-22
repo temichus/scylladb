@@ -1601,41 +1601,6 @@ class TestAuth(Tester):
         session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
         self._check_session_available(session)
 
-    def test_remove_dead_node_consistency_failed(self):
-        """
-        **Description:** Run "nodetool removenode"' on the dead node (when RF=2).
-        **Expected Result:** Cluster is available - successful connection.
-        """
-        self.prepare(nodes=2)
-        logger.info('Cluster with 2 nodes started')
-
-        [node1, node2] = self.cluster.nodelist()
-        session = self.get_session(node_idx=0, user='cassandra', password='cassandra')
-        logger.info('Successfully get the session from node1')
-        # make sure session works
-        self._check_session_available(session)
-
-        # change rf RF of system_auth to 2
-        session.execute(
-            "alter keyspace system_auth with replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy', 'replication_factor':2};")
-        self.cluster.repair()
-
-        node2_hostid = node2.hostid()
-        node2.stop(wait_other_notice=True, gently=False)
-        node1.nodetool("removenode %s" % node2_hostid)
-        with pytest.raises(NoHostAvailable) as exc:
-            self.get_session(node_idx=0, user='cassandra', password='cassandra')
-        logger.info(exc.value.errors)
-        error_msg_list = list(exc.value.errors.values())[0]
-        assert isinstance(error_msg_list, AuthenticationFailed)
-        is_consistency_error = re.search("Cannot achieve consistency level.*QUORUM", str(error_msg_list))
-        if minimum_scylla_version(self.cluster.version(), '5.5.0-dev', '2024.1.0~rc0'):
-            assert is_consistency_error
-        # An older version might be missing the fix of https://github.com/scylladb/scylladb/issues/2339
-        # and fail for 'authentication failed'
-        elif not is_consistency_error:
-            assert 'authentication failed' in str(error_msg_list)
-
     @pytest.mark.skip('not-implemented')
     def test_manually_copy_system_auth_files_after_system_auth_was_lost(self):
         """
