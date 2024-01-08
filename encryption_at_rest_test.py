@@ -51,21 +51,23 @@ class KeyProviderEnum(Enum):
 
 
 # default: 'AES/CBC/PKCS5Padding', length 128
-supported_cipher_algorithms = {'': [],
-                               'AES/CBC/PKCS5Padding': [128, 192, 256],  # 192 has problem
-                               'AES/CBC': [128, 192, 256],  # 192 has problem
-                               'AES': [128, 192, 256],  # 192 has problem
-                               'AES/ECB/PKCS5Padding': [128, 192, 256],
-                               'AES/ECB': [128, 192, 256],
-                               'DES/CBC/PKCS5Padding': [56],
-                               'DES/CBC': [56],
-                               'DES': [56],
-                               # 'DESede/CBC/PKCS5Padding': [112, 168],    # not support by Scylla, supported by DSE
-                               # 'Blowfish/CBC/PKCS5Padding': [32, 448],   # not support by Scylla, supported by DSE
-                               'RC2/CBC/PKCS5Padding':  [80, 128],  # [40, 80, 128]  # 40 to 128
-                               'RC2/CBC':  [80, 128],  # [40, 80, 128]  # 40 to 128
-                               'RC2':  [80, 128]  # [40, 80, 128]  # 40 to 128
-                               }
+supported_cipher_algorithms = {
+    "": [],
+    "AES/CBC/PKCS5Padding": [128, 192, 256],  # 192 has problem
+    "AES/CBC": [128, 192, 256],  # 192 has problem
+    "AES": [128, 192, 256],  # 192 has problem
+    "AES/ECB/PKCS5Padding": [128, 192, 256],
+    "AES/ECB": [128, 192, 256],
+    # legacy algorithms, not supported in openssl 3.x
+    # "DES/CBC/PKCS5Padding": [56],
+    # "DES/CBC": [56],
+    # "DES": [56],
+    # 'DESede/CBC/PKCS5Padding': [112, 168],    # not support by Scylla, supported by DSE
+    # 'Blowfish/CBC/PKCS5Padding': [32, 448],   # not support by Scylla, supported by DSE
+    # "RC2/CBC/PKCS5Padding": [80, 128],  # [40, 80, 128]  # 40 to 128
+    # "RC2/CBC": [80, 128],  # [40, 80, 128]  # 40 to 128
+    # "RC2": [80, 128],  # [40, 80, 128]  # 40 to 128
+}
 
 
 class BaseKeyProviderFactory:
