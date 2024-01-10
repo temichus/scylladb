@@ -153,7 +153,7 @@ class UpgradeTester(Tester):
         queries = [
             f"SELECT * FROM ks.cf_twcs WHERE pk = {self.tw_pks[0]} and ck > {(max_time_minute - 5) * 60}",
             f"SELECT * FROM ks.cf_twcs WHERE pk = {self.tw_pks[-1]} and ck < {(max_time_minute - 15) * 60}",
-            f"SELECT * FROM ks.cf_twcs WHERE pk = {self.tw_pks[len(self.tw_pks) // 2]} and ck > {(max_time_minute -1) * 60}",
+            f"SELECT * FROM ks.cf_twcs WHERE pk = {self.tw_pks[len(self.tw_pks) // 2]} and ck > {(max_time_minute - 1) * 60}",
         ]
         pk_set = ",".join([str(pk) for pk in self.tw_pks[3:7]])
         queries.append(f"SELECT * FROM ks.cf_twcs WHERE pk in ({pk_set}) and ck > {2 * 60} and ck < {4 * 60}")
@@ -296,7 +296,7 @@ class BaseTests(UpgradeTester):
 
             logger.info("Disable optimized queries")
             session.execute(
-                f"ALTER TABLE ks.cf_twcs with compaction = {self.get_timewindow_compaction_settings(optimize_enabled=False)}")
+                f"ALTER TABLE ks.cf_twcs with compaction={self.get_timewindow_compaction_settings(optimize_enabled=False)}", timeout=600)
 
             # Validate existent data
             self.validate_twcs_data(session, expected_data)
@@ -306,7 +306,7 @@ class BaseTests(UpgradeTester):
 
             logger.info("Enable optimized queries")
             session.execute(
-                f"ALTER TABLE ks.cf_twcs with compaction = {self.get_timewindow_compaction_settings(optimize_enabled=True)}")
+                f"ALTER TABLE ks.cf_twcs with compaction={self.get_timewindow_compaction_settings(optimize_enabled=True)}", timeout=600)
 
             # Validate existent data
             self.validate_twcs_data(session, expected_data)
@@ -316,14 +316,14 @@ class BaseTests(UpgradeTester):
 
             logger.info("Enable optimized queries")
             session.execute(
-                f"ALTER TABLE ks.cf_twcs with compaction = {self.get_timewindow_compaction_settings(optimize_enabled=False)}")
+                f"ALTER TABLE ks.cf_twcs with compaction={self.get_timewindow_compaction_settings(optimize_enabled=False)}", timeout=600)
 
             # Validate existent data
             self.validate_twcs_data(session, expected_data)
 
             logger.info("Enable optimized queries")
             session.execute(
-                f"ALTER TABLE ks.cf_twcs with compaction = {self.get_timewindow_compaction_settings(optimize_enabled=True)}")
+                f"ALTER TABLE ks.cf_twcs with compaction={self.get_timewindow_compaction_settings(optimize_enabled=True)}", timeout=600)
 
             # Validate existent data
             self.validate_twcs_data(session, expected_data)

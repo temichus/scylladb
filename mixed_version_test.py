@@ -36,7 +36,7 @@ class TestSchemaChanges(UpgradeTester):
 
         if not dtest_config.consistent_cluster_management:
             pytest.skip("This test requires consistent_cluster_management")
-        
+
         self.clone_upgrade_path(dtest_config)
         self.init_cluster(nodes=2)
 
