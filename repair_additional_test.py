@@ -3340,6 +3340,7 @@ class TestRepairAdditional(RepairAdditionalBase):
 
     def test_repair_compacts_data(self):
         cluster = self.cluster
+        cluster.set_configuration_options({"hinted_handoff_enabled": "false"})
         cluster.populate(2).start(wait_for_binary_proto=True, wait_other_notice=True)
         node1, node2 = cluster.nodelist()
 
