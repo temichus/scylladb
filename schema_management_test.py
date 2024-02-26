@@ -5,8 +5,14 @@ import string
 import time
 import logging
 import pytest
+<<<<<<< HEAD
 from concurrent import futures
 
+||||||| parent of ceae49ae (schema_management_test: replace retries in `test_update_schema_while_node_is_killed`)
+from cassandra import AlreadyExists, ConsistencyLevel
+=======
+from cassandra import AlreadyExists, ConsistencyLevel, InvalidRequest
+>>>>>>> ceae49ae (schema_management_test: replace retries in `test_update_schema_while_node_is_killed`)
 from cassandra.cluster import ThreadPoolExecutor
 from cassandra.concurrent import execute_concurrent_with_args
 from cassandra import ConsistencyLevel, AlreadyExists
@@ -17,6 +23,17 @@ from tools.data import rows_to_list, create_c1c2_table, insert_c1c2, query_c1c2
 from dtest_class import Tester, create_ks, create_cf, read_barrier
 from ccmlib.scylla_cluster import ScyllaCluster
 
+<<<<<<< HEAD
+||||||| parent of ceae49ae (schema_management_test: replace retries in `test_update_schema_while_node_is_killed`)
+from dtest_class import Tester, create_cf, create_ks
+from tools.assertions import assert_all, assert_invalid
+from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, rows_to_list
+from tools.marks import unmark
+=======
+from dtest_class import Tester, create_cf, create_ks
+from tools.assertions import assert_all, assert_invalid
+from tools.data import create_c1c2_table, insert_c1c2, query_c1c2, rows_to_list
+>>>>>>> ceae49ae (schema_management_test: replace retries in `test_update_schema_while_node_is_killed`)
 
 logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.next_gating
@@ -230,10 +247,40 @@ class TestSchemaManagement(Tester):
         session = self.patient_cql_connection(node1)
 
         def create_table_case():
+<<<<<<< HEAD
             logger.debug('Creating table')
             create_c1c2_table(session)
             logger.debug('Populating')
             insert_c1c2(session, n=10)
+||||||| parent of ceae49ae (schema_management_test: replace retries in `test_update_schema_while_node_is_killed`)
+            logger.debug("Creating table")
+            create_c1c2_table(session)
+            logger.debug("Populating")
+            insert_c1c2(session, n=10)
+=======
+            try:
+                logger.debug("Creating table")
+                create_c1c2_table(session)
+                logger.debug("Populating")
+                insert_c1c2(session, n=10)
+            except AlreadyExists:
+                # the CQL command can be called multiple time case of retries
+                pass
+
+        def alter_table_case():
+            try:
+                session.execute("ALTER TABLE ks.cf ADD (c3 text);", timeout=180)
+            except InvalidRequest as exc:
+                # the CQL command can be called multiple time case of retries
+                assert "Invalid column name c3" in str(exc)
+
+        def drop_table_case():
+            try:
+                session.execute("DROP TABLE cf;", timeout=180)
+            except InvalidRequest as exc:
+                # the CQL command can be called multiple time case of retries
+                assert "Cannot drop non existing table" in str(exc)
+>>>>>>> ceae49ae (schema_management_test: replace retries in `test_update_schema_while_node_is_killed`)
 
         logger.debug('Creating keyspace')
         create_ks(session, 'ks', 3)
@@ -242,10 +289,18 @@ class TestSchemaManagement(Tester):
 
         case_map = {
             "create_table": create_table_case,
+<<<<<<< HEAD
             "alter_table": functools.partial(
                 session.execute, "ALTER TABLE ks.cf ADD (c3 text);", timeout=180),
             "drop_table": functools.partial(
                 session.execute, "DROP TABLE cf;", timeout=180),
+||||||| parent of ceae49ae (schema_management_test: replace retries in `test_update_schema_while_node_is_killed`)
+            "alter_table": functools.partial(session.execute, "ALTER TABLE ks.cf ADD (c3 text);", timeout=180),
+            "drop_table": functools.partial(session.execute, "DROP TABLE cf;", timeout=180),
+=======
+            "alter_table": alter_table_case,
+            "drop_table": drop_table_case,
+>>>>>>> ceae49ae (schema_management_test: replace retries in `test_update_schema_while_node_is_killed`)
         }
         with ThreadPoolExecutor(max_workers=2) as executor:
             logger.debug(f'2. kill node during {case}')
