@@ -191,7 +191,7 @@ pipeline {
                             echo "$testFiles"
                             RELOC_JOB_NAME = params.RELOC_JOB_NAME ?: "next"
                             BUILD_MODE = params.BUILD_MODE ?: "release"
-                            SCYLLA_DTEST_REPO = params.SCYLLA_DTEST_REPO ?: "git@github.com:${env.CHANGE_FORK}/scylla-dtest.git"
+                            SCYLLA_DTEST_REPO = params.SCYLLA_DTEST_REPO ?: "git@github.com:${env.CHANGE_FORK ?: 'scylladb'}/scylla-dtest.git"
                             SCYLLA_DTEST_BRANCH = params.SCYLLA_DTEST_BRANCH ?: env.CHANGE_BRANCH
 
                             SCYLLA_CCM_REPO = params.SCYLLA_CCM_REPO ?: "git@github.com:scylladb/scylla-ccm.git"
