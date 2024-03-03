@@ -6,12 +6,19 @@ from time import sleep
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from cassandra import ConsistencyLevel, ReadTimeout, Unavailable, ReadFailure, OperationTimedOut
+from cassandra import (
+    ConsistencyLevel,
+    InvalidRequest,
+    OperationTimedOut,
+    ReadFailure,
+    ReadTimeout,
+    Unavailable,
+)
 from cassandra.query import SimpleStatement
 from ccmlib.node import NodeError
 from ccmlib.scylla_cluster import ScyllaCluster
 
-from dtest_class import Tester, create_ks, create_cf
+from dtest_class import Tester, create_ks, create_cf, wait_for
 from dtest_setup_overrides import DTestSetupOverrides
 from dtest_setup import DTestSetup
 from tools.assertions import assert_row_count, assert_all, assert_lists_equal_ignoring_order
@@ -662,8 +669,17 @@ class TestReplaceAddress(Tester):
             nodetool_thread = threading.Thread(target=nodetool_thread)
             nodetool_thread.start()
 
-        logger.info('Sleep 5 seconds to wait the workload starts')
-        sleep(5)
+        logger.info("Wait for keyspace created to know the workload started")
+        with self.patient_cql_connection(node1) as session:
+
+            def check_keyspace_created():
+                try:
+                    rows = list(session.execute("SELECT * from keyspace1.standard1"))
+                    return len(rows) > 0
+                except InvalidRequest:
+                    pass
+
+            wait_for(check_keyspace_created, timeout=60, text="Waiting until keyspace1.standard1 created")
 
         logger.info('Start to kill node3 ...')
         node3 = self.cluster.nodelist()[2]
