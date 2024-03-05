@@ -146,6 +146,9 @@ def call(Map pipelineParams) {
 def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, String splitFleetLabel, String splitTimeTarget) {
     echo "runDtest"
     lastStage = env.STAGE_NAME
+    String runningUserID = jenkins.getRunningUserInfo().userId
+    jenkins.checkAndTagAwsInstance(runningUserID)
+
     dtest.prepareDtestLocalTree (
         preserveWorkspace: params.PRESERVE_WORKSPACE,
         dtestBranch: params.SCYLLA_DTEST_BRANCH,
@@ -176,7 +179,7 @@ def runDtest(String splitMaxNodes, String includeDtestsTag, String dtestType, St
         extOpts: params.SCYLLA_EXT_OPTS_EXTRA_SETTINGS,
         extEnv: params.SCYLLA_EXT_ENV_EXTRA_SETTINGS,
         numOfSplitFiles: numOfSplitFiles,
-        runningUserID: jenkins.getRunningUserInfo().userId,
+        runningUserID: runningUserID,
         dtestRepo: params.SCYLLA_DTEST_REPO,
         dtestBranch: params.SCYLLA_DTEST_BRANCH,
         ccmBranch: params.SCYLLA_CCM_BRANCH,
