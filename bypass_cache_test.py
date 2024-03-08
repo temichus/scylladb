@@ -26,8 +26,8 @@ class TestBypassCache(Tester):
     METRIC_VALIDATORS = {
         'ignore': lambda before, after: '',
         'not_changed': lambda before, after: '' if before == after else 'should not be changed',
-        'changed': lambda before, after: '' if before != after else 'should be changed',
         'increased_by_1': lambda before, after: '' if before + 1 == after else 'should be increased by 1',
+        'increased_by_at_least_1': lambda before, after: '' if before < after else 'should be increased by at least 1',
         'less_than_800': lambda before, after: '' if before + 800 >= after else 'changed by more than 800',
         'more_than_800': lambda before, after: '' if before + 800 < after else 'changed by less than 800',
     }
@@ -92,9 +92,11 @@ class TestBypassCache(Tester):
             node, session, query,
             metrics_validators={
                 'scylla_cache_reads': 'less_than_800',
-                'scylla_sstables_index_page_hits': 'more_than_800' if index_cache_involved else 'not_changed',
-                'scylla_sstables_index_page_cache_misses': 'increased_by_1' if index_cache_involved else 'not_changed',
-                'scylla_sstables_index_page_cache_populations': 'increased_by_1' if index_cache_involved else 'not_changed',
+                # Internal reads can also use the sstable index page cache, so we
+                # cannot make assumptions about the index metrics not changing
+                'scylla_sstables_index_page_hits': 'more_than_800' if index_cache_involved else 'ignore',
+                'scylla_sstables_index_page_cache_misses': 'increased_by_at_least_1' if index_cache_involved else 'ignore',
+                'scylla_sstables_index_page_cache_populations': 'increased_by_at_least_1' if index_cache_involved else 'ignore',
             })
         assert not errors, 'Running query that is suppose to read from disk following errors found:\n' + \
             '\n'.join(errors)
