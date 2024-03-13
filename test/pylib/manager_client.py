@@ -38,7 +38,7 @@ class ManagerClient():
     # pylint: disable=too-many-public-methods
 
     def __init__(self, sock_path: str, port: int, use_ssl: bool, auth_provider: Any|None,
-                 con_gen: Callable[[List[IPAddress], int, bool, Any], CassandraSession]) \
+                 con_gen: Callable[[List[IPAddress], int, bool, Any], CassandraSession], loop) \
                          -> None:
         self.port = port
         self.use_ssl = use_ssl
@@ -47,7 +47,7 @@ class ManagerClient():
         self.ccluster: Optional[CassandraCluster] = None
         self.cql: Optional[CassandraSession] = None
         # A client for communicating with ScyllaClusterManager (server)
-        self.client = UnixRESTClient(sock_path)
+        self.client = UnixRESTClient(sock_path, loop)
         self.api = ScyllaRESTAPIClient()
         self.metrics = ScyllaMetricsClient()
         self.thread_pool = ThreadPoolExecutor()

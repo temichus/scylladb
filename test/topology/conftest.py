@@ -162,7 +162,8 @@ async def manager_internal(event_loop, request):
         auth_provider = PlainTextAuthProvider(username=auth_username, password=auth_password)
     else:
         auth_provider = None
-    manager_int = ManagerClient(request.config.getoption('manager_api'), port, use_ssl, auth_provider, cluster_con)
+    manager_int = ManagerClient(
+        request.config.getoption('manager_api'), port, use_ssl, auth_provider, cluster_con, event_loop)
     yield manager_int
     await manager_int.stop()  # Stop client session and close driver after last test
 

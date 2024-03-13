@@ -122,12 +122,12 @@ class RESTClient(metaclass=ABCMeta):
 class UnixRESTClient(RESTClient):
     """An async helper for REST API operations using AF_UNIX socket"""
 
-    def __init__(self, sock_path: str):
+    def __init__(self, sock_path: str, loop):
         # NOTE: using Python requests style URI for Unix domain sockets to avoid using "localhost"
         #       host parameter is ignored but set to socket name as convention
         self.uri_scheme: str = "http+unix"
         self.default_host: str = f"{os.path.basename(sock_path)}"
-        self.connector = UnixConnector(path=sock_path)
+        self.connector = UnixConnector(path=sock_path, loop=loop)
 
     async def shutdown(self):
         await self.connector.close()
