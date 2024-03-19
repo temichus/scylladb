@@ -2360,7 +2360,9 @@ class TestUpdateClusterLayout(Tester):
         node4.start(wait_for_binary_proto=True)
         logger.info("done")
 
-    @pytest.mark.require('scylladb/scylladb#13775')
+    # deselect test for Gossip topology
+    # due to https://github.com/scylladb/scylladb/issues/13775
+    @pytest.mark.required_features("consistent-topology-changes")
     def test_replace_after_changing_node_ip(self):
         """ Changes to cluster topology after node ip changed"""
 
