@@ -585,6 +585,11 @@ class EncryptionAtRestBase(Tester):
                 self.cleanup()
 
 
+def all_providers():
+    """until we'll have scylladb/scylla-enterprise#4067 figure, taking all of kmip test of gating"""
+    return [pytest.param(p, marks=[unmark.next_gating] if p == KeyProviderEnum.kmip else []) for p in KeyProviderEnum]
+
+
 @pytest.mark.dtest_full
 @pytest.mark.dtest_enterprise
 @pytest.mark.next_gating
@@ -607,7 +612,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
 
     @pytest.mark.timeout(4700)
     @pytest.mark.single_node
-    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames="key_provider", argvalues=all_providers(), ids=lambda x: x.name)
     def test_wrong_cipher_algorithm(self, key_provider):
         errors = []
         # TODO: Uncomment next line when issue https://github.com/scylladb/scylla-enterprise/issues/1973 will be resolve
@@ -648,7 +653,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
 
     @pytest.mark.timeout(4000)
     @pytest.mark.single_node
-    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames="key_provider", argvalues=all_providers(), ids=lambda x: x.name)
     def test_supported_cipher_algorithms(self, key_provider):
         errors = []
 
@@ -662,7 +667,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
         assert len(errors) == 0, errors
 
     @pytest.mark.single_node
-    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames="key_provider", argvalues=all_providers(), ids=lambda x: x.name)
     def test_abbreviated_supported_cipher_algorithms(self, key_provider):
         errors = []
         abbreviated = {c: l for c in supported_cipher_algorithms if c
@@ -679,27 +684,23 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
         assert len(errors) == 0, errors
 
     @pytest.mark.single_node
-    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames="key_provider", argvalues=all_providers(), ids=lambda x: x.name)
     def test_multiple_ks(self, key_provider):
         self._multiple_ks_test(key_provider=key_provider)
 
     @pytest.mark.single_node
-    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames="key_provider", argvalues=all_providers(), ids=lambda x: x.name)
     def test_multiple_cf(self, key_provider):
         self._multiple_cf_test(key_provider=key_provider)
 
-    @pytest.mark.parametrize(argnames='key_provider', argvalues=[
-        pytest.param(p, marks=[unmark.next_gating] if p.name == 'replicated' else [])
-        for p in KeyProviderEnum
-    ],
-        ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames="key_provider", argvalues=[pytest.param(p, marks=[unmark.next_gating] if p.name in ("replicated", "kmip") else []) for p in KeyProviderEnum], ids=lambda x: x.name)
     @pytest.mark.no_boot_speedups
     def test_reboot(self, key_provider):
         self._reboot_test(key_provider=key_provider)
 
     @pytest.mark.single_node
     @unmark.next_gating
-    @pytest.mark.parametrize(argnames='key_provider', argvalues=KeyProviderEnum, ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames="key_provider", argvalues=all_providers(), ids=lambda x: x.name)
     def test_alter(self, key_provider):
         self._alter_test(key_provider=key_provider)
 
