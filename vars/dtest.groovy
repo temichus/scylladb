@@ -227,6 +227,15 @@ boolean publishTestResults (String testsWildcardFiles, String baseDir) {
 	return status
 }
 
+def runWithoutRetries(Map args) {
+    // run on an agent without the conditionalRetry code
+    // this is used for case we have spotRetryCount=0
+    // and we don't want the plugin code to scan all of the logs
+    node(args.agentLabel) {
+        args.runSteps()
+    }
+}
+
 def doParallelDtest (Map args) {
 
 	// Parameters:
@@ -263,8 +272,9 @@ def doParallelDtest (Map args) {
 	boolean dtestFailed = false
 	boolean publishFailed = false
 	int numOfSplitFiles = args.numOfSplitFiles
-	int spotRetryCount = args.spotRetryCount ?: 3
+	int spotRetryCount = args.containsKey('spotRetryCount') ? args.spotRetryCount : 3
     def results = [:]
+    def retryFunction = spotRetryCount == 0 ? this.&runWithoutRetries : this.&conditionalRetry
 
     for (int i = 0; i < numOfSplitFiles; i++) {
 
@@ -274,7 +284,7 @@ def doParallelDtest (Map args) {
         branches["${dtestType}-split${nodeIndex}"] = {
             try {
                 def instanceType = ""
-                conditionalRetry([
+                retryFunction([
                         agentLabel: runnersLabel,
                         suppressErrors: false,
                         retryCount: spotRetryCount,
