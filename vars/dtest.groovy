@@ -295,6 +295,7 @@ def doParallelDtest (Map args) {
                             'termination-request': '.*Termination requested.*',
                             'node-removed': '.*was marked offline: (Node is being removed|Connection was broken)$',
                             'channel-termination': '.*Unexpected termination of the channel$',
+                            'agent-offline': '*.AgentOfflineException.*',
                             ],
                         stageNameFilterPatterns:  [".*${dtestType}-split${nodeIndex}.*"],
                         runSteps: {
