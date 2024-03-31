@@ -587,7 +587,7 @@ class EncryptionAtRestBase(Tester):
 
 def all_providers():
     """until we'll have scylladb/scylla-enterprise#4067 figure, taking all of kmip test of gating"""
-    return [pytest.param(p, marks=[unmark.next_gating] if p == KeyProviderEnum.kmip else []) for p in KeyProviderEnum]
+    return [pytest.param(p, marks=[pytest.mark.require("scylladb/scylla-enterprise#4067")] if p == KeyProviderEnum.kmip else []) for p in KeyProviderEnum]
 
 
 @pytest.mark.dtest_full
@@ -693,7 +693,7 @@ class TestEncryptionAtRest(EncryptionAtRestBase):
     def test_multiple_cf(self, key_provider):
         self._multiple_cf_test(key_provider=key_provider)
 
-    @pytest.mark.parametrize(argnames="key_provider", argvalues=[pytest.param(p, marks=[unmark.next_gating] if p.name in ("replicated", "kmip") else []) for p in KeyProviderEnum], ids=lambda x: x.name)
+    @pytest.mark.parametrize(argnames="key_provider", argvalues=[pytest.param(p, marks=[pytest.mark.require("scylladb/scylla-enterprise#4067")] if p.name in ("replicated", "kmip") else []) for p in KeyProviderEnum], ids=lambda x: x.name)
     @pytest.mark.no_boot_speedups
     def test_reboot(self, key_provider):
         self._reboot_test(key_provider=key_provider)
