@@ -2333,10 +2333,19 @@ class TestNodetool(Tester):
                 pass
 
     @pytest.mark.single_node
-    @unmark.next_gating
+    # This test is testing a functionality which doesn't exist -- scrub
+    # recovering arbitrary corruptions. Scrub was never designed to do that and
+    # it fails in unexpected ways in this test from time-to-time.
+    # We plan to make scrub be able to *detect* (but not *recover*) arbitrary
+    # corruption, but that is not implemented yet.
+    # TODO: re-enable and refactor this test once the above is implemented.
+    # See https://github.com/scylladb/scylladb/issues/15693
+    @pytest.mark.skip
     def test_scrub_with_one_node_expect_data_loss(self):
         self._scrub_with_one_node_expect_data_loss(mode="SEGREGATE")
 
+    # See test_scrub_with_one_node_expect_data_loss.
+    @pytest.mark.skip
     def test_scrub_with_multi_nodes_expect_data_rebuild(self):
         cluster = self.run_cluster(nodes=3)
         node = cluster[0]
