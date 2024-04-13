@@ -27,7 +27,7 @@ def create_c1c2_table(session, cf="cf", read_repair=None, debug_query=True, comp
 
 
 def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, c1_values=None, c2_values=None,
-                ks='ks', cf='cf'):
+                ks='ks', cf='cf', concurrency=20):
     if (keys is None and n is None) or (keys is not None and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
                          "got keys={keys}, n={n}".format(keys=keys, n=n))
@@ -38,18 +38,18 @@ def insert_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM,
     if c1_values and c2_values:
         statement = session.prepare("INSERT INTO {}.{} (key, c1, c2) VALUES (?, ?, ?)".format(ks, cf))
         statement.consistency_level = consistency
-        execute_concurrent_with_args(session, statement,
-                                     map(lambda x, y, z: ['k{}'.format(x), y, z], keys, c1_values, c2_values))
+        execute_concurrent_with_args(session, statement, map(
+            lambda x, y, z: [f"k{x}", y, z], keys, c1_values, c2_values), concurrency=concurrency)
     else:
         statement = session.prepare("INSERT INTO {}.{} (key, c1, c2) VALUES (?, 'value1', 'value2')".format(ks, cf))
         statement.consistency_level = consistency
 
-        execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
+    execute_concurrent_with_args(session, statement, [[f"k{k}"] for k in keys], concurrency=concurrency)
 
 
 def insert_c1c2_with_clustering(session, clustering_key_values=None, n=None, consistency=ConsistencyLevel.QUORUM,
                                 c1_values=None, c2_values=None, ks='ks', cf='cf', partition_key_set_value=1,
-                                output_20_lines=True):
+                                output_20_lines=True, concurrency=20):
     if clustering_key_values is None:
         clustering_key_values = []
 
@@ -66,9 +66,8 @@ def insert_c1c2_with_clustering(session, clustering_key_values=None, n=None, con
     statement = session.prepare("INSERT INTO {}.{} (pkey, ckey, c1, c2) VALUES (?, ?, ?, ?)".format(ks, cf))
     statement.consistency_level = consistency
 
-    execute_concurrent_with_args(
-        session, statement, map(lambda w, x, y, z: [w, x, y, z], partition_key_values,
-                                clustering_key_values, c1_values, c2_values))
+    execute_concurrent_with_args(session, statement, map(lambda w, x, y, z: [
+                                 w, x, y, z], partition_key_values, clustering_key_values, c1_values, c2_values), concurrency=concurrency)
 
     if output_20_lines:
         logger.debug("output of 20 lines after insertion:")
@@ -89,7 +88,7 @@ def query_c1c2(session, key, consistency=ConsistencyLevel.QUORUM, tolerate_missi
         assertions.assert_length_equal(rows, 0)
 
 
-def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, ks='ks', cf="cf"):
+def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM, ks="ks", cf="cf", concurrency=20):
     if (keys is None and n is None) or (keys is not None and n is not None):
         raise ValueError("Expected exactly one of 'keys' or 'n' arguments to not be None; "
                          "got keys={keys}, n={n}".format(keys=keys, n=n))
@@ -99,7 +98,7 @@ def delete_c1c2(session, keys=None, n=None, consistency=ConsistencyLevel.QUORUM,
     statement = session.prepare("DELETE FROM {}.{} WHERE key=?".format(ks, cf))
     statement.consistency_level = consistency
 
-    execute_concurrent_with_args(session, statement, [['k{}'.format(k)] for k in keys])
+    execute_concurrent_with_args(session, statement, [[f"k{k}"] for k in keys], concurrency=concurrency)
 
 
 def insert_columns(session, key, columns_count, consistency=ConsistencyLevel.QUORUM, offset=0):
@@ -366,7 +365,7 @@ def insert_c1c2_no_prepared(session, keys=None, n=None, consistency=ConsistencyL
                                                             consistency_level=consistency), None), keys, c1_values, c2_values))
 
 
-def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, c1_values=None, c2_values=None, ks=None, cf=None):
+def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, tolerate_missing=False, must_be_missing=False, c1_values=None, c2_values=None, ks=None, cf=None, concurrency=20):
     if c1_values is None:
         c1_values = ['value1'] * len(keys)
 
@@ -391,7 +390,7 @@ def query_c1c2_concurrent(session, keys, consistency=ConsistencyLevel.QUORUM, to
     pquery = session.prepare(query)
     pquery.consistency_level = consistency
 
-    results = execute_concurrent_with_args(session, pquery, map(lambda x: [f'k{x}'], keys))
+    results = execute_concurrent_with_args(session, pquery, map(lambda x: [f"k{x}"], keys), concurrency=concurrency)
     for result, c1, c2 in zip(results, c1_values, c2_values):
         check_c1c2_result_one(result[0], list(result[1]), tolerate_missing, must_be_missing, c1, c2)
 
@@ -440,7 +439,7 @@ def chunks_list(lst, num_chunks):
         yield lst[i:i + num_chunks]
 
 
-def insert_c1cn(session, keys=None, consistency=ConsistencyLevel.QUORUM, nr_columns=5, column_size=None, ks='ks', cf='cf'):
+def insert_c1cn(session, keys=None, consistency=ConsistencyLevel.QUORUM, nr_columns=5, column_size=None, ks="ks", cf="cf", concurrency=20):
     if keys is None:
         keys = []
 
@@ -475,7 +474,7 @@ def insert_c1cn(session, keys=None, consistency=ConsistencyLevel.QUORUM, nr_colu
         data.extend(col_data)
         kv.append(data)
 
-    execute_concurrent_with_args(session, statement, kv)
+    execute_concurrent_with_args(session, statement, kv, concurrency=concurrency)
 
 
 def prepare_statement(session, query, cl=ConsistencyLevel.ONE):
@@ -509,7 +508,7 @@ def get_node_sstables_compression(node, keyspace: str = 'keyspace1') -> List[str
 
 
 def simulate_write_process_in_minutes(cluster, session, keyspace, table_name, duration_minutes=20, start_from_minute=0,
-                                      flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=10, size=1) -> Tuple[List[int], int]:
+                                      flush_period_seconds=30, flushing_exclude_nodes=None, num_pks=10, size=1, concurrency=20) -> Tuple[List[int], int]:
     """Simulate a write process across duration minutes.
 
     We use `USING TIMESTAMP` to distribute the writes evenly
@@ -553,10 +552,8 @@ def simulate_write_process_in_minutes(cluster, session, keyspace, table_name, du
 
     flushing_nodes = [node for node in cluster.nodelist() if node not in exclude_nodes]
     for t in range(start_from_minute * 60, duration_minutes * 60):
-        execute_concurrent_with_args(
-            session,
-            insert_statement,
-            [(pk, t, v, seconds_to_micros(t)) for pk in pk_list])
+        execute_concurrent_with_args(session, insert_statement, [(
+            pk, t, v, seconds_to_micros(t)) for pk in pk_list], concurrency=concurrency)
 
         # Flush every flush period in seconds on each node
         if t % flush_period_seconds == 0:
