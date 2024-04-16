@@ -18,7 +18,7 @@ from tools.retrying import retry_with_func_attempts
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2
 from tools.marks import unmark
-from tools.metrics import get_node_metrics
+from tools.metrics import get_node_metrics, wait_for_metric
 from tools.paging import PageFetcher
 
 logger = logging.getLogger(__name__)
@@ -36,9 +36,9 @@ class TestReadAmplification(Tester):
         node_ips = node_ips or []
         metrics = {n: 0 for n in metric_names}
         for node_ip in node_ips:
-            node_metrics = get_node_metrics(node_ip=node_ip, metrics=list(metrics.keys()))
             for key in metrics:
-                assert key in node_metrics, 'Metrics not found: {}'.format(key)
+                assert wait_for_metric(key, node_ip), f"Metric '{key}' is not exposed on {node_ip} node exporter target"
+            node_metrics = get_node_metrics(node_ip=node_ip, metrics=list(metrics.keys()))
             metrics = {k: metrics[k] + node_metrics[k] for k in metrics}
         logger.debug(metrics)
         return metrics
@@ -46,14 +46,14 @@ class TestReadAmplification(Tester):
     @unmark.next_gating  # tests are too heavy, and verifying wrong metrics for RBNO - https://github.com/scylladb/scylla-dtest/issues/3573
     def test_no_read_amplification_on_repair(self):
         """
-        Check total bytes read during streaming on repair corresponds to data size
+        Check total bytes read on repair corresponds to data size
         """
         self.no_read_amplification_on_repair(with_mv=False)
 
     @unmark.next_gating  # tests are too heavy, and verifying wrong metrics for RBNO - https://github.com/scylladb/scylla-dtest/issues/3573
     def test_no_read_amplification_on_repair_with_mv(self):
         """
-        Check total bytes read during streaming on repair corresponds to data size
+        Check total bytes read on repair corresponds to data size
         """
         self.no_read_amplification_on_repair(with_mv=True)
 
@@ -105,17 +105,17 @@ class TestReadAmplification(Tester):
 
         thr = executor.submit(repair)
 
-        logger.info("Verify there is no read amplification in repair streaming")
+        logger.info("Verify there is no read amplification on repair")
         node_ips = [cluster.get_node_ip(node_ind) for node_ind in range(1, len(nodes) + 1)]
         amplification_rate = 3
         max_val = {}
-        metric_names = ['scylla_streaming_total_incoming_bytes', 'scylla_streaming_total_outgoing_bytes']
+        metric_names = ["rx_row_bytes", "tx_row_bytes"]
         started = time.time()
         timeout = 600
         while not thr.done():
             bytes_total = self.get_metrics(metric_names, node_ips)
             for param in bytes_total:
-                assert bytes_total[param] < size * cnt * amplification_rate
+                assert 0 < bytes_total[param] < size * cnt * amplification_rate
                 max_val[param] = bytes_total[param] if param not in max_val else max(max_val[param], bytes_total[param])
             if time.time() - started >= timeout:
                 node_to_repair.wait_until_stopped(wait_seconds=0, dump_core=True)

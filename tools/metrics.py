@@ -1,4 +1,5 @@
 import re
+import time
 from typing import List
 
 import requests
@@ -25,3 +26,15 @@ def get_node_metrics(node_ip: str, metrics: List[str], port='9180'):
                 metrics_res[metric_name] = val if metric_name not in metrics_res \
                     else metrics_res[metric_name] + val
     return metrics_res
+
+
+def wait_for_metric(metric: str, ip: str, port: str = "9180", max_retries: int = 5, initial_wait: float = 0.1) -> bool | None:
+    retries = 0
+    backoff_factor = 2
+
+    while retries < max_retries:
+        if metric in prometheus_get(ip, port):
+            return True
+
+        time.sleep(initial_wait * (backoff_factor**retries))
+        retries += 1
