@@ -28,7 +28,7 @@ def get_node_metrics(node_ip: str, metrics: List[str], port='9180'):
     return metrics_res
 
 
-def wait_for_metric(metric: str, ip: str, port: str = "9180", max_retries: int = 5, initial_wait: float = 0.1) -> bool | None:
+def wait_for_metric(metric: str, ip: str, port: str = "9180", max_retries: int = 10, initial_wait: float = 0.1) -> bool | None:
     retries = 0
     backoff_factor = 2
 
