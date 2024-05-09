@@ -29,7 +29,7 @@ if (env.CHANGE_ID && pullRequestContainsLabels("test/Jenkinsfile")) {
     // this is for test local changes in PRs
     library identifier: 'dtest@snapshot', retriever: legacySCM(scm)
 } else {
-    def lib = library identifier: 'dtest'
+    def lib = library identifier: "dtest@${getBranch()}"
 }
 
 pipeline {
@@ -195,7 +195,7 @@ pipeline {
                             SCYLLA_DTEST_BRANCH = params.SCYLLA_DTEST_BRANCH ?: env.CHANGE_BRANCH
 
                             SCYLLA_CCM_REPO = params.SCYLLA_CCM_REPO ?: "git@github.com:scylladb/scylla-ccm.git"
-                            SCYLLA_CCM_BRANCH = params.SCYLLA_CCM_BRANCH ?: "master"
+                            SCYLLA_CCM_BRANCH = params.SCYLLA_CCM_BRANCH ?: getBranch()
 
                             String managerPackage = ""
                             if (testFiles.contains(' manager_')) {
@@ -305,6 +305,9 @@ def getProduct() {
 }
 
 def getBranch() {
+    if (env.CHANGE_TARGET && env.CHANGE_TARGET.startsWith('next-')) {
+        return env.CHANGE_TARGET.replace('next-', 'branch-')
+    }
     if (env.CHANGE_ID && pullRequestContainsLabels("enterprise")) {
         return "enterprise"
     }
