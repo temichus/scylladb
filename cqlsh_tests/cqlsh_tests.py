@@ -44,7 +44,7 @@ class CqlshVersionMixing(Tester):
 
     def cqlsh_options(self) -> list:
         opts = ['-u', 'cassandra', '-p', 'cassandra']
-        if self.cqlsh_version >= Version('6.2.0'):
+        if self.cqlsh_version >= Version('6.0.0'):
             opts += ['--insecure-password-without-warning']
         if self.ssl:
             opts += ['--ssl', '--cqlshrc', self.cqlshrc_file]
