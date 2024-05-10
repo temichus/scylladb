@@ -7,7 +7,7 @@ repos:
     -   id: trailing-whitespace
         exclude: >
             (?x)^(
-                .git/*|
+                .git/.*|
                 test_data/.*|
                 cassandra-sstables/.*|
                 alternator/.*|
@@ -16,7 +16,7 @@ repos:
     -   id: end-of-file-fixer
         exclude: >
             (?x)^(
-                .git/*|
+                .git/.*|
                 test_data/.*|
                 cassandra-sstables/.*|
                 test-sstables/.*|
