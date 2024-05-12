@@ -47,7 +47,7 @@ pipeline {
     }
     parameters {
         string(name: 'PRODUCT_NAME', defaultValue: getProduct(), description: 'Choose: scylla|scylla-enterprise')
-        string(name: 'BRANCH', defaultValue: getBranch(), description: 'Choose: master|branch-4.4')
+        string(name: 'BRANCH', defaultValue: getScyllaRelease(), description: 'Choose: master|branch-4.4')
         booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Check this to check pipeline syntax. will not perform anything.')
         booleanParam(name: 'PRESERVE_WORKSPACE', defaultValue: false, description: 'Check this if you need the workspace to remain (for debug)')
         string(name: 'SPLIT_FLEET_LABEL', defaultValue: '', description: 'On which spot instance fleet to run the parallel jobs. default: ec2-asg-strong-dtest-spot')
@@ -314,4 +314,12 @@ def getBranch() {
     else {
         return "master"
     }
+}
+
+def getScyllaRelease() {
+    def release = getBranch()
+    if (env.CHANGE_ID && pullRequestContainsLabels("enterprise")) {
+        release.replace('branch-', 'enterprise-')
+    }
+    return release
 }
