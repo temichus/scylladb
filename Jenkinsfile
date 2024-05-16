@@ -319,7 +319,7 @@ def getBranch() {
 def getScyllaRelease() {
     def release = getBranch()
     if (env.CHANGE_ID && pullRequestContainsLabels("enterprise")) {
-        release.replace('branch-', 'enterprise-')
+        release = release.replace('branch-', 'enterprise-')
     }
     return release
 }
