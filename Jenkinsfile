@@ -308,9 +308,6 @@ def getBranch() {
     if (env.CHANGE_TARGET && env.CHANGE_TARGET.startsWith('next-')) {
         return env.CHANGE_TARGET.replace('next-', 'branch-')
     }
-    if (env.CHANGE_ID && pullRequestContainsLabels("enterprise")) {
-        return "enterprise"
-    }
     else {
         return "master"
     }
@@ -319,6 +316,9 @@ def getBranch() {
 def getScyllaRelease() {
     def release = getBranch()
     if (env.CHANGE_ID && pullRequestContainsLabels("enterprise")) {
+        if (release == "master") {
+            return "enterprise"
+        }
         release = release.replace('branch-', 'enterprise-')
     }
     return release
