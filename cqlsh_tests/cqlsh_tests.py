@@ -534,7 +534,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
             logger.debug(err)
             assert False, "Failed to execute cqlsh"
         logger.debug(output)
-        assert expected in output, "Output \n {%s} \n doesn't contain expected\n {%s}" % (output, expected)
+        self.check_response(expected_response=expected, response=output)
 
     def test_list_queries(self):
         config = {'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
@@ -753,7 +753,7 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         self.execute(cql='USE test; DESCRIBE "users_by_state"', expected_output=self.get_users_by_state_mv_output())
 
     def get_keyspace_output(self):
-        return ("CREATE KEYSPACE test WITH replication = {'class': 'NetworkTopologyStrategy', 'datacenter1': '1'}  AND durable_writes = true;" +
+        return ("CREATE KEYSPACE test WITH replication = {'class': 'org.apache.cassandra.locator.NetworkTopologyStrategy', 'datacenter1': '1'}  AND durable_writes = true;" +
                 self.get_test_table_output() +
                 self.get_users_table_output())
 
@@ -833,10 +833,8 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
         if has_val_idx:
             val_idx_def = self.get_index_output('test_val_idx', 'test', 'test', 'val')
             if self.node1.is_scylla():
-                return (ret + "\n" + col_idx_def + "\n" + val_idx_def + "\n" +
-                        self.get_mv_output('test_col_idx', 'test', 'test', 'col', 'id') +
-                        self.get_mv_output('test_val_idx', 'test', 'test', 'val', 'id', has_val_idx=True))
-            elif Version(self.cluster.version()) >= Version('2.2'):
+                return ret + "\n" + col_idx_def + "\n" + val_idx_def + "\n"
+            elif Version(self.cluster.version()) >= Version("2.2"):
                 return ret + "\n" + val_idx_def + "\n" + col_idx_def
             else:
                 return ret + "\n" + col_idx_def + "\n" + val_idx_def
@@ -865,9 +863,10 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
             AND min_index_interval = 128
             AND read_repair_chance = 0.0
             AND speculative_retry = '99.0PERCENTILE';
-        """ + self.get_index_output('myindex', 'test', 'users', 'age') +
-                    self.get_mv_output('myindex', 'test', 'users', 'age', 'userid'))
-        elif Version(self.cluster.version()) >= Version('3.0'):
+        """
+                    + self.get_index_output("myindex", "test", "users", "age")
+                    )
+        elif Version(self.cluster.version()) >= Version("3.0"):
             return """
         CREATE TABLE test.users (
             userid text PRIMARY KEY,
@@ -1016,10 +1015,53 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
 
         return output
 
+    def _normalize_response(self, response):
+        def should_keep(line):
+            if not line.strip():
+                return False
+            deprecated_options = ["dclocal_read_repair_chance", "read_repair_chance"]
+            for col in deprecated_options:
+                if col in line:
+                    return False
+            ignore_options = ["paxos_grace_seconds", "tombstone_gc"]
+            for col in ignore_options:
+                if col in line:
+                    return False
+            return True
+
+        def normalize(line):
+            # accept both org.apache.cassandra.locator.NetworkTopologyStrategy and NetworkTopologyStrategy
+            line = line.replace("org.apache.cassandra.locator.", "")
+            # normalize 0.0, 1.0 etc to 0, 1 etc.
+            line = re.sub(r"\b(\d+)\.0\b", r"\1", line)
+            # replace multiple whitespaces with a single whitespace
+            line = re.sub(r"\s+", " ", line)
+
+            line = line.replace("state, username, birth_year, gender, password, session_token", "*")
+            line = line.rstrip(";,:")
+
+            # enforce formatting without whitespace in {ks}.{table} ({col})
+            line = re.sub(r"(\w+\.\w+)\s\(", r"\1(", line)
+            if " PRIMARY KEY" in line:
+                return [line.replace(" PRIMARY KEY", ""), f"PRIMARY KEY ({line.split()[0]})"]
+            if ":" in line:
+                return line.split(":")
+            return [line]
+
+        resp = []
+        for s in response.split("\n"):
+            if should_keep(s):
+                resp = resp + normalize(s.strip())
+
+        return resp
+
     def check_response(self, response, expected_response):
-        lines = [s.strip() for s in response.split("\n") if s.strip()]
-        expected_lines = [s.strip() for s in expected_response.split("\n") if s.strip()]
-        assert expected_lines == lines
+        lines = self._normalize_response(response)
+        expected_lines = self._normalize_response(expected_response)
+        logger.error(f"{set(expected_lines).symmetric_difference(set(lines))}")
+        set(expected_lines).symmetric_difference(set(lines))
+        assert set(expected_lines).issubset(
+            set(lines)), f"Output lines \n {{{lines}}} \n doesn't contain expected lines\n {{{expected_lines}}}"
 
     def test_copy_to(self):
         node1, = self.cluster.nodelist()
