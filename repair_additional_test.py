@@ -3384,11 +3384,13 @@ class TestRepairAdditional(RepairAdditionalBase):
         node1_base_metrics = get_node_metrics(node_ip=self.cluster.get_node_ip(1),
                                               metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
         node1.repair([keyspace, table])
-        self.verify_repair_tx_rx_rows(node_idx=1,
-                                      # without compaction, all rows are sent over
-                                      expected_tx_row_nr=node1_base_metrics['tx_row_nr'] + 10,
-                                      expected_rx_row_nr=node1_base_metrics['rx_row_nr'],
-                                      list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS)
+        self.verify_repair_tx_rx_rows(
+            node_idx=1,
+            # without compaction, all rows are sent over
+            expected_tx_row_nr=node1_base_metrics["tx_row_nr"] + 21,  # 2 * 10 rows + 1 partition tombstone
+            expected_rx_row_nr=node1_base_metrics["rx_row_nr"],
+            list_metrics=self.LIST_ROW_LEVEL_REPAIR_METRICS,
+        )
 
     def test_repair_one_node(self):
         """
