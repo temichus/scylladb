@@ -41,7 +41,7 @@ class TestPullRequestPipeline extends DeclarativePipelineTest {
         helper.cloneArgsOnMethodCallRegistration = false
 
         helper.registerSharedLibrary(library().name('dtest')
-                .defaultVersion('snapshot')
+                .defaultVersion('master')
                 .targetPath(sharedLibs)
                 .retriever(projectSource(sharedLibs))
                 .implicit(true)
