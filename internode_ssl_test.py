@@ -127,7 +127,7 @@ class TestInternodeSSL(Tester):
             (None, "rack"),
         ],
     )
-    def test_listen_ports_conf(self, disable_value, internode_encryption):
+    def test_listen_ports_conf(self, disable_value, internode_encryption):  # noqa: PLR0915
         """
         Test storage ports configuration, and verify the listening storage ports after start
 
