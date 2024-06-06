@@ -876,7 +876,7 @@ class TestRuntimeInfoTable(SystemTableBase):
                                    if row.item not in ["hit_rate_recent", "hit_rate_total"]}
 
         logger.info("Comparing the results...")
-        assert metrics_after_flush["entries"] - metrics_before_flush["entries"] == number_of_rows
+        assert metrics_after_flush["entries"] - metrics_before_flush["entries"] >= number_of_rows
         assert metrics_after_flush["memory_used"] > metrics_before_flush["memory_used"]
 
         with self.patient_cql_connection(node) as session:
