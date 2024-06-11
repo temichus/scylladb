@@ -3247,11 +3247,18 @@ class TestRepairAdditional(RepairAdditionalBase):
         RepairAdditionalBase._run_repair_and_check_completed(
             node=node1_2, more_options=[], ks='ks', cf='cf', from_mark=from_mark)
 
+        split_regex = re.compile(r"\s*,\s*")
+
+        def get_peers(s):
+            ret = split_regex.split(s)
+            assert ret, f"found no peers in '{s}'"
+            return ret
+
         # verify that first peer node is the one from the same DC
         matchings = node1_2.grep_log(r"Started Row Level Repair .+ peers={(.+)},")
         assert matchings
         for matches in matchings:
-            peers = matches[1].groups()[0].split(",")
+            peers = get_peers(matches[1].groups()[0])
             assert peers[0] == node1_1.address(), "Missing rows should be fetched from a node from the same dc first"
 
         # add new node to test RBNO
