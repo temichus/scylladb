@@ -52,7 +52,7 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
                 ( key blob PRIMARY KEY, "C0" blob, "C1" blob, "C2" blob, "C3" blob, "C4" blob )
                 WITH bloom_filter_fp_chance = 0.01 AND caching = {{'keys': 'ALL', 'rows_per_partition': 'ALL'}}
                 AND compaction = {{'class': 'TimeWindowCompactionStrategy', 'compaction_window_size': '1',
-                'compaction_window_unit': 'MINUTES', 'expired_sstable_check_frequency_seconds': '30'}}
+                'compaction_window_unit': 'MINUTES', 'expired_sstable_check_frequency_seconds': '0'}}
                 AND crc_check_chance = 1.0
                 AND dclocal_read_repair_chance = 0.0
                 AND default_time_to_live = {ttl}
