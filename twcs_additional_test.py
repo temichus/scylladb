@@ -25,7 +25,8 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         Tests #9533 fixed in 4.6.rc1.
         """
         cluster = self.cluster
-        cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=['--smp', '1'])
+        args = ["--smp", "1", "--logger-log-level", "compaction=debug"]
+        cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=args)
         ttl = 30
         test_max_duration_minutes = 4
         node = self.cluster.nodelist()[0]
