@@ -44,7 +44,7 @@ def main():
         response = requests.get(search_url, headers=headers, params=params)
         prs = response.json().get("items", [])
         for pr in prs:
-            match = re.findall(r"Parent PR: #(\d+)", pr["body"])
+            match = re.findall(r"Parent PR: (?:https:.*?|#)(\d+)", pr["body"])
             if match:
                 pr_number = int(match[0])
                 if pr_number in processed_prs:
