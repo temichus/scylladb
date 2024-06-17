@@ -2362,7 +2362,7 @@ class TestUpdateClusterLayout(Tester):
 
     # deselect test for Gossip topology
     # due to https://github.com/scylladb/scylladb/issues/13775
-    @pytest.mark.required_features("consistent-topology-changes")
+    @pytest.mark.skip(reason='deselect test for 5.4(Gossip topology) due to https://github.com/scylladb/scylladb/issues/13775')
     def test_replace_after_changing_node_ip(self):
         """ Changes to cluster topology after node ip changed"""
 
