@@ -3255,10 +3255,11 @@ class TestRepairAdditional(RepairAdditionalBase):
             return ret
 
         # verify that first peer node is the one from the same DC
-        matchings = node1_2.grep_log(r"Started Row Level Repair .+ peers={(.+)},")
+        peers_re = r"[\{\[(](?P<peers>(?:(?:,\s*)?[\d.]+)*)[\})\]]"
+        matchings = node1_2.grep_log(rf"Started Row Level Repair \(Master\).+ peers={peers_re}, repair_meta_id")
         assert matchings
         for matches in matchings:
-            peers = get_peers(matches[1].groups()[0])
+            peers = get_peers(matches[1].group("peers"))
             assert peers[0] == node1_1.address(), "Missing rows should be fetched from a node from the same dc first"
 
         # add new node to test RBNO
@@ -3270,11 +3271,12 @@ class TestRepairAdditional(RepairAdditionalBase):
 
         # verify that new node will get data from the same DC
         new_node.watch_log_for("initialization completed")
-        matchings = new_node.grep_log(r"repair .+ keyspace=ks, .+ peers={(.+)},")
+        repair_re = rf"repair .+ keyspace=ks, .+ peers={peers_re}, live_peers"
+        matchings = new_node.grep_log(repair_re)
         assert matchings
         for matches in matchings:
-            peers = matches[1].groups()[0].split(",")
-            assert set(peers[0]) == set(node2_1.address()), "New node should fetched data only from the same dc"
+            peers = get_peers(matches[1].group("peers"))
+            assert set(peers) == set([node2_1.address()]), "New node should fetched data only from the same dc"
 
     def test_postpone_reshape_sstables_created_by_repair(self):
         """
