@@ -2072,7 +2072,7 @@ class TestNodetool(Tester):
                               {"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.concurrent_stress, "delay": 15,
                                 "args": [None, {"cl": "ONE", "duration": "1m",
-                                                "opt": ["-schema", "replication(strategy=NetworkTopologyStrategy, dc1=1,dc2=1)", "-rate", "threads=10"],
+                                                "opt": ["-schema", "replication(strategy=NetworkTopologyStrategy, dc1=2,dc2=2)", "-rate", "threads=10"],
                                                 "expected_errors": expected_errors}]}],
                 "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10, "args": [None, 'dc1', 'RAC1']}]},
                {"operations": [{"func": self.start, "delay": 5, "args": [[3, 4], {"wait_for_binary_proto": True}]}],
