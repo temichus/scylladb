@@ -555,7 +555,10 @@ class DTestSetup:
             raise AssertionError('Critical errors found: {}\nOther errors: {}'.format(
                 critical_errors, found_errors))
         if found_errors:
-            raise AssertionError('Unexpected errors found: {}'.format(found_errors))
+            logger.error(f"Unexpected errors found: {found_errors}")
+            errors_summary = "\n".join([f"{node}: {len(errors)} errors\n" + "\n".join(errors[:5])
+                                       for node, errors in found_errors])
+            raise AssertionError(f"Unexpected errors found:\n{errors_summary}")
         found_cores, ignored_cores = self.find_cores()
         if found_cores:
             raise AssertionError("Core file(s) found. Marking test as failed.")
