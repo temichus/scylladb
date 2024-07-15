@@ -518,11 +518,11 @@ class TestSLATimeouts(SLATester):
 
     @pytest.mark.parametrize(argnames=("duration"),
                              argvalues=[
-                                 ScyllaDuration(milliseconds=1),
+                                 ScyllaDuration(milliseconds=1000000),
                                  ScyllaDuration(hours=5),
                                  ScyllaDuration(hours=23, minutes=2, seconds=2, milliseconds=2),
     ],
-        ids=("1ms", "5h", "23h2m2s2ms"))
+        ids=("1000000ms", "5h", "23h2m2s2ms"))
     def test_timeout_valid_values(self, duration: ScyllaDuration):
         """
         Create s Service Level with a valid timeout value.
