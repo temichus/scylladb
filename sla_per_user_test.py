@@ -390,7 +390,7 @@ class TestSLA(SLATester):
                     else:
                         raise
                 except InvalidRequest as exc:
-                    if f"Service Level {sl_name} doesn't exists" in str(exc):
+                    if f"The service level '{sl_name}' doesn't exist" in str(exc):
                         logger.warning(f"It is possible that service level '{sl_name}' has been removed by another "
                                        f"thread. Error: {str(exc)}")
                     else:
