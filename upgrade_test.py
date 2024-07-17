@@ -97,10 +97,16 @@ class UpgradeTester(Tester):
         self.current_upgrade_path.pop(0)
         logger.debug(f"current_upgrade_path after pop: {self.current_upgrade_path}")
 
-    def init_cluster(self, nodes: int, jvm_args=None) -> Session:
+    def init_cluster(self, nodes: int, additional_config=None, jvm_args=None, skip_session=False) -> Session | None:
+        if additional_config is not None:
+            self.cluster.set_configuration_options(values=additional_config)
         self.cluster.populate(nodes).start(wait_for_binary_proto=True, jvm_args=jvm_args)
-        session = self.patient_cql_connection(self.cluster.nodelist()[0])
-        return session
+
+        if skip_session:
+            return None
+        else:
+            session = self.patient_cql_connection(self.cluster.nodelist()[0])
+            return session
 
     @staticmethod
     def download_all_relocatables(current_upgrade_path):
