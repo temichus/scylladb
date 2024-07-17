@@ -567,6 +567,7 @@ class EncryptionAtRestBase(Tester):
                 self.cleanup()
 
     def _reboot_test(self, key_provider=KeyProviderEnum.local):
+        self.cluster.set_configuration_options({"commitlog_sync": "batch"})
         with self.get_key_provider(key_provider) as kp:
             self.prepare(n=3, restart=kp.require_restart())
             try:
