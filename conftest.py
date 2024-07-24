@@ -411,11 +411,10 @@ def pytest_sessionstart(session):
     if elk_reporter and session.config.getoption('--report-to-elk'):
         # if we don't have the credentials just skip this part
         try:
-            es_credentials = KeyStore().get_elasticsearch_credentials()
+            es_credentials = KeyStore().get_elasticsearch_token()
 
             elk_reporter.es_address = es_credentials['es_url']
-            elk_reporter.es_username = es_credentials['es_user']
-            elk_reporter.es_password = es_credentials['es_password']
+            elk_reporter.es_api_key = es_credentials['api_key']
             elk_reporter.es_index_name = 'dtest_test_data'
 
         except (BotoCoreError, AwsClientError) as ex:
@@ -579,11 +578,10 @@ def pytest_collection_modifyitems(items, config):
 
 def pytest_collection_finish(session: pytest.Session):
     if days := session.config.getoption("--tests-outcome"):
-        es_credentials = KeyStore().get_elasticsearch_credentials()
-        history = ElkTestHistory(es_address=es_credentials['es_url'],
-                                 es_username=es_credentials['es_user'],
-                                 es_password=es_credentials['es_password'],
-                                 es_index_name='dtest_test_data')
+
+        es_credentials = KeyStore().get_elasticsearch_token()
+        history = ElkTestHistory(
+            es_address=es_credentials["es_url"], es_api_key=es_credentials["api_key"], es_index_name="dtest_test_data")
 
         test_history_data = history.fetch_test_outcomes(
             [item.nodeid.replace("::()", "") for item in session.items],

@@ -9,16 +9,22 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ElkTestHistory:  # pylint: disable=too-many-instance-attributes
-    def __init__(self, es_address, es_username, es_password, es_index_name, es_timeout=10):
+    def __init__(self, es_address, es_index_name, es_username=None, es_password=None, es_timeout=10, es_api_key=None):
         self.es_address = es_address
         self.es_username = es_username
         self.es_password = es_password
         self.es_index_name = es_index_name
         self.es_timeout = es_timeout
+        self.es_api_key = es_api_key
 
     @property
-    def es_auth(self):
-        return self.es_username, self.es_password
+    def es_auth_args(self) -> dict[str, tuple[str] | dict[str, str]]:
+        output = {}
+        if self.es_api_key:
+            output.update(dict(headers={"Authorization": f"ApiKey {self.es_api_key}"}))
+        if self.es_username and self.es_password:
+            output.update(dict(auth=(self.es_username, self.es_password)))
+        return output
 
     @property
     def es_url(self):
@@ -49,9 +55,9 @@ class ElkTestHistory:  # pylint: disable=too-many-instance-attributes
                         "must": [
                             {
                                 "query_string": {"query": f'(name:"{test_id}") AND '
-                                                          f'(build_tag.keyword:jenkins-scylla-master-dtest-daily-* OR '
-                                                          f'build_tag.keyword:jenkins-scylla-enterprise-dtest-daily-*) AND '
-                                                          f'NOT build_tag.keyword:*daily-debug-*'},
+                                                 f'(build_tag.keyword:jenkins-scylla-master-dtest-daily-* OR '
+                                                 f'build_tag.keyword:jenkins-scylla-enterprise-dtest-daily-*) AND '
+                                                 f'NOT build_tag.keyword:*daily-debug-*'},
                             }
                         ],
                         "filter": [
@@ -74,9 +80,7 @@ class ElkTestHistory:  # pylint: disable=too-many-instance-attributes
                 }
             }
             try:
-                res = session.post(
-                    url, json=body, auth=self.es_auth, timeout=self.es_timeout
-                )
+                res = session.post(url, json=body, timeout=self.es_timeout, **self.es_auth_args)
                 res.raise_for_status()
                 return dict(
                     test_name=test_id,
@@ -107,11 +111,10 @@ class ElkTestHistory:  # pylint: disable=too-many-instance-attributes
 
 if __name__ == "__main__":
     from tools.keystore import KeyStore
-    es_credentials = KeyStore().get_elasticsearch_credentials()
-    history = ElkTestHistory(es_address=es_credentials['es_url'],
-                             es_username=es_credentials['es_user'],
-                             es_password=es_credentials['es_password'],
-                             es_index_name='dtest_test_data')
+
+    es_credentials = KeyStore().get_elasticsearch_token()
+    history = ElkTestHistory(es_address=es_credentials["es_url"],
+                             es_api_key=es_credentials["api_key"], es_index_name="dtest_test_data")
     t = history.fetch_test_outcomes(
-        ['alternator_stream_tests.py::TestAlternatorStreams::test_sequence_numbers_during_add_decommission_node'])
+        ["alternator_stream_tests.py::TestAlternatorStreams::test_sequence_numbers_during_add_decommission_node"])
     print(t)
