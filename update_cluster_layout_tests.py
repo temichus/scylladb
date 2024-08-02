@@ -1844,6 +1844,10 @@ class TestUpdateClusterLayout(Tester):
         7. Start 2 nodes
         8. Verify counters consistency
         """
+        # TODO: Remove it when https://github.com/scylladb/scylla-dtest/issues/3686 is solved
+        logging.getLogger("cassandra").setLevel(logging.DEBUG)
+        logging.getLogger("cluster").setLevel(logging.DEBUG)
+
         cluster = self.cluster
 
         config_options = self.default_config_options(hinted_handoff_enabled=None)
