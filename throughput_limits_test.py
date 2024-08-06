@@ -230,14 +230,9 @@ class TestPerPartitionRateLimiter(Tester):
         assert 0.9 * max_reads_per_second < queries_passed / duration < 2 * max_reads_per_second, \
             "Actual rate is different specified read rate limit"
 
-        # Commented out until https://github.com/scylladb/scylladb/issues/11651 is fixed
         # validate rejected queries metric
-        # rejected_queries_metric = (
-        #     metrics_node_1["scylla_storage_proxy_coordinator_read_rate_limited"]
-        #     + metrics_node_2["scylla_storage_proxy_coordinator_read_rate_limited"]
-        # )
-        # rejected_queries_actual = queries_count - queries_passed
-        #
-        # assert (
-        #     rejected_queries_actual == rejected_queries_metric
-        # ), f"reads limited metric shows wrong number: {rejected_queries_metric} != {rejected_queries_actual}"
+        rejected_queries_metric = metrics_node_1["scylla_storage_proxy_coordinator_read_rate_limited"] + \
+            metrics_node_2["scylla_storage_proxy_coordinator_read_rate_limited"]
+        rejected_queries_actual = queries_count - queries_passed
+
+        assert rejected_queries_actual == rejected_queries_metric, f"reads limited metric shows wrong number: {rejected_queries_metric} != {rejected_queries_actual}"
