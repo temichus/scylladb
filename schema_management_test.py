@@ -14,9 +14,8 @@ from cassandra.query import dict_factory, SimpleStatement
 
 from tools.assertions import assert_all,  assert_invalid
 from tools.data import rows_to_list, create_c1c2_table, insert_c1c2, query_c1c2
-from dtest_class import Tester, create_ks, create_cf
+from dtest_class import Tester, create_ks, create_cf, read_barrier
 from ccmlib.scylla_cluster import ScyllaCluster
-from tools.marks import unmark
 
 
 logger = logging.getLogger(__name__)
@@ -258,6 +257,7 @@ class TestSchemaManagement(Tester):
         node2.start(wait_for_binary_proto=True)
 
         session = self.patient_exclusive_cql_connection(node2)
+        read_barrier(session)
 
         def create_or_alter_table_expected_result(col_mun):
             rows = session.execute(SimpleStatement("SELECT * FROM ks.cf LIMIT 1;",
@@ -320,6 +320,8 @@ class TestSchemaManagement(Tester):
 
         logger.debug("6. Verify the stopped node synchs on the updated schema")
         session = self.patient_exclusive_cql_connection(node1)
+        read_barrier(session)
+
         rows = session.execute(SimpleStatement(
             "SELECT * FROM ks.cf WHERE key=\'test\'", consistency_level=ConsistencyLevel.ALL))
         expected = [['test', 'test', 'test', 'test']]
@@ -353,6 +355,8 @@ class TestSchemaManagement(Tester):
 
         logger.debug("Restarting node2")
         node2.start(wait_for_binary_proto=True)
+        session2 = self.patient_cql_connection(node2)
+        read_barrier(session2)
 
         rows = session.execute(SimpleStatement("SELECT * FROM cf", consistency_level=ConsistencyLevel.ALL))
         assert rows_to_list(rows) == [], f"Expected an empty result set, got {rows}"
@@ -384,6 +388,8 @@ class TestSchemaManagement(Tester):
 
         logger.debug("Restarting node2")
         node2.start(wait_for_binary_proto=True)
+        session2 = self.patient_cql_connection(node2)
+        read_barrier(session2)
 
         session.execute(SimpleStatement("INSERT INTO cf (p, v) VALUES (2, '2')",
                                         consistency_level=ConsistencyLevel.ALL))
