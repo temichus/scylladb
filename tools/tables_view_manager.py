@@ -7,6 +7,7 @@ import time
 from uuid import UUID
 from collections import defaultdict
 
+import pytest
 from cassandra import ConsistencyLevel
 from cassandra.query import SimpleStatement
 from cassandra.concurrent import execute_concurrent_with_args
@@ -727,13 +728,16 @@ def wait_for_view(cluster, session, ks, view, raise_exception=True, timeout=None
 
 def wait_for_view_build_start(session, ks, view, seconds_to_wait=20):
     def _check_build_started():
-        result = rows_to_list(session.execute("SELECT last_token FROM system.views_builds_in_progress "
-                                              "WHERE keyspace_name='{0}' AND view_name='{1}'".format(ks, view)))
-        return result != [[None]]
+        return session.execute(f"SELECT * FROM system.views_builds_in_progress WHERE keyspace_name='{ks}' AND view_name='{view}'")
+
+    def _check_build_finished():
+        return session.execute(f"SELECT * FROM system.built_views WHERE keyspace_name='{ks}' AND view_name='{view}'")
 
     logger.debug("Ensure view building started.")
     start = time.time()
     while not _check_build_started():
+        if _check_build_finished():
+            pytest.skip(f"View building finished too soon!")
         if time.time() - start > seconds_to_wait:
             raise Exception("View building didn't start in {} seconds".format(seconds_to_wait))
 

@@ -1472,33 +1472,35 @@ class TestSecondaryIndexes(SecondaryIndexesHelpers):
         """
         Stop one node during index building and read data by index
         """
-        self._node_action_during_index_build(node_action='stop', nodes=4, rf=3, num_rows=100000)
+        self._node_action_during_index_build(node_action="stop", nodes=4, rf=3)
 
     @pytest.mark.dtest_heavy
     def test_remove_node_during_index_build(self):
         """
         Remove one node during index building and read data by index
         """
-        self._node_action_during_index_build(node_action='remove', nodes=4, rf=3, num_rows=100000)
+        self._node_action_during_index_build(node_action="remove", nodes=4, rf=3)
 
     def test_decommission_node_during_index_build(self):
         """
         Decommission one node during index building and read data by index
         """
-        self._node_action_during_index_build(node_action='decommission', nodes=4, rf=3, num_rows=100000)
+        self._node_action_during_index_build(node_action="decommission", nodes=4, rf=3)
 
     def test_add_node_during_index_build(self):
         """
         Decommission one node during index building and read data by index
         """
-        self._node_action_during_index_build(node_action='add', nodes=3, rf=3, num_rows=100000)
+        self._node_action_during_index_build(node_action="add", nodes=3, rf=3)
 
-    def _node_action_during_index_build(self, node_action, nodes, rf, num_rows):
-        keyspace_name = 'ks'
-        table_name = 'cf'
-        index_name = 'b_index'
-        index_column = 'b'
+    def _node_action_during_index_build(self, node_action, nodes, rf):
+        keyspace_name = "ks"
+        table_name = "cf"
+        index_name = "b_index"
+        index_column = "b"
         view_name = get_index_view_name(index_name)
+        debug = self.cluster.scylla_mode == "debug"
+        num_rows = 10_000 if debug else 500_000
 
         session = self.prepare(nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
         node2 = self.cluster.nodelist()[1]
@@ -1510,18 +1512,19 @@ class TestSecondaryIndexes(SecondaryIndexesHelpers):
         statement = session.prepare("INSERT INTO {}.{} (key, b) VALUES (?, ?)".format(keyspace_name, table_name))
         statement.consistency_level = ConsistencyLevel.QUORUM
 
-        execute_concurrent_with_args(session, statement,
-                                     map(lambda k: [k] + [k + num_rows], [k for k in range(0, num_rows)]))
+        execute_concurrent_with_args(session, statement, [(k, k + num_rows) for k in range(num_rows)])
         self.cluster.flush()
 
         # Create index and wait while the build is starting
-        create_index(session, table_name, index_column, index_name, compaction=self.compaction_strategy)
+        # no compaction here because it adds a sepate ALTER opperation that takes time
+        # and the view building might finish before the node actions bellow
+        create_index(session, table_name, index_column, index_name, compaction=None)
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
-        exclude_errors = [rf'Can\'t send migration request: node {node2_ip} is down',
-                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
-                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::mutation_write_timeout_exception \(Operation timed out for {keyspace_name}.{index_name}_index - received only 0 responses from 1 CL=ONE.\)',
-                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception \(Operation failed for {keyspace_name}.{index_name}_index - received 0 responses and 1 failures from 1 CL=ONE.\)',
+        exclude_errors = [rf"Can't send migration request: node {node2_ip} is down",
+                          rf'(\(rate limiting dropped[0-9] + similar messages\))?Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
+                          rf'(\(rate limiting dropped[0-9] + similar messages\))?Error applying view update to {node2_ip}.*: exceptions::mutation_write_timeout_exception \(Operation timed out for {keyspace_name}.{index_name}_index - received only 0 responses from 1 CL=ONE.\)',
+                          rf'(\(rate limiting dropped[0-9] + similar messages\))?Error applying view update to .*: exceptions::mutation_write_failure_exception \(Operation failed for {keyspace_name}.{index_name}_index - received 0 responses and 1 failures from 1 CL=ONE.\)',
                           rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::mutation_write_failure_exception \(abort requested\)',
                           ]
         self.ignore_log_patterns += exclude_errors
@@ -2542,32 +2545,34 @@ class TestLocalIndexes(SecondaryIndexesHelpers):
         """
         Stop one node during index building and read data by index
         """
-        self._node_action_during_index_build(node_action='stop', nodes=4, rf=3, num_rows=100000)
+        self._node_action_during_index_build(node_action="stop", nodes=4, rf=3)
 
     def test_remove_node_during_local_index_build(self):
         """
         Remove one node during index building and read data by index
         """
-        self._node_action_during_index_build(node_action='remove', nodes=4, rf=3, num_rows=100000)
+        self._node_action_during_index_build(node_action="remove", nodes=4, rf=3)
 
     def test_decommission_node_during_local_index_build(self):
         """
         Decommission one node during index building and read data by index
         """
-        self._node_action_during_index_build(node_action='decommission', nodes=4, rf=3, num_rows=100000)
+        self._node_action_during_index_build(node_action="decommission", nodes=4, rf=3)
 
     def test_add_node_during_local_index_build(self):
         """
         Add one node during index building and read data by index
         """
-        self._node_action_during_index_build(node_action='add', nodes=3, rf=3, num_rows=100000)
+        self._node_action_during_index_build(node_action="add", nodes=3, rf=3)
 
-    def _node_action_during_index_build(self, node_action, nodes, rf, num_rows):
-        keyspace_name = 'ks'
-        table_name = 'cf'
-        index_name = 'b_index'
-        index_column = 'b'
+    def _node_action_during_index_build(self, node_action, nodes, rf):
+        keyspace_name = "ks"
+        table_name = "cf"
+        index_name = "b_index"
+        index_column = "b"
         view_name = get_index_view_name(index_name)
+        debug = self.cluster.scylla_mode == "debug"
+        num_rows = 10_000 if debug else 500_000
 
         session = self.prepare(nodes=nodes, rf=rf, keyspace_name=keyspace_name, session_node=3)
         node2 = self.cluster.nodelist()[1]
@@ -2579,17 +2584,17 @@ class TestLocalIndexes(SecondaryIndexesHelpers):
         statement = session.prepare("INSERT INTO {}.{} (key, b) VALUES (?, ?)".format(keyspace_name, table_name))
         statement.consistency_level = ConsistencyLevel.QUORUM
 
-        execute_concurrent_with_args(session, statement,
-                                     map(lambda k: [k] + [k + num_rows], [k for k in range(0, num_rows)]))
+        execute_concurrent_with_args(session, statement, [(k, k + num_rows) for k in range(num_rows)])
         self.cluster.flush()
 
         # Create index and wait while the build is starting
-        create_local_index(session, table_name, 'key', index_column, index_name,
-                           compaction=self.compaction_strategy)
+        # no compaction here because it adds a sepate ALTER opperation that takes time
+        # and the view building might finish before the node actions bellow
+        create_local_index(session, table_name, "key", index_column, index_name, compaction=None)
         wait_for_view_build_start(session, ks=keyspace_name, view=view_name)
 
         exclude_errors = [f'Can\'t send migration request: node {node2_ip} is down',
-                          rf'(\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'
+                          rf'(\(rate limiting dropped[0-9] + similar messages\))?Error applying view update to {node2_ip}.*: exceptions::unavailable_exception \(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)'
                           r'\(Cannot achieve consistency level for cl ONE. Requires 1, alive 0\)',
                           r'Operation timed out for ks\.b_index_index - received only 0 responses from 1 CL=ONE',
                           rf'Error applying view update to {node2_ip}']

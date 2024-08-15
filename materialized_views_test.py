@@ -15,6 +15,7 @@ from packaging.version import Version
 from concurrent.futures import ThreadPoolExecutor
 from cassandra import ConsistencyLevel, WriteFailure, consistency_value_to_name
 from cassandra.cluster import Cluster, Session
+from cassandra.concurrent import execute_concurrent_with_args
 from cassandra.query import SimpleStatement
 from enum import Enum  # Remove when switching to py3
 
@@ -30,7 +31,7 @@ from tools.misc import flush_by_node, remove_node
 from tools.tables_view_manager import wait_for_view_build_start, wait_for_view, TableManager, MaterializedViewManager
 from cassandra.cluster import NoHostAvailable
 from ccmlib.scylla_cluster import ScyllaCluster
-from ccmlib.node import NodetoolError
+from ccmlib.node import Node, NodetoolError
 from tools.stress import format_cs_output, assert_cs_success
 from tools.files import get_node_cf_dir, remove_files_in_folder
 from tools.marks import unmark
@@ -154,17 +155,18 @@ class CommonUtils(Tester):
             if node.is_running():
                 node.nodetool("replaybatchlog")
 
-    def _ensure_view_building_did_not_finish(self, all_started_view_build_processes):
-        have_finished = 0
-        for node in self.cluster.nodelist():
-            finished = node.grep_log("Finished building view")
-            have_finished += len(finished)
-        if have_finished >= all_started_view_build_processes:
-            # TODO(sarna): Once it's possible to actually ensure view building haven't finished,
-            # e.g. by injecting waiting for it in Scylla, this function should start asserting
-            # instead of just warning.
-            logger.debug("View building finished too soon! nodes finished = {}, all build processes = {}".format(
-                have_finished, all_started_view_build_processes))
+    def _ensure_view_building_did_not_finish(self, keyspace: str = "ks", view: str = "t_by_v", nodes: list[Node] = []) -> None:
+        """
+        Check that a view did not finish building by searching the nodes' logs
+        """
+        if not nodes:
+            nodes = self.cluster.nodelist()
+        found = []
+        for node in nodes:
+            if log_line := node.grep_log(f"view - Finished building view {keyspace}.{view}"):
+                logger.debug(f"{node.name}: {log_line}")
+                found.append(node)
+        assert not found, f"View building finished too soon! nodes finished = {[(node.name, node.address()) for node in found]}"
 
 
 @pytest.mark.dtest_full
@@ -997,8 +999,8 @@ class TestMaterializedViews(CommonUtils):
 
         for i in range(mvs_count):
             query = f"CREATE MATERIALIZED VIEW {mv_name_prefix}_{i} AS SELECT * FROM {table_name} " \
-                    f"WHERE c1 IS NOT NULL and key IS NOT NULL PRIMARY KEY (c1, key) " \
-                    f"{' WITH synchronous_updates = true' if synchronous_updates else ''}"
+                f"WHERE c1 IS NOT NULL and key IS NOT NULL PRIMARY KEY (c1, key) " \
+                f"{' WITH synchronous_updates = true' if synchronous_updates else ''}"
             logger.info(f"Create MV {mv_name_prefix}_{i} as: {query}")
             session.execute(query)
 
@@ -1136,7 +1138,7 @@ class TestMaterializedViews(CommonUtils):
         try:
             assert_one(session=session,
                        query=f"select c2 from {keyspace_name}.{mv_name_for_assert} "
-                             f"where key='k{row_index}' and c1 = 'c1 value {row_index}'",
+                       f"where key='k{row_index}' and c1 = 'c1 value {row_index}'",
                        expected=[c2_new_value], cl=ConsistencyLevel.QUORUM)
         except AssertionError as err:
             logger.error(err)
@@ -2492,21 +2494,33 @@ class TestMaterializedViews(CommonUtils):
                 [i, i, 'a', 3.0]
             )
 
-    def test_do_not_finish_view_building_with_hints(self):
+    @pytest.mark.parametrize(
+        "colocated_view_replicas", [pytest.param(True, id="colocated_view_replicas"),
+                                    pytest.param(False, id="non_colocated_view_replicas")]
+    )
+    def test_do_not_finish_view_building_with_hints(self, colocated_view_replicas: bool):
         """Test that in presence of view update hints, view building will not be marked as finished"""
 
-        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
+        debug = self.cluster.scylla_mode == "debug"
+        session: Session = self.prepare(options={"hinted_handoff_enabled": False, "shadow_round_ms": 1000})
         node1, node2, node3 = self.cluster.nodelist()
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
-        rows = 200000
-        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
-            rows = 10000
-        logger.debug("Inserting initial data")
+        rows = {
+            (True, False): 5_000_000,  # very large table is required because view building is very fast with colocation
+            (False, False): 200_000,
+            (True, True): 100_000,
+            (False, True): 10_000,
+        }.get((colocated_view_replicas, debug))
+
+        logger.debug(f"Inserting initial data, {rows=}")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
-        for i in range(rows):
-            session.execute(insert_stmt, (i, i, 'a', 3.0))
+        if colocated_view_replicas:
+            parameters = [(i, i, "a", 3.0) for i in range(rows)]
+        else:
+            parameters = [(i, i + rows, "a", 3.0) for i in range(rows)]
+        execute_concurrent_with_args(session, insert_stmt, parameters)
 
         logger.debug("Create a MV")
         # Don't wait for schema agreement, or we risk view building concluding too soon
@@ -2514,13 +2528,14 @@ class TestMaterializedViews(CommonUtils):
         session.execute(("CREATE MATERIALIZED VIEW t_by_v AS SELECT * FROM t "
                          "WHERE v IS NOT NULL AND id IS NOT NULL PRIMARY KEY (v, id)"))
 
-        self.cluster.stop_nodes([node2, node3])
-
         wait_for_view_build_start(session, "ks", "t_by_v")
+
+        self.ignore_log_patterns += ["Error applying view update"]
+        self.cluster.stop_nodes([node2, node3])
 
         logger.debug("Ensure view building didn't finish.")
         for _ in range(10):
-            self._ensure_view_building_did_not_finish(1)
+            self._ensure_view_building_did_not_finish("ks", "t_by_v")
             time.sleep(1)
 
         logger.debug("Restart the cluster")
@@ -4530,7 +4545,7 @@ class TestInterruptBuildProcess(CommonUtils):
             return 2
 
     @pytest.mark.dtest_heavy
-    @pytest.mark.parametrize("colocated_view_replicas", [True, False], ids=["colocated_view_replicas", "non_colocated_view_replicas"])
+    @pytest.mark.parametrize("colocated_view_replicas", [pytest.param(True, id="colocated_view_replicas"), pytest.param(False, id="non_colocated_view_replicas")])
     def test_interrupt_build_process_test(self, colocated_view_replicas):
         logger.debug("Acquiring lock")
         with TestInterruptBuildProcess.lock:
@@ -4539,19 +4554,26 @@ class TestInterruptBuildProcess(CommonUtils):
 
     def _interrupt_build_process_test(self, colocated_view_replicas):
         """Test that an interrupted MV build process is resumed as it should"""
-        session = self.prepare(options={'hinted_handoff_enabled': False, 'shadow_round_ms': 1000})
+        debug = self.cluster.scylla_mode == "debug"
+        session = self.prepare(options={"hinted_handoff_enabled": False, "shadow_round_ms": 1000})
         node1, node2, node3 = self.cluster.nodelist()
 
         session.execute("CREATE TABLE t (id int PRIMARY KEY, v int, v2 text, v3 decimal)")
 
-        rows = 200000
-        if hasattr(self.cluster, 'scylla_mode') and self.cluster.scylla_mode == 'debug':
-            rows = 10000
+        rows = {
+            (True, False): 1_000_000,  # very large table is required because view building is very fast with colocation
+            (False, False): 200_000,
+            (True, True): 100_000,
+            (False, True): 10_000,
+        }.get((colocated_view_replicas, debug))
+
         logger.debug("Inserting initial data")
         insert_stmt = session.prepare("INSERT INTO t (id, v, v2, v3) VALUES (?, ?, ?, ?)")
-        for i in range(rows):
-            v = i if colocated_view_replicas else random.randint(0, rows*10)
-            session.execute(insert_stmt, (i, v, 'a', 3.0))
+        if colocated_view_replicas:
+            parameters = [(i, i, "a", 3.0) for i in range(rows)]
+        else:
+            parameters = [(i, random.randint(0, rows * 10), "a", 3.0) for i in range(rows)]
+        execute_concurrent_with_args(session, insert_stmt, parameters)
 
         logger.debug("Create a MV")
         # Don't wait for schema agreement, or we risk view building concluding too soon
@@ -4565,7 +4587,7 @@ class TestInterruptBuildProcess(CommonUtils):
         self.stop_cluster()
 
         logger.debug("Ensure view building didn't finish.")
-        self._ensure_view_building_did_not_finish(len(self.cluster.nodelist()))
+        self._ensure_view_building_did_not_finish("ks", "t_by_v")
 
         self.ignore_log_patterns += [
             r'view - (\(rate limiting dropped [0-9]+ similar messages\) )?Error applying view update to .*: exceptions::unavailable_exception',
@@ -4581,7 +4603,7 @@ class TestInterruptBuildProcess(CommonUtils):
             wait_for_view(cluster=self.cluster, session=session, ks="ks", view="t_by_v")
         else:
             logger.debug("Ensure view building didn't finish while a node is down.")
-            self._ensure_view_building_did_not_finish(2)
+            self._ensure_view_building_did_not_finish("ks", "t_by_v")
             assert not wait_for_view(cluster=self.cluster, session=session, ks="ks",
                                      view="t_by_v", timeout=1, raise_exception=False)
 
