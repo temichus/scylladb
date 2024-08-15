@@ -2377,7 +2377,6 @@ class TestCQL(Tester):
         res = session.execute("SELECT a, b, c, d, e, f FROM test WHERE a = 1 AND b = 1 AND c = 1 AND d = 1 AND e >= 2;")
         assert rows_to_list(res) == [[1, 1, 1, 1, 2, '2'], [1, 1, 1, 1, 3, '3'], [1, 1, 1, 1, 5, '5']], list(res)
 
-    @pytest.mark.require('#5424')
     @pytest.mark.single_node
     def test_update_type(self):
         """ Test altering the type of a column, including the one in the primary key (#4041) """
@@ -2404,22 +2403,22 @@ class TestCQL(Tester):
         session.execute("ALTER TABLE test ALTER v TYPE blob")
         res = session.execute("SELECT * FROM test")
         # the last should not be utf8 but a raw string
-        assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
+        assert rows_to_list(res) == [["ɸ", "ɸ", set(["ɸ"]), "ɸ".encode()]], list(res)
 
         session.execute("ALTER TABLE test ALTER k TYPE blob")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
+        assert rows_to_list(res) == [["ɸ".encode(), "ɸ", set(["ɸ"]), "ɸ".encode()]], list(res)
 
         session.execute("ALTER TABLE test ALTER c TYPE blob")
         res = session.execute("SELECT * FROM test")
-        assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
+        assert rows_to_list(res) == [["ɸ".encode(), "ɸ".encode(), set(["ɸ"]), "ɸ".encode()]], list(res)
 
         if Version(self.cluster.version()) < Version("2.1"):
             assert_invalid(session, "ALTER TABLE test ALTER s TYPE set<blob>", expected=ConfigurationException)
         else:
             session.execute("ALTER TABLE test ALTER s TYPE set<blob>")
             res = session.execute("SELECT * FROM test")
-            assert rows_to_list(res) == [['ɸ', 'ɸ', set(['ɸ']), 'ɸ']], list(res)
+            assert rows_to_list(res) == [["ɸ".encode(), "ɸ".encode(), set(["ɸ".encode()]), "ɸ".encode()]], list(res)
 
     @pytest.mark.single_node
     def test_composite_row_key(self):
