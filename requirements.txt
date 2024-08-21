@@ -26,10 +26,12 @@ pytest-repeat==0.9.1
 pytest-timeout==2.1.0
 pytest-subtests==0.11.0
 pytest-html==3.2.0
-filelock==3.0.12
+filelock==3.12.2
 PyGithub==1.57
 cryptography~=41.0.2
 unidiff==0.7.3
 pyan3==1.2.0
 tqdm==4.62.3
 wrapt==1.14.1
+virtualenv==20.25.0
+pykmip>=0.10.0

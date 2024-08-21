@@ -1,3 +1,9 @@
+import ctypes
+import logging
+import re
+import socket
+import ssl
+import threading
 from hashlib import md5
 import time
 import subprocess
@@ -15,12 +21,14 @@ import boto3
 from cassandra import ConsistencyLevel
 from cassandra.cluster import NoHostAvailable
 from cassandra.protocol import ConfigurationException
+from kmip.services import auth
+from kmip.services.server.server import KmipServer
 from packaging.version import Version
 from ccmlib.node import ToolError
 from dtest_class import Tester, create_ks, create_cf
 from tools.data import insert_c1c2, query_c1c2, rows_to_list
+from tools.misc import flush_by_node, generate_ssl_stores
 from tools.snapshots import get_table_description
-from tools.misc import flush_by_node
 from tools.assertions import assert_one
 from tools.log_utils import wait_for_any_log
 from tools.ldap_docker import running_in_docker
@@ -136,27 +144,139 @@ class ReplicatedKeyProviderFactory(BaseKeyProviderFactory):
 
 
 class KmipKeyProviderFactory(BaseKeyProviderFactory):
+    class TLS13AuthenticationSuite(auth.TLS12AuthenticationSuite):
+        """
+        An authentication suite used to establish secure network connections.
+        Supports TLS 1.3. More importantly, works with gnutls-<recent>
+        """
+
+        def __init__(self, cipher_suites=None):
+            """
+            Create a TLS12AuthenticationSuite object.
+            Args:
+                cipher_suites (list): A list of strings representing the names of
+                    cipher suites to use. Overrides the default set of cipher
+                    suites. Optional, defaults to None.
+            """
+            super().__init__(cipher_suites)
+            self._protocol = ssl.PROTOCOL_TLS_SERVER
+
+    @staticmethod
+    def fake_wrap_ssl(sock, keyfile=None, certfile=None, server_side=False, cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_TLS, ca_certs=None, do_handshake_on_connect=True, suppress_ragged_eofs=True, ciphers=None):  # noqa: PLR0913
+        ctxt = ssl.SSLContext(protocol=ssl_version)
+        ctxt.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        ctxt.verify_mode = cert_reqs
+        ctxt.load_verify_locations(cafile=ca_certs)
+        ctxt.set_ciphers(ciphers)
+        return ctxt.wrap_socket(sock, server_side=server_side, do_handshake_on_connect=do_handshake_on_connect, suppress_ragged_eofs=suppress_ragged_eofs)
+
     def __init__(self, tester):
-        self.kmip_host = 'kmip_test'
+        self.kmip_host = "kmip_test"
+        self.kmip_port = 0
+        self.kmip_server = None
+        self.kmip_thread = None
+        self.tempdir = None
+        self.certs = None
+        ssl.wrap_socket = self.fake_wrap_ssl
         BaseKeyProviderFactory.__init__(self, KeyProviderEnum.kmip, tester)
 
-    def prepare_conf(self, use_scylla_kmip_server=True):
+    def prepare_conf(self):
         # restart is request to make change effective
-        if use_scylla_kmip_server:
-            options = {'hosts': '52.21.171.245',
-                       'certificate': os.path.realpath('./resources/scylla.pem'),
-                       'keyfile': os.path.realpath('./resources/scylla.pem'),
-                       'truststore': os.path.realpath('./resources/cacert.pem'),
-                       'priority_string': 'SECURE128:+RSA:-VERS-TLS1.0:-ECDHE-ECDSA',
-                       }
-        else:
-            options = {'hosts': 'kmip-interop1.cryptsoft.com',
-                       'certificate': '/etc/scylla/conf/SCYLLADB.pem',
-                       'keyfile': '/etc/scylla/conf/SCYLLADB.pem',
-                       'truststore': '/etc/scylla/conf/CA.pem',
-                       'priority_string': 'SECURE128:+RSA:-VERS-TLS1.0:-ECDHE-ECDSA',
-                       }
-        self.cluster.set_configuration_options({'kmip_hosts': {'kmip_test': options}})
+        options = {
+            "hosts": "127.0.0.1:" + str(self.kmip_port),
+            "certificate": self.certs["certfile"],
+            "keyfile": self.certs["keyfile"],
+            "truststore": self.certs["truststore"],
+            "priority_string": "SECURE128:+RSA:-VERS-TLS1.0:-ECDHE-ECDSA",
+        }
+        self.cluster.set_configuration_options({"kmip_hosts": {self.kmip_host: options}})
+
+    def kmip_serve(self):
+        s = self.kmip_server
+        assert s is not None
+
+        s._socket.listen(5)
+        s._logger.info("Starting connection service...")
+
+        try:
+            while s._is_serving:
+                try:
+                    connection, address = s._socket.accept()
+                except TimeoutError:
+                    # Setting the default socket timeout to break hung connections
+                    # will cause accept to periodically raise socket.timeout. This
+                    # is expected behavior, so ignore it and retry accept.
+                    pass
+                except OSError as e:
+                    s._logger.warning("Error detected while establishing new connection.")
+                    s._logger.exception(e)
+                except KeyboardInterrupt:
+                    s._is_serving = False
+                    break
+                except Exception as e:
+                    s._logger.warning("Error detected while establishing new connection.")
+                    s._logger.exception(e)
+                else:
+                    s._setup_connection_handler(connection, address)
+        except KeyboardInterrupt:
+            pass
+
+        s._logger.info("Stopping connection service.")
+
+    def __enter__(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+
+        base_dir = self.tempdir.name
+        generate_ssl_stores(base_dir)
+        self.certs = {"certfile": os.path.join(base_dir, "ccm_node.pem"), "keyfile": os.path.join(
+            base_dir, "ccm_node.key"), "truststore": os.path.join(base_dir, "trust.pem")}
+        assert os.path.exists(self.certs["certfile"])
+        assert os.path.exists(self.certs["keyfile"])
+        assert os.path.exists(self.certs["truststore"])
+        kmiplog = logging.getLogger("kmip.server")
+        kmiplog.handlers.clear()  # make pykmip shut up a bit. log will written to log file (setup in init below)
+        self.kmip_server = KmipServer(
+            hostname="127.0.0.1",
+            config_path=None,
+            certificate_path=self.certs["certfile"],
+            key_path=self.certs["keyfile"],
+            ca_path=self.certs["truststore"],
+            auth_suite="TLS1.2",
+            database_path=os.path.join(self.tempdir.name, "pykmip.db"),
+            log_path=os.path.join(self.tempdir.name, "pykmip.log"),
+            enable_tls_client_auth=False,
+        )
+        assert len(kmiplog.handlers) == 1
+        logger.info(kmiplog.handlers)
+        self.kmip_server.auth_suite = self.TLS13AuthenticationSuite(self.kmip_server.auth_suite.ciphers)
+        # force port to zero -> select dynamically
+        self.kmip_server.config.settings["port"] = 0
+        self.kmip_server.start()
+        self.kmip_port = self.kmip_server._socket.getsockname()[1]
+        self.kmip_thread = threading.Thread(name="kmip server", target=self.kmip_serve)
+        self.kmip_thread.start()
+        self.prepare_conf()
+        return self
+
+    def __exit__(self, exception_type, exception_value, exception_traceback):
+        if self.kmip_thread is not None:
+            logger.info(self.kmip_thread)
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(
+                self.kmip_thread.ident), ctypes.py_object(KeyboardInterrupt))
+            self.kmip_thread.join()
+            self.kmip_thread = None
+        if self.kmip_server is not None:
+            # self.kmip_server.stop()
+            try:
+                self.kmip_server._socket.shutdown(socket.SHUT_RDWR)
+                self.kmip_server._socket.close()
+            except:
+                pass
+            self.kmip_server = None
+        if self.tempdir is not None:
+            self.tempdir.cleanup()
+            self.tempdir = None
+        self.certs = None
 
     def additional_cf_options(self, ks=None):
         return super().additional_cf_options(ks) | {'kmip_host': self.kmip_host}
@@ -587,8 +707,7 @@ class EncryptionAtRestBase(Tester):
 
 
 def all_providers():
-    """until we'll have scylladb/scylla-enterprise#4067 figure, taking all of kmip test of gating"""
-    return [pytest.param(p, marks=[pytest.mark.require("scylladb/scylla-enterprise#4067")] if p == KeyProviderEnum.kmip else []) for p in KeyProviderEnum]
+    return [pytest.param(p, marks=[unmark.next_gating] if p == KeyProviderEnum.kmip else []) for p in KeyProviderEnum]
 
 
 @pytest.mark.dtest_full
