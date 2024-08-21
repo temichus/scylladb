@@ -200,6 +200,15 @@ def create_ks(session, name, rf, tablets=0):
     session.execute('USE {}'.format(name))
 
 
+def read_barrier(session):
+    """To issue a read barrier it is sufficient to attempt dropping a
+    non-existing table. We need to use `if exists`, otherwise the statement
+    would fail on prepare/validate step which happens before a read barrier is
+    performed.
+    """
+    session.execute("drop table if exists nosuchkeyspace.nosuchtable")
+
+
 def get_auth_provider(user, password):
     return PlainTextAuthProvider(username=user, password=password)
 
