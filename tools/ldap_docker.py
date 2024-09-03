@@ -64,7 +64,7 @@ class LdapDocker(object):
         self.ldap_base_object = None
         self.ldap_address = None
 
-    def create_ldap_container(self, name, ldap_port=0, ldap_ssl_port=0, image='osixia/openldap:1.4.0',
+    def create_ldap_container(self, name, ldap_port=None, ldap_ssl_port=None, image='osixia/openldap:1.4.0',
                               organisation='ScyllaDB', domain='scylladb.com', password='scylla'):
         if self.container:
             raise ContainerAlreadyStarted('LDAP docker already exists for this instance')
