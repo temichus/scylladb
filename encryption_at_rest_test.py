@@ -982,44 +982,39 @@ class TestSystemInfoEncryption(EncryptionAtRestBase):
                         "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};")
         self.cluster.repair()
 
-        with self.get_key_provider(key_provider) as kp:
-            self.verify_system_info(session, kp, ks_suffix='orig', expect=True)
+        self.verify_system_info(session, None, ks_suffix="orig", expect=True)
 
-            options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'},
-                       'system_key_directory': EncryptionAtRestBase.system_key_dir}
-            self.cluster.set_configuration_options(options)
-            logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
-            session = self.rolling_restart(user='cassandra', password='cassandra')
-            logger.debug("Re-verify system info after system_info_encryption is enabled")
-            self.verify_system_info(session, kp, ks_suffix='encrypt', expect=False)
+        options = {"system_info_encryption": {"enabled": True, "key_provider": "LocalFileSystemKeyProviderFactory"},
+                   "system_key_directory": EncryptionAtRestBase.system_key_dir}
+        self.cluster.set_configuration_options(options)
+        logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
+        session = self.rolling_restart(user="cassandra", password="cassandra")
+        logger.debug("Re-verify system info after system_info_encryption is enabled")
+        self.verify_system_info(session, None, ks_suffix="encrypt", expect=False)
 
     @unmark.next_gating
     @pytest.mark.no_boot_speedups
     def test_reboot(self):
         """
-        The test is used to reproduce a scylla crash, enable commitlog encryption and reboot.
+        The test reproduces a scylla crash, with enabled commitlog encryption, and reboot.
         https://github.com/scylladb/scylla-enterprise/issues/1332
         """
 
-        with self.get_key_provider(key_provider=None) as kp:
-            self.prepare(n=3, restart=False)
-            options = {'system_info_encryption': {'enabled': True, 'key_provider': 'LocalFileSystemKeyProviderFactory'}}
-            self.cluster.set_configuration_options(options)
-            logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
-            session = self.rolling_restart()
+        self.prepare(n=3, restart=False)
+        options = {"system_info_encryption": {"enabled": True,
+                                              "key_provider": "LocalFileSystemKeyProviderFactory"}, "commitlog_sync": "batch"}
+        self.cluster.set_configuration_options(options)
+        logger.debug("\n\nRestarting nodes one by one ...... Make sure encryption change is persistent\n")
+        session = self.rolling_restart()
 
-            self.create_encrypted_cf(session, name='ks.cf')
-            self.prepare_write_workload(session, flush=False)
+        self.create_encrypted_cf(session, name="ks.cf")
+        self.prepare_write_workload(session, flush=False)
 
-            # restarting nodes once is "enough". Since commit log is replayed
-            # on first kill+start, unless we add more data, subsequent restarts
-            # would not add anything
-            for node in self.cluster.nodelist()[1:]:
-                logger.debug('Kill node {}, and restart'.format(node.name))
-                node.stop(gently=False, wait_other_notice=False)
-                # ugh, disable wait_other_notice to avoid 120s timeout.
-                # restarting w. dirty commitlog can be somewhat tardy now.
-                # because of schema commitlog?
-                node.start(wait_for_binary_proto=True, wait_other_notice=False,
-                           jvm_args=['--logger-log-level', 'kms=trace'])
-                self.read_verify_workload(self.get_session())
+        # restarting nodes once is "enough". Since commit log is replayed
+        # on first kill+start, unless we add more data, subsequent restarts
+        # would not add anything
+        for node in self.cluster.nodelist()[1:]:
+            logger.debug(f"Kill node {node.name}, and restart")
+            node.stop(gently=False, wait_other_notice=False)
+            node.start(wait_for_binary_proto=True, wait_other_notice=True, jvm_args=["--logger-log-level", "kms=trace"])
+            self.read_verify_workload(self.get_session())
