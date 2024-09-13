@@ -8,6 +8,7 @@ import re
 import shutil
 import string
 import tempfile
+from textwrap import dedent
 import time
 import json
 import uuid
@@ -33,6 +34,7 @@ from ccmlib.node import NodetoolError, TimeoutError, Node
 from ccmlib.scylla_cluster import ScyllaCluster, ScyllaNode
 from deepdiff import DeepDiff
 from operator import attrgetter
+import urllib.parse
 
 from dtest_class import Tester, create_ks, create_cf
 from dtest_setup_overrides import DTestSetupOverrides
@@ -2704,12 +2706,11 @@ class TestValidationCompaction(CompactionAdditionalTester):
 class TestLCSSSTablePromotion(CompactionAdditionalTester):
     KS = "ks"
     CF = "cf"
-    TABLE_LEVELS_PATTERN = r"SSTables in each level:\s*\[(?P<sstable_list>[\d,\s/]*)\]"
-    LCS = {'class': CompactionStrategy.LEVELED.value, 'sstable_size_in_mb': 1}
-    STCS = {'class': CompactionStrategy.SIZE_TIERED.value}
+    LCS = {"class": CompactionStrategy.LEVELED.value, "sstable_size_in_mb": 1}
+    STCS = {"class": CompactionStrategy.SIZE_TIERED.value}
     COMPACTION_CONVERGE_ITERATIONS = 10
 
-    def _wait_until_table_levels_converge(self, node: Node) -> list[int]:
+    def _get_table_levels_after_convergence(self, node: ScyllaNode) -> list[int]:
         levels = []
         for _ in range(self.COMPACTION_CONVERGE_ITERATIONS):
             new_levels = self._get_table_levels(node)
@@ -2744,32 +2745,33 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
         """
         node, session, _ = self._prepare()
         create_ks(session=session, name=self.KS, rf=1)
-        create_cf(session=session, name=self.CF, columns={'c1': 'text', 'c2': 'text'},
-                  compaction=self.LCS)
-        insert_c1c2(session=session, n=1_000_000)
+        create_cf(session=session, name=self.CF, columns={"c1": "text", "c2": "text"}, compaction=self.LCS)
+        num_rows = 100_000 if node.scylla_mode() == "debug" else 1_000_000
+        insert_c1c2(session=session, n=num_rows)
         node.flush()
-        levels = self._wait_until_table_levels_converge(node)
-        self._validate_levels_distribution(levels)
+        levels = self._get_table_levels_after_convergence(node)
+        self._check_space_amplification(node, levels)
 
     def test_lcs_table_promotion_major_compaction(self):
         node, session, storage_service_client = self._prepare()
-        create_ks(session=session, name='ks', rf=1)
-        create_cf(session=session, name='cf', columns={'c1': 'text', 'c2': 'text'},
-                  compaction=self.LCS)
-        node.nodetool(f'disableautocompaction {self.KS} {self.CF}')
-        insert_c1c2(session=session, n=1_000_000)
+        create_ks(session=session, name="ks", rf=1)
+        create_cf(session=session, name="cf", columns={"c1": "text", "c2": "text"}, compaction=self.LCS)
+        node.nodetool(f"disableautocompaction {self.KS} {self.CF}")
+        num_rows = 100_000 if node.scylla_mode() == "debug" else 1_000_000
+        insert_c1c2(session=session, n=num_rows)
         node.flush()
 
         storage_service_client.compact_ks_cf(keyspace=self.KS, cf=self.CF)
-        levels = self._wait_until_table_levels_converge(node)
-        self._validate_levels_distribution(levels)
+        levels = self._get_table_levels_after_convergence(node)
+        self._check_space_amplification(node, levels)
 
     def test_lcs_table_promotion_after_stcs_migration(self):
         node, session, _ = self._prepare()
         create_ks(session=session, name=self.KS, rf=1)
-        create_cf(session=session, name=self.CF, columns={'c1': 'text', 'c2': 'text'},
-                  compaction=self.STCS)
+        create_cf(session=session, name=self.CF, columns={"c1": "text", "c2": "text"}, compaction=self.STCS)
         keys_to_insert = [20_000, 80_000, 150_000, 250_000, 500_000]
+        if node.scylla_mode() == "debug":
+            keys_to_insert = [i // 10 for i in keys_to_insert]
 
         for item in keys_to_insert:
             insert_c1c2(session=session, n=item)
@@ -2777,58 +2779,58 @@ class TestLCSSSTablePromotion(CompactionAdditionalTester):
 
         session.execute(f"ALTER TABLE ks.cf WITH compaction={self.LCS}")
         node.nodetool(f"refresh {self.KS} {self.CF}")
-        levels = self._wait_until_table_levels_converge(node)
-        self._validate_levels_distribution(levels)
+        levels = self._get_table_levels_after_convergence(node)
+        self._check_space_amplification(node, levels)
 
     def _get_table_levels(self, node: Node) -> list[int]:
         """
-        Run <nodetool cfstats> command and get the sstable levels
-        info from it.
-
-        Example:
-            Cfstats output:
-                Keyspace: keyspace1
-                Read Count: 0
-                Read Latency: NaN ms.
-                Write Count: 41656
-                Write Latency: 0.016199467063568274 ms.
-                Pending Flushes: 0
-                Table: standard1
-                SSTable count: 17
-                SSTables in each level: [0, 2, 15]
-                Space used (live): 28331544
-                Space used (total): 38060888
-                ...
-                ...
-                Maximum tombstones per slice (last five minutes): 0.0
-
-            returned [0, 2, 15]
+        Use the node's REST API and get the sstable levels info from it.
         """
-        cfstats = "\n".join(node.nodetool(f"cfstats {self.KS}.{self.CF}"))
-        sstable_levels_line_pattern = re.compile(self.TABLE_LEVELS_PATTERN)
-        matched = sstable_levels_line_pattern.search(cfstats)
-        assert matched
-        # Get the sstable_list from the Match object and parse it into a list of integers
-        raw_levels = matched.group("sstable_list").split(",")
-        return [int(item.split('/')[0]) for item in raw_levels]
-
-    @staticmethod
-    def _validate_levels_distribution(levels: list[int]):
-        # we hardwire fanout_size to 10, see leveled_manifest::leveled_fan_out
-        FANOUT_SIZE = 10
-        # we use 4 in leveled_manifest::max_bytes_for_level() when evaluating if
-        # the sstables at level0 should be compacted
-        LEVEL0_MAX_SIZE = 4
-        # as the size of each sstable in LCS is fixed, size here actually
-        # implies the total number of sstables at a certain level.
-        for level, size in enumerate(levels):
-            # L0=4, L1=10, L2=100, L3=1000
-            size_max = LEVEL0_MAX_SIZE if level == 0 else FANOUT_SIZE ** level
-            assert size <= size_max, \
-                (f"The size of LCS level[{level}] should be less than {size_max}, "
-                 f"but it is: {size}")
+        result = run_rest_api(
+            run_on_node=node, cmd=f"/column_family/sstables/per_level/{self.KS}:{self.CF}", api_method="GET")
+        # API call returns a list of sstables levels, e.g.: [0, 5, 15]
+        return result.json()
 
     def _prepare(self):
         [node], session = self.prepare(1)
         storage_service_client = StorageServiceClient(node=node)
         return node, session, storage_service_client
+
+    def _check_space_amplification(self, node: ScyllaNode, levels: list[int]):
+        # The user is promissed ~1.1 space amplification. Increase space amplification factor from 1.1 to 1.2 for safety margin
+        # https://github.com/scylladb/scylla-dtest/issues/4702#issuecomment-2346062445
+        MAX_AMPLIFICATION = 1.2
+
+        params = urllib.parse.urlencode({"keyspace": self.KS, "cf": self.CF})
+        result = run_rest_api(run_on_node=node, cmd=f"/storage_service/sstable_info?{params}", api_method="GET")
+        # API call returns a dict of the form:
+        # [{'keyspace': 'ks', 'table': 'cf', 'sstables': [{'size': 1389093, 'data_size': ..., 'index_size': ..., 'filter_size': ..., 'timestamp': ..., 'generation': ..., 'level': 2, 'version': ...}, ...]}]
+        sstable_info = result.json()
+
+        nr_levels = len(levels)
+        data_size = [0] * nr_levels
+        for sstable in sstable_info[0]["sstables"]:
+            data_size[sstable["level"]] += sstable["size"]
+
+        amplification = [0] * (nr_levels - 1)
+        # calculate the amplification using the formula
+        # amplification = (size(level) + size(level+1)) / size(level+1)
+        # data_size is usually like [0, 12641608, 49752323]
+        for i in range(nr_levels - 1):
+            if data_size[i + 1] != 0:
+                amplification[i] = (data_size[i + 1] + data_size[i]) / data_size[i + 1]
+            elif data_size[i] == 0 and data_size[i + 1] == 0:
+                # if two consecutive levels have size 0, then we set amplification to 1
+                amplification[i] = 1
+            else:
+                # in the unlikely scenario that we have sizes like [100, 0, 1500], give a better error than ZeroDivisionError
+                pytest.fail(f"Invalid sstable info: {levels=}, {data_size=}")
+
+        assert all([a < MAX_AMPLIFICATION for a in amplification]), dedent(
+            f"""\
+            Data amplification between levels should be lower than {MAX_AMPLIFICATION}:
+                {", ".join([f"level {i+1} -> level {i}: {amplification[i]:.3}" for i in range(nr_levels-1)[::-1]])}
+                {levels=}
+                {data_size=}
+            """
+        )
