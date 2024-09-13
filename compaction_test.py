@@ -37,6 +37,7 @@ logger = logging.getLogger(__file__)
     'TimeWindowCompactionStrategy',
     enterprise_only_param('IncrementalCompactionStrategy')
 ])
+@pytest.mark.cluster_options(repair_hints_batchlog_flush_cache_time_in_ms=0)
 class TestCompaction(Tester):
     strategy = None
     PROPAGATION_DELAY_IN_SECONDS = 5
