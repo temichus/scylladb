@@ -923,15 +923,6 @@ class TestCompaction(Tester):
         cf_dir = get_node_cf_dir(node, f'{ks}', f'{cf}', latest=True)
         copy_files_to(cf_dir, os.path.join(cf_dir, './upload/'), files_only=True)
 
-    @staticmethod
-    def wait_for_compactions(node, timeout: int):
-        pattern = re.compile("pending tasks: 0")
-        start = time.time()
-        while True and time.time() < start + timeout:
-            output, err = node.nodetool("compactionstats", capture_output=True)
-            if pattern.search(output):
-                break
-
     def disable_autocompaction(self, node, ks, table, verify=True):
         node.nodetool(f'disableautocompaction {ks} {table}')
         mark = node.mark_log()

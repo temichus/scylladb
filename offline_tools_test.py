@@ -106,7 +106,7 @@ class TestOfflineTools(Tester):
         logger.debug("Adding data to table")
         node1.stress(['write', 'n=50K', '-rate', 'threads=20', '-schema', 'replication(factor=1)'])
         cluster.flush()
-        self.wait_for_compactions(node1)
+        node1.wait_for_compactions()
         cluster.stop()
 
         logger.debug("run sstablelevelreset on table with sstables in multiple levels")
@@ -136,14 +136,7 @@ class TestOfflineTools(Tester):
                     f'\nscylla sstable dump-statistics failed to dump sstable_level:\n{sstable}')
         return levels
 
-    def wait_for_compactions(self, node):
-        pattern = re.compile("pending tasks: 0")
-        while True:
-            output, err = node.nodetool("compactionstats", capture_output=True)
-            if pattern.search(output):
-                break
-
-    @pytest.mark.skip("sstableofflinerelevel is not supported by scylla: scylladb/scylla#1151, scylladb/scylla-ccm#87")
+    @pytest.mark.skip("sstableofflinerelevel is not supported by scylla: scylladb/scylladb#1151, scylladb/scylla-ccm#87")
     @pytest.mark.single_node
     def test_sstableofflinerelevel(self):
         """
@@ -196,7 +189,7 @@ class TestOfflineTools(Tester):
         cluster.start(wait_for_binary_proto=True)
         node1.stress(['write', 'n=100K', '-schema', 'replication(factor=1)'])
         node1.flush()
-        self.wait_for_compactions(node1)
+        node1.wait_for_compactions()
         cluster.stop()
 
         # Let's reset all sstables to L0

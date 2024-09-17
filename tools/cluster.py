@@ -77,14 +77,6 @@ def run_rest_api(run_on_node: ScyllaNode, cmd, api_method: str = 'post'):
     return result
 
 
-def wait_for_compactions(node) -> None:
-    pattern = re.compile("pending tasks: 0")
-    while True:
-        output, err = node.nodetool("compactionstats", capture_output=True)
-        if pattern.search(output):
-            break
-
-
 def parallel_nodetool(nodes, cmd, capture_output=True, wait=True, timeout=300):
     if not isinstance(nodes, list):
         nodes = [nodes]
