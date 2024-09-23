@@ -81,7 +81,7 @@ function xdist_processes() {
     local mem_per_dtest="$((cpu_per_dtest * mb_per_cpu * 1024 * 1024))"
     local mem_limit=$((total_mem / mem_per_dtest))
 
-    local mode_limit=10
+    local mode_limit=40
     if [[ "$mode" == "debug" ]]; then
         mode_limit=3
     fi
@@ -303,10 +303,11 @@ echo "Setting env for dtest"
 export HOME=$home_dir
 
 export mb_per_cpu=512
-export nodes_per_cluster=3
+export nodes_per_cluster=1
 
 export XDIST_PROCESSES=$(xdist_processes "$smp" "$nodes_per_cluster" "$mb_per_cpu")
 PYTEST_FLAGS="${PYTEST_FLAGS} -n ${XDIST_PROCESSES}"
+echo "DEBUG: running with $XDIST_PROCESSES processes"
 
 if [ -z "$SCYLLA_VERSION" ]; then
     PYTEST_FLAGS="$PYTEST_FLAGS --cassandra-dir=${CASSANDRA_DIR}"
