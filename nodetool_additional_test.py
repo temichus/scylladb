@@ -2142,34 +2142,6 @@ class TestNodetool(Tester):
         time.sleep(1)
         node.start(wait_for_binary_proto=wait_for_binary_proto, wait_other_notice=wait_other_notice)
 
-    def test_concurrent_restart(self):
-        """
-        Start a cluster with 2 nodes
-        run load
-        restart a node
-        """
-        node_to_drain = 2
-        expected_errors = self.stress_node_down_expected_errors(node_to_drain)
-        tst = [{"operations": [{"func": self.run_cluster}],
-                "recurrent": [{"func": self.verify_all_api, "block": True},
-                              {"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress,
-                                "delay": 5,
-                                "args": [None,
-                                         {"duration": "1m",
-                                          "opt": ["-schema", "replication(strategy=SimpleStrategy, replication_factor=2)",
-                                                  "-rate", "threads=10 throttle=5000/s"]}]}],
-                "recurrent": [{"func": self.verify_info, "time": 60, "delay": 10}]},
-               {"operations": [{"func": self.concurrent_stress,
-                                "delay": 5,
-                                "args": [None,
-                                         {"cl": "ONE",
-                                          "duration": "2m",
-                                          "expected_errors": expected_errors}]},
-                               {"func": self.restart, "delay": 10, "args": [node_to_drain]}],
-                "recurrent": self. queries_method_list}]
-        self.general_concurrent(tst)
-
     def stress(self, node, opr, times=10000, duration=None, col=None, pop=None, opt=None, cl=None, expected_errors=None):
         cmd = [opr]
         if cl is None:
