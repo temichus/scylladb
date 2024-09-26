@@ -2,6 +2,7 @@ import os
 import logging
 
 import docker
+from docker.errors import DockerException
 from ldap3 import Server, Connection, ALL, ALL_ATTRIBUTES
 from ldap3.core.exceptions import LDAPSocketOpenError
 
@@ -69,36 +70,40 @@ class LdapDocker(object):
         if self.container:
             raise ContainerAlreadyStarted('LDAP docker already exists for this instance')
         self.name = name
-        self.docker.containers.run(ports={'389/tcp': ldap_port, '636/tcp': ldap_ssl_port},
-                                   name=name,
-                                   environment=[f'LDAP_ORGANISATION={organisation}', f'LDAP_DOMAIN={domain}',
-                                                f'LDAP_ADMIN_PASSWORD={password}'],
-                                   image=image,
-                                   detach=True,
-                                   labels=['dtest'])
-        for container in self.docker.containers.list():
-            if self.name in container.name:
-                self.container = container
-                if running_in_docker():
-                    self.ldap_port = '389'
-                    self.ldap_ssl_port = '636'
-                    self.ldap_address = container.attrs['NetworkSettings']['IPAddress']
-                else:
-                    self.ldap_port = container.ports['389/tcp'][0]['HostPort']
-                    self.ldap_ssl_port = container.ports['636/tcp'][0]['HostPort']
-                    self.ldap_address = 'localhost'
-        if self.container:
-            # We try to wait here for the startup, if the server haven't finished
-            # after 30s we will continue with the wishfull thinking that by the time
-            # scylla will try to connect to it, it will be up and running.
-            # if it will not happen, the test will fail and we will need to increase
-            # the timeout. But it is better than failing early.
-            # for creating connections to the server we are covered since the connection
-            # creation function also waits for the server to be up.
+
+        @retrying(num_attempts=10, sleep_time=1, allowed_exceptions=DockerException)
+        def start_ldap():
+            existing_images = self.docker.images.list(filters={"reference": image})
+            if not existing_images:
+                self.docker.images.pull(image)
+
             try:
-                self.wait_for_ldap_server_startup()
-            except:
-                pass
+                self.container = self.docker.containers.run(
+                    ports={"389/tcp": ldap_port, "636/tcp": ldap_ssl_port}, name=name, environment=[f"LDAP_ORGANISATION={organisation}", f"LDAP_DOMAIN={domain}", f"LDAP_ADMIN_PASSWORD={password}"], image=image, detach=True, labels=["dtest"]
+                )
+            except DockerException as e:
+                logger.error(f"Failed to start LDAP container: {e}")
+                self.docker.containers.get(name).remove(force=True)
+                raise
+
+        start_ldap()
+        self.container.reload()
+        if running_in_docker():
+            self.ldap_port = "389"
+            self.ldap_ssl_port = "636"
+            self.ldap_address = self.container.attrs["NetworkSettings"]["IPAddress"]
+        else:
+            self.ldap_port = self.container.ports["389/tcp"][0]["HostPort"]
+            self.ldap_ssl_port = self.container.ports["636/tcp"][0]["HostPort"]
+            self.ldap_address = "localhost"
+        # We try to wait here for the startup, if the server haven't finished
+        # after 30s we will continue with the wishfull thinking that by the time
+        # scylla will try to connect to it, it will be up and running.
+        # if it will not happen, the test will fail and we will need to increase
+        # the timeout. But it is better than failing early.
+        # for creating connections to the server we are covered since the connection
+        # creation function also waits for the server to be up.
+        self.wait_for_ldap_server_startup()
 
     def is_container_running(self):
         if not self.container:
