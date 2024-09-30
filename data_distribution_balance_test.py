@@ -56,8 +56,6 @@ class TestDataDistribution(Tester):
         logger.info("Compacting data...")
         self.cluster.nodetool(f'disableautocompaction {self.ks}')
         self.cluster.compact()
-        logger.info("Waiting for compaction...")
-        self.cluster.wait_for_compactions()
 
         # nodetool status load is updated every 60 seconds
         status_ready_at = time.time() + 60 + 1
