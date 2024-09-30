@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 pytest_plugins = "email_plugin"
 
+# Dictionary to track subtest failures
+SUBTESTS_FAILURES = defaultdict(list)
+
 
 def check_required_loopback_interfaces_available():
     """
@@ -206,6 +209,7 @@ def fixture_logging_setup(request, record_property, split_info):
     logging_plugin.log_file_handler.removeFilter(name_filer)
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
     """
     print pytest backtraces of failures to the logs
@@ -224,6 +228,10 @@ def pytest_runtest_logreport(report):
     if report.failed:
         if 'error_logger' in log_per_process_data:
             log_per_process_data['error_logger'].error(f"test failed: \n{get_message()}")
+
+    # Track subtest failures (if a 'context' attribute exists)
+    if report.when == "call" and getattr(report, "context", None):
+        SUBTESTS_FAILURES[report.nodeid].append(report.failed)
 
 
 @pytest.fixture(scope="session")
@@ -335,6 +343,10 @@ def fixture_dtest_setup(request,
     rep_setup = getattr(request.node, "rep_setup", None)
     rep_call = getattr(request.node, "rep_call", None)
     failed = getattr(rep_setup, 'failed', False) or getattr(rep_call, 'failed', False)
+
+    # Check subtest failures
+    if subtests_results := SUBTESTS_FAILURES.pop(request.node.nodeid, None):
+        failed = any(subtests_results)
 
     try:
         dtest_setup.cluster.stop(gently=True)
