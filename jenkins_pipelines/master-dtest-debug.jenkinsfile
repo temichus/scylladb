@@ -10,5 +10,6 @@ dtestPipeline(
     PRODUCT_NAME: 'scylla',
     BRANCH: 'master',
     TIMEOUT_PARAM: '8',
-    SPOT_RETRY_COUNT: 0
+    SPOT_RETRY_COUNT: 0,
+    PYTEST_EXTRA_COMMANDLINE_OPTIONS: '--consistent-cluster-management'
 )
