@@ -4,13 +4,11 @@ def call(Map pipelineParams) {
     pipeline {
         parameters {
             booleanParam(name: 'RUN_DTEST_FULL', defaultValue: true, description: 'Uncheck this to skip FullDtest, when running in parallel mode only!.')
-            booleanParam(name: 'RUN_DTEST_HEAVY', defaultValue: "${pipelineParams.get('RUN_DTEST_HEAVY', 'true')}", description: 'Uncheck this to run DtestHeavy, when running in parallel mode only!.')
-            booleanParam(name: 'RUN_DTEST_LONG', defaultValue: "${pipelineParams.get('RUN_DTEST_LONG', 'true')}", description: 'Uncheck this to run DtestLong, when running in parallel mode only!.')
 
             string(name: 'PIPELINE_LABEL', defaultValue: "${pipelineParams.get('PIPELINE_LABEL', '')}", description: 'On which spot instance fleet/asg the pipeline itself gonna run. default: ec2-fleet-4cpu-dtest-asg-spot')
             string(name: 'SPLIT_FLEET_LABEL', defaultValue: "${pipelineParams.get('SPLIT_FLEET_LABEL', '')}", description: 'On which spot instance fleet to run the parallel jobs. default: ec2-asg-strong-dtest-spot')
 
-            string(name: 'SPLIT_TIME_TARGET', defaultValue: "${pipelineParams.get('SPLIT_TIME_TARGET', '240')}", description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
+            string(name: 'SPLIT_TIME_TARGET', defaultValue: "${pipelineParams.get('SPLIT_TIME_TARGET', '180')}", description: 'Time period (minutes) for a test group to run. Used to calculate the needed number of spot machines')
             string(name: 'SPLIT_MAX_NODES', defaultValue: '100', description: 'Maximum number of nodes to run tests on parallel.')
             string(name: 'BRANCH', defaultValue: "${pipelineParams.get('BRANCH', 'master')}", description: 'Choose: master|branch-4.4')
             string(name: 'PRODUCT_NAME', defaultValue: "${pipelineParams.get('PRODUCT_NAME', 'scylla')}", description: 'Choose: scylla|scylla-enterprise')
@@ -74,18 +72,9 @@ def call(Map pipelineParams) {
                         baseRelocJob = params.RELOC_JOB_NAME ?: "next"
                         buildMode = params.BUILD_MODE
                         excludeTests = params.EXCLUDE_DTESTS ?: ""
-<<<<<<< HEAD
-                        includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and dtest_full and not dtest_heavy and not dtest_long'"
-
-||||||| parent of f908a34f (refactor(dtestPipeline): Run 'heavy' and 'long' in same stage as 'full')
-                        includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and dtest_full and not dtest_heavy and not dtest_long and (not next_gating or unmark_if)'"
-                        heavyIncludeDtests = params.HEAVY_INCLUDE_DTESTS ?: "-m 'not skip and dtest_heavy and not dtest_long and not next_gating'"
-                        longIncludeDtests = params.LONG_INCLUDE_DTESTS ?: "-m 'not skip and dtest_long and not next_gating'"
-=======
                         includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and dtest_full and (not next_gating or unmark_if)'"
                         //heavyIncludeDtests = params.HEAVY_INCLUDE_DTESTS ?: "-m 'not skip and dtest_heavy and not dtest_long and not next_gating'"
                         //longIncludeDtests = params.LONG_INCLUDE_DTESTS ?: "-m 'not skip and dtest_long and not next_gating'"
->>>>>>> f908a34f (refactor(dtestPipeline): Run 'heavy' and 'long' in same stage as 'full')
                         splitMaxNodesForHeavyAndLong = "10"
 
                         echo "Build mode upon parameter |${params.BUILD_MODE}| or upon job name |${JOB_NAME}|: |${buildMode}|"
@@ -111,62 +100,6 @@ def call(Map pipelineParams) {
                             }
                         }
                     }
-<<<<<<< HEAD
-                    stage('HeavyDtest') {
-                        when {
-                            expression { params.RUN_DTEST_HEAVY }
-                        }
-                        steps {
-                            script {
-                                node(params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_heavy and not dtest_long'",
-                                        "heavy", params.SPLIT_FLEET_LABEL, "240")
-                                }
-                            }
-                        }
-                    }
-                    stage('LongDtest') {
-                        when {
-                            expression { params.RUN_DTEST_LONG }
-                        }
-                        steps {
-                            script {
-                                node(params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, "-m 'not skip and dtest_long'",
-                                        "long", params.SPLIT_FLEET_LABEL, "240")
-                                }
-                            }
-                        }
-                    }
-||||||| parent of f908a34f (refactor(dtestPipeline): Run 'heavy' and 'long' in same stage as 'full')
-                    stage('HeavyDtest') {
-                        when {
-                            expression { params.RUN_DTEST_HEAVY }
-                        }
-                        steps {
-                            script {
-                                node(params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, heavyIncludeDtests,
-                                        "heavy", params.SPLIT_FLEET_LABEL, "240")
-                                }
-                            }
-                        }
-                    }
-                    stage('LongDtest') {
-                        when {
-                            expression { params.RUN_DTEST_LONG }
-                        }
-                        steps {
-                            script {
-                                node(params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)) {
-                                    runDtest (splitMaxNodesForHeavyAndLong, longIncludeDtests,
-                                        "long", params.SPLIT_FLEET_LABEL, "240")
-                                }
-                            }
-                        }
-                    }
-=======
->>>>>>> f908a34f (refactor(dtestPipeline): Run 'heavy' and 'long' in same stage as 'full')
                 }
             }
         }

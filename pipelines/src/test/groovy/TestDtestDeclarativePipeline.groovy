@@ -115,7 +115,7 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
             }.any { call ->
                 callArgsToString(call).contains("--mode=release")
             })
-            assertCallStackContains('dtest.junit({testResults=scylla-dtest.heavy.release.001*.xml, keepProperties=true})')
+            assertCallStackContains('dtest.junit({testResults=scylla-dtest.full.release.001*.xml, keepProperties=true})')
         } finally {
             printCallStack()
             println binding.getVariable('currentBuild')
@@ -132,7 +132,7 @@ class TestDtestDeclarativePipeline extends DeclarativePipelineTest {
             }.any { call ->
                 callArgsToString(call).contains("--mode=debug")
             })
-            assertCallStackContains('dtest.junit({testResults=scylla-dtest.heavy.debug.001*.xml, keepProperties=true})')
+            assertCallStackContains('dtest.junit({testResults=scylla-dtest.full.debug.001*.xml, keepProperties=true})')
         } finally {
             printCallStack()
             println binding.getVariable('currentBuild')
