@@ -74,8 +74,18 @@ def call(Map pipelineParams) {
                         baseRelocJob = params.RELOC_JOB_NAME ?: "next"
                         buildMode = params.BUILD_MODE
                         excludeTests = params.EXCLUDE_DTESTS ?: ""
+<<<<<<< HEAD
                         includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and dtest_full and not dtest_heavy and not dtest_long'"
 
+||||||| parent of f908a34f (refactor(dtestPipeline): Run 'heavy' and 'long' in same stage as 'full')
+                        includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and dtest_full and not dtest_heavy and not dtest_long and (not next_gating or unmark_if)'"
+                        heavyIncludeDtests = params.HEAVY_INCLUDE_DTESTS ?: "-m 'not skip and dtest_heavy and not dtest_long and not next_gating'"
+                        longIncludeDtests = params.LONG_INCLUDE_DTESTS ?: "-m 'not skip and dtest_long and not next_gating'"
+=======
+                        includeDtests = params.INCLUDE_DTESTS ?: "-m 'not skip and dtest_full and (not next_gating or unmark_if)'"
+                        //heavyIncludeDtests = params.HEAVY_INCLUDE_DTESTS ?: "-m 'not skip and dtest_heavy and not dtest_long and not next_gating'"
+                        //longIncludeDtests = params.LONG_INCLUDE_DTESTS ?: "-m 'not skip and dtest_long and not next_gating'"
+>>>>>>> f908a34f (refactor(dtestPipeline): Run 'heavy' and 'long' in same stage as 'full')
                         splitMaxNodesForHeavyAndLong = "10"
 
                         echo "Build mode upon parameter |${params.BUILD_MODE}| or upon job name |${JOB_NAME}|: |${buildMode}|"
@@ -101,6 +111,7 @@ def call(Map pipelineParams) {
                             }
                         }
                     }
+<<<<<<< HEAD
                     stage('HeavyDtest') {
                         when {
                             expression { params.RUN_DTEST_HEAVY }
@@ -127,6 +138,35 @@ def call(Map pipelineParams) {
                             }
                         }
                     }
+||||||| parent of f908a34f (refactor(dtestPipeline): Run 'heavy' and 'long' in same stage as 'full')
+                    stage('HeavyDtest') {
+                        when {
+                            expression { params.RUN_DTEST_HEAVY }
+                        }
+                        steps {
+                            script {
+                                node(params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)) {
+                                    runDtest (splitMaxNodesForHeavyAndLong, heavyIncludeDtests,
+                                        "heavy", params.SPLIT_FLEET_LABEL, "240")
+                                }
+                            }
+                        }
+                    }
+                    stage('LongDtest') {
+                        when {
+                            expression { params.RUN_DTEST_LONG }
+                        }
+                        steps {
+                            script {
+                                node(params.PIPELINE_LABEL ?: jenkins.getBuilderLabel(params.ARCHITECTURE)) {
+                                    runDtest (splitMaxNodesForHeavyAndLong, longIncludeDtests,
+                                        "long", params.SPLIT_FLEET_LABEL, "240")
+                                }
+                            }
+                        }
+                    }
+=======
+>>>>>>> f908a34f (refactor(dtestPipeline): Run 'heavy' and 'long' in same stage as 'full')
                 }
             }
         }
