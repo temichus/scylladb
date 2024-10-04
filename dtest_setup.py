@@ -150,9 +150,9 @@ def copy_logs(request, dtest_config, directory=None, name=None, cores=None):
 
         logs = [(node.name, node.logfilename() + ".manager_agent") for node in dtest_config.cluster.nodes.values()]
         if len(logs):
-            for name, agent_log in logs:
+            for node_name, agent_log in logs:
                 if os.path.exists(agent_log):
-                    shutil.copyfile(agent_log, os.path.join(logdir, name + ".log.manager_agent"))
+                    shutil.copyfile(agent_log, os.path.join(logdir, node_name + ".log.manager_agent"))
 
     if KEEP_CORES:
         if cores is None:
