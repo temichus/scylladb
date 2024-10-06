@@ -2610,6 +2610,8 @@ class TestLocalIndexes(SecondaryIndexesHelpers):
             logger.debug('Start node {}'.format(node2.name))
             node2.start(wait_for_binary_proto=True)
 
+        index_is_built(self.cluster, session, ks_name=keyspace_name, table_name=table_name, index_name=index_name)
+
         # Validate the data using filtering by index with cl=ONE
         self.validate_index_data(session, cl=ConsistencyLevel.ONE, num_rows=num_rows, table_name=table_name,
                                  index_column=index_column)
