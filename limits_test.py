@@ -8,8 +8,8 @@ import math
 from subprocess import Popen, PIPE, check_output
 
 import requests
+from cassandra import InvalidRequest, WriteFailure
 from cassandra.cluster import NoHostAvailable, Session
-from cassandra import WriteFailure
 import pytest
 
 from ccmlib.cluster import Cluster
@@ -379,7 +379,7 @@ class TestLimits(Tester):
         id_value = 17
         expected_error = f"Could not write mutation test_keyspace:test_table.*std::invalid_argument.*Mutation.*is too large"
         self.ignore_log_patterns.append(expected_error)
-        with pytest.raises((NoHostAvailable, WriteFailure)):
+        with pytest.raises((NoHostAvailable, WriteFailure, InvalidRequest)):
             session.execute(query=f"insert into test_keyspace.test_table (id, test_string) "
                                   f"values ({id_value}, '{long_string}');")
 
