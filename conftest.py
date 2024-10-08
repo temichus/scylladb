@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 from packaging.version import Version
 import argparse
+from collections import defaultdict
 
 import pytest
 import github
