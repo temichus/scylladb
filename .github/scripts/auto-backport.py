@@ -34,7 +34,7 @@ def parse_args():
 
 
 def create_pull_request(repo, new_branch_name, base_branch_name, pr, backport_pr_title, commits, is_draft=False):  # noqa: PLR0913
-    enterprise_release_pattern = re.compile("branch-d{4}.d+$")
+    enterprise_release_pattern = re.compile("next-\d{4}.\d+$")
     pr_body = f"{pr.body}\n\n"
     for commit in commits:
         pr_body += f"- (cherry picked from commit {commit})\n\n"
