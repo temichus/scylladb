@@ -1675,8 +1675,10 @@ class TestUpdateClusterLayout(Tester):
         c1s = [c1] * nr_rows
         c2s = [c2] * nr_rows
         logger.debug("Insert data")
-        insert_c1c2(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s,
-                    c2_values=c2s)
+        # lower concurency than the default to prevent connection overloading
+        # due to all tests `test_add_node_with_large_partitionX` being consecutive, they will be run in concurrently with parallelization
+        insert_c1c2(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE,
+                    c1_values=c1s, c2_values=c2s, concurrency=10)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
@@ -1721,8 +1723,10 @@ class TestUpdateClusterLayout(Tester):
 
         # Insert data
         logger.debug("Insert data")
-        insert_c1cn(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, nr_columns=nr_columns,
-                    column_size=column_size)
+        # lower concurency than the default to prevent connection overloading
+        # due to all tests `test_add_node_with_large_partitionX` being consecutive, they will be run in concurrently with parallelization
+        insert_c1cn(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE,
+                    nr_columns=nr_columns, column_size=column_size, concurrency=10)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
@@ -1769,8 +1773,10 @@ class TestUpdateClusterLayout(Tester):
                 c1s.append(v3)
                 c2s.append(v4)
         logger.debug("Insert data")
-        insert_c1c2(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE, c1_values=c1s,
-                    c2_values=c2s)
+        # lower concurency than the default to prevent connection overloading
+        # due to all tests `test_add_node_with_large_partitionX` being consecutive, they will be run in concurrently with parallelization
+        insert_c1c2(session, keys=range(nr_rows), consistency=ConsistencyLevel.ONE,
+                    c1_values=c1s, c2_values=c2s, concurrency=10)
 
         node2 = new_node(cluster)
         node2.start(wait_for_binary_proto=True)
