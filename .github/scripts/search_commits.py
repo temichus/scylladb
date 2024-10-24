@@ -49,8 +49,7 @@ def main():
                 ref = re.search(r"-(\d+\.\d+)", args.ref)
                 label_to_add = f"backport/{ref.group(1)}-done"
                 label_to_remove = f"backport/{ref.group(1)}"
-                remove_label_url = f"https: // api.github.com/repos/{
-                    args.repository}/issues/{pr_number}/labels/{label_to_remove}"
+                remove_label_url = f"https://api.github.com/repos/{args.repository}/issues/{pr_number}/labels/{label_to_remove}"
                 del_data = {"labels": [f"{label_to_remove}"]}
                 response = requests.delete(remove_label_url, headers=headers, json=del_data)
                 if response.ok:
