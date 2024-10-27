@@ -175,7 +175,7 @@ class TestLwt(Tester):
         before = get_node_metrics(get_ip_from_node(node), metrics=[name])
 
         run_count = 10000 if self.cluster.scylla_mode != "debug" else 1000
-        fails_probability = 0.1
+        fails_probability = 0.5
 
         for i in range(run_count):
             session.execute(stmt, (i + 1, i))
