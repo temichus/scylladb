@@ -39,11 +39,9 @@ def create_pull_request(repo, new_branch_name, base_branch_name, pr, backport_pr
     for commit in commits:
         pr_body += f"- (cherry picked from commit {commit})\n\n"
     pr_body += f"Parent PR: #{pr.number}"
-    if is_draft:
-        new_branch_name = f"{pr.user.login}:{new_branch_name}"
     try:
         backport_pr = repo.create_pull(title=backport_pr_title, body=pr_body,
-                                       head=new_branch_name, base=base_branch_name, draft=is_draft)
+                                       head=f"scylladbbot:{new_branch_name}", base=base_branch_name, draft=is_draft)
         logging.info(f"Pull request created: {backport_pr.html_url}")
         backport_pr.add_to_assignees(pr.user)
         if is_draft:
@@ -96,7 +94,11 @@ def backport(repo, pr, version, commits, backport_base_branch):
     fork_repo = f"https://scylladbbot:{github_token}@github.com/scylladbbot/{repo.name}.git"
     with tempfile.TemporaryDirectory() as local_repo_path:
         try:
-            repo_local = Repo.clone_from(repo_url, local_repo_path, branch=backport_base_branch)
+            new_branch_name = f"backport/{pr.number}/to-{version}"
+            backport_pr_title = f"[Backport {version}] {pr.title}"
+            repo_local = Repo.clone_from(
+                f"https://scylladbbot:{github_token}@github.com/{repo.full_name}.git", local_repo_path, branch=backport_base_branch)
+            scylladbbot_repo = f"https://github.com/scylladbbot/{repo.name}.git"
             repo_local.git.checkout(b=new_branch_name)
             is_draft = False
             for commit in commits:
@@ -107,7 +109,7 @@ def backport(repo, pr, version, commits, backport_base_branch):
                     is_draft = True
                     repo_local.git.add(A=True)
                     repo_local.git.cherry_pick("--continue")
-            repo_local.git.push(fork_repo, new_branch_name, force=True)
+            repo_local.git.push(scylladbbot_repo, new_branch_name, force=True)
             create_pull_request(repo, new_branch_name, backport_base_branch, pr,
                                 backport_pr_title, commits, is_draft=is_draft)
         except GitCommandError as e:
