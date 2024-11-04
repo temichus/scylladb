@@ -89,29 +89,25 @@ def get_pr_commits(repo, pr, stable_branch, start_commit=None):
     return commits
 
 
-def backport(repo, pr, version, commits, backport_base_branch, user):  # noqa: PLR0913
+def backport(repo, pr, version, commits, backport_base_branch):
+    new_branch_name = f"backport/{pr.number}/to-{version}"
+    backport_pr_title = f"[Backport {version}] {pr.title}"
+    repo_url = f"https://scylladbbot:{github_token}@github.com/{repo.full_name}.git"
+    fork_repo = f"https://scylladbbot:{github_token}@github.com/scylladbbot/{repo.name}.git"
     with tempfile.TemporaryDirectory() as local_repo_path:
         try:
-            new_branch_name = f"backport/{pr.number}/to-{version}"
-            backport_pr_title = f"[Backport {version}] {pr.title}"
-            repo_local = Repo.clone_from(
-                f"https://{user.login}:{github_token}@github.com/{repo.full_name}.git", local_repo_path, branch=backport_base_branch)
+            repo_local = Repo.clone_from(repo_url, local_repo_path, branch=backport_base_branch)
             repo_local.git.checkout(b=new_branch_name)
-            fork_repo = pr.user.get_repo(repo.full_name.split("/")[1])
-            fork_repo_url = f"https://{user.login}:{github_token}@github.com/{fork_repo.full_name}.git"
-            repo_local.create_remote("fork", fork_repo_url)
-            remote = "origin"
             is_draft = False
             for commit in commits:
                 try:
                     repo_local.git.cherry_pick(commit, "-m1", "-x")
                 except GitCommandError as e:
                     logging.warning(f"Cherry-pick conflict on commit {commit}: {e}")
-                    remote = "fork"
                     is_draft = True
                     repo_local.git.add(A=True)
                     repo_local.git.cherry_pick("--continue")
-            repo_local.git.push(remote, new_branch_name, force=True)
+            repo_local.git.push(fork_repo, new_branch_name, force=True)
             create_pull_request(repo, new_branch_name, backport_base_branch, pr,
                                 backport_pr_title, commits, is_draft=is_draft)
         except GitCommandError as e:
@@ -134,7 +130,6 @@ def main():
 
     g = Github(github_token)
     repo = g.get_repo(repo_name)
-    user = g.get_user()
     closed_prs = []
     start_commit = None
 
@@ -166,7 +161,7 @@ def main():
             backport_base_branch = backport_label.replace("backport/", backport_branch)
             if "manager" in version:
                 backport_base_branch = version
-            backport(repo, pr, version, commits, backport_base_branch, user)
+            backport(repo, pr, version, commits, backport_base_branch)
 
 
 if __name__ == "__main__":
