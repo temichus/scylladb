@@ -1,3 +1,6 @@
+import argparse
+import time
+
 from cassandra.cluster import Cluster
 
 import argparse

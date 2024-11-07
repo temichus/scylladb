@@ -381,7 +381,7 @@ class TestLimits(Tester):
         self.ignore_log_patterns.append(expected_error)
         with pytest.raises((NoHostAvailable, WriteFailure, InvalidRequest)):
             session.execute(query=f"insert into test_keyspace.test_table (id, test_string) "
-                                  f"values ({id_value}, '{long_string}');")
+                            f"values ({id_value}, '{long_string}');")
 
         session = create_session(node)
         output = session.execute(f"select test_string from test_keyspace.test_table where id = {id_value};")
@@ -390,7 +390,7 @@ class TestLimits(Tester):
         logger.info("Trying to send a regular request to database (insert a string of regular size into table)...")
         short_string = "scylla" * 1024 * 1024
         session.execute(query=f"insert into test_keyspace.test_table (id, test_string) "
-                              f"values ({id_value}, '{short_string}');")
+                        f"values ({id_value}, '{short_string}');")
         output = session.execute(f"select test_string from test_keyspace.test_table where id = {id_value};")
         assert short_string == output.current_rows[0].test_string, "Expected to get the regular string inserted, " \
                                                                    "but did not find it in the table!"
@@ -431,8 +431,8 @@ class TestMaxCQLConnections(Tester):
 
         Test verifies also if connection pool is properly released after connection shutdown.
         """
-        workers = 6  # opening many connections in python gets slower and slower. Spreading to workers helps.
-        connections_per_worker = 2500
+        workers = 15  # opening many connections in python gets slower and slower. Spreading to workers helps.
+        connections_per_worker = 1000
         total_connections = workers * connections_per_worker
         self._tune_max_open_files_limit(total_connections)
         self.cluster.populate(1).start(jvm_args=['--smp', '1', "--max-networking-io-control-blocks",
@@ -459,13 +459,13 @@ class TestMaxCQLConnections(Tester):
         script_path = pathlib.Path(__file__).parent.absolute() / "scripts" / "create_dummy_cql_connections.py"
         processes = []
         for _ in range(workers):
-            processes.append(Popen([sys.executable, script_path, address, str(connections_per_worker)],
-                                   stdin=PIPE, stdout=PIPE, universal_newlines=True))
-        # wait for finish connection creation
-        for process in processes:
+            process = Popen([sys.executable, script_path, address, str(connections_per_worker)],
+                            stdin=PIPE, stdout=PIPE, universal_newlines=True)
+            processes.append(process)
+            # wait for finish connection creation
             line = process.stdout.readline()
             assert line.startswith(f"{connections_per_worker} cql connections created."), \
-                "Dummy connections creation script failed."
+                f"Dummy connections creation script failed. stdout: {line}, stderr: {process.stderr.readlines()}"
         logger.info("All connections created successfully")
         return processes
 
