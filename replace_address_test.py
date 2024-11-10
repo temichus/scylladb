@@ -24,6 +24,7 @@ from dtest_setup import DTestSetup
 from tools.assertions import assert_row_count, assert_all, assert_lists_equal_ignoring_order
 from tools.data import rows_to_list, insert_c1c2
 from tools.intervention import InterruptBootstrap
+from tools.marks import unmark
 from tools.misc import ImmutableMapping
 from tools.metrics import get_node_metrics
 from tools.stress import format_cs_output, assert_cs_success
@@ -629,6 +630,7 @@ class TestReplaceAddress(Tester):
         assert len(peers) == 2, "Unexpected number of peers."
 
     @pytest.mark.parametrize("use_host_id", [True, False], ids=["use_host_id", "use_endpoint"])
+    @unmark.next_gating  # cause of scylladb/scylladb#19645
     def test_replace_with_background_workload(self, use_host_id: bool):
         """
         The subtest is used to reproduce https://github.com/scylladb/scylla/issues/4705
