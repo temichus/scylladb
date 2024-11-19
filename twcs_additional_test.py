@@ -28,15 +28,16 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
         args = ["--smp", "1", "--logger-log-level", "compaction=debug"]
         cluster.populate(1).start(wait_for_binary_proto=True, jvm_args=args)
         ttl = 30
-        test_max_duration_minutes = 4
         node = self.cluster.nodelist()[0]
+        test_max_duration_minutes = 12 if node.scylla_mode() == "debug" else 4
+        expiry_grace_time = 120 if node.scylla_mode() == "debug" else 30
         session = self.patient_cql_connection(node)
 
         self._prepare_twcs_table(ttl=120, session=session)
         node.nodetool('disableautocompaction')
         sstables = self.create_sstables_with_short_ttl(session, ttl=ttl)
         p = self._start_high_load_on_cluster(duration_minutes=test_max_duration_minutes)
-        sleep(ttl+30)  # wait for sstables to be expired with some margin
+        sleep(ttl + expiry_grace_time)  # wait for sstables to be expired with some margin
         mark = self.cluster.nodelist()[0].mark_log()
         node.nodetool('enableautocompaction')
         timeout = (test_max_duration_minutes + 1) * 60
@@ -67,7 +68,8 @@ class TestTimeWindowCompactionStrategyAdditional(Tester):
     def _start_high_load_on_cluster(self, duration_minutes):
         logger.info("Starting high load on cluster")
         node = self.cluster.nodelist()[0]
-        stress_options = ['write', f'duration={duration_minutes}m', 'no-warmup', '-rate', 'threads=300', '-mode', 'native', 'cql3',
+        num_threads = 30 if node.scylla_mode() == "debug" else 300
+        stress_options = ['write', f'duration={duration_minutes}m', 'no-warmup', '-rate', 'threads={num_threads}', '-mode', 'native', 'cql3',
                           '-pop', 'seq=1..1000000000']
         stress = common.get_stress_bin(node.get_install_dir())
         stress_options.append('-node')
