@@ -36,14 +36,14 @@ MAX_CELLS_BATCH_SIZE = 50
 MAX_CELLS = 16777216
 
 # Those are values used to validate the tests code
-#MAX_KEY_SIZE = 1000
-#MAX_BLOB_SIZE = 1000
-#MAX_COLUMNS = 1000
-#MAX_TUPLES = 1000
-#MAX_BATCH_SIZE = 1000
-#MAX_CELLS_COLUMNS = 100
-#MAX_CELLS_BATCH_SIZE = 100
-#MAX_CELLS = 1000
+# MAX_KEY_SIZE = 1000
+# MAX_BLOB_SIZE = 1000
+# MAX_COLUMNS = 1000
+# MAX_TUPLES = 1000
+# MAX_BATCH_SIZE = 1000
+# MAX_CELLS_COLUMNS = 100
+# MAX_CELLS_BATCH_SIZE = 100
+# MAX_CELLS = 1000
 
 
 @pytest.mark.dtest_full
@@ -460,12 +460,13 @@ class TestMaxCQLConnections(Tester):
         processes = []
         for _ in range(workers):
             process = Popen([sys.executable, script_path, address, str(connections_per_worker)],
-                            stdin=PIPE, stdout=PIPE, universal_newlines=True)
+                            stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
             processes.append(process)
             # wait for finish connection creation
             line = process.stdout.readline()
             assert line.startswith(f"{connections_per_worker} cql connections created."), \
-                f"Dummy connections creation script failed. stdout: {line}, stderr: {process.stderr.readlines()}"
+                f'Dummy connections creation script failed. stdout: {line}, stderr: ' + \
+                "\n".join(process.stderr.readlines())
         logger.info("All connections created successfully")
         return processes
 
