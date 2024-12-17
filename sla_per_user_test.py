@@ -197,7 +197,7 @@ class TestSLA(SLATester):
         node1.stress(cmd.format(user=user, password=password).split())
         node1.stress(cmd.format(user=entity.name, password=entity.password).split())
 
-    @pytest.mark.require('scylladb/scylla-enterprise#2163')
+    @pytest.mark.skip("We don't intend to backport fix for scylla-enterprise#2163")
     def test_sla_no_shares(self):
         """
         1. Create SL without specifying the number of shares.
@@ -249,7 +249,7 @@ class TestSLA(SLATester):
         self.validate_sl_list(session=session, expected_service_levels=sls)
         self.validate_attached_slas_list(session=session, entity=entity, expected_service_levels=[sl_300])
 
-    @pytest.mark.require('scylladb/scylla-enterprise#2163')
+    @pytest.mark.skip("We don't intend to backport fix for scylla-enterprise#2163")
     @pytest.mark.parametrize(argnames=["entity_class", "entity_name"],
                              argvalues=[[Role, "test_role"], [User, "test_user"]],
                              ids=["with_role", "with_user"])
