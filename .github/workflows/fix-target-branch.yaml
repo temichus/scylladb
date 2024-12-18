@@ -12,9 +12,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          target: master
-          exclude: next # Don't prevent going from development -> main
+          target: /master|branch-.*/
+          exclude: /next|next-.*/ # Don't prevent going from development -> main
           change-to: next
           comment: |
-              Your PR was set to target `master`, PRs should be target `next`
+              Your PR was set to target `master` or a release branch, PRs should target `next`
               The base branch of this PR has been automatically changed to `next`, please check that there are no merge conflicts
