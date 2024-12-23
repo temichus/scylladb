@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     address, connections = (args.address, args.connections)
-    cluster = Cluster([address])
+    cluster = Cluster([address], connect_timeout=60)
     sessions = []
     for _ in range(connections):
         sessions.append(cluster.connect())
