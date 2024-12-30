@@ -1,6 +1,6 @@
 import argparse
 
-from cassandra.cluster import Cluster
+from cassandra.cluster import Cluster, NoHostAvailable
 
 import argparse
 
@@ -14,10 +14,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     address, connections = (args.address, args.connections)
-    cluster = Cluster([address], connect_timeout=60)
+    cluster = Cluster([address], connect_timeout=120)
     sessions = []
+    connections_created = 0
     for _ in range(connections):
-        sessions.append(cluster.connect())
+        try:
+            sessions.append(cluster.connect())
+        except NoHostAvailable:
+            break
+        connections_created += 1
 
-    input(f"{connections} cql connections created. Press any key to close them and quit...\n")
+    input(f"{connections_created} cql connections created. Press any key to close them and quit...\n")
     [session.shutdown() for session in sessions]

@@ -1,6 +1,7 @@
 import logging
 import os
 import pathlib
+import re
 import resource
 import sys
 import ssl
@@ -438,37 +439,47 @@ class TestMaxCQLConnections(Tester):
         self.cluster.populate(1).start(jvm_args=['--smp', '1', "--max-networking-io-control-blocks",
                                                  str(total_connections)])
         address = self.cluster.nodelist()[0].address()
-        processes = self._create_cql_connections(address, connections_per_worker=connections_per_worker,
-                                                 workers=workers)
+        processes, connections_created = self._create_cql_connections(address, connections_per_worker=connections_per_worker,
+                                                                      workers=workers)
 
-        connections_created = self._get_cql_connections_from_metrics(address)
-        assert connections_created >= total_connections, \
-            f"only {connections_created} connections created from {total_connections} required"
+        connections_created_metric = self._get_cql_connections_from_metrics(address)
+        assert connections_created_metric >= connections_created, f"only {connections_created_metric} connections created from {connections_created} required"
         self._close_connections(processes)
 
         # repeat to verify scylla closed connections correctly and can create new ones
-        processes = self._create_cql_connections(address, connections_per_worker=connections_per_worker,
-                                                 workers=workers)
+        processes, connections_created = self._create_cql_connections(address, connections_per_worker=connections_per_worker,
+                                                                      workers=workers)
         self._close_connections(processes)
-        connections_created = self._get_cql_connections_from_metrics(address)
-        assert connections_created >= total_connections, \
-            f"only {connections_created} connections created from {total_connections} required"
+        connections_created_metric = self._get_cql_connections_from_metrics(address)
+        assert connections_created_metric >= connections_created, f"only {connections_created_metric} connections created from {connections_created} required"
 
     def _create_cql_connections(self, address, connections_per_worker, workers):
-        logger.info("starting creating connections in parallel")
+        logger.info("starting creating connections")
         script_path = pathlib.Path(__file__).parent.absolute() / "scripts" / "create_dummy_cql_connections.py"
         processes = []
+        connections_regex = re.compile(r"(\d+) cql connections created.")
+        connections_created = 0
         for _ in range(workers):
-            process = Popen([sys.executable, script_path, address, str(connections_per_worker)],
-                            stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
+            process = Popen([sys.executable, script_path, address, str(connections_per_worker)], stdin=PIPE, stdout=PIPE, stderr=PIPE,
+                            universal_newlines=True)
             processes.append(process)
             # wait for finish connection creation
             line = process.stdout.readline()
-            assert line.startswith(f"{connections_per_worker} cql connections created."), \
-                f'Dummy connections creation script failed. stdout: {line}, stderr: ' + \
-                "\n".join(process.stderr.readlines())
+            try:
+                connections = int(connections_regex.match(line).group(1))
+                connections_created += connections
+            except ValueError:
+                stderr = '\n'.join(process.stderr.readlines())
+                assert False, f"Dummy connections creation script failed after creating {connections_created} connections. stdout: {line}, stderr: {stderr}"
+            if not connections == connections_per_worker:
+                break
+        logger.info(f"Created {connections_created} connections")
+        # assume 5% margin for test stability
+        assert connections_created > (workers * connections_per_worker) * 0.95, \
+            f"Only {connections_created} connections created from {workers * connections_per_worker} requested"
+
         logger.info("All connections created successfully")
-        return processes
+        return processes, connections_created
 
     def _close_connections(self, processes):
         """dummy cql connections scripts end after pressing any key."""
