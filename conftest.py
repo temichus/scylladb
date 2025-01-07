@@ -379,11 +379,20 @@ def fixture_require_version(request, fixture_dtest_setup):
                       - enabled : skip tests marked with @pytest.mark.require
                       - disabled : disable @pytest.mark.require decorator and run test (mostly for manual tests)
     """
+
+    cassandra_dir = request.config.getoption("--cassandra-dir")
+    scylla_version = request.config.getoption('--scylla-version')
+
+    if cassandra_dir or scylla_version:
+        _scylla_version = get_version(cassandra_dir, scylla_version)
+    else:
+        _scylla_version = ""
+
     for marker in request.node.iter_markers('require'):
         issue = marker.kwargs.get('require_pattern', next(iter(marker.args), None))
         if DTEST_REQUIRE == "disabled":
             logger.info(f"DTEST_REQUIRE is disabled. Test will be run")
-        elif DTEST_REQUIRE != "enabled" and check_issue_closed(issue):
+        elif DTEST_REQUIRE != "enabled" and check_issue_closed(issue, _scylla_version):
             # DTEST_REQUIRE == "auto"
             logger.info(f"Issue {issue} closed. Test will be run")
         else:   # DTEST_REQUIRE == "enabled"
@@ -456,6 +465,10 @@ def pytest_collection_modifyitems(items, config):
 
     _scylla_mode = scylla_mode(cassandra_dir, scylla_version)
     _scylla_mode = _scylla_mode or 'release'
+    if cassandra_dir or scylla_version:
+        _scylla_version = get_version(cassandra_dir, scylla_version)
+    else:
+        _scylla_version = ""
 
     if elk_reporter := config.pluginmanager.get_plugin("elk-reporter-runtime"):
         # TEMP: for now we'll look at the build_tag, since we have enough history with that.
@@ -548,7 +561,7 @@ def pytest_collection_modifyitems(items, config):
         require_mark = item.get_closest_marker("require")
         if require_mark and collect_require:
             issue = require_mark.kwargs.get('require_pattern', next(iter(require_mark.args), None))
-            if not check_issue_closed(issue, collect_require):
+            if not check_issue_closed(issue, collect_require, _scylla_version):
                 print(f"* {item.nodeid} - {issue}")
             else:
                 print(f"* {item.nodeid} - marked with closed issue {issue}")
@@ -661,7 +674,7 @@ def report_test_data(request: pytest.FixtureRequest, fixture_dtest_setup):
         elk_reporter.test_data.update(**test_data)
 
 
-def check_issue_closed(pattern, collect_require=False):
+def check_issue_closed(pattern, scylla_version: Version, collect_require=False, ):
     """check if issue is closed
 
     Parse pattern and find whether it matched
@@ -731,7 +744,14 @@ def check_issue_closed(pattern, collect_require=False):
                 found_issue = git.get_user(user_id).get_repo(repo_id).get_issue(int(issue_id))
                 if collect_require:
                     print(f"{msg}: state={found_issue.state}")
-                closed.append(found_issue.state == "closed")
+
+                branch_version = f"{scylla_version.major}.{scylla_version.minor}"
+                branch_skip_labels = [f"dtest/{branch_version}-skip" in label.get("name") for label in
+                                      found_issue.labels]
+                if branch_skip_labels:
+                    logger.debug(f"{msg}: branch_skip_labels={branch_skip_labels}")
+
+                closed.append(found_issue.state == "closed" and not any(branch_skip_labels))
             except Exception as ex:
                 if collect_require:
                     print(f"{msg} failed: {ex}")
