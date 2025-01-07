@@ -432,8 +432,8 @@ class TestMaxCQLConnections(Tester):
 
         Test verifies also if connection pool is properly released after connection shutdown.
         """
-        workers = 15  # opening many connections in python gets slower and slower. Spreading to workers helps.
-        connections_per_worker = 1000
+        workers = 10  # opening many connections in python gets slower and slower. Spreading to workers helps.
+        connections_per_worker = 1050
         total_connections = workers * connections_per_worker
         self._tune_max_open_files_limit(total_connections)
         self.cluster.populate(1).start(jvm_args=['--smp', '1', "--max-networking-io-control-blocks",
@@ -474,8 +474,7 @@ class TestMaxCQLConnections(Tester):
             if not connections == connections_per_worker:
                 break
         logger.info(f"Created {connections_created} connections")
-        # assume 5% margin for test stability
-        assert connections_created > (workers * connections_per_worker) * 0.95, \
+        assert connections_created == (workers * connections_per_worker), \
             f"Only {connections_created} connections created from {workers * connections_per_worker} requested"
 
         logger.info("All connections created successfully")
