@@ -464,11 +464,13 @@ class TestCdc(Tester, CDCInitializeHelper):
 
     @pytest.mark.next_gating
     @pytest.mark.no_boot_speedups
+    @pytest.mark.require("scylladb/scylladb#14401")
     def test_change_field_type_with_cdc(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication)
 
     @pytest.mark.no_boot_speedups
+    @pytest.mark.require("scylladb/scylladb#14401")
     def test_change_field_type_with_cdc_and_preimage(self, request, cluster_config):
         self.schema_change_template(request, "ALTER TABLE ks.cf ALTER b TYPE blob",
                                     cluster_size=cluster_config.size, replication=cluster_config.replication, with_preimage=True)
