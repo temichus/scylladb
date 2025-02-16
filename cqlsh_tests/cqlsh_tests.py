@@ -1037,6 +1037,10 @@ VALUES (4, blobAsInt(0x), '', blobAsBigint(0x), 0x, blobAsBoolean(0x), blobAsDec
             # replace multiple whitespaces with a single whitespace
             line = re.sub(r"\s+", " ", line)
 
+            # fix missing spaces in caching = {{'keys': 'ALL','rows_per_partition': 'ALL'}}
+            # in 2024.1 branch describe output (server side issue)
+            line = re.sub(r"ALL','", "ALL', '", line)
+
             line = line.replace("state, username, birth_year, gender, password, session_token", "*")
             line = line.rstrip(";,:")
 

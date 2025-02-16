@@ -15,7 +15,7 @@ from dtest_class import Tester
 class TestSchemaReplicationEverywhereStrategy(Tester):
 
     SYSTEM_DISTRIBUTED_EVERYWHERE = "system_distributed_everywhere"
-    REPLICATION_EVERYWHERE_PATTERN = r"replication\s=\s{'class':\s'EverywhereStrategy'}"
+    REPLICATION_EVERYWHERE_PATTERN = r"replication\s=\s{'class':\s'.*?EverywhereStrategy'}"
 
     @pytest.mark.single_node
     def test_replication_strategy_name_in_description(self):
