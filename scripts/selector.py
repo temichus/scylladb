@@ -104,7 +104,7 @@ class AffectedTestScanner:
                 self.copy_test_method_if_needed(nodes)
 
         for key_node, nodes in self.graph.uses_edges.items():
-            if key_node.name.startswith("test_"):
+            if key_node.name.startswith("test_") and not key_node.flavor == Flavor.ATTRIBUTE:
                 if self.check_if_test_disabled_in_scope(key_node):
                     continue
                 self.current_test = key_node
