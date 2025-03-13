@@ -249,6 +249,7 @@ docker_cmd="docker run --init --detach=true \
     -e DTEST_SPLIT_NAME \
     -e SCYLLA_ARCH \
     -e SCYLLA_PRODUCT \
+    -e UV_HTTP_TIMEOUT \
     -w ${DTEST_DIR} \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
