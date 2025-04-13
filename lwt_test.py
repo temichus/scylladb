@@ -582,8 +582,11 @@ class TestLwt(Tester):
             assert_row_count(session=session, table_name="system.paxos", expected=0, consistency_level=ConsistencyLevel.ONE)
 >>>>>>> 506fb800 (fix(lwt): rework test_paxos_grace_seconds_alter)
 
+        self.shutdown_all_sessions(sessions)
+
     def test_paxos_grace_seconds_interrupt(self):
         """
+<<<<<<< HEAD
             Basic paxos_grace_seconds test:
             - create another table with short (10 sec) paxos_grace_seconds
             - insert 10 rows (LWT request) in every table
@@ -591,16 +594,50 @@ class TestLwt(Tester):
             - wait 10 sec
             - check paxos: no records on every node
          """
+||||||| parent of 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
+        Basic paxos_grace_seconds test:
+        - create another table with short (10 sec) paxos_grace_seconds
+        - insert 10 rows (LWT request) in every table
+        - stop one node (it should keep records in the paxos)
+        - wait 10 sec
+        - check paxos: no records on every node
+        """
+=======
+        Basic paxos_grace_seconds test:
+        - Step 1: Create and populate table with short paxos_grace_seconds
+        - Step 3: Stop node 2
+        - Step 3: Wait for paxos rows will be expired
+        - Step 4: Start node 2
+        """
+>>>>>>> 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
 
         cluster = self.cluster
         cluster.set_configuration_options(values={"hinted_handoff_enabled": False})
         cluster.populate(3).start(wait_for_binary_proto=True)
 
-        # Create session as exclusive connection to the node in goal to select from paxos table on every node
-        session1, session2, session3 = self.create_exclusive_sessions_for_every_node(cluster)
+        row_count = 2
+        paxos_grace_seconds = 3
+        sessions = list(self.create_exclusive_sessions_for_every_node(cluster))
+        create_ks(session=sessions[0], name="lwt", rf=3)
 
-        create_ks(session=session1, name="lwt", rf=3)
+        logger.info("Step 1: Create and populate table with short paxos_grace_seconds")
+        table_name = "paxos_grace_seconds"
+        create_cf(session=sessions[0], name=table_name, key_type="int", columns={"v1": "int"}, paxos_grace_seconds=paxos_grace_seconds)
+        self.execute_insert_data_query(session=sessions[0], table=table_name, cql=f"INSERT INTO {table_name} (key, v1) VALUES (?, ?) IF NOT EXISTS", start=0, end=row_count)
+        logger.info("Check: system.paxos table has records")
+        # examples of possible distributions:
+        # (2,2,0) and (1,2,1)
+        # checking that there is a quorum of nodes where the number of records in system.paxos is greater than zero.
+        checks_passed = 0
+        for session in sessions:
+            if session.execute(SimpleStatement("SELECT row_key, cf_id FROM system.paxos", consistency_level=ConsistencyLevel.ONE)).current_rows:
+                checks_passed += 1
+            if checks_passed >= 2:
+                break
+        else:
+            raise AssertionError("only %s nodes contains a record in system.paxos. but at least 2(quorum) expected" % checks_passed)
 
+<<<<<<< HEAD
         logger.info("Create table with paxos_grace_seconds is 10 sec.")
         paxos_grace_seconds = self.cql_timeout(10)
         table_name = f'ttl_{paxos_grace_seconds}_sec'
@@ -616,13 +653,32 @@ class TestLwt(Tester):
                              consistency_level=ConsistencyLevel.LOCAL_ONE)
 
         logger.info("Stop node 2")
+||||||| parent of 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
+        logger.info("Create table with paxos_grace_seconds is 10 sec.")
+        paxos_grace_seconds = self.cql_timeout(10)
+        table_name = f"ttl_{paxos_grace_seconds}_sec"
+        create_cf(session=session1, name=table_name, key_type="int", columns={"v1": "int"}, paxos_grace_seconds=paxos_grace_seconds)
+
+        self.execute_insert_data_query(session=session1, table=table_name, cql=f"INSERT INTO {table_name} (key, v1) VALUES (?, ?) IF NOT EXISTS", start=0, end=10)
+
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name="system.paxos", expected=10, consistency_level=ConsistencyLevel.LOCAL_ONE)
+
+        logger.info("Stop node 2")
+=======
+        logger.info("Step 3: Stop node 2")
+>>>>>>> 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
         node2 = self.cluster.nodelist()[1]
         node2.stop(gently=False, wait_other_notice=True)
-        session2.shutdown()
+        sessions[1].shutdown()
 
-        logger.info("Wait for paxos rows for table '%s' will be expired", table_name)
-        sleep(paxos_grace_seconds)
+        logger.info("Step 3: Wait for rows in the system.paxos table will be expired")
+        sleep(paxos_grace_seconds + 1)
+        logger.info("Check: system.paxos table is empty on alive nodes")
+        for session in [sessions[0], sessions[2]]:
+            assert_row_count(session=session, table_name="system.paxos", expected=0, consistency_level=ConsistencyLevel.ONE)
 
+<<<<<<< HEAD
         for session in [session1, session3]:
             assert_row_count(session=session, table_name='system.paxos', expected=0,
                              consistency_level=ConsistencyLevel.LOCAL_ONE)
@@ -631,17 +687,44 @@ class TestLwt(Tester):
                          consistency_level=ConsistencyLevel.QUORUM)
 
         logger.info("Start node 2")
-        node2.start(wait_other_notice=True)
-        session2 = self.exclusive_cql_connection(node2)
+||||||| parent of 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
+        for session in [session1, session3]:
+            assert_row_count(session=session, table_name="system.paxos", expected=0, consistency_level=ConsistencyLevel.LOCAL_ONE)
 
+        assert_row_count(session=session1, table_name=table_name, expected=10, consistency_level=ConsistencyLevel.QUORUM)
+
+        logger.info("Start node 2")
+=======
+        logger.info("Step 4: Start node 2")
+>>>>>>> 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
+        node2.start(wait_other_notice=True)
+        sessions[1] = self.exclusive_cql_connection(node2)
+
+<<<<<<< HEAD
         for session in [session1, session2, session3]:
             assert_row_count(session=session, table_name='system.paxos', expected=0,
                              consistency_level=ConsistencyLevel.LOCAL_ONE)
+||||||| parent of 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
+        for session in [session1, session2, session3]:
+            assert_row_count(session=session, table_name="system.paxos", expected=0, consistency_level=ConsistencyLevel.LOCAL_ONE)
+=======
+        logger.info("Check: system.paxos table is empty on all nodes")
+        for session in sessions:
+            assert_row_count(session=session, table_name="system.paxos", expected=0, consistency_level=ConsistencyLevel.ONE)
+>>>>>>> 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
 
+<<<<<<< HEAD
         assert_row_count(session=session1, table_name=table_name, expected=10,
                          consistency_level=ConsistencyLevel.QUORUM)
 
         self.shutdown_all_sessions([session1, session2, session3])
+||||||| parent of 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
+        assert_row_count(session=session1, table_name=table_name, expected=10, consistency_level=ConsistencyLevel.QUORUM)
+
+        self.shutdown_all_sessions([session1, session2, session3])
+=======
+        self.shutdown_all_sessions(sessions)
+>>>>>>> 20bf4b23 (fix(lwt):rework test_paxos_grace_seconds_interrupt)
 
     def test_paxos_grace_seconds_negative(self):
         """
