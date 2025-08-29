@@ -31,7 +31,7 @@ WORKLOAD_SEC = 30
 
 
 async def continuous_tablet_migrations(
-        manager: ManagerClient, servers, ks: str, tbl: str, duration_sec: int, pks, pause_range=(0.5, 2.0)
+        stop_event ,manager: ManagerClient, servers, ks: str, tbl: str, duration_sec: int, pks, pause_range=(0.5, 2.0)
         ):
 
     """
@@ -42,7 +42,7 @@ async def continuous_tablet_migrations(
     migration_count = 0
 
     host_map = await get_host_map(manager, servers)
-    while asyncio.get_event_loop().time() - start < duration_sec:
+    while not stop_event.is_set() and asyncio.get_event_loop().time() - start < duration_sec:
         try:
             sample_pk = random.choice(pks)
             token = await get_token_for_pk(manager.get_cql(), ks, tbl, sample_pk)
@@ -135,7 +135,8 @@ async def test_multi_column_lwt_during_migration(manager: ManagerClient):
         )
         await tester.create_schema()
         await tester.initialize_rows()
-        await tester.start_workers()
+        stop_event = asyncio.Event()
+        await tester.start_workers(stop_event)
 
         try:
             # Run continuous tablet migrations concurrently with the LWT workload
@@ -144,12 +145,11 @@ async def test_multi_column_lwt_during_migration(manager: ManagerClient):
                 WORKLOAD_SEC,
             )
             migration_task = asyncio.create_task(
-                continuous_tablet_migrations(manager, servers, ks, tester.tbl, WORKLOAD_SEC, tester.pks)
+                continuous_tablet_migrations(stop_event, manager, servers, ks, tester.tbl, WORKLOAD_SEC, tester.pks)
             )
             await asyncio.wait_for(migration_task, timeout=WORKLOAD_SEC + 5)
 
         finally:
             await tester.stop_workers()
-
         await tester.verify_consistency()
         logger.info("Multi-column LWT during continuous migrations test completed successfully")

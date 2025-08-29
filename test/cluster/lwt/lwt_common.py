@@ -70,6 +70,7 @@ class Worker:
         select_statement: PreparedStatement,
         update_statement: PreparedStatement,
         other_columns: List[int],
+        stop_event: asyncio.Event,
     ):
         super().__init__()
         self.success_counts: Dict[int, int] = {pk: 0 for pk in pks}
@@ -81,7 +82,7 @@ class Worker:
         self.other_columns = other_columns
         self.pks = pks
         self.cql = cql
-        self.stop_event = asyncio.Event()
+        self.stop_event = stop_event
 
     @backoff_on_exception(timeout=60, between_sleep=0.1, retry_exceptions=(WriteTimeout, OperationTimedOut, ReadTimeout),
                           should_retry=lambda exc: isinstance(exc, (
@@ -102,46 +103,51 @@ class Worker:
     async def __call__(self):
         operation_id = 0
         while not self.stop_event.is_set():
-            operation_id += 1
-            pk = self.rng.choice(self.pks)
-
-            # Read current values
-            verify_query = self.select_statement.bind([pk])
-            verify_query.consistency_level = ConsistencyLevel.LOCAL_QUORUM
-            rows = await self.cql.run_async(verify_query)
-
-            row = rows[0]
-            prev_val = getattr(row, f"s{self.worker_id}")
-            expected = self.success_counts[pk]
-            new_val = expected + 1
-
-            # Verify consistency before update
-            assert prev_val == expected, (
-                f"Consistency mismatch: pk={pk} s{self.worker_id} row={prev_val} tracker={expected}"
-            )
-
-            # Prepare conditional update
-            update = self.update_statement.bind(
-                [
-                    new_val,
-                    pk,
-                    *(getattr(row, f"s{col_idx}") for col_idx in self.other_columns),
-                    prev_val,
-                ]
-            )
-            update.consistency_level = ConsistencyLevel.LOCAL_QUORUM
-            update.serial_consistency_level = ConsistencyLevel.LOCAL_SERIAL
             try:
-                res = await self.cql.run_async(update)
-                applied = bool(res and res[0].applied)
-            except (WriteTimeout, OperationTimedOut, ReadTimeout) as e:
-                if not is_uncertainty_timeout(e):
-                    raise
-                applied = await self.verify_update_through_select(pk, new_val, prev_val)
-            if applied:
-                self.success_counts[pk] += 1
+                operation_id += 1
+                pk = self.rng.choice(self.pks)
 
-            await asyncio.sleep(0.1)
+                # Read current values
+                verify_query = self.select_statement.bind([pk])
+                verify_query.consistency_level = ConsistencyLevel.LOCAL_QUORUM
+                rows = await self.cql.run_async(verify_query)
+
+                row = rows[0]
+                prev_val = getattr(row, f"s{self.worker_id}")
+                expected = self.success_counts[pk]
+                new_val = expected + 1
+
+                # Verify consistency before update
+                assert prev_val == expected, (
+                    f"Consistency mismatch: pk={pk} s{self.worker_id} row={prev_val} tracker={expected}"
+                )
+
+                # Prepare conditional update
+                update = self.update_statement.bind(
+                    [
+                        new_val,
+                        pk,
+                        *(getattr(row, f"s{col_idx}") for col_idx in self.other_columns),
+                        prev_val,
+                    ]
+                )
+                update.consistency_level = ConsistencyLevel.LOCAL_QUORUM
+                update.serial_consistency_level = ConsistencyLevel.LOCAL_SERIAL
+                try:
+                    res = await self.cql.run_async(update)
+                    applied = bool(res and res[0].applied)
+                except (WriteTimeout, OperationTimedOut, ReadTimeout) as e:
+                    if not is_uncertainty_timeout(e):
+                        raise
+                    applied = await self.verify_update_through_select(pk, new_val, prev_val)
+                if applied:
+                    self.success_counts[pk] += 1
+
+                await asyncio.sleep(0.1)
+
+            except Exception:
+                self.stop()
+                raise
 
 
 class BaseLWTTester:
@@ -168,7 +174,7 @@ class BaseLWTTester:
             f"SELECT {self.select_cols} FROM {self.ks}.{self.tbl} WHERE pk = ?"
         )
 
-    def create_workers(self) -> List[Worker]:
+    def create_workers(self, stop_event) -> List[Worker]:
         workers: List[Worker] = []
         for i in range(self.num_workers):
             other_columns = [j for j in range(self.num_workers) if j != i]
@@ -181,6 +187,7 @@ class BaseLWTTester:
                 select_statement=self.select_statement,
                 update_statement=self.cql.prepare(query),
                 other_columns=other_columns,
+                stop_event = stop_event
             )
             workers.append(worker)
         return workers
@@ -202,10 +209,10 @@ class BaseLWTTester:
         for pk in self.pks:
             await self.cql.run_async(ps.bind([pk]))
 
-    async def start_workers(self):
+    async def start_workers(self, stop_event):
         """Start workload workers"""
         if not self.workers:
-            self.workers = self.create_workers()
+            self.workers = self.create_workers(stop_event)
         self._tasks = [asyncio.create_task(worker()) for worker in self.workers]
         logger.info("Started %d LWT workers", len(self._tasks))
 
