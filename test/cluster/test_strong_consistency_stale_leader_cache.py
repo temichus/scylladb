@@ -5,6 +5,7 @@
 #
 import asyncio
 import logging
+import time
 from contextlib import suppress
 
 import pytest
@@ -14,7 +15,7 @@ from test.cluster.test_strong_consistency import DEFAULT_CMDLINE, DEFAULT_CONFIG
 from test.cluster.util import ensure_raft_group_leader_on, new_test_keyspace, new_test_table, trigger_stepdown
 from test.pylib.scylla_cluster_manager import ScyllaClusterManager
 from test.pylib.tablets import get_tablet_replicas
-from test.pylib.util import gather_safely
+from test.pylib.util import gather_safely, wait_for
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,21 @@ async def test_stale_leader_cache_costs_one_hop_after_stepdown(manager: ScyllaCl
             append = cql.prepare(f"UPDATE {table} SET l = l + ? WHERE pk = ?")
             select = cql.prepare(f"SELECT l FROM {table} WHERE pk = ?")
             select.consistency_level = ConsistencyLevel.QUORUM
+
+            # The driver pins a request to the shard its routing key selects only once it has a
+            # connection to that shard; until then it sends the request over a random other
+            # connection and opens the missing one in the background, and only a request for
+            # that shard makes it try. Read pk=0 through the non-replica until the shard the
+            # writes below will use is connected, so that they all see the same leader cache.
+            token = cql.cluster.metadata.token_map.token_class.from_key(select.bind([0]).routing_key)
+            shard = non_replica_host.sharding_info.shard_id_from_token(token.value)
+
+            async def pinned_shard_connected() -> bool | None:
+                await cql.run_async(select.bind([0]), host=non_replica_host)
+                pool = cql._pools[non_replica_host]
+                return shard in pool._connections and shard not in pool._connecting or None
+
+            await wait_for(pinned_shard_connected, time.time() + WAIT_TIMEOUT_S)
 
             async def write(v: int) -> None:
                 await cql.run_async(append.bind([[v], 0]), host=non_replica_host)
